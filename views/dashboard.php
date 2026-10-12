@@ -9,9 +9,9 @@
         <?php foreach ($properties as $item): ?>
             <article class="card">
                 <?php if (!empty($item['photo'])): ?>
-                    <img src="<?= e($item['photo']) ?>" alt="Foto de <?= e($item['title']) ?>">
+                    <img src="<?= e($item['photo']) ?>" alt="Foto de <?= e($item['title']) ?>" loading="lazy">
                 <?php else: ?>
-                    <img src="/assets/placeholder.svg" alt="Sem foto">
+                    <img src="/assets/placeholder.svg" alt="Sem foto" loading="lazy">
                 <?php endif; ?>
                 <div class="body">
                     <h2><?= e($item['title']) ?></h2>
