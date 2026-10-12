@@ -5,7 +5,7 @@
     <?php if ($score !== null): ?><p>Nota dos hóspedes: <?= e((string) $score) ?>/10</p><?php endif; ?>
     <div class="gallery">
         <?php foreach ($photos as $photo): ?>
-            <img src="<?= e($photo['path']) ?>" alt="Foto de <?= e($property['title']) ?>">
+            <img src="<?= e($photo['path']) ?>" alt="Foto de <?= e($property['title']) ?>" loading="lazy">
         <?php endforeach; ?>
     </div>
     <p><?= e($property['description']) ?></p>
