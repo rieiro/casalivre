@@ -33,6 +33,22 @@ if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
 SecureSession::start();
 expire_user_session();
 ExceptionShield::register();
+
+// CORS para frontend em outro servidor (configurar CORS_ORIGIN no .env)
+$origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
+$allowed = getenv('CORS_ORIGIN') ?: '';
+if ($origin !== '' && ($allowed === '*' || $allowed === $origin || ($allowed !== '' && str_contains($allowed, $origin)))) {
+    header('Access-Control-Allow-Origin: ' . ($allowed === '*' ? '*' : $origin));
+    header('Access-Control-Allow-Credentials: true');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization');
+    header('Access-Control-Max-Age: 86400');
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+        http_response_code(204);
+        exit;
+    }
+}
+
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
@@ -227,35 +243,70 @@ if ($path === '/' && $method === 'GET') {
 }
 
 if ($path === '/busca/mapa' && $method === 'GET') {
-    [$filters, $results, $searched] = run_search(false);
+    $filters = [
+        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
+        'checkin' => (string) ($_GET['checkin'] ?? ''),
+        'checkout' => (string) ($_GET['checkout'] ?? ''),
+        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
+        'raio' => (int) ($_GET['raio'] ?? 0),
+        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
+        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
+        'score_min' => (float) ($_GET['score_min'] ?? 0),
+        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
+    ];
     view('map', [
         'filters' => $filters,
-        'results' => $results,
-        'searched' => $searched,
+        'results' => [],
+        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
         'maps_key' => maps_key(),
+        'use_api' => true,
     ]);
     return null;
 }
 
 if ($path === '/busca' && $method === 'GET') {
-    [$filters, $results, $searched, $facets] = run_search();
+    // Resultados vêm da API (/api/busca). A view só monta o formulário e carrega via JS.
+    $filters = [
+        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
+        'checkin' => (string) ($_GET['checkin'] ?? ''),
+        'checkout' => (string) ($_GET['checkout'] ?? ''),
+        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
+        'raio' => (int) ($_GET['raio'] ?? 0),
+        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
+        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
+        'score_min' => (float) ($_GET['score_min'] ?? 0),
+        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
+    ];
+    $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
     view('search', [
         'filters' => $filters,
-        'results' => $results,
+        'results' => [],
         'searched' => $searched,
-        'facets' => $facets,
+        'facets' => [],
+        'use_api' => true,
     ]);
     return null;
 }
 
 if ($path === '/busca-novo' && $method === 'GET') {
-    [$filters, $results, $searched, $facets] = run_search();
+    $filters = [
+        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
+        'checkin' => (string) ($_GET['checkin'] ?? ''),
+        'checkout' => (string) ($_GET['checkout'] ?? ''),
+        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
+        'raio' => (int) ($_GET['raio'] ?? 0),
+        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
+        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
+        'score_min' => (float) ($_GET['score_min'] ?? 0),
+        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
+    ];
     view('search_studio', [
         'filters' => $filters,
-        'results' => $results,
-        'searched' => $searched,
-        'facets' => $facets,
+        'results' => [],
+        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
+        'facets' => [],
         'layout' => 'layout_studio',
+        'use_api' => true,
     ]);
     return null;
 }
@@ -386,13 +437,8 @@ if ($path === '/conta/excluir' && $method === 'POST') {
 }
 
 if ($path === '/painel' && $method === 'GET') {
-    $user = require_user();
-    $properties = HouseRepository::listByUser((int) $user['id']);
-    foreach ($properties as &$item) {
-        $item['photo'] = PhotoRepository::primaryPath((int) $item['id']);
-    }
-    unset($item);
-    view('dashboard', ['properties' => $properties]);
+    require_user();
+    view('dashboard', ['properties' => [], 'use_api' => true]);
     return null;
 }
 
@@ -415,28 +461,11 @@ if ($path === '/imoveis' && $method === 'POST') {
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
-    $property = HouseRepository::find(house_id($m[1]));
-    if (!$property || ($property['status'] ?? 'active') !== 'active') {
-        http_response_code(404);
-        view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);
-        return null;
-    }
-    $checkin = (string) ($_GET['checkin'] ?? '');
-    $checkout = (string) ($_GET['checkout'] ?? '');
-    $quote = ($checkin && $checkout) ? stay_quote($property, nights_between($checkin, $checkout)) : null;
-    activity(ActivityLog::PROPERTY_VIEW, [
-        'imovel_id' => (int) $property['id'],
-        'cidade' => $property['city'],
-        'checkin' => $checkin,
-        'checkout' => $checkout,
-    ]);
     view('property', [
-        'property' => $property,
-        'photos' => PhotoRepository::list((int) $property['id']),
-        'score' => review_score((int) $property['id']),
-        'quote' => $quote,
-        'checkin' => br_date(parse_date($checkin) ?? ''),
-        'checkout' => br_date(parse_date($checkout) ?? ''),
+        'hash' => $m[1],
+        'use_api' => true,
+        'checkin' => (string) ($_GET['checkin'] ?? ''),
+        'checkout' => (string) ($_GET['checkout'] ?? ''),
     ]);
     return null;
 }

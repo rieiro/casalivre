@@ -251,3 +251,20 @@ $pageHref = static function (int $target) use ($query, $order): string {
     }
 })();
 </script>
+<?php if (!empty($use_api)): ?>
+<script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    fetch('/api/busca?' + params.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            const box = document.querySelector('.vm-results, .results, main, .wrap') || document.body;
+            const note = document.createElement('p');
+            note.className = 'muted';
+            note.textContent = (data.items || []).length + ' resultados carregados via API';
+            box.prepend(note);
+        })
+        .catch(() => {});
+})();
+</script>
+<?php endif; ?>

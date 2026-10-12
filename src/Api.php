@@ -226,6 +226,316 @@ function handle_api(string $path, string $method): void
         json_out(200, ['ok' => true]);
     }
 
+    // --- Novos endpoints (contratos em prompts/api-contratos.md) ---
+
+    if ($path === '/api/busca' && $method === 'GET') {
+        [$filters, $results, $searched, $facets] = run_search(true);
+        $items = array_map(static function (array $item): array {
+            return [
+                'id' => property_ref($item),
+                'title' => $item['title'],
+                'city' => $item['city'],
+                'nightly_price' => (int) $item['nightly_price'],
+                'photo' => $item['photo'] ?? null,
+                'score' => $item['score'] ?? null,
+                'quote' => $item['quote'] ?? null,
+                'distance_km' => $item['distance_km'] ?? null,
+            ];
+        }, $results);
+        json_out(200, [
+            'items' => $items,
+            'facets' => $facets,
+            'searched' => $searched,
+            'filters' => $filters,
+        ]);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+        $house = HouseRepository::findByPublicHash($m[1]);
+        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $id = (int) $house['id'];
+        $checkin = (string) ($_GET['checkin'] ?? '');
+        $checkout = (string) ($_GET['checkout'] ?? '');
+        $nights = nights_between($checkin, $checkout);
+        $quote = $nights ? stay_quote($house, $nights) : null;
+        $photos = PhotoRepository::list($id);
+        $selected = Amenities::selected($house);
+        $amenities = array_keys(array_filter($selected));
+        activity(ActivityLog::PROPERTY_VIEW, [
+            'imovel_id' => $id,
+            'cidade' => $house['city'],
+            'checkin' => $checkin,
+            'checkout' => $checkout,
+        ]);
+        json_out(200, [
+            'id' => property_ref($house),
+            'title' => $house['title'],
+            'description' => $house['description'],
+            'summary' => $house['summary'],
+            'city' => $house['city'],
+            'address' => $house['address'],
+            'photos' => $photos,
+            'score' => review_score($id),
+            'quote' => $quote,
+            'amenities' => $amenities,
+            'bedrooms' => (int) $house['bedrooms'],
+            'beds' => (int) $house['beds'],
+            'max_guests' => (int) $house['max_guests'],
+            'nightly_price' => (int) $house['nightly_price'],
+            'min_nights' => (int) $house['min_nights'],
+            'checkin_time' => $house['checkin_time'],
+            'checkout_time' => $house['checkout_time'],
+        ]);
+    }
+
+    if ($path === '/api/painel' && $method === 'GET') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $properties = HouseRepository::listByUser((int) $user['id']);
+        $items = [];
+        foreach ($properties as $item) {
+            $items[] = [
+                'id' => property_ref($item),
+                'title' => $item['title'],
+                'city' => $item['city'],
+                'photo' => PhotoRepository::primaryPath((int) $item['id']),
+                'status' => $item['status'] ?? 'active',
+                'nightly_price' => (int) $item['nightly_price'],
+            ];
+        }
+        json_out(200, ['items' => $items]);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
+        $house = HouseRepository::findByPublicHash($m[1]);
+        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $score = (int) ($body['score'] ?? 0);
+        $author = trim((string) ($body['author'] ?? 'Hóspede'));
+        $comment = trim((string) ($body['comment'] ?? ''));
+        if ($score < 1 || $score > 10) {
+            json_out(422, ['error' => 'Nota deve ser entre 1 e 10.']);
+        }
+        HouseRepository::addReview((int) $house['id'], $author === '' ? 'Hóspede' : $author, $score, $comment);
+        activity(ActivityLog::REVIEW, [
+            'imovel_id' => (int) $house['id'],
+            'nota' => $score,
+            'autor' => $author === '' ? 'Hóspede' : $author,
+        ]);
+        json_out(201, ['ok' => true]);
+    }
+
+    // Calendário
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $id = (int) $property['id'];
+        HouseRepository::clearBlockedAfter($id, max_calendar_day($property));
+        json_out(200, [
+            'id' => property_ref($property),
+            'days' => HouseRepository::calendarDays($id),
+            'feeds' => HouseRepository::feeds($id),
+        ]);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'POST') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $saved = save_calendar($property, $body);
+        $params = [
+            'imovel_id' => (int) $property['id'],
+            'inicio' => (string) ($body['inicio'] ?? ''),
+            'fim' => (string) ($body['fim'] ?? ''),
+            'resultado' => $saved['message'],
+        ];
+        foreach ($saved['logs'] as $log) {
+            activity($log['code'], $params + $log['extra'], $log['anterior'], $log['atual']);
+        }
+        json_out(200, [
+            'ok' => true,
+            'message' => $saved['message'],
+            'days' => HouseRepository::calendarDays((int) $property['id']),
+        ]);
+    }
+
+    // Definir foto de capa
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $fotoId = (int) ($body['foto_id'] ?? 0);
+        if ($fotoId < 1) {
+            json_out(422, ['error' => 'foto_id obrigatório.']);
+        }
+        $changed = PhotoRepository::makePrimary((int) $property['id'], $fotoId);
+        if ($changed !== []) {
+            activity(ActivityLog::PHOTO_COVER, ['imovel_id' => (int) $property['id']], array_column($changed, 'old'), array_column($changed, 'new'));
+        }
+        json_out(200, ['ok' => true, 'fotos' => PhotoRepository::list((int) $property['id'])]);
+    }
+
+    // Auth extras
+    if ($path === '/api/auth/verificar' && $method === 'POST') {
+        $result = AccountFlow::activate((string) ($body['token'] ?? ''));
+        if ($result['ok']) {
+            activity(ActivityLog::EMAIL_VERIFY, ['email' => $result['email'], 'resultado' => 'ok']);
+            json_out(200, ['ok' => true, 'email' => $result['email']]);
+        }
+        activity(ActivityLog::EMAIL_VERIFY, ['resultado' => 'invalido']);
+        json_out(400, ['error' => 'Token inválido ou expirado.']);
+    }
+
+    if ($path === '/api/auth/senha/esqueci' && $method === 'POST') {
+        $email = strtolower(trim((string) ($body['email'] ?? '')));
+        $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'), request_base() . '/senha/redefinir?token=');
+        if ($sent) {
+            activity(ActivityLog::PASSWORD_RESET_ASK, ['email' => $email]);
+        }
+        json_out(200, ['ok' => true]);
+    }
+
+    if ($path === '/api/auth/senha/redefinir' && $method === 'POST') {
+        $result = AccountFlow::reset(
+            (string) ($body['token'] ?? ''),
+            (string) ($body['password'] ?? ''),
+            (string) ($body['password_confirm'] ?? '')
+        );
+        if ($result['error']) {
+            json_out(422, ['error' => account_text($result['error'])]);
+        }
+        activity(ActivityLog::PASSWORD_RESET, ['email' => $result['email']]);
+        json_out(200, ['ok' => true]);
+    }
+
+    if ($path === '/api/idioma' && $method === 'POST') {
+        $locale = (string) ($body['locale'] ?? '');
+        if (!isset(I18n::LOCALES[$locale])) {
+            json_out(422, ['error' => 'Idioma inválido.']);
+        }
+        $_SESSION['locale'] = $locale;
+        activity(ActivityLog::LOCALE, ['idioma' => $locale]);
+        json_out(200, ['ok' => true, 'locale' => $locale]);
+    }
+
+    // Dados para formulário de edição
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/editar$#', $path, $m) && $method === 'GET') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $id = (int) $property['id'];
+        json_out(200, [
+            'casa' => api_public_house($property),
+            'fotos' => PhotoRepository::list($id),
+            'amenities' => Amenities::selected($property),
+            'cities' => cities(),
+        ]);
+    }
+
+    // Importar feed iCal
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $url = trim((string) ($body['url'] ?? $body['external_ical_url'] ?? ''));
+        $feedTitle = trim((string) ($body['title'] ?? $body['feed_title'] ?? ''));
+        if ($url === '') {
+            json_out(422, ['error' => 'URL obrigatória.']);
+        }
+        $error = HouseRepository::addFeed((int) $property['id'], (int) $user['id'], $url, $feedTitle);
+        if ($error === 'limit') {
+            json_out(422, ['error' => 'Limite de feeds atingido.']);
+        }
+        if ($error === 'duplicate') {
+            json_out(409, ['error' => 'Feed já cadastrado.']);
+        }
+        if ($error === 'title') {
+            json_out(422, ['error' => 'Título obrigatório.']);
+        }
+        $icsBody = exported_calendar_body($url) ?? CalendarSync::fetch($url) ?? (string) ($body['ics_body'] ?? '');
+        $count = 0;
+        if ($icsBody !== '') {
+            $count = import_ics((int) $property['id'], $icsBody);
+            foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
+                if ($feed['url'] === $url) {
+                    HouseRepository::markFeed((int) $feed['id'], 'OK', date('Y-m-d H:i:s'));
+                    break;
+                }
+            }
+        }
+        activity(ActivityLog::CALENDAR_SYNC, [
+            'imovel_id' => (int) $property['id'],
+            'url' => $url,
+            'novas' => $count,
+        ]);
+        json_out(200, [
+            'ok' => true,
+            'importadas' => $count,
+            'feeds' => HouseRepository::feeds((int) $property['id']),
+        ]);
+    }
+
+    // Excluir feed iCal
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)$#', $path, $m) && $method === 'DELETE') {
+        if (!$user) {
+            json_out(401, ['error' => 'Autenticação necessária.']);
+        }
+        $found = HouseRepository::findByPublicHash($m[1]);
+        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+        if (!$property) {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        $removed = HouseRepository::removeFeed((int) $property['id'], (int) $user['id'], (int) $m[2]);
+        if (empty($removed['feed'])) {
+            json_out(404, ['error' => 'Feed não encontrado.']);
+        }
+        activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]]);
+        json_out(200, ['ok' => true, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+    }
+
+    // Exportar ICS (por hash público)
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path, $m) && $method === 'GET') {
+        $house = HouseRepository::findByPublicHash($m[1]);
+        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+            json_out(404, ['error' => 'Imóvel não encontrado.']);
+        }
+        activity(ActivityLog::CALENDAR_EXPORT, ['imovel_id' => (int) $house['id']]);
+        header('Content-Type: text/calendar; charset=utf-8');
+        header('Content-Disposition: inline; filename="casalivre-' . property_ref($house) . '.ics"');
+        echo export_ics($house);
+        exit;
+    }
+
     json_out(404, ['error' => 'Rota não encontrada.']);
 }
 

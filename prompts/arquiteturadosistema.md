@@ -26,7 +26,7 @@
 
 ---
 
-1. Arquitetura: PHP + backend; O backend deve ser desacoplado do front end. Deve ser possível, sem esforço, migrar para outro banco de dados, como postgres, por exemplo.
+1. Arquitetura: PHP + backend; O backend deve ser desacoplado do front end, adotando o padrão MVC. Deve ser possível, sem esforço, migrar para outro banco de dados, como postgres, por exemplo.
 2. Implementar CRUD para elementos básicos: Proprietarios, Casas.
 3. O site deverá poder ser visualizado, sem perda de funcionalidade, tanto em desktops quanto em celulares.
 4. O sistema deverá armazenar todos os valores padronizáveis em tabela separada no banco de dados, para fácil acompanhamento do time do suporte e para o fácil entendimento do código. Por exemplo, número máximo de retries de login incorreto, número de meses default a partir da data atual onde é possível gerenciar calendário. Esta lista não é exaustiva. Evidentemente, estes valores devem ser consultados cada vez q o sistema necessitar deles. Para evitar consultas ao banco desnecessárias, pode existir um armazenamento cache com estes valores padrão. O time de suporte deverá ter uma ferramenta para atualizar o cache, no caso em que estes valores padronizados no banco forem alterados.

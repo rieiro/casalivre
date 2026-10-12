@@ -1,8 +1,14 @@
 <section class="wrap">
-    <form class="panel" method="post" action="/cadastro">
+    <form class="panel" id="register-form" method="post" action="/cadastro">
         <h1><?= e(t('auth.register_title')) ?></h1>
         <p class="muted"><?= e(t('auth.register_lead')) ?></p>
-        <?php if ($error): ?><p class="error"><?= e($error) ?></p><?php endif; ?>
+        <p class="error" id="register-error" hidden></p>
+        <div id="register-success" hidden>
+            <h2><?= e(t('auth.pending_title')) ?></h2>
+            <p><?= e(t('auth.pending_body')) ?></p>
+            <p><a id="verify-link" href="#"><?= e(t('auth.open_link')) ?></a></p>
+            <p class="muted"><?= e(t('auth.expires')) ?> <span id="verify-expires"></span></p>
+        </div>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <?php $old = $old ?? []; ?>
         <label><?= e(t('auth.name')) ?> <input name="name" required value="<?= e((string) ($old['name'] ?? '')) ?>"></label>
@@ -20,6 +26,45 @@
         <label><?= e(t('auth.password')) ?> <input type="password" name="password" minlength="8" required></label>
         <label><?= e(t('auth.password2')) ?> <input type="password" name="password_confirm" minlength="8" required></label>
         <p class="muted"><?= e(password_phrase('auth.password_rules')) ?></p>
-        <button class="primary" type="submit"><?= e(t('auth.create')) ?></button>
+        <button class="primary" type="submit" id="register-submit"><?= e(t('auth.create')) ?></button>
     </form>
 </section>
+<script>
+(function () {
+    const form = document.getElementById('register-form');
+    const errorEl = document.getElementById('register-error');
+    const successEl = document.getElementById('register-success');
+    const submitBtn = document.getElementById('register-submit');
+    form.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        errorEl.hidden = true;
+        successEl.hidden = true;
+        submitBtn.disabled = true;
+        const data = Object.fromEntries(new FormData(form).entries());
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': data._csrf || '' },
+                body: JSON.stringify(data)
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                errorEl.textContent = json.error || 'Erro ao cadastrar.';
+                errorEl.hidden = false;
+                submitBtn.disabled = false;
+                return;
+            }
+            form.querySelectorAll('input, button').forEach(el => { if (el.id !== 'register-submit') el.disabled = true; });
+            document.getElementById('verify-link').href = json.verification_link || '#';
+            document.getElementById('verify-expires').textContent = json.expires || '';
+            successEl.hidden = false;
+            submitBtn.hidden = true;
+        } catch (e) {
+            errorEl.textContent = 'Falha de conexão.';
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+        }
+    });
+})();
+</script>

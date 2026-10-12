@@ -111,9 +111,11 @@ $popular = array_slice($popular, 0, 10);
                 <button class="primary" type="submit"><?= e(t('home.search')) ?></button>
             </form>
         </div>
-        <div>
+        <div id="search-results">
             <?php if (!$searched): ?>
                 <p class="muted"><?= e(t('home.empty')) ?></p>
+            <?php elseif (!empty($use_api)): ?>
+                <p class="muted" id="search-loading">Carregando resultados…</p>
             <?php else: ?>
                 <?php
                 $resultTotal = count($results);
@@ -142,3 +144,44 @@ $popular = array_slice($popular, 0, 10);
         </div>
     </div>
 </section>
+<?php if (!empty($use_api) && $searched): ?>
+<script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    const api = '/api/busca?' + params.toString();
+    const box = document.getElementById('search-results');
+    fetch(api, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            const items = data.items || [];
+            const total = items.length;
+            const loc = params.get('localidade') || '';
+            let html = '<h1>' + (loc ? loc + ': ' : '') + total + ' encontrados</h1>';
+            if (total === 0) {
+                html += '<p class="muted">Nenhum imóvel encontrado.</p>';
+            } else {
+                html += '<div class="results">';
+                items.forEach(item => {
+                    const photo = item.photo || '/assets/placeholder.svg';
+                    const q = item.quote || {};
+                    const price = q.nights ? (q.total + ' total') : (item.nightly_price + ' / noite');
+                    const href = '/imoveis/' + item.id + '?' + params.toString();
+                    html += '<article class="result">'
+                        + '<a href="' + href + '"><img src="' + photo + '" alt="" loading="lazy"></a>'
+                        + '<div class="body"><h2 class="card-title">' + (item.title || '') + '</h2>'
+                        + '<p class="muted">' + (item.city || '') + '</p>'
+                        + '<p class="summary muted">' + (item.summary || '') + '</p></div>'
+                        + '<div class="offer">'
+                        + (item.score ? '<p class="score-badge">' + item.score + '</p>' : '')
+                        + '<p class="price">' + price + '</p></div></article>';
+                });
+                html += '</div>';
+            }
+            box.innerHTML = html;
+        })
+        .catch(() => {
+            box.innerHTML = '<p class="muted">Erro ao carregar resultados.</p>';
+        });
+})();
+</script>
+<?php endif; ?>

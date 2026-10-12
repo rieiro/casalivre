@@ -12,15 +12,19 @@ final class SessionGuard
         $minutes = max(1, $minutes);
         session_save_path($directory);
         $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        $samesite = getenv('SESSION_SAMESITE') ?: 'Lax';
+        if ($samesite === 'None' && !$https) {
+            $samesite = 'Lax'; // None exige Secure
+        }
         ini_set('session.gc_maxlifetime', (string) ($minutes * 60));
         ini_set('session.use_only_cookies', '1');
         ini_set('session.use_strict_mode', '1');
         session_set_cookie_params([
             'lifetime' => 0,
             'path' => '/',
-            'secure' => $https,
+            'secure' => $https || $samesite === 'None',
             'httponly' => true,
-            'samesite' => 'Lax',
+            'samesite' => $samesite,
         ]);
         if (session_status() !== PHP_SESSION_ACTIVE) {
             session_start();
