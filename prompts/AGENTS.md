@@ -1,0 +1,2 @@
+1. por uma questão de economia de recursos, apenas atualize o zip do pacote [casalivre-atual.zip](http://casalivre-atual.zip) quando eu pedir especificamente.
+2. por uma questao de economia de recursos, apenas atualize a documentação técnica quando for explicitamente pedido.

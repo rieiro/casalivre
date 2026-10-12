@@ -74,6 +74,7 @@ $payload = json_encode($points, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX
         for (let x = 0; x < cols; x++) {
             const img = document.createElement('img');
             img.alt = '';
+            img.loading = 'lazy';
             img.src = 'https://tile.openstreetmap.org/' + zoom + '/' + (x0 + x) + '/' + (y0 + y) + '.png';
             img.style.position = 'absolute';
             img.style.left = (x * 256) + 'px';

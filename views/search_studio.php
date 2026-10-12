@@ -118,7 +118,7 @@ $pageHref = static function (int $target) use ($query, $order): string {
                         ?>
                         <article class="vm-card">
                             <a class="vm-photo" href="<?= e($href) ?>">
-                                <img src="<?= e(!empty($item['photo']) ? $item['photo'] : '/assets/placeholder.svg') ?>" alt="<?= e($item['title']) ?>">
+                                <img src="<?= e(!empty($item['photo']) ? $item['photo'] : '/assets/placeholder.svg') ?>" alt="<?= e($item['title']) ?>" loading="lazy">
                                 <?php if ($badges): ?>
                                     <span class="vm-badges"><?php foreach ($badges as [$badge, $tone]): ?><em class="<?= e($tone) ?>"><?= e($badge) ?></em><?php endforeach; ?></span>
                                 <?php endif; ?>

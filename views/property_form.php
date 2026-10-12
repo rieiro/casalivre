@@ -183,7 +183,7 @@
                     <div class="photo-tile">
                         <label class="photo-pick">
                             <input class="photo-check" type="checkbox" name="fotos[]" value="<?= (int) $photo['id'] ?>">
-                            <img src="<?= e($photo['path']) ?>" alt="<?= e(t('form.photos')) ?>">
+                            <img src="<?= e($photo['path']) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
                             <span class="tick" aria-hidden="true">✓</span>
                         </label>
                         <?php if (!empty($photo['is_primary'])): ?><span class="cover-badge"><?= e(t('form.cover_current')) ?></span><?php endif; ?>
