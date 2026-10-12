@@ -3,9 +3,9 @@
         <article class="result" data-property-id="<?= (int) $item['id'] ?>">
             <a href="/imoveis/<?= e(property_ref($item)) ?>?<?= e(http_build_query(['checkin' => $filters['checkin'] ?? '', 'checkout' => $filters['checkout'] ?? '', 'volta' => (string) ($_SERVER['REQUEST_URI'] ?? '/')])) ?>">
                 <?php if (!empty($item['photo'])): ?>
-                    <img src="<?= e($item['photo']) ?>" alt="Foto principal de <?= e($item['title']) ?>">
+                    <img src="<?= e($item['photo']) ?>" alt="Foto principal de <?= e($item['title']) ?>" loading="lazy">
                 <?php else: ?>
-                    <img src="/assets/placeholder.svg" alt="<?= e(t('home.no_photo')) ?>">
+                    <img src="/assets/placeholder.svg" alt="<?= e(t('home.no_photo')) ?>" loading="lazy">
                 <?php endif; ?>
             </a>
             <div class="body">
