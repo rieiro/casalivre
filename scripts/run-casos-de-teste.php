@@ -82,7 +82,7 @@ $csrf = csrf_from($body);
         'password_confirm' => 'Senha-segura1',
     ]),
 ]);
-assert_true($status === 200 && preg_match('#/verificar\\?token=([a-f0-9]+)#', $body, $token), 'cadastro grava o link de verificação e não entra no painel');
+assert_true($status === 200 && preg_match('#/verificar\?token=([a-f0-9]+)#', $body, $token), 'cadastro grava o link de verificação e não entra no painel');
 [$status, , $html] = req('GET', $base . '/verificar?token=' . ($token[1] ?? ''));
 assert_true($status === 200 && str_contains($html, 'Conta ativada'), 'o clique no link ativa a conta dentro do prazo');
 
