@@ -71,7 +71,7 @@ if ($origin !== '') {
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
-header("Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'");
+header('Content-Security-Policy: ' . csp_policy(maps_key()));
 
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';

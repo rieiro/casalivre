@@ -3,11 +3,30 @@
 // rooms/amenity só como array.
 require __DIR__ . '/lib.php';
 t_temp_db();
+putenv('GOOGLE_MAPS_API_KEY=');
 $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
-$csp = "Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'";
+$csp = "Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'";
+
+echo "csp_policy(): sem e com maps_key\n";
+$strict = csp_policy('');
+t_eq("default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'", $strict, 'sem chave: estrita + tiles OSM');
+t_ok(!str_contains($strict, 'google') && !str_contains($strict, 'unsafe'), 'sem chave: nenhum host Google, nenhum unsafe-*');
+$maps = csp_policy('chave');
+$dir = [];
+foreach (explode(';', $maps) as $part) {
+    $words = preg_split('/\s+/', trim($part));
+    $dir[array_shift($words)] = $words;
+}
+t_eq(["'self'", 'https://maps.googleapis.com', 'https://maps.gstatic.com'], $dir['script-src'] ?? null, 'com chave: script-src só self + hosts do Maps');
+t_ok(in_array('https://tile.openstreetmap.org', $dir['img-src'] ?? [], true) && in_array('https://maps.gstatic.com', $dir['img-src'] ?? [], true), 'com chave: img-src com OSM e Maps');
+t_eq(["'self'", 'https://maps.googleapis.com'], $dir['connect-src'] ?? null, 'com chave: connect-src só maps.googleapis.com');
+t_ok(in_array("'unsafe-inline'", $dir['style-src'] ?? [], true), "com chave: style-src com 'unsafe-inline' (atributos style= do Maps)");
+t_ok(!str_contains($maps, '*') && !str_contains($maps, 'unsafe-eval'), 'com chave: sem curingas e sem unsafe-eval');
+t_eq(["'none'"], $dir['object-src'] ?? null, "com chave: object-src 'none'");
+t_eq(["'none'"], $dir['base-uri'] ?? null, "com chave: base-uri 'none'");
 
 echo "header CSP\n";
 foreach (['/', '/entrar', '/busca?localidade=Florian%C3%B3polis', '/imoveis/' . $owner['hash'], '/api/busca?localidade=x'] as $path) {
@@ -51,5 +70,13 @@ foreach (['rooms', 'amenity'] as $field) {
 $r = t_http('POST', $base . '/api/casas', json_encode(['title' => ['a']] + $common), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 t_eq(422, $r['status'], 'POST /api/casas com title array -> 422');
 t_eq('Casa Teste', HouseRepository::find($owner['house_id'])['title'], 'imóvel não alterado pelos 422');
+
+echo "header com GOOGLE_MAPS_API_KEY configurada\n";
+putenv('GOOGLE_MAPS_API_KEY=chave-falsa-teste');
+$baseMaps = t_server();
+$r = t_http('GET', $baseMaps . '/busca/mapa?localidade=x');
+t_ok(stripos($r['headers'], 'Content-Security-Policy: ' . csp_policy('chave-falsa-teste')) !== false, 'servidor com chave envia CSP do Maps');
+t_ok(str_contains($r['body'], 'data-key="chave-falsa-teste"'), 'página do mapa recebe a chave');
+putenv('GOOGLE_MAPS_API_KEY=');
 
 t_done();

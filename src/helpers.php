@@ -700,3 +700,29 @@ function photo_url(?string $path): string
     }
     return '/assets/placeholder.svg';
 }
+
+/**
+ * Valor do header Content-Security-Policy. Sempre estrito + tiles OSM; só com chave do Google Maps
+ * libera os hosts mínimos do Maps JS API (maps.googleapis.com / maps.gstatic.com).
+ * style-src precisa de 'unsafe-inline' com o Maps: ele aplica atributos style= que nonce/hash não cobrem
+ * (e com nonce presente o navegador ignora 'unsafe-inline'). script-src continua sem 'unsafe-inline'.
+ */
+function csp_policy(string $mapsKey = ''): string
+{
+    $osm = 'https://tile.openstreetmap.org';
+    if ($mapsKey === '') {
+        return "default-src 'self'; script-src 'self'; img-src 'self' $osm; object-src 'none'; base-uri 'none'";
+    }
+    $g = 'https://maps.googleapis.com https://maps.gstatic.com';
+    return implode('; ', [
+        "default-src 'self'",
+        "script-src 'self' $g",
+        "img-src 'self' $osm $g data:",
+        "connect-src 'self' https://maps.googleapis.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        'font-src https://fonts.gstatic.com',
+        'worker-src blob:',
+        "object-src 'none'",
+        "base-uri 'none'",
+    ]);
+}
