@@ -107,9 +107,73 @@ final class Db
      * escrita no início (respeitando o busy_timeout); a versão é rechecada dentro do lock
      * porque outro processo pode ter migrado enquanto esperávamos.
      */
+    /**
+     * Transação aberta com SQL cru (BEGIN IMMEDIATE em migrateSqlite). No PHP 8.2/8.3,
+     * PDO::inTransaction() não enxerga transações abertas via exec(), então o Db controla isso.
+     */
+    private static bool $rawTransaction = false;
+    private static int $savepoint = 0;
+
+    /** Há transação aberta nesta conexão (via PDO ou via SQL cru do Db)? */
+    public static function inTransaction(PDO $pdo): bool
+    {
+        return self::$rawTransaction || $pdo->inTransaction();
+    }
+
+    /**
+     * Executa $fn numa transação. Se já houver uma aberta (inclusive o BEGIN IMMEDIATE da
+     * migração), usa SAVEPOINT/RELEASE em vez de beginTransaction(), que falharia.
+     *
+     * @template T
+     * @param callable(PDO): T $fn
+     * @return T
+     */
+    public static function transactional(PDO $pdo, callable $fn): mixed
+    {
+        $own = false;
+        if (!self::inTransaction($pdo)) {
+            try {
+                $pdo->beginTransaction();
+                $own = true;
+            } catch (PDOException $e) {
+                // BEGIN cru aberto fora do Db (PHP 8.2/8.3 não o enxerga): cai no SAVEPOINT.
+                if (!str_contains($e->getMessage(), 'within a transaction')) {
+                    throw $e;
+                }
+            }
+        }
+        if ($own) {
+            try {
+                $result = $fn($pdo);
+                $pdo->commit();
+                return $result;
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+        }
+        $name = 'cl_sp_' . (++self::$savepoint);
+        $pdo->exec('SAVEPOINT ' . $name);
+        try {
+            $result = $fn($pdo);
+            $pdo->exec('RELEASE SAVEPOINT ' . $name);
+            return $result;
+        } catch (Throwable $e) {
+            try {
+                $pdo->exec('ROLLBACK TO SAVEPOINT ' . $name);
+                $pdo->exec('RELEASE SAVEPOINT ' . $name);
+            } catch (Throwable) {
+            }
+            throw $e;
+        }
+    }
+
     private static function migrateSqlite(PDO $pdo, bool $force): void
     {
         $pdo->exec('BEGIN IMMEDIATE');
+        self::$rawTransaction = true;
         try {
             if ($force || (int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
                 self::migrate($pdo);
@@ -122,6 +186,8 @@ final class Db
             } catch (Throwable) {
             }
             throw $e;
+        } finally {
+            self::$rawTransaction = false;
         }
     }
 
