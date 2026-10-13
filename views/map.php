@@ -18,10 +18,8 @@ $payload = json_encode($points, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX
 <section class="wrap map-page">
     <p><a href="/busca?<?= e($query) ?>"><?= e(t('home.back_results')) ?></a></p>
     <h1><?= e(t('home.map_title')) ?><?= $filters['localidade'] !== '' ? ' · ' . e($filters['localidade']) : '' ?></h1>
+    <?php if ($searched && $results): ?><p class="muted" data-map-count><?= count($results) ?> <?= e(t('home.found')) ?></p><?php endif; ?>
     <div id="result-map" data-points="<?= e((string) $payload) ?>"></div>
     <?php if (!$results): ?><p class="muted"><?= e(t('home.empty')) ?></p><?php endif; ?>
 </section>
-<script src="/assets/pages/map.js?v=2"></script>
-<?php if (!empty($use_api)): ?>
-<script src="/assets/pages/map-2.js?v=1"></script>
-<?php endif; ?>
+<script src="/assets/pages/map.js?v=3"></script>

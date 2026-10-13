@@ -269,22 +269,13 @@ if ($path === '/' && $method === 'GET') {
 }
 
 if ($path === '/busca/mapa' && $method === 'GET') {
-    $filters = [
-        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
-        'checkin' => (string) ($_GET['checkin'] ?? ''),
-        'checkout' => (string) ($_GET['checkout'] ?? ''),
-        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
-        'raio' => (int) ($_GET['raio'] ?? 0),
-        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
-        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
-        'score_min' => (float) ($_GET['score_min'] ?? 0),
-        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
-    ];
+    // Página do mapa renderizada no servidor: pontos (data-points) e contagem saem de $results. A busca é
+    // registrada aqui (uma vez); a página não chama /api/busca.
+    [$filters, $results, $searched] = run_search(true);
     view('map', [
         'filters' => $filters,
-        'results' => [],
-        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
-        'use_api' => true,
+        'results' => $results,
+        'searched' => $searched,
     ]);
     return null;
 }
