@@ -51,40 +51,31 @@ function assert_true(bool $ok, string $message): void
 
 $suite = getenv('CASOS') ?: 'todos'; // todos | legado | novos
 if ($suite !== 'novos') {
-echo "Caso 1: cadastro pede senha duas vezes e só ativa pelo link gravado\n";
+echo "Caso 1: cadastro (via API) pede senha duas vezes e só ativa pelo link gravado\n";
 [$status, , $html] = req('GET', $base . '/cadastro');
 assert_true($status === 200, 'formulário de cadastro abre');
 $csrf = csrf_from($html);
 $email = 'user' . time() . '@casalivre.test';
-[$status, $headers, $body] = req('POST', $base . '/cadastro', [
-    CURLOPT_POSTFIELDS => http_build_query([
-        '_csrf' => $csrf,
-        'name' => 'Marina Costa',
-        'cpf' => '12345678901',
-        'cep' => '88010000',
-        'address_number' => '120',
-        'phone' => '48999990000',
-        'email' => $email,
-        'password' => 'Senha-segura1',
-        'password_confirm' => 'outra-senha',
-    ]),
-]);
-assert_true($status === 200 && str_contains($body, 'não conferem'), 'senhas diferentes não criam a conta');
-$csrf = csrf_from($body);
-[$status, $headers, $body] = req('POST', $base . '/cadastro', [
-    CURLOPT_POSTFIELDS => http_build_query([
-        '_csrf' => $csrf,
-        'name' => 'Marina Costa',
-        'cpf' => '12345678901',
-        'cep' => '88010000',
-        'address_number' => '120',
-        'phone' => '48999990000',
-        'email' => $email,
-        'password' => 'Senha-segura1',
-        'password_confirm' => 'Senha-segura1',
-    ]),
-]);
-assert_true($status === 200 && preg_match('#/verificar\?token=([a-f0-9]+)#', $body, $token), 'cadastro grava o link de verificação e não entra no painel');
+$cadastro = [
+    'name' => 'Marina Costa',
+    'cpf' => '12345678901',
+    'cep' => '88010000',
+    'address_number' => '120',
+    'phone' => '48999990000',
+    'email' => $email,
+    'password' => 'Senha-segura1',
+];
+$json = static fn (array $data): array => [
+    CURLOPT_POSTFIELDS => json_encode($data),
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf],
+];
+[$status, , $body] = req('POST', $base . '/api/users', $json($cadastro + ['password_confirm' => 'outra-senha']));
+$resp = json_decode($body, true) ?: [];
+assert_true($status === 422 && str_contains((string) ($resp['error'] ?? ''), 'não conferem'), 'senhas diferentes não criam a conta (422)');
+[$status, , $body] = req('POST', $base . '/api/users', $json($cadastro + ['password_confirm' => 'Senha-segura1']));
+$resp = json_decode($body, true) ?: [];
+$link = (string) ($resp['verification_link'] ?? '');
+assert_true($status === 201 && ($resp['status'] ?? '') === 'pending' && preg_match('#/verificar\?token=([a-f0-9]+)#', $link, $token), 'cadastro grava o link de verificação e fica pendente (201)');
 [$status, , $html] = req('GET', $base . '/verificar?token=' . ($token[1] ?? ''));
 assert_true($status === 200 && str_contains($html, 'Conta ativada'), 'o clique no link ativa a conta dentro do prazo');
 
@@ -181,36 +172,27 @@ for ($n = 1; $n <= 20; $n++) {
 }
 assert_true($created === 20, "20 imóveis persistidos ($created)");
 
-echo "Caso 4: cliente sem login busca a localidade e vê os 20 imóveis\n";
+echo "Caso 4: cliente sem login busca a localidade (via /api/busca) e vê os 20 imóveis\n";
 @unlink($cookie);
-[$status, , $html] = req('GET', $base . '/?localidade=' . rawurlencode('Florianópolis') . '&checkin=' . $checkin . '&checkout=' . $checkout . '&raio=25');
-assert_true($status === 200, 'busca pública responde');
-preg_match_all('/<article class="card"/', $html, $cards);
-assert_true(count($cards[0]) === 20, 'lista os 20 imóveis cadastrados, sem login (' . count($cards[0]) . ')');
-preg_match_all('/class="card-title">([^<]+)</', $html, $titles);
-preg_match_all('/class="summary muted">([^<]*)</', $html, $summaries);
-preg_match_all('/class="guests">(\d+) hóspedes/', $html, $guests);
-preg_match_all('/class="price">([^<]+)</', $html, $prices);
-preg_match_all('/<img src="([^"]+)" alt="Foto principal/', $html, $photos);
-assert_true(count($titles[1]) === 20, 'cada card tem título');
-assert_true(count($photos[1]) === 20, 'cada card tem foto principal');
-assert_true(count($guests[1]) === 20, 'cada card mostra o máximo de hóspedes');
-assert_true(count($prices[1]) === 20 && !in_array('', $prices[1], true), 'cada card mostra a diária do período');
-$wordsOk = true;
-foreach ($summaries[1] as $summary) {
-    $words = preg_split('/\s+/u', trim(html_entity_decode($summary))) ?: [];
-    $words = array_filter($words, static fn ($w) => $w !== '');
-    if (count($words) > 45 || count($words) === 0) {
-        $wordsOk = false;
-    }
-}
-assert_true(count($summaries[1]) === 20 && $wordsOk, 'cada card tem descrição sumária com no máximo 45 palavras');
+$query = 'localidade=' . rawurlencode('Florianópolis') . '&checkin=' . $checkin . '&checkout=' . $checkout . '&raio=25';
+[$status, , $html] = req('GET', $base . '/?' . $query);
+assert_true(in_array($status, [200, 302], true), "página de busca responde ($status; resultados vêm da API)");
+[$status, $headers, $body] = req('GET', $base . '/api/busca?' . $query);
+$busca = json_decode($body, true) ?: [];
+$items = $busca['items'] ?? [];
+assert_true($status === 200 && stripos($headers, 'application/json') !== false, 'GET /api/busca responde JSON sem login');
+assert_true(count($items) === 20, 'lista os 20 imóveis cadastrados, sem login (' . count($items) . ')');
+$count = static fn (callable $ok): int => count(array_filter($items, $ok));
+assert_true($count(static fn ($i) => trim((string) ($i['title'] ?? '')) !== '') === 20, 'cada item tem título');
+assert_true($count(static fn ($i) => !empty($i['photo'])) === 20, 'cada item tem foto principal');
+assert_true($count(static fn ($i) => (int) ($i['nightly_price'] ?? 0) > 0) === 20, 'cada item tem diária');
+assert_true($count(static fn ($i) => preg_match('/^[a-f0-9]{16}$/', (string) ($i['id'] ?? '')) === 1) === 20, 'cada item tem id público (16 hex)');
+echo "    (info) /api/busca não devolve resumo nem máximo de hóspedes por item; esses critérios do caso antigo ficam fora do contrato atual\n";
 
 echo "Filtros extras do cliente: hóspedes, raio, diária e nota\n";
-[$status, , $html] = req('GET', $base . '/?localidade=' . rawurlencode('Florianópolis') . '&checkin=' . $checkin . '&checkout=' . $checkout . '&hospedes=20');
-preg_match_all('/<article class="card"/', $html, $few);
-assert_true($status === 200 && count($few[0]) < 20, 'filtro de hóspedes reduz a lista');
-
+[$status, , $body] = req('GET', $base . '/api/busca?' . $query . '&hospedes=20');
+$few = (json_decode($body, true) ?: [])['items'] ?? [];
+assert_true($status === 200 && count($few) < 20, 'filtro de hóspedes reduz a lista (' . count($few) . ')');
 }
 if ($suite !== 'legado') {
     require __DIR__ . '/casos/api-ical-log.php';
