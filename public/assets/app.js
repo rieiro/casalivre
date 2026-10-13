@@ -440,9 +440,13 @@ document.querySelectorAll('[data-cep]').forEach((input) => {
         let data = {};
         try {
             const response = await fetch('/api/ceps?q=' + digits, { credentials: 'same-origin' });
+            if (response.status === 429) {
+                throw new Error('rate limited');
+            }
             data = await response.json().catch(() => ({}));
         } catch (error) {
-            // Falha de rede: não apaga o que o usuário já preencheu; só avisa.
+            // Falha de rede ou 429: mesmo tratamento.
+            // não apaga o que o usuário já preencheu; só avisa.
             if (status) {
                 status.textContent = 'Não foi possível consultar o CEP agora. Preencha o endereço manualmente.';
             }
