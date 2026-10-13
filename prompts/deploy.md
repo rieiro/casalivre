@@ -20,7 +20,7 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] SSRF do `CalendarSync::fetch` com DNS real.
 - [ ] Exclusão real no Mongo pelo job de retenção.
 - [ ] Importação iCal com feed real (Airbnb, Booking, Google).
-- [ ] DEF-008: "database is locked" (SQLite) sob carga paralela nos `.ics`. Validar no php-fpm real depois da correção (WAL + busy_timeout).
+- [ ] DEF-008: "database is locked" (SQLite) sob carga paralela nos `.ics` (PR #10). No php-fpm real, confirmar o modo WAL e o busy_timeout, e garantir permissão de escrita na pasta do banco para os arquivos `-wal` e `-shm`.
 
 ## Backlog (próximas sprints)
 
