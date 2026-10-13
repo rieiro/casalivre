@@ -47,6 +47,8 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Bugs
 
+- [ ] Imóvel antigo com título acima de 25 caracteres não pode ser editado pela API sem encurtar o título (422 com mensagem clara). Definir uma migração ou uma regra de transição.
+
 - [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada. Correção pronta na branch fix/busca-mapa (PR a abrir; QA depois do #23).
 
 ## Infra e dados
