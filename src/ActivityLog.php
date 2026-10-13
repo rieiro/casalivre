@@ -220,7 +220,9 @@ final class ActivityLog
         }
         Db::loadEnv();
         $driver = getenv('LOG_DRIVER') ?: 'sqlite';
-        $store = $driver === 'mongodb' ? new MongoActivityStore() : new SqliteActivityStore();
+        // ACTIVITY_DB_PATH: caminho alternativo do SQLite de atividades (testes); padrão storage/logs/activity.sqlite.
+        $path = getenv('ACTIVITY_DB_PATH') ?: null;
+        $store = $driver === 'mongodb' ? new MongoActivityStore() : new SqliteActivityStore($path);
         return $store;
     }
 

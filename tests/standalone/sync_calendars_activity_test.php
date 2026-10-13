@@ -14,7 +14,18 @@ $pdo->prepare('INSERT INTO calendar_feeds (property_id, url, title) VALUES (?, ?
 $pdo->prepare("INSERT INTO calendar_days (property_id, day, blocked, origin) VALUES (?, ?, 1, 'sync')")
     ->execute([$pid, date('Y-m-d', strtotime('+6 years'))]);
 
-$actFile = CL_ROOT . '/storage/logs/activity.sqlite';
+// Activity log em diretório temporário (não toca storage/logs/activity.sqlite real).
+$actDir = sys_get_temp_dir() . '/casalivre-activity-' . bin2hex(random_bytes(4));
+mkdir($actDir, 0700, true);
+$actFile = $actDir . '/activity.sqlite';
+putenv('ACTIVITY_DB_PATH=' . $actFile);
+putenv('LOG_DRIVER=sqlite');
+register_shutdown_function(static function () use ($actDir): void {
+    foreach (glob($actDir . '/*') ?: [] as $f) {
+        @unlink($f);
+    }
+    @rmdir($actDir);
+});
 $act = static fn () => new PDO('sqlite:' . $actFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 ActivityLog::store(); // garante que o arquivo/tabela existem
 $before = (int) $act()->query('SELECT COALESCE(MAX(id), 0) FROM activity_log')->fetchColumn();
@@ -36,6 +47,5 @@ t_ok(in_array(ActivityLog::CALENDAR_UPDATE, $codes, true), 'auditoria CALENDAR_U
 $sync = array_values(array_filter($mine, static fn ($r) => (int) $r['action_code'] === ActivityLog::CALENDAR_SYNC));
 t_ok($sync !== [] && !str_contains((string) $sync[0]['params'], 'teste-sync.ics'), 'URL do feed não aparece crua na auditoria');
 
-// Limpa as linhas do teste no activity.sqlite local.
-$act()->prepare('DELETE FROM activity_log WHERE id > ?')->execute([$before]);
+t_ok(is_file($actFile), 'auditoria gravada no arquivo temporário');
 t_done();
