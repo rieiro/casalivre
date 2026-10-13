@@ -198,31 +198,6 @@ if ($path === '/idioma' && $method === 'POST') {
     redirect($target);
 }
 
-if ($path === '/cidades' && $method === 'GET') {
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(CityRepository::suggest((string) ($_GET['q'] ?? '')), JSON_UNESCAPED_UNICODE);
-    return null;
-}
-
-if ($path === '/ceps' && $method === 'GET') {
-    header('Content-Type: application/json; charset=utf-8');
-    $row = CepRepository::find((string) ($_GET['q'] ?? ''));
-    if (!$row || trim((string) $row['street']) === '') {
-        echo json_encode(['error' => 'CEP não encontrado ou sem rua cadastrada.'], JSON_UNESCAPED_UNICODE);
-        return null;
-    }
-    $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
-    echo json_encode([
-        'cep' => $row['cep'],
-        'street' => $row['street'],
-        'neighborhood' => $row['neighborhood'],
-        'city' => $row['city'],
-        'uf' => $row['uf'],
-        'city_label' => $known['label'] ?? ($row['city'] . ', ' . $row['uf']),
-    ], JSON_UNESCAPED_UNICODE);
-    return null;
-}
-
 if ($path === '/verificar' && $method === 'GET') {
     $result = AccountFlow::activate((string) ($_GET['token'] ?? ''));
     if ($result['ok']) {
