@@ -57,6 +57,27 @@ final class CalendarSync
         return ['feeds' => count($feeds), 'ok' => $ok, 'nok' => $nok, 'lines' => $lines, 'summary' => $summary];
     }
 
+    /**
+     * Remove noites além do horizonte de cada imóvel ativo (antes era feito no GET /calendario).
+     * Chamado pelo cron scripts/sync-calendars.php.
+     */
+    public static function trimHorizon(): int
+    {
+        $total = 0;
+        foreach (HouseRepository::all() as $property) {
+            $removed = HouseRepository::clearBlockedAfter((int) $property['id'], max_calendar_day($property));
+            if ($removed === []) {
+                continue;
+            }
+            $total += count($removed);
+            if (function_exists('activity') && class_exists('ActivityLog')) {
+                $audit = HouseRepository::nightAudit($removed);
+                activity(ActivityLog::CALENDAR_UPDATE, ['imovel_id' => (int) $property['id'], 'motivo' => 'limite'], $audit['anterior'], ['estado' => 'removida']);
+            }
+        }
+        return $total;
+    }
+
     public static function fetch(string $url): ?string
     {
         if (function_exists('exported_calendar_body')) {

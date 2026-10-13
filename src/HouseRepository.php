@@ -206,6 +206,14 @@ final class HouseRepository
         return $stmt->fetchAll();
     }
 
+    /** Leitura do calendário até o horizonte permitido, sem escrever no banco. */
+    public static function calendarDaysUntil(int $propertyId, string $maxDay): array
+    {
+        $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? AND day <= ? ORDER BY day');
+        $stmt->execute([$propertyId, $maxDay]);
+        return $stmt->fetchAll();
+    }
+
     public static function calendarForNights(int $propertyId, array $nights): array
     {
         if ($nights === []) {

@@ -9,6 +9,8 @@ require $root . '/src/HouseRepository.php';
 require $root . '/src/helpers.php';
 require $root . '/src/CalendarSync.php';
 
+$trimmed = CalendarSync::trimHorizon();
+echo "Noites além do horizonte removidas: $trimmed\n";
 $result = CalendarSync::run();
 echo $result['summary'] . "\n";
 foreach ($result['lines'] as $line) {
