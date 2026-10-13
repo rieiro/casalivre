@@ -2,19 +2,12 @@
 
 Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Geral edita este arquivo**; os analistas enviam os itens para consolidação. O que é necessário para subir em produção fica em `prompts/deploy.md`.
 
-## Em andamento (pós-merge da Sprint 1)
+## Em andamento
 
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #11 | Reorganização do deploy.md e do backlog.md | aguardando merge |
-| #13 | Transação aninhada no banco novo (PHP 8.2/8.3) | aprovado |
-| #16 | SSRF `::ffff:0:0/96` e CI 8.2/8.4 | aprovado |
-| #12 | Log e ActivityLog por allowlist (LGPD) | aprovado |
-| #14 | Auditorias do sync-calendars | aprovado |
-| #17 | Mailer SMTP (sem provedor por enquanto) | aprovado com condições |
-| #15 | Links só em dev/local, `APP_URL` | aprovado com condições |
-
-Ordem de merge: #13, #16, #12, #14, #17, #15 (o #17 antes do #15, para o link não sumir sem existir envio de e-mail). Depois do lote, o Bot Teste refaz os testes na develop. Ajustar `scripts/run-casos-de-teste.php` e `scripts/casos/api-ical-log.php` para rodar com `APP_ENV=dev` e corrigir a contagem fixa do Caso 4 (Bot Teste).
+| #18 | Scripts de teste com APP_ENV=dev e Caso 4 com >= 20 | em revisão |
+| #19 | deploy.md: alerta do mail_not_configured no php.log | aguardando merge |
 
 ## Segurança e LGPD
 
@@ -49,5 +42,7 @@ Ordem de merge: #13, #16, #12, #14, #17, #15 (o #17 antes do #15, para o link n�
 - [ ] Fluent Bit, banco de log separado e outbox de auditoria.
 
 ## Concluído
+
+- [x] Correções pós-merge: PRs #11 a #17 mesclados na develop (4c609b3) e retestados no PHP 8.2 e no 8.4: standalone 57/57, PHPUnit 27/27, casos 83/0, carga 1000/1000, E2E 15/15, logs sem dados pessoais.
 
 - [x] Sprint 1: PRs #1 a #10 mesclados na develop (a6d5a48) e testados: PHPUnit 27/27, 15/15 páginas HTML e 1.000/1.000 na carga do `.ics`.
