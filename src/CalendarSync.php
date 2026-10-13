@@ -81,7 +81,7 @@ final class CalendarSync
         $ok = 0;
         $nok = 0;
         $pending = 0;
-        foreach (HouseRepository::feeds($propertyId) as $feed) {
+        foreach (HouseRepository::feedsWithUrl($propertyId) as $feed) {
             $remaining = (int) floor($deadline - microtime(true));
             if ($remaining < 2) {
                 HouseRepository::markFeedPending((int) $feed['id']);

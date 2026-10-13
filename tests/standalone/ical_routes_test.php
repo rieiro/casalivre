@@ -23,7 +23,7 @@ $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $day = date('Ymd', strtotime('+10 days'));
 $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:$day\r\nDTEND;VALUE=DATE:" . date('Ymd', strtotime('+12 days')) . "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
-    'url' => 'http://127.0.0.1:9/bloqueado.ics', 'title' => 'Teste', 'ics_body' => $ics,
+    'url' => 'http://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', 'title' => 'Teste', 'ics_body' => $ics,
 ]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'import responde 200 (feed salvo)');
@@ -33,6 +33,18 @@ $feed = $json['feeds'][0] ?? [];
 t_eq('NOK', $feed['last_status'] ?? null, 'feed gravado com last_status NOK');
 $blocked = HouseRepository::blockedDays($owner['house_id']);
 t_eq(0, count($blocked), 'nenhum dia bloqueado no banco');
+
+echo "URL do feed mascarada\n";
+t_eq('http://127.0.0.1/••••', $feed['url'] ?? null, 'import: feeds[].url mascarada');
+t_ok(!str_contains($r['body'], 'TOKENFEED') && !str_contains($r['body'], 'bloqueado.ics'), 'import: resposta sem token/caminho');
+t_eq(['id', 'property_id', 'title', 'url', 'last_status', 'last_synced_at'], array_keys($feed), 'import: só campos seguros');
+$g = t_http('GET', $base . '/api/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
+t_eq(200, $g['status'], 'GET calendario API 200');
+t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['feeds'][0]['url'] ?? null) === 'http://127.0.0.1/••••', 'GET calendario API: URL mascarada');
+$w = t_http('GET', $base . '/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
+t_eq(200, $w['status'], 'tela web do calendário continua 200');
+t_ok(!str_contains($w['body'], 'TOKENFEED') && str_contains($w['body'], 'Teste'), 'tela web lista o feed sem token');
+t_eq('http://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', HouseRepository::feedsWithUrl($owner['house_id'])[0]['url'] ?? null, 'feedsWithUrl (interno) mantém URL real; banco sem criptografia');
 
 echo "DELETE do feed\n";
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);

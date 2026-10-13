@@ -657,7 +657,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
                 $body = CalendarSync::fetch($url);
             }
             $feedId = null;
-            foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
+            foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
                 if ($feed['url'] === $url) {
                     $feedId = (int) $feed['id'];
                 }

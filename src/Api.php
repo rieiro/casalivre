@@ -489,7 +489,7 @@ function handle_api(string $path, string $method): void
         if ($status === 'OK') {
             $count = import_ics((int) $property['id'], $icsBody);
         }
-        foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
+        foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
             if ($feed['url'] === $url) {
                 HouseRepository::markFeed((int) $feed['id'], $status, date('Y-m-d H:i:s'));
                 break;
