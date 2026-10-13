@@ -610,14 +610,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
     $user = require_user();
     $property = property_for_user((int) $user['id'], house_id($m[1]));
-    $removedDays = HouseRepository::clearBlockedAfter((int) $property['id'], max_calendar_day($property));
-    if ($removedDays !== []) {
-        $audit = HouseRepository::nightAudit($removedDays);
-        activity(ActivityLog::CALENDAR_UPDATE, ['imovel_id' => (int) $property['id'], 'motivo' => 'limite'], $audit['anterior'], ['estado' => 'removida']);
-    }
+    // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
+    // (save_calendar), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
         'property' => $property,
-        'days' => HouseRepository::calendarDays((int) $property['id']),
+        'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
         'feeds' => HouseRepository::feeds((int) $property['id']),
         'message' => null,
     ]);

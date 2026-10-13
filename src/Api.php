@@ -342,10 +342,10 @@ function handle_api(string $path, string $method): void
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
         $id = (int) $property['id'];
-        HouseRepository::clearBlockedAfter($id, max_calendar_day($property));
+        // Somente leitura: noites além do horizonte são filtradas, não apagadas.
         json_out(200, [
             'id' => property_ref($property),
-            'days' => HouseRepository::calendarDays($id),
+            'days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($property)),
             'feeds' => HouseRepository::feeds($id),
         ]);
     }
