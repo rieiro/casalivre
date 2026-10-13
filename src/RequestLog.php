@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Log estruturado por requisição da API (JSON por linha), gravado localmente.
  *
  * - request_id: reaproveita X-Request-Id válido do cliente ou gera um novo; devolvido no header.
- * - Campos sensíveis são mascarados aqui no PHP, antes de gravar.
+ * - Chaves sensíveis são omitidas; texto livre tem CPF/cartão/e-mail mascarados (no PHP, antes de gravar).
  * - Rotação diária (api-AAAA-MM-DD.log) + corte por tamanho; arquivos antigos são apagados.
  * - Diretório 0700 e arquivos 0600.
  *
@@ -17,8 +17,8 @@ final class RequestLog
     public const MAX_BYTES = 10 * 1024 * 1024;
     public const KEEP_DAYS = 14;
 
-    /** Chaves cujo valor nunca é gravado. */
-    private const SECRET_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body)/i';
+    /** Chaves sensíveis: são OMITIDAS do log (a chave e o valor não são gravados). */
+    private const SENSITIVE_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body|cpf|e-?mail|phone|telefone|celular|whats)/i';
 
     private static ?string $requestId = null;
     private static float $start = 0.0;
@@ -65,39 +65,31 @@ final class RequestLog
         return self::$requestId;
     }
 
-    /** Mascara recursivamente um array de entrada. */
-    public static function mask(mixed $value, string $key = ''): mixed
+    /**
+     * Sanitiza recursivamente a entrada: chaves sensíveis são omitidas;
+     * nos demais valores, padrões sensíveis em texto livre são mascarados.
+     */
+    public static function mask(mixed $value): mixed
     {
         if (is_array($value)) {
             $out = [];
             $n = 0;
             foreach ($value as $k => $v) {
+                if (preg_match(self::SENSITIVE_KEYS, (string) $k) === 1) {
+                    continue;
+                }
                 if (++$n > 50) {
                     $out['_truncado'] = true;
                     break;
                 }
-                $out[$k] = self::mask($v, (string) $k);
+                $out[$k] = self::mask($v);
             }
             return $out;
         }
-        if ($key !== '' && preg_match(self::SECRET_KEYS, $key) === 1) {
-            return '***';
+        if (!is_string($value)) {
+            return is_scalar($value) || $value === null ? $value : null;
         }
-        if (!is_scalar($value) || is_bool($value)) {
-            return $value;
-        }
-        $str = (string) $value;
-        $lk = strtolower($key);
-        if ($lk === 'cpf' || str_contains($lk, 'cpf')) {
-            return self::maskDigits($str, 0);
-        }
-        if (str_contains($lk, 'email')) {
-            return self::maskEmail($str);
-        }
-        if (str_contains($lk, 'phone') || str_contains($lk, 'telefone') || str_contains($lk, 'celular') || str_contains($lk, 'whats')) {
-            return self::maskDigits($str, 2);
-        }
-        return self::maskFreeText($str);
+        return self::maskFreeText($value);
     }
 
     /** Mascara padrões sensíveis em texto livre (CPF, cartão, e-mail). */
@@ -117,15 +109,6 @@ final class RequestLog
             return '***';
         }
         return mb_substr($email, 0, 1) . '***' . substr($email, $at);
-    }
-
-    public static function maskDigits(string $s, int $keep): string
-    {
-        $digits = preg_replace('/\D+/', '', $s) ?? '';
-        if ($digits === '') {
-            return '***';
-        }
-        return '***' . ($keep > 0 ? substr($digits, -$keep) : '');
     }
 
     private static function maskIp(string $ip): string
