@@ -9,6 +9,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
 - [ ] Banco novo no PHP 8.2/8.3 (PR #13). Até ele entrar, exigir PHP >= 8.4.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
+- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), com CSP `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'`.
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
 - [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
 
@@ -33,6 +34,10 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **`ACTIVITY_DB_PATH`**: só para testes, sem valor em produção.
 - [ ] `APP_ENV` e `APP_URL` documentados no `.env.example`.
 
+- [ ] **nginx `client_max_body_size`** nas rotas `/api` (por exemplo, 1m; maior só no upload de fotos).
+- [ ] **php.ini:** `max_input_vars=1000` e `max_input_nesting_level=64` (os padrões; não aumentar).
+- [ ] **Cache de assets:** com o PR #21, o layout carrega `form-data.js?v=1` e `app.js?v=17`; limpar o cache ou a CDN no deploy.
+
 ## Integrações
 
 ### E-mail (SMTP, PR #17)
@@ -47,7 +52,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 ## Banco de dados (SQLite)
 
 - [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
-- [ ] **Migração a cada deploy** (SCHEMA_VERSION atual: 2 com o #15): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`.
+- [ ] **Migração a cada deploy** (SCHEMA_VERSION 3 com o #21: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`.
 - [ ] **WAL**: o diretório `storage/db/` (não só o arquivo) gravável pelo php-fpm, para `-wal` e `-shm`; o mesmo vale para `storage/logs/activity.sqlite`. Disco local (WAL não funciona em NFS). `busy_timeout = 8000 ms`.
 - [ ] **Backup**: `sqlite3 casalivre.sqlite ".backup destino.sqlite"` ou copiar junto com `-wal`/`-shm`.
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
@@ -83,3 +88,5 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Cadastro, ativação e redefinição de ponta a ponta com e-mail real, sem link na tela e com o domínio do `APP_URL` mesmo com `Host:` forjado.
 - [ ] Tempo de resposta igual para e-mail existente e inexistente no esqueci-senha e no cadastro.
 - [ ] Amostra do `activity_log` e do `api-*.log` sem nome, endereço, CEP, e-mail, CPF, telefone, IP completo ou user agent.
+- [ ] Editar imóvel com quartos e camas existentes salva sem o erro "pelo menos uma cama" (issue #20), e o resumo por quarto se atualiza.
+- [ ] Título `<img src=x onerror=alert(1)>` não executa na página pública, na busca nem no painel.

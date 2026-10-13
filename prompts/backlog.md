@@ -6,10 +6,16 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #18 | Scripts de teste com APP_ENV=dev e Caso 4 com >= 20 | em revisão |
-| #19 | deploy.md: alerta do mail_not_configured no php.log | aguardando merge |
+| #21 | Issue #20: camas por quarto e separação no layout | Segurança aprovou com condições; mudanças do Revisor pendentes; QA em andamento |
+| — | XSS armazenado nas views (ALTA) e `str_field()` no HouseService (MÉDIA) | a abrir pelo Programador |
 
 ## Segurança e LGPD
+
+- [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
+- [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
+- [ ] `api_expand_bracket_keys`: responder 413/422 acima de 1000 chaves em vez de cortar em silêncio.
+- [ ] `form-data.js`: descartar nomes malformados (por exemplo, `a[b`).
+- [ ] `Csrf::rawBody` com limite de tamanho (checar `CONTENT_LENGTH`).
 
 - [ ] **ALTA, antes de abrir o cadastro:** enviar o e-mail por fila (storage/mail ou tabela) com worker ou cron, com resposta em tempo constante no esqueci-senha (hoje o tempo revela quais e-mails têm conta).
 - [ ] Mostrar "Enviamos um link" só depois de enfileirar com sucesso, e avisar o usuário quando o envio falhar.
@@ -42,6 +48,12 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Fluent Bit, banco de log separado e outbox de auditoria.
 
 ## Concluído
+
+- [x] PRs #18 (scripts de teste) e #19 (docs) mesclados na develop (6b26252).
+
+## Regras
+
+- Próximo PR que mudar seeds ou schema usa `SCHEMA_VERSION` 4, sobre o #21.
 
 - [x] Correções pós-merge: PRs #11 a #17 mesclados na develop (4c609b3) e retestados no PHP 8.2 e no 8.4: standalone 57/57, PHPUnit 27/27, casos 83/0, carga 1000/1000, E2E 15/15, logs sem dados pessoais.
 
