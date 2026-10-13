@@ -15,10 +15,13 @@ declare(strict_types=1);
  *
  * Links de conta: sempre remontados sobre APP_URL (o Host da requisição nunca entra no e-mail).
  * Sem SMTP_HOST: em APP_ENV=dev/local grava em storage/logs/mail-dev.log (0600); fora disso,
- * registra uma falha sem dados no error_log e não envia.
+ * não envia e grava só 'mail_not_configured' no error_log (sem e-mail nem link).
  */
 final class Mailer
 {
+    /** Única linha gravada no error_log quando não há SMTP fora de dev. */
+    public const NOT_CONFIGURED = 'mail_not_configured';
+
     /** Diretório do mail-dev.log (ajustável em testes). */
     public static ?string $devLogDir = null;
 
@@ -43,6 +46,12 @@ final class Mailer
     public static function sendAccountLink(string $email, string $link): bool
     {
         try {
+            if (self::env('SMTP_HOST') === '' && !self::isDev()) {
+                // Produção (ou APP_ENV ausente) sem SMTP: não envia, não grava o link em lugar
+                // nenhum; só o marcador fixo, sem dados pessoais.
+                error_log(self::NOT_CONFIGURED);
+                return false;
+            }
             $url = self::linkFromAppUrl($link);
             $isReset = str_contains((string) parse_url($url, PHP_URL_PATH), '/senha/');
             $subject = $isReset ? 'CasaLivre: redefinição de senha' : 'CasaLivre: ative sua conta';
@@ -51,11 +60,7 @@ final class Mailer
                 : "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n")
                 . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n";
             if (self::env('SMTP_HOST') === '') {
-                if (self::isDev()) {
-                    return self::writeDevLog($email, $subject, $url);
-                }
-                error_log('CasaLivre: SMTP_HOST não configurado; e-mail de conta não enviado.');
-                return false;
+                return self::writeDevLog($email, $subject, $url);
             }
             self::send($email, $subject, $body);
             return true;
