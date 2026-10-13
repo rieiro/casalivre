@@ -47,6 +47,10 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Bugs
 
+- [ ] Testes: no erro de nonce do t_server(), mostrar só as últimas 20 linhas do stderr, e não umas 200.
+
+- [ ] Mapa: imóveis da mesma cidade têm a mesma lat/lng, então só 1 marcador aparece. Agrupar com contador ou dar um pequeno deslocamento (junto com o OpenMapTiles).
+
 - [ ] Imóvel antigo com título acima de 25 caracteres não pode ser editado pela API sem encurtar o título (422 com mensagem clara). Definir uma migração ou uma regra de transição.
 
 - [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada. Correção pronta na branch fix/busca-mapa (PR a abrir; QA depois do #23).

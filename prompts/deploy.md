@@ -7,7 +7,6 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Mascaramento de dados pessoais nos logs: RequestLog e ActivityLog por allowlist (PR #12).
 - [ ] `verification_link` e link de redefinição fora das respostas da API e das telas em produção (PR #15).
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
-- [ ] Banco novo no PHP 8.2/8.3 (PR #13). Até ele entrar, exigir PHP >= 8.4.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
 - [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
@@ -18,7 +17,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **nginx + php-fpm** em produção. Nunca `php -S` (`scripts/start.sh`), que escreve a URL completa no stderr.
 - [ ] **Log do nginx**: `log_format` sem query string e com `/ical/` e `/api/ical/` redigidos (ou `access_log off` nessas rotas).
 - [ ] **IP real atrás de proxy/LB**: configurar `real_ip` no nginx. Rate limit (60 req/min por IP e endpoint) e IP truncado nos logs dependem do `REMOTE_ADDR` real.
-- [ ] **PHP >= 8.2** (validado em 8.4) com `pdo_sqlite` (ou `pdo_pgsql`), `mbstring`, `curl`, `gd`, `xml`; `mongodb` se `LOG_DRIVER=mongodb`. Sem `php-curl`, os feeds iCal ficam NOK.
+- [ ] **PHP 8.4** (única versão testada) com `pdo_sqlite` (ou `pdo_pgsql`), `mbstring`, `curl`, `gd`, `xml`; `mongodb` se `LOG_DRIVER=mongodb`. Sem `php-curl`, os feeds iCal ficam NOK.
 - [ ] **`zend.exception_ignore_args = On`** no `php.ini` ou pool do php-fpm (o app também força via `ini_set` em `public/index.php`).
 - [ ] **Saída HTTP 80/443 e DNS** liberados para os feeds iCal. O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
 - [ ] **Host fixo**: nginx com `server_name` explícito e `default_server` devolvendo 444 (bloqueia Host forjado nos links de e-mail).
@@ -81,7 +80,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 ## Homologação (validar antes de produção)
 
 - [ ] `composer install`, `vendor/bin/phpunit` e `CASOS=todos php scripts/run-casos-de-teste.php` (os casos de teste rodam com `APP_ENV=dev`).
-- [ ] CI com `tests/standalone/run.php` em PHP 8.2 e 8.4.
+- [ ] CI com `tests/standalone/run.php` em PHP 8.4.
 - [ ] SSRF do `CalendarSync::fetch` com DNS real e redirects.
 - [ ] Importação iCal com feeds reais (Airbnb, Booking, Google).
 - [ ] Carga paralela nos `.ics` com php-fpm real, sem 500 "database is locked" (DEF-008).
