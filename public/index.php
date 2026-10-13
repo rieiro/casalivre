@@ -2,9 +2,6 @@
 
 declare(strict_types=1);
 
-// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
-ini_set('zend.exception_ignore_args', '1');
-
 require __DIR__ . '/../src/Db.php';
 require __DIR__ . '/../src/Settings.php';
 require __DIR__ . '/../src/I18n.php';
@@ -23,10 +20,12 @@ require __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
 require __DIR__ . '/../src/CalendarSync.php';
 require __DIR__ . '/../src/Api.php';
-require __DIR__ . '/../src/RequestLog.php';
 require __DIR__ . '/../src/ActivityLog.php';
 require __DIR__ . '/../src/SecureSession.php';
 require __DIR__ . '/../src/ExceptionShield.php';
+
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -35,15 +34,14 @@ if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
 }
 
 SecureSession::start();
-expire_user_session();
-ExceptionShield::register();
-
 // Log por requisição da API iniciado ANTES do pipeline de segurança, para que as
 // respostas 401/419/429 geradas pelos middlewares (que encerram com exit) também
 // sejam registradas pelo shutdown hook do RequestLog.
 if (str_starts_with($path, '/api')) {
     RequestLog::start($path, $method, api_body());
 }
+expire_user_session();
+ExceptionShield::register();
 
 // CORS para frontend em outro servidor (configurar CORS_ORIGIN no .env)
 $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
