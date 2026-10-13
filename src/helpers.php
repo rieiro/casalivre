@@ -38,7 +38,7 @@ function safe_search_return(?string $value): string
         return '/';
     }
     $path = parse_url($value, PHP_URL_PATH);
-    if (!is_string($path) || !in_array($path, ['/', '/busca', '/busca-novo'], true)) {
+    if (!is_string($path) || !in_array($path, ['/', '/busca'], true)) {
         return '/';
     }
     $query = parse_url($value, PHP_URL_QUERY);

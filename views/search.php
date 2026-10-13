@@ -125,7 +125,6 @@ $popular = array_slice($popular, 0, 10);
                 $results = array_slice($results, ($page - 1) * $perPage, $perPage);
                 ?>
                 <h1><?= e($filters['localidade'] !== '' ? $filters['localidade'] . ': ' : '') ?><?= $resultTotal ?> <?= e(t('home.found')) ?></h1>
-                <p><a href="/busca-novo?<?= e($query) ?>"><?= e(t('nav.studio')) ?></a></p>
                 <?php include __DIR__ . '/result_cards.php'; ?>
                 <?php if ($pageCount > 1): ?>
                     <nav class="pager" aria-label="<?= e(t('home.pages')) ?>">

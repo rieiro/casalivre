@@ -288,29 +288,6 @@ if ($path === '/busca' && $method === 'GET') {
     return null;
 }
 
-if ($path === '/busca-novo' && $method === 'GET') {
-    $filters = [
-        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
-        'checkin' => (string) ($_GET['checkin'] ?? ''),
-        'checkout' => (string) ($_GET['checkout'] ?? ''),
-        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
-        'raio' => (int) ($_GET['raio'] ?? 0),
-        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
-        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
-        'score_min' => (float) ($_GET['score_min'] ?? 0),
-        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
-    ];
-    view('search_studio', [
-        'filters' => $filters,
-        'results' => [],
-        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
-        'facets' => [],
-        'layout' => 'layout_studio',
-        'use_api' => true,
-    ]);
-    return null;
-}
-
 if ($path === '/cadastro' && $method === 'GET') {
     view('register', ['error' => null]);
     return null;
