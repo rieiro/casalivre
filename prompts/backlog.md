@@ -39,6 +39,10 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Migrar fotos, calendário, formulário de imóvel e autenticação para fetch/API.
 - [ ] Trocar `alert()` dos formulários por mensagens na própria página.
 
+## Bugs
+
+- [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada (achado pelo Programador no #23).
+
 ## Infra e dados
 
 - [ ] Migrar `activity_log.actor_id` para `actor_ref TEXT`.
