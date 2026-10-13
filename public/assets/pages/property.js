@@ -15,14 +15,16 @@
                 el('label', {}, 'Nota (1 a 10) ', el('input', { type: 'number', name: 'score', min: '1', max: '10', required: true })),
                 el('label', {}, 'Comentário ', el('textarea', { name: 'comment', rows: '3' })),
                 el('button', { className: 'primary', type: 'submit' }, 'Publicar avaliação'));
-            box.replaceChildren(
+            // Sem nota, o item é null: filtrar para replaceChildren não renderizar o texto "null".
+            box.replaceChildren(...[
                 el('h1', {}, data.title || ''),
                 el('p', {}, (data.city || '') + ' · até ' + data.max_guests + ' hóspedes · ' + data.bedrooms + ' quartos'),
                 data.score ? el('p', {}, 'Nota: ' + data.score + '/10') : null,
                 el('div', { className: 'gallery' }, (data.photos || []).map((p) => el('img', { src: p.path, alt: '', loading: 'lazy' }))),
                 el('p', {}, data.description || ''),
                 el('p', { className: 'price' }, quote),
-                form);
+                form,
+            ].filter(Boolean));
             form.addEventListener('submit', async (ev) => {
                 ev.preventDefault();
                 const formData = Object.fromEntries(new FormData(form).entries());

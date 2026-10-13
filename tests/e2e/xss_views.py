@@ -62,6 +62,20 @@ with sync_playwright() as pw:
     detail_desc = page.locator('#property-detail p', has_text='fim').first.text_content()
     check(detail_desc == DESC, 'detalhe: descrição aparece como texto literal')
 
+    # Defeito QA: sem avaliação o detalhe não pode mostrar o texto "null"; com avaliação a nota aparece.
+    detail = page.locator('#property-detail').inner_text()
+    check('null' not in detail, 'detalhe sem avaliação: nenhum texto "null"')
+    check('Nota:' not in detail, 'detalhe sem avaliação: sem linha de nota')
+    rv = page.request.post(base + '/api/imoveis/' + phash + '/avaliar', data=json.dumps({'author': 'QA', 'score': '8', 'comment': 'ok'}),
+                           headers={'Content-Type': 'application/json', 'X-CSRF-Token': csrf})
+    check(rv.status in (200, 201), 'avaliação criada via API (%d)' % rv.status)
+    page.goto(base + '/imoveis/' + phash)
+    page.wait_for_selector('#property-detail h1', timeout=10000)
+    page.wait_for_timeout(400)
+    detail = page.locator('#property-detail').inner_text()
+    check('Nota: ' in detail and '/10' in detail, 'detalhe com avaliação: nota aparece')
+    check('null' not in detail, 'detalhe com avaliação: nenhum texto "null"')
+
     for path in ['/', '/entrar', '/cadastro', '/busca?localidade=' + loc, '/imoveis/' + phash, '/painel',
                  '/imoveis/' + phash + '/editar', '/imoveis/' + phash + '/calendario', '/conta', '/mapa']:
         console.clear()

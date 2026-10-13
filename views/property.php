@@ -27,5 +27,5 @@
 </section>
 <?php if (!empty($use_api)): ?>
 <?php page_data(['hash' => $hash ?? '']); ?>
-<script src="/assets/pages/property.js?v=2"></script>
+<script src="/assets/pages/property.js?v=3"></script>
 <?php endif; ?>
