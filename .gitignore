@@ -6,3 +6,5 @@ public/uploads/
 # Ignore all .patch files
 *.patch
 
+vendor/
+.phpunit.cache/
