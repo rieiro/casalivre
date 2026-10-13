@@ -22,4 +22,4 @@ $payload = json_encode($points, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX
     <div id="result-map" data-points="<?= e((string) $payload) ?>"></div>
     <?php if (!$results): ?><p class="muted"><?= e(t('home.empty')) ?></p><?php endif; ?>
 </section>
-<script src="/assets/pages/map.js?v=2"></script>
+<script src="/assets/pages/map.js?v=3"></script>

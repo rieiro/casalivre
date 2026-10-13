@@ -64,25 +64,44 @@ function t_server(): string
     foreach (['storage/db', 'storage/logs', 'storage/cache', 'storage/sessions', 'storage/mail'] as $d) {
         @mkdir(CL_ROOT . '/' . $d, 0700, true);
     }
-    $port = random_int(20000, 40000);
-    $env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => (string) getenv('DB_DSN')]);
+    // Porta livre escolhida pelo SO (porta 0); fecha o socket e entrega a porta ao php -S.
+    $sock = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($sock === false) {
+        throw new RuntimeException("sem porta livre: $errstr");
+    }
+    $port = (int) substr(strrchr((string) stream_socket_get_name($sock, false), ':'), 1);
+    fclose($sock);
+    $nonce = bin2hex(random_bytes(16));
+    $env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
     // APP_URL fixa (obrigatória fora de dev/local); o teste pode definir outra antes de subir o servidor.
     $env['APP_URL'] = (string) (getenv('APP_URL') ?: 'http://127.0.0.1:' . $port);
-    $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', CL_ROOT . '/public/index.php'];
-    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, CL_ROOT, $env);
-    register_shutdown_function(static function () use ($proc): void {
+    $stderr = tempnam(sys_get_temp_dir(), 'tsrv');
+    $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', __DIR__ . '/router.php'];
+    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT, $env);
+    $fail = static function (string $why) use ($stderr, $port): never {
+        $log = trim((string) @file_get_contents($stderr));
+        throw new RuntimeException("Servidor de teste não subiu na porta $port: $why" . ($log !== '' ? "\nstderr:\n" . $log : ''));
+    };
+    if (!is_resource($proc)) {
+        $fail('proc_open falhou');
+    }
+    register_shutdown_function(static function () use ($proc, $stderr): void {
         proc_terminate($proc);
+        @unlink($stderr);
     });
     $base = 'http://127.0.0.1:' . $port;
-    for ($i = 0; $i < 50; $i++) {
-        $s = @fsockopen('127.0.0.1', $port);
-        if ($s) {
-            fclose($s);
+    for ($i = 0; $i < 100; $i++) {
+        if (!proc_get_status($proc)['running']) {
+            $fail('processo terminou');
+        }
+        $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+        $body = @file_get_contents($base . '/__t_server_nonce', false, $ctx);
+        if ($body === $nonce) {
             return $base;
         }
-        usleep(100000);
+        usleep(50000);
     }
-    throw new RuntimeException('Servidor de teste não subiu');
+    $fail('nonce não confirmado (outra resposta na porta ou timeout)');
 }
 
 /** @return array{status: int, body: string, headers: string} */

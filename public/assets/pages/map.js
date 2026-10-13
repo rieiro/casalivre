@@ -32,6 +32,8 @@
             const img = document.createElement('img');
             img.alt = '';
             img.loading = 'lazy';
+            // Só nos tiles OSM: o header global é Referrer-Policy: same-origin e o OSM responde 403 sem Referer.
+            img.referrerPolicy = 'strict-origin-when-cross-origin';
             img.src = 'https://tile.openstreetmap.org/' + zoom + '/' + (x0 + x) + '/' + (y0 + y) + '.png';
             img.style.position = 'absolute';
             img.style.left = (x * 256) + 'px';
