@@ -61,8 +61,13 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             return;
         }
         timer = window.setTimeout(async () => {
-            const response = await fetch('/api/cidades?q=' + encodeURIComponent(query), { credentials: 'same-origin' });
-            rows = response.ok ? await response.json() : [];
+            try {
+                const response = await fetch('/api/cidades?q=' + encodeURIComponent(query), { credentials: 'same-origin' });
+                rows = response.ok ? await response.json() : [];
+            } catch (error) {
+                // Falha de rede/JSON (ou 429): sem sugestões; o campo continua editável à mão.
+                rows = [];
+            }
             if (!Array.isArray(rows)) {
                 rows = [];
             }
@@ -432,9 +437,18 @@ document.querySelectorAll('[data-cep]').forEach((input) => {
             paint(city, '');
             return;
         }
-        const response = await fetch('/api/ceps?q=' + digits, { credentials: 'same-origin' });
-        const data = await response.json().catch(() => ({}));
-        if (!data.street) {
+        let data = {};
+        try {
+            const response = await fetch('/api/ceps?q=' + digits, { credentials: 'same-origin' });
+            data = await response.json().catch(() => ({}));
+        } catch (error) {
+            // Falha de rede: não apaga o que o usuário já preencheu; só avisa.
+            if (status) {
+                status.textContent = 'Não foi possível consultar o CEP agora. Preencha o endereço manualmente.';
+            }
+            return;
+        }
+        if (!data || !data.street) {
             paint(street, '');
             paint(city, '');
             if (status && data.error) {
