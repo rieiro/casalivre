@@ -16,6 +16,14 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] **Ordem de merge na develop**: #9, #7, #4, #1 (squash), #5 (rebase após #1), #2, #3, #6 (squash), #8, #10. Nas seções do deploy.md em conflito, manter todas.
 
 
+## Requisitos de runtime e dependências (PR #8)
+
+- [ ] **PHP >= 8.2** em produção e em CI, com as extensões `pdo_sqlite` (ou `pdo_pgsql`), `mbstring`, `curl`, `gd` e `xml`. As suítes foram validadas em PHP 8.4.
+- [ ] **Composer e PHPUnit 11 são só para testes** (require-dev). O app não usa o autoload do Composer em runtime.
+- [ ] **Produção**: não rodar `composer install`. Se o pipeline exigir, usar `composer install --no-dev --no-interaction`.
+- [ ] **Não publicar** `vendor/`, `tests/`, `phpunit.xml` nem `.phpunit.cache/` no servidor.
+- [ ] **CI/homologação**: `composer install`, depois `vendor/bin/phpunit --testsuite Unit` e, com o servidor de teste no ar, `vendor/bin/phpunit` e `CASOS=todos php scripts/run-casos-de-teste.php`.
+
 ## Ambiente novo e carga de dados (seeds)
 
 - [ ] Ordem de preparação do banco: `setup.sh` (aplica `database/schema.sql`), depois `php scripts/migrate.php` (confirma `user_version=1`), depois `load-ceps.php` e, só então, os seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`).
