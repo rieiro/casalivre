@@ -38,7 +38,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 ### E-mail (SMTP, PR #17)
 - [ ] `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`SMTP_CA_FILE` só com CA privada).
 - [ ] Saída liberada na porta 587 ou 465; SPF, DKIM e DMARC no domínio do `SMTP_FROM`. Nunca `SMTP_SECURE=none` com servidor remoto, e nunca desligar a verificação do certificado. `SMTP_USER`/`SMTP_PASS` só no `.env` (0600, dono do php-fpm). Opcional: `SMTP_TIMEOUT`.
-- [ ] Sem SMTP configurado, o app não grava o link e registra só `mail_not_configured` no error log: criar um alerta para essa linha.
+- [ ] Sem SMTP configurado, o app não grava o link e registra só `mail_not_configured` em `storage/logs/php.log` (via `error_log()`; o `storage/error.log` só recebe exceções): criar um alerta para essa linha nesse arquivo.
 - [ ] `storage/logs/mail-dev.log` nunca pode existir em produção.
 
 ### Feeds iCal (Airbnb, Booking, Google)
