@@ -10,6 +10,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Banco novo no PHP 8.2/8.3 (PR #13). Até ele entrar, exigir PHP >= 8.4.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
+- [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
 
 ## Servidor e PHP
 
@@ -28,7 +29,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **`CORS_ORIGIN` (legado)**: só é lido se `CORS_ORIGINS` estiver vazio; `CORS_ORIGIN=*` passa a não liberar nada. Renomear para `CORS_ORIGINS` e remover o antigo.
 - [ ] **CDN/cache** na frente deve respeitar `Vary: Origin` (respostas enviam `Access-Control-Allow-Credentials: true`).
 - [ ] **`APP_ENV=production`** explícito (qualquer valor diferente de `dev`/`local` esconde os links). Nunca usar `dev`/`local` fora do desenvolvimento.
-- [ ] **`APP_URL=https://<domínio>`** obrigatório: os links de ativação e redefinição saem dele; sem ele, o app dá erro em produção.
+- [ ] **`APP_URL=https://<domínio>`** obrigatório (https, sem barra final, query ou credenciais): os links de ativação e redefinição saem dele; sem ele, o app dá erro em produção.
 - [ ] **`ACTIVITY_DB_PATH`**: só para testes, sem valor em produção.
 - [ ] `APP_ENV` e `APP_URL` documentados no `.env.example`.
 
@@ -36,7 +37,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 
 ### E-mail (SMTP, PR #17)
 - [ ] `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`SMTP_CA_FILE` só com CA privada).
-- [ ] Saída liberada na porta 587 ou 465; SPF e DKIM no domínio do `SMTP_FROM`.
+- [ ] Saída liberada na porta 587 ou 465; SPF, DKIM e DMARC no domínio do `SMTP_FROM`. Nunca `SMTP_SECURE=none` com servidor remoto, e nunca desligar a verificação do certificado. `SMTP_USER`/`SMTP_PASS` só no `.env` (0600, dono do php-fpm). Opcional: `SMTP_TIMEOUT`.
 - [ ] Sem SMTP configurado, o app não grava o link e registra só `mail_not_configured` no error log: criar um alerta para essa linha.
 - [ ] `storage/logs/mail-dev.log` nunca pode existir em produção.
 
@@ -79,6 +80,6 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Carga paralela nos `.ics` com php-fpm real, sem 500 "database is locked" (DEF-008).
 - [ ] Retenção sob carga do php-fpm, sem sobrar arquivos `*.ret-*`; exclusão real no Mongo.
 - [ ] Mascaramento de `feeds[].url` no front separado (quando existir).
-- [ ] Cadastro, ativação e redefinição de ponta a ponta com e-mail real, sem link na tela.
+- [ ] Cadastro, ativação e redefinição de ponta a ponta com e-mail real, sem link na tela e com o domínio do `APP_URL` mesmo com `Host:` forjado.
 - [ ] Tempo de resposta igual para e-mail existente e inexistente no esqueci-senha e no cadastro.
 - [ ] Amostra do `activity_log` e do `api-*.log` sem nome, endereço, CEP, e-mail, CPF, telefone, IP completo ou user agent.
