@@ -16,7 +16,7 @@
     $titleLen = function_exists('mb_strlen') ? mb_strlen($titleValue) : strlen($titleValue);
     $descriptionLen = function_exists('mb_strlen') ? mb_strlen($descriptionValue) : strlen($descriptionValue);
     ?>
-    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>">
+    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>" data-script-error="<?= e(t('form.script_error')) ?>">
         <h1><?= $editing ? e(t('form.edit')) : e(t('form.new')) ?></h1>
         <?php if ($error): ?><p class="error"><?= e($error) ?></p><?php endif; ?>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -39,9 +39,11 @@
         </div>
         <p class="muted" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
         <?php $roomLayout = Rooms::forForm($posted, $current ?: null); ?>
-        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-max="999">
+        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-bed-one="<?= e(t('form.bed_one')) ?>" data-bed-many="<?= e(t('form.bed_many')) ?>" data-max="999">
             <legend><?= e(t('form.rooms')) ?></legend>
             <p class="muted"><?= e(t('form.rooms_hint')) ?></p>
+            <section class="rooms-editor" aria-labelledby="rooms-editor-title">
+            <h3 class="rooms-subtitle" id="rooms-editor-title"><?= e(t('form.beds_add_title')) ?></h3>
             <div data-room-list>
                 <?php foreach ($roomLayout as $roomIndex => $room): ?>
                     <div class="room-card" data-room>
@@ -74,7 +76,12 @@
                 <?php endforeach; ?>
             </div>
             <button class="danger" type="button" data-add-room><?= e(t('form.add_room')) ?></button>
-            <p class="muted" data-room-count></p>
+            </section>
+            <section class="rooms-summary" aria-labelledby="rooms-summary-title" aria-live="polite">
+                <h3 class="rooms-subtitle" id="rooms-summary-title"><?= e(t('form.room_summary_title')) ?></h3>
+                <ul data-room-summary></ul>
+                <p class="muted" data-room-count></p>
+            </section>
             <template data-bed-template>
                 <div class="bed-row" data-bed>
                     <select data-bed-type>
@@ -217,7 +224,12 @@
             return;
         }
         ev.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
+        // Converte rooms[i][beds][j][campo] e amenity[chave] em objetos/listas (issue #20).
+        if (!window.CasaLivreForm) {
+            alert(form.dataset.scriptError || 'Erro ao carregar a página. Recarregue e tente de novo.');
+            return;
+        }
+        const data = window.CasaLivreForm.toObject(form);
         const url = editing ? '/api/casas/' + hash : '/api/casas';
         const method = editing ? 'PUT' : 'POST';
         try {
