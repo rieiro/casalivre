@@ -61,6 +61,7 @@ function api_public_house(array $house): array
 function handle_api(string $path, string $method): void
 {
     $body = api_body();
+    RequestLog::start($path, $method, $body);
     if (!in_array($method, ['GET', 'HEAD'], true)) {
         $sent = (string) ($body['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
         if (!hash_equals($_SESSION['csrf'] ?? '', $sent)) {

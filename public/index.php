@@ -20,6 +20,7 @@ require __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
 require __DIR__ . '/../src/CalendarSync.php';
 require __DIR__ . '/../src/Api.php';
+require __DIR__ . '/../src/RequestLog.php';
 require __DIR__ . '/../src/ActivityLog.php';
 require __DIR__ . '/../src/SecureSession.php';
 require __DIR__ . '/../src/ExceptionShield.php';
@@ -99,7 +100,7 @@ function casa_privado(string $path, string $method): bool
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
 }
 
-function casa_recusar(string $code, string $path): never
+function casa_recusar(string $code, string $path): void
 {
     $api = str_starts_with($path, '/api');
     if ($code === 'csrf') {
@@ -119,10 +120,10 @@ function casa_recusar(string $code, string $path): never
         if ($api) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-            exit;
+            return;
         }
         view('login', ['error' => $message]);
-        exit;
+        return;
     }
     if ($code === 'login') {
         header('Location: /entrar');

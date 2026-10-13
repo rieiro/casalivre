@@ -20,8 +20,15 @@ final class RateLimit implements Middleware
         $path = (string) ($request['path'] ?? '/');
         $method = strtoupper((string) ($request['method'] ?? 'GET'));
         if ($this->isLogin($method, $path) && ($this->bloqueado)()) {
+            // Resposta 429 explícita, sem exit: o pipeline termina normalmente.
+            if (!headers_sent()) {
+                http_response_code(429);
+                if (class_exists('LoginRateLimiter')) {
+                    header('Retry-After: ' . max(1, LoginRateLimiter::lockSeconds()));
+                }
+            }
             ($this->recusar)('rate_limit', $path);
-            exit;
+            return null;
         }
         return $next($request);
     }
