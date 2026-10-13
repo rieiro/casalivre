@@ -32,13 +32,34 @@ final class Db
         ]);
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             $pdo->exec('PRAGMA foreign_keys = ON');
+            // busy_timeout antes de journal_mode: trocar o modo também pode esperar lock.
+            // (>= 5000 ms exigido pelo DEF-008; mantido 8000 ms, que já era o valor do projeto.)
             $pdo->exec('PRAGMA busy_timeout = 8000');
             $pdo->exec('PRAGMA journal_mode = WAL');
             $pdo->exec('PRAGMA synchronous = NORMAL');
             $pdo->exec('PRAGMA temp_store = MEMORY');
             $pdo->exec('PRAGMA cache_size = -8000');
         }
-        self::migrate($pdo);
+        if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            // DEF-008: migrate() roda a cada requisição e mistura SELECTs (cursores abertos)
+            // com UPDATE/INSERT. Em WAL, promover uma transação de leitura para escrita
+            // falha na hora com "database is locked" (o busy_timeout não se aplica).
+            // BEGIN IMMEDIATE pega o lock de escrita logo no início, respeitando o busy_timeout.
+            $pdo->exec('BEGIN IMMEDIATE');
+            try {
+                self::migrate($pdo);
+                $pdo->exec('COMMIT');
+            } catch (Throwable $e) {
+                try {
+                    $pdo->exec('ROLLBACK');
+                } catch (Throwable) {
+                }
+                $pdo = null;
+                throw $e;
+            }
+        } else {
+            self::migrate($pdo);
+        }
         return $pdo;
     }
 
