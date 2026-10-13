@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
+
 require __DIR__ . '/../src/Db.php';
 require __DIR__ . '/../src/Settings.php';
 require __DIR__ . '/../src/I18n.php';
