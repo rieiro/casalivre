@@ -34,18 +34,23 @@ SecureSession::start();
 expire_user_session();
 ExceptionShield::register();
 
-// CORS para frontend em outro servidor (configurar CORS_ORIGIN no .env)
+// CORS para frontend em outro servidor.
+// Lista explícita de origens em CORS_ORIGINS (ou CORS_ORIGIN, legado), separadas por vírgula,
+// ex.: https://app.casalivre.com.br,https://admin.casalivre.com.br
+// Comparação exata (esquema+host+porta). '*' NÃO é aceito, pois as credenciais são enviadas.
 $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
-$allowed = getenv('CORS_ORIGIN') ?: '';
-if ($origin !== '' && ($allowed === '*' || $allowed === $origin || ($allowed !== '' && str_contains($allowed, $origin)))) {
-    header('Access-Control-Allow-Origin: ' . ($allowed === '*' ? '*' : $origin));
-    header('Access-Control-Allow-Credentials: true');
-    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization');
-    header('Access-Control-Max-Age: 86400');
-    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
-        http_response_code(204);
-        exit;
+if ($origin !== '') {
+    header('Vary: Origin', false);
+    if (in_array($origin, cors_allowed_origins(), true)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization');
+        header('Access-Control-Max-Age: 86400');
+        if ($method === 'OPTIONS') {
+            http_response_code(204);
+            exit;
+        }
     }
 }
 
@@ -75,6 +80,25 @@ return Seguranca::pipeline(
         return dispatch((string) $request['path'], (string) $request['method']);
     }
 );
+
+/** @return list<string> */
+function cors_allowed_origins(): array
+{
+    $raw = (string) (getenv('CORS_ORIGINS') ?: getenv('CORS_ORIGIN') ?: '');
+    $list = [];
+    foreach (explode(',', $raw) as $item) {
+        $item = rtrim(trim($item), '/');
+        if ($item === '' || $item === '*') {
+            continue;
+        }
+        $parts = parse_url($item);
+        if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || empty($parts['host']) || isset($parts['path'])) {
+            continue;
+        }
+        $list[] = $item;
+    }
+    return $list;
+}
 
 function casa_privado(string $path, string $method): bool
 {
