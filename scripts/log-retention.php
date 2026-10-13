@@ -8,7 +8,9 @@ declare(strict_types=1);
 // Uso: php scripts/log-retention.php [dias]
 
 $root = dirname(__DIR__);
+require_once $root . '/src/Db.php';
 require_once $root . '/src/LogRetention.php';
+Db::loadEnv();
 
 $days = isset($argv[1]) ? max(1, (int) $argv[1]) : LogRetention::DEFAULT_DAYS;
 $report = LogRetention::run($root, $days);

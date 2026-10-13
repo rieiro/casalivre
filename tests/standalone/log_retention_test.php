@@ -42,5 +42,22 @@ t_eq('600', substr(sprintf('%o', fileperms($root . '/storage/error.log')), -3), 
 $again = LogRetention::run($root, 14, $now);
 t_eq(0, $again['activity_linhas_removidas'], 'idempotente');
 
+echo "MongoDB\n";
+t_eq('nao_configurado', $report['activity_mongo'], 'sem LOG_DRIVER=mongodb: Mongo não é tocado');
+t_eq(['created_at' => ['$lt' => '2026-09-29 12:00:00']], LogRetention::mongoFilter($now - 14 * 86400), 'filtro deleteMany por created_at (string)');
+putenv('LOG_DRIVER=mongodb');
+$prev = ini_set('error_log', '/dev/null');
+$res = LogRetention::pruneMongoFromEnv($now);
+ini_set('error_log', (string) $prev);
+putenv('LOG_DRIVER');
+t_ok(class_exists(\MongoDB\Driver\Manager::class) ? is_int($res) || $res === 'erro' : $res === 'extensao_ausente', 'sem extensão mongodb: ignora com aviso (' . var_export($res, true) . ')');
+
+echo "runit\n";
+$run = CL_ROOT . '/deploy/runit/casalivre-log-retention/run';
+t_ok(is_file($run) && is_executable($run), 'deploy/runit/casalivre-log-retention/run existe e é executável');
+exec('sh -n ' . escapeshellarg($run) . ' 2>&1', $o, $code);
+t_eq(0, $code, 'script runit com sintaxe sh válida');
+t_ok(str_contains((string) file_get_contents($run), 'scripts/log-retention.php'), 'runit chama scripts/log-retention.php');
+
 exec('rm -rf ' . escapeshellarg($root));
 t_done();

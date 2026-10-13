@@ -9,6 +9,7 @@ declare(strict_types=1);
  * Cobre:
  * - storage/logs/api/api-*        -> apaga arquivos com mtime anterior ao corte
  * - storage/logs/activity.sqlite  -> DELETE de linhas antigas + VACUUM
+ * - MongoDB activity_log (LOG_DRIVER=mongodb) -> deleteMany created_at < corte (sem extensão: ignora e avisa)
  * - storage/error.log, storage/logs/calendar-sync.log, storage/php.log, storage/logs/php.log
  *   -> reescreve mantendo só entradas recentes (linhas sem data herdam a da entrada anterior)
  *
@@ -36,6 +37,8 @@ final class LogRetention
         $sqlite = $root . '/storage/logs/activity.sqlite';
         $report['activity_linhas_removidas'] = is_file($sqlite) ? self::pruneActivity($sqlite, $cutoff) : 0;
 
+        $report['activity_mongo'] = self::pruneMongoFromEnv($cutoff);
+
         foreach (['storage/error.log', 'storage/logs/calendar-sync.log', 'storage/php.log', 'storage/logs/php.log'] as $rel) {
             $file = $root . '/' . $rel;
             if (is_file($file)) {
@@ -43,6 +46,38 @@ final class LogRetention
             }
         }
         return $report;
+    }
+
+    /** Filtro de documentos antigos no Mongo (created_at é string 'Y-m-d H:i:s', então a comparação lexicográfica vale). */
+    public static function mongoFilter(int $cutoff): array
+    {
+        return ['created_at' => ['$lt' => date('Y-m-d H:i:s', $cutoff)]];
+    }
+
+    /**
+     * Retenção do activity_log no MongoDB (LOG_DRIVER=mongodb) via deleteMany.
+     * Não usamos índice TTL porque created_at é string, e TTL exige campo Date.
+     * @return int|string documentos removidos, ou 'nao_configurado' / 'extensao_ausente' / 'erro'
+     */
+    public static function pruneMongoFromEnv(int $cutoff): int|string
+    {
+        if ((getenv('LOG_DRIVER') ?: 'sqlite') !== 'mongodb') {
+            return 'nao_configurado';
+        }
+        if (!class_exists(\MongoDB\Driver\Manager::class)) {
+            error_log('CasaLivre: retenção Mongo ignorada; extensão mongodb ausente.');
+            return 'extensao_ausente';
+        }
+        try {
+            $manager = new \MongoDB\Driver\Manager(getenv('LOG_MONGO_URI') ?: 'mongodb://127.0.0.1:27017');
+            $bulk = new \MongoDB\Driver\BulkWrite();
+            $bulk->delete(self::mongoFilter($cutoff), ['limit' => 0]);
+            $result = $manager->executeBulkWrite((getenv('LOG_MONGO_DB') ?: 'casalivre') . '.activity_log', $bulk);
+            return (int) $result->getDeletedCount();
+        } catch (Throwable $e) {
+            error_log('CasaLivre: retenção Mongo falhou (' . $e::class . ').');
+            return 'erro';
+        }
     }
 
     public static function pruneActivity(string $path, int $cutoff): int
