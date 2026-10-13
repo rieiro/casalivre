@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/RequestLog.php';
+
 function json_out(int $status, array $data): never
 {
     http_response_code($status);
