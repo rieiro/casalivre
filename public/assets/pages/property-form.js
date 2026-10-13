@@ -9,8 +9,12 @@
             return;
         }
         ev.preventDefault();
-        // TODO(#21): trocar por CasaLivreForm.toObject(form) depois que #21 entrar em develop.
-        const data = Object.fromEntries(new FormData(form).entries());
+        // rooms[i][beds][j][campo] e amenity[chave] viram objetos/listas (issue #20); form-data.js carrega antes.
+        if (!window.CasaLivreForm) {
+            alert(form.dataset.scriptError || 'Erro ao carregar a página. Recarregue e tente de novo.');
+            return;
+        }
+        const data = window.CasaLivreForm.toObject(form);
         const url = editing ? '/api/casas/' + encodeURIComponent(hash) : '/api/casas';
         try {
             const json = await CL.api(url, { method: editing ? 'PUT' : 'POST', body: data, error: 'Erro ao salvar imóvel' });
