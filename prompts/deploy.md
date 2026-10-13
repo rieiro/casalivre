@@ -66,6 +66,16 @@ Documento único de acompanhamento do deploy. **Só o Bot Gerente Geral edita es
 3. **Não publicar em produção** enquanto `verification_link` sair no JSON de `POST /api/users` (Api.php:121) e do login de conta pendente (Api.php:100): permite ativar conta com e-mail alheio.
 4. Corrigir o cron `sync-calendars`, que deixou de gravar as auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE`.
 
+### Correções pós-merge (PRs #12 a #15)
+
+- Ordem de merge: #13 antes do #15; #12 e #14 em qualquer ordem.
+- #12: o corpo das requisições é logado por allowlist, sem dados pessoais.
+- #13: `Db::transactional()` com SAVEPOINT. Volta a valer PHP >= 8.2 depois do merge (a condição 1 deixa de valer).
+- #14: o cron `sync-calendars` precisa rodar com o usuário do php-fpm, porque grava no `activity.sqlite`.
+- #15: `APP_ENV=production` (ou sem a variável) em produção, e `dev`/`local` só nas máquinas de desenvolvimento. Incluir `APP_ENV` no `.env.example`. Rodar `php scripts/migrate.php` (SCHEMA_VERSION 2). Os scripts de teste que leem `verification_link` rodam com `APP_ENV=dev`.
+- **Bloqueante:** o projeto não envia e-mail (`AccountFlow::$sendLink` é uma função vazia). Não abrir o cadastro em produção antes de implementar o envio de ativação e de redefinição de senha.
+- Pendência: o teste SSRF de `::ffff:8.8.8.8` falha no PHP 8.2 e passa no 8.4 (tarefa separada).
+
 ## Backlog (próximas sprints)
 
 - `verification_link`: ver condição bloqueante 3.
