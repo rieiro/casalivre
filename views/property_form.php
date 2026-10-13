@@ -163,7 +163,7 @@
         $photoRemaining = max(0, $photoLimit - count($photos));
         $uploadCount = min($uploadCount, max(1, $photoRemaining));
         ?>
-        <form class="panel" style="margin-top:16px" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos" enctype="multipart/form-data" data-upload-limit data-max-post="<?= $uploadBudget ?>" data-max-file="<?= $uploadFile ?>" data-max-count="<?= $photoRemaining ?>" data-msg-count="<?= e(t('form.upload_many')) ?>" data-msg-file="<?= e(t('form.upload_file')) ?>" data-msg-total="<?= e(t('form.upload_total')) ?>">
+        <form class="panel mt-16" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos" enctype="multipart/form-data" data-upload-limit data-max-post="<?= $uploadBudget ?>" data-max-file="<?= $uploadFile ?>" data-max-count="<?= $photoRemaining ?>" data-msg-count="<?= e(t('form.upload_many')) ?>" data-msg-file="<?= e(t('form.upload_file')) ?>" data-msg-total="<?= e(t('form.upload_total')) ?>">
             <h2><?= e(t('form.photos')) ?></h2>
             <?php if (!empty($upload_notice ?? null)): ?><p class="error"><?= e($upload_notice) ?></p><?php endif; ?>
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -176,14 +176,14 @@
             <?php endif; ?>
         </form>
         <?php if ($photos): ?>
-        <form class="panel" style="margin-top:16px" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos/excluir" data-photo-select data-confirm="<?= e(t('form.delete_selected_confirm')) ?>">
+        <form class="panel mt-16" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos/excluir" data-photo-select data-confirm="<?= e(t('form.delete_selected_confirm')) ?>">
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <div class="gallery">
                 <?php foreach ($photos as $photo): ?>
                     <div class="photo-tile">
                         <label class="photo-pick">
                             <input class="photo-check" type="checkbox" name="fotos[]" value="<?= (int) $photo['id'] ?>">
-                            <img src="<?= e($photo['path']) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
+                            <img src="<?= e(photo_url($photo['path'])) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
                             <span class="tick" aria-hidden="true">✓</span>
                         </label>
                         <?php if (!empty($photo['is_primary'])): ?><span class="cover-badge"><?= e(t('form.cover_current')) ?></span><?php endif; ?>
@@ -197,51 +197,11 @@
         <?php else: ?>
             <p class="muted">0 <?= e(t('form.photos_count')) ?></p>
         <?php endif; ?>
-        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" onsubmit="return confirm(<?= json_encode(t('dash.remove_confirm'), JSON_UNESCAPED_UNICODE) ?>)" style="margin-top:12px">
+        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" data-confirm-submit="<?= e(t('dash.remove_confirm')) ?>" class="mt-12">
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <button class="danger" type="submit"><?= e(t('dash.remove')) ?></button>
         </form>
         <p><a href="/imoveis/<?= e(property_ref($property)) ?>/calendario"><?= e(t('dash.calendar')) ?></a></p>
     <?php endif; ?>
 </section>
-<script>
-(function () {
-    const form = document.getElementById('property-form');
-    if (!form) return;
-    const csrf = form.querySelector('[name="_csrf"]').value;
-    const editing = form.dataset.editing === '1';
-    const hash = form.dataset.hash;
-    form.addEventListener('submit', async function (ev) {
-        // Deixa o submit normal se for o botão de excluir fotos (tem data-delete-photos)
-        if (ev.submitter && ev.submitter.hasAttribute('data-delete-photos')) {
-            return;
-        }
-        ev.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
-        const url = editing ? '/api/casas/' + hash : '/api/casas';
-        const method = editing ? 'PUT' : 'POST';
-        try {
-            const res = await fetch(url, {
-                method: method,
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                alert(json.error || 'Erro ao salvar imóvel');
-                return;
-            }
-            const newHash = (json.casa && json.casa.id) || hash;
-            if (!editing) {
-                window.location.href = '/imoveis/' + newHash + '/editar';
-            } else {
-                alert('Imóvel atualizado');
-                window.location.reload();
-            }
-        } catch (e) {
-            alert('Falha de conexão');
-        }
-    });
-})();
-</script>
+<script src="/assets/pages/property-form.js?v=1"></script>

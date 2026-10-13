@@ -679,3 +679,24 @@ function expose_account_links(): bool
     }
     return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
 }
+
+/**
+ * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
+ * lido por CL.data() em /assets/safe-dom.js.
+ */
+function page_data(array $data): void
+{
+    echo '<script type="application/json" id="page-data">'
+        . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . '</script>';
+}
+
+/** Caminho de foto seguro para src=: só relativo em /uploads/ (sem "..", esquema ou host); senão o placeholder. */
+function photo_url(?string $path): string
+{
+    $path = (string) $path;
+    if (preg_match('#^/uploads/[A-Za-z0-9_/.-]+$#', $path) === 1 && !str_contains($path, '..')) {
+        return $path;
+    }
+    return '/assets/placeholder.svg';
+}

@@ -227,3 +227,9 @@ button.is-off {
     filter: grayscale(1);
 }
 
+
+/* Utilitários (substituem atributos style= inline, bloqueados pela CSP) */
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.wrap-flush { padding-top: 0; padding-bottom: 0; }

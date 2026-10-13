@@ -7,10 +7,39 @@ require_once __DIR__ . '/Rooms.php';
 
 final class HouseService
 {
+    /** Campos que só aceitam lista (rooms[...], amenity[...]); todos os outros são texto/escalares. */
+    private const ARRAY_FIELDS = ['rooms', 'amenity'];
+
+    /** Mensagem de erro se algum campo vier com o tipo errado (texto como array, ou rooms/amenity como texto). */
+    public static function typeError(array $input): ?string
+    {
+        foreach ($input as $key => $value) {
+            if (in_array((string) $key, self::ARRAY_FIELDS, true)) {
+                if (!is_array($value)) {
+                    return t('err.field_type');
+                }
+            } elseif (is_array($value) || is_object($value)) {
+                return t('err.field_type');
+            }
+        }
+        return null;
+    }
+
+    /** Lê um campo de texto; arrays já foram recusados por typeError(). */
+    public static function str_field(array $input, string $key, string $default = ''): string
+    {
+        $value = $input[$key] ?? $default;
+        return is_scalar($value) ? (string) $value : $default;
+    }
+
     public static function fromInput(int $userId, array $input, ?array $current = null): array
     {
-        $title = trim((string) ($input['title'] ?? ''));
-        $description = trim((string) ($input['description'] ?? ''));
+        $typeError = self::typeError($input);
+        if ($typeError !== null) {
+            return ['error' => $typeError];
+        }
+        $title = trim(self::str_field($input, 'title'));
+        $description = trim(self::str_field($input, 'description'));
         $place = address_from_input($input);
         $address = $place['address'] ?? '';
         $layout = Rooms::parse($input);
@@ -19,8 +48,8 @@ final class HouseService
         }
         $maxGuests = (int) ($input['max_guests'] ?? 0);
         $price = parse_money((string) ($input['nightly_price'] ?? '0'));
-        $checkin = (string) ($input['checkin_time'] ?? '15:00');
-        $checkout = (string) ($input['checkout_time'] ?? '11:00');
+        $checkin = self::str_field($input, 'checkin_time', '15:00');
+        $checkout = self::str_field($input, 'checkout_time', '11:00');
         $minNights = max(1, (int) ($input['min_nights'] ?? 1));
         $calendarCap = max(1, Settings::int('calendar_months'));
         $calendarMonths = array_key_exists('calendar_months', $input)
