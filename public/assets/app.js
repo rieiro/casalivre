@@ -543,6 +543,18 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
             }
         }
     };
+    // Resumo por quarto ("Quarto 1: 2 camas"): só textContent, sem innerHTML.
+    const renderSummary = (rooms) => {
+        if (!summary) {
+            return;
+        }
+        summary.replaceChildren(...rooms.map((room, index) => {
+            const n = room.querySelectorAll('[data-bed]').length;
+            const item = document.createElement('li');
+            item.textContent = roomLabel + ' ' + (index + 1) + ': ' + n + ' ' + (n === 1 ? bedOne : bedMany);
+            return item;
+        }));
+    };
     const paint = () => {
         const rooms = Array.from(list.querySelectorAll('[data-room]'));
         let bedTotal = 0;
@@ -583,23 +595,7 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
         if (addRoom) {
             addRoom.disabled = rooms.length >= max || bedTotal >= max;
         }
-        if (summary) {
-            // Resumo por quarto: só textContent (sem innerHTML).
-            while (summary.firstChild) {
-                summary.removeChild(summary.firstChild);
-            }
-            rooms.forEach((room, index) => {
-                const n = room.querySelectorAll('[data-bed]').length;
-                const item = document.createElement('li');
-                item.textContent = roomLabel + ' ' + (index + 1) + ': ' + n + ' ' + (n === 1 ? bedOne : bedMany);
-                summary.appendChild(item);
-            });
-            if (rooms.length === 0) {
-                const item = document.createElement('li');
-                item.textContent = summary.dataset.empty || '';
-                summary.appendChild(item);
-            }
-        }
+        renderSummary(rooms);
         const count = root.querySelector('[data-room-count]');
         if (count) {
             count.textContent = rooms.length + ' ' + bedroomsLabel + ' · ' + bedTotal + ' ' + bedsLabel;
