@@ -44,6 +44,20 @@ $r = t_http('GET', $base . '/api/cidades?q=flo&t=SECRETQ');
 $e = log_entry($logDir, $r['headers']);
 t_eq(['q' => 'flo', 't' => null], $e['query'] ?? null, 'query fora da allowlist: só o nome da chave');
 
+echo "POST/PUT /api/users sem dados pessoais no log\n";
+$pii = ['name' => 'Maria PIISilva', 'email' => 'piimaria@x.com', 'password' => 'Senha-PII-123', 'password_confirm' => 'Senha-PII-123',
+    'cpf' => '52998224725', 'phone' => '48999990000', 'cep' => '88015-200', 'street' => 'Rua PIIBocaiuva', 'address_number' => '4321',
+    'address_complement' => 'Apto PII501', 'birth_date' => '1990-05-17'];
+foreach ([['POST', '/api/users'], ['PUT', '/api/users/eu']] as [$m, $u]) {
+    $r = t_http($m, $base . $u, json_encode($pii), ['Content-Type: application/json']);
+    $e = log_entry($logDir, $r['headers']);
+    $j = json_encode($e);
+    t_ok($e !== null, "$m $u registrado no log");
+    foreach (['PIISilva', 'piimaria', 'Senha-PII', '52998224725', '48999990000', '88015', 'PIIBocaiuva', '4321', 'PII501', '1990-05-17'] as $v) {
+        t_ok($e !== null && !str_contains($j, $v), "$m $u: '$v' não aparece no log");
+    }
+}
+
 echo "429 encerra antes do dispatch\n";
 db()->prepare('INSERT INTO login_rate_limit (ip, failures, locked_until) VALUES (?, ?, ?)')
     ->execute(['127.0.0.1', 99, date('Y-m-d H:i:s', time() + 600)]);

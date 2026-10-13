@@ -30,7 +30,7 @@ final class RequestLog
     private const URL_KEYS = '/(url|ical|link|href|callback|redirect)/i';
 
     /** Chaves sensíveis: são OMITIDAS do log (a chave e o valor não são gravados). */
-    private const SENSITIVE_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body|cpf|e-?mail|phone|telefone|celular|whats)/i';
+    private const SENSITIVE_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body|cpf|e-?mail|phone|telefone|celular|whats|name|nome|cep|street|rua|logradouro|address|endereco|endereço|birth|nascimento)/i';
 
     private static ?string $requestId = null;
     private static float $start = 0.0;
@@ -63,7 +63,7 @@ final class RequestLog
                     'user' => isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
                     'user_agent' => LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
                     'query' => self::queryForLog($path, $query),
-                    'body' => self::mask($body),
+                    'body' => self::bodyForLog($body),
                 ]);
             } catch (Throwable) {
                 // Log nunca pode derrubar a requisição; sinaliza sem dados.
@@ -124,6 +124,41 @@ final class RequestLog
             return '***';
         }
         return mb_substr($email, 0, 1) . '***' . substr($email, $at);
+    }
+
+    /**
+     * Chaves do corpo cujo VALOR pode ser gravado: só campos operacionais, sem dado pessoal.
+     * Texto livre (title, description, comment), nomes, endereço, CEP, datas de nascimento etc.
+     * ficam fora: só o nome da chave é gravado (valor null).
+     */
+    public const BODY_VALUE_ALLOWLIST = [
+        'locale', 'layout', 'acao', 'inicio', 'fim', 'day', 'start', 'count', 'foto_id', 'imovel_id',
+        'min_nights', 'price', 'nightly_price', 'cleaning_fee', 'max_guests', 'rooms', 'beds', 'bedrooms',
+        'amenity', 'calendar_months', 'checkin_time', 'checkout_time', 'noise_from', 'noise_until', 'score',
+    ];
+
+    /**
+     * Corpo para o log (allowlist, como na query):
+     * - chaves sensíveis (SENSITIVE_KEYS): omitidas (nem o nome);
+     * - chaves da BODY_VALUE_ALLOWLIST: valor gravado, ainda passando pela máscara;
+     * - demais chaves: só o nome, valor null (nada aninhado é gravado).
+     */
+    public static function bodyForLog(array $body): array
+    {
+        $out = [];
+        $n = 0;
+        foreach ($body as $key => $value) {
+            $key = (string) $key;
+            if (preg_match(self::SENSITIVE_KEYS, $key) === 1 || preg_match('/^[A-Za-z0-9_.\-\[\]]{1,40}$/', $key) !== 1) {
+                continue;
+            }
+            if (++$n > 50) {
+                $out['_truncado'] = true;
+                break;
+            }
+            $out[$key] = in_array($key, self::BODY_VALUE_ALLOWLIST, true) ? self::mask($value) : null;
+        }
+        return $out;
     }
 
     /** Chaves de query cujo VALOR pode ser gravado (demais: só o nome da chave, valor null). */
