@@ -119,6 +119,32 @@ function handle_api(string $path, string $method): void
     }
 
     $user = current_user();
+
+    // Geo: autocomplete de cidades e consulta de CEP (públicos, somente leitura)
+    if ($path === '/api/cidades' && $method === 'GET') {
+        $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 80);
+        json_out(200, CityRepository::suggest($q));
+    }
+
+    if ($path === '/api/ceps' && $method === 'GET') {
+        $digits = preg_replace('/\D+/', '', (string) ($_GET['q'] ?? '')) ?? '';
+        if (strlen($digits) !== 8) {
+            json_out(422, ['error' => 'CEP deve ter 8 dígitos.']);
+        }
+        $row = CepRepository::find($digits);
+        if (!$row || trim((string) $row['street']) === '') {
+            json_out(404, ['error' => 'CEP não encontrado ou sem rua cadastrada.']);
+        }
+        $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
+        json_out(200, [
+            'cep' => $row['cep'],
+            'street' => $row['street'],
+            'neighborhood' => $row['neighborhood'],
+            'city' => $row['city'],
+            'uf' => $row['uf'],
+            'city_label' => $known['label'] ?? ($row['city'] . ', ' . $row['uf']),
+        ]);
+    }
     if (!$user && preg_match('#^/api/(users/eu|casas)#', $path)) {
         json_out(401, ['error' => 'Autenticação necessária.']);
     }

@@ -150,6 +150,7 @@ if ($path === '/idioma' && $method === 'POST') {
     redirect($target);
 }
 
+// Legado: mantido por compatibilidade; o frontend usa /api/cidades e /api/ceps.
 if ($path === '/cidades' && $method === 'GET') {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(CityRepository::suggest((string) ($_GET['q'] ?? '')), JSON_UNESCAPED_UNICODE);
