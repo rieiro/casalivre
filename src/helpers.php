@@ -717,27 +717,26 @@ function photo_url(?string $path): string
 }
 
 /**
- * Valor do header Content-Security-Policy. Sempre estrito + tiles OSM; só com chave do Google Maps
- * libera os hosts mínimos do Maps JS API (maps.googleapis.com / maps.gstatic.com).
- * style-src precisa de 'unsafe-inline' com o Maps: ele aplica atributos style= que nonce/hash não cobrem
- * (e com nonce presente o navegador ignora 'unsafe-inline'). script-src continua sem 'unsafe-inline'.
+ * Único ponto que monta o valor do header Content-Security-Policy.
+ * Sempre: estrita (sem inline em script), tiles OSM em img-src, frame-ancestors/form-action 'self'.
+ * Só com chave do Google Maps: maps.googleapis.com em script-src/connect-src, maps.gstatic.com e
+ * *.googleapis.com em img-src, fonts.gstatic.com em font-src. style-src ganha 'unsafe-inline' (o Maps
+ * aplica atributos style= que nonce/hash não cobrem); script-src nunca tem 'unsafe-inline'/'unsafe-eval'.
  */
-function csp_policy(string $mapsKey = ''): string
+function csp_header(string $mapsKey = ''): string
 {
     $osm = 'https://tile.openstreetmap.org';
+    $tail = ["object-src 'none'", "base-uri 'none'", "frame-ancestors 'self'", "form-action 'self'"];
     if ($mapsKey === '') {
-        return "default-src 'self'; script-src 'self'; img-src 'self' $osm; object-src 'none'; base-uri 'none'";
+        return implode('; ', array_merge(["default-src 'self'", "script-src 'self'", "img-src 'self' $osm"], $tail));
     }
-    $g = 'https://maps.googleapis.com https://maps.gstatic.com';
-    return implode('; ', [
+    return implode('; ', array_merge([
         "default-src 'self'",
-        "script-src 'self' $g",
-        "img-src 'self' $osm $g data:",
+        "script-src 'self' https://maps.googleapis.com",
+        "img-src 'self' $osm https://maps.gstatic.com https://*.googleapis.com data:",
         "connect-src 'self' https://maps.googleapis.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         'font-src https://fonts.gstatic.com',
         'worker-src blob:',
-        "object-src 'none'",
-        "base-uri 'none'",
-    ]);
+    ], $tail));
 }

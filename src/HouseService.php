@@ -25,8 +25,11 @@ final class HouseService
         return null;
     }
 
-    /** Lê um campo de texto; arrays já foram recusados por typeError(). */
-    public static function str_field(array $input, string $key, string $default = ''): string
+    /**
+     * Lê um campo de texto. Ausente/null -> $default. Valor não escalar (array/objeto) também devolve
+     * $default, mas nunca chega aqui: fromInput() já recusou com 422 via typeError().
+     */
+    private static function strField(array $input, string $key, string $default = ''): string
     {
         $value = $input[$key] ?? $default;
         return is_scalar($value) ? (string) $value : $default;
@@ -38,8 +41,8 @@ final class HouseService
         if ($typeError !== null) {
             return ['error' => $typeError];
         }
-        $title = trim(self::str_field($input, 'title'));
-        $description = trim(self::str_field($input, 'description'));
+        $title = trim(self::strField($input, 'title'));
+        $description = trim(self::strField($input, 'description'));
         $place = address_from_input($input);
         $address = $place['address'] ?? '';
         $layout = Rooms::parse($input);
@@ -48,8 +51,8 @@ final class HouseService
         }
         $maxGuests = (int) ($input['max_guests'] ?? 0);
         $price = parse_money((string) ($input['nightly_price'] ?? '0'));
-        $checkin = self::str_field($input, 'checkin_time', '15:00');
-        $checkout = self::str_field($input, 'checkout_time', '11:00');
+        $checkin = self::strField($input, 'checkin_time', '15:00');
+        $checkout = self::strField($input, 'checkout_time', '11:00');
         $minNights = max(1, (int) ($input['min_nights'] ?? 1));
         $calendarCap = max(1, Settings::int('calendar_months'));
         $calendarMonths = array_key_exists('calendar_months', $input)

@@ -32,13 +32,23 @@ with sync_playwright() as pw:
         if path.startswith('/busca/mapa'):
             # A rota (modo API) entrega data-points vazio e o mapa nunca desenha (bug pré-existente). Para exercitar
             # o map.js real sob a CSP real, injeta pontos e recarrega o script do próprio site ('self').
-            page.evaluate('''() => {
+            inject = '''() => {
                 document.getElementById('result-map').setAttribute('data-points', JSON.stringify([
                     {title: 'Casa', lat: -27.59, lng: -48.54, href: '/'}]));
                 const s = document.createElement('script');
                 s.src = '/assets/pages/map.js?e2e=' + Date.now();
                 document.body.appendChild(s);
-            }''')
+            }'''
+            if mode == 'maps':
+                # Espera explícita pelo script do Google (a rede externa pode demorar).
+                try:
+                    with page.expect_request(lambda r: 'maps.googleapis.com/maps/api/js' in r.url, timeout=15000):
+                        page.evaluate(inject)
+                except Exception:
+                    pass
+                page.wait_for_timeout(4000)
+            else:
+                page.evaluate(inject)
             page.wait_for_load_state('networkidle')
         page.wait_for_timeout(1500)
         csp = [m for m in console if 'Content Security Policy' in m]

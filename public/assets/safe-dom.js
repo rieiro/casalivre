@@ -13,6 +13,10 @@ window.CL = {
         const node = document.createElement(tag);
         Object.entries(props || {}).forEach(([k, v]) => {
             if (v === null || v === undefined || v === false) return;
+            // Atributos perigosos nunca passam: handlers on*, srcdoc, formaction, style (CSP sem inline).
+            if (/^on/i.test(k) || /^(srcdoc|formaction|style)$/i.test(k)) {
+                throw new Error('CL.el: atributo proibido: ' + k);
+            }
             if (k === 'className' || k === 'textContent' || k === 'type' || k === 'name' || k === 'value') node[k] = v;
             else if (k === 'href') node.href = CL.safeHref(v);
             else if (k === 'src') node.src = CL.photoUrl(v);
@@ -28,10 +32,6 @@ window.CL = {
     photoUrl(path) {
         const p = String(path || '');
         return /^\/uploads\/[A-Za-z0-9_\/.-]+$/.test(p) && !p.includes('..') ? p : '/assets/placeholder.svg';
-    },
-    safeHref(href) {
-        const h = String(href || '');
-        return h.startsWith('/') && !h.startsWith('//') ? h : '#';
     },
     /**
      * Única chamada à API do front: credentials same-origin, CSRF de page_data (fonte única), JSON no corpo.
@@ -64,5 +64,11 @@ window.CL = {
             throw err;
         }
         return data;
+    },
+    safeHref(href) {
+        const h = String(href || '');
+        // Só caminho relativo ao site: "/x". Recusa "//host" e "/\\host" (o navegador trata \\ como /) e
+        // espaços/controles (o navegador remove TAB/LF da URL: "/\t/host" viraria "//host").
+        return /^\/(?![\/\\])/.test(h) && !/[\s\x00-\x1f\x7f]/.test(h) ? h : '#';
     },
 };

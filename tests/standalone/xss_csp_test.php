@@ -1,5 +1,5 @@
 <?php
-// fix/xss-views: header CSP, páginas sem script/handler/style inline, str_field 422 (texto como array) e
+// fix/xss-views: header CSP, páginas sem script/handler/style inline, strField 422 (texto como array) e
 // rooms/amenity só como array.
 require __DIR__ . '/lib.php';
 t_temp_db();
@@ -8,25 +8,35 @@ $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
-$csp = "Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'";
+$strictExpected = "default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
+$csp = 'Content-Security-Policy: ' . $strictExpected;
 
-echo "csp_policy(): sem e com maps_key\n";
-$strict = csp_policy('');
-t_eq("default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'", $strict, 'sem chave: estrita + tiles OSM');
-t_ok(!str_contains($strict, 'google') && !str_contains($strict, 'unsafe'), 'sem chave: nenhum host Google, nenhum unsafe-*');
-$maps = csp_policy('chave');
-$dir = [];
-foreach (explode(';', $maps) as $part) {
-    $words = preg_split('/\s+/', trim($part));
-    $dir[array_shift($words)] = $words;
+echo "csp_header(): sem e com maps_key\n";
+$parse = static function (string $policy): array {
+    $dir = [];
+    foreach (explode(';', $policy) as $part) {
+        $words = preg_split('/\s+/', trim($part));
+        $dir[array_shift($words)] = $words;
+    }
+    return $dir;
+};
+$strict = csp_header('');
+t_eq($strictExpected, $strict, 'sem chave: estrita + tiles OSM + frame-ancestors/form-action');
+t_ok(!str_contains($strict, 'google') && !str_contains($strict, 'unsafe') && !str_contains($strict, '*'), 'sem chave: nenhum host Google, unsafe-* ou curinga');
+$dir = $parse(csp_header('chave'));
+t_eq(["'self'", 'https://maps.googleapis.com'], $dir['script-src'] ?? null, 'com chave: script-src = self + maps.googleapis.com');
+t_eq(["'self'", 'https://maps.googleapis.com'], $dir['connect-src'] ?? null, 'com chave: connect-src = self + maps.googleapis.com');
+foreach (['https://tile.openstreetmap.org', 'https://maps.gstatic.com', 'https://*.googleapis.com'] as $host) {
+    t_ok(in_array($host, $dir['img-src'] ?? [], true), "com chave: img-src contém $host");
 }
-t_eq(["'self'", 'https://maps.googleapis.com', 'https://maps.gstatic.com'], $dir['script-src'] ?? null, 'com chave: script-src só self + hosts do Maps');
-t_ok(in_array('https://tile.openstreetmap.org', $dir['img-src'] ?? [], true) && in_array('https://maps.gstatic.com', $dir['img-src'] ?? [], true), 'com chave: img-src com OSM e Maps');
-t_eq(["'self'", 'https://maps.googleapis.com'], $dir['connect-src'] ?? null, 'com chave: connect-src só maps.googleapis.com');
+t_eq(['https://fonts.gstatic.com'], $dir['font-src'] ?? null, 'com chave: font-src = fonts.gstatic.com');
 t_ok(in_array("'unsafe-inline'", $dir['style-src'] ?? [], true), "com chave: style-src com 'unsafe-inline' (atributos style= do Maps)");
-t_ok(!str_contains($maps, '*') && !str_contains($maps, 'unsafe-eval'), 'com chave: sem curingas e sem unsafe-eval');
-t_eq(["'none'"], $dir['object-src'] ?? null, "com chave: object-src 'none'");
-t_eq(["'none'"], $dir['base-uri'] ?? null, "com chave: base-uri 'none'");
+t_ok(!in_array("'unsafe-inline'", $dir['script-src'] ?? [], true) && !str_contains(csp_header('chave'), 'unsafe-eval'), 'com chave: script sem unsafe-inline/unsafe-eval');
+foreach (['object-src' => "'none'", 'base-uri' => "'none'", 'frame-ancestors' => "'self'", 'form-action' => "'self'"] as $d => $v) {
+    t_eq([$v], $dir[$d] ?? null, "com chave: $d $v");
+    t_eq([$v], $parse($strict)[$d] ?? null, "sem chave: $d $v");
+}
+t_eq(4, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 4 (err.field_type/js.* semeados em bancos existentes)');
 
 echo "header CSP\n";
 foreach (['/', '/entrar', '/busca?localidade=Florian%C3%B3polis', '/imoveis/' . $owner['hash'], '/api/busca?localidade=x'] as $path) {
@@ -48,7 +58,7 @@ foreach ($pages as $path) {
     t_ok(!preg_match('/\sstyle\s*=/i', $body), "$path: nenhum atributo style=");
 }
 
-echo "str_field: texto como array -> 422\n";
+echo "strField: texto como array -> 422\n";
 $common = ['title' => 'Casa Teste', 'description' => 'Descrição de teste do imóvel.', 'cep' => '88000-000', 'street' => 'Rua A',
     'city' => 'Florianópolis, SC', 'address_number' => '1', 'address_complement' => '', 'max_guests' => '4',
     'nightly_price' => 'R$ 200,00', 'cleaning_fee' => 'R$ 0,00', 'checkin_time' => '15:00', 'checkout_time' => '11:00',
@@ -63,6 +73,8 @@ foreach (['title', 'description', 'checkin_time', 'cep', 'nightly_price'] as $fi
 }
 $r = $put(['title' => ['<b>a</b>']] + $common);
 t_ok(!str_contains($r['body'], 'Array') && str_contains($r['body'], 'error'), '422 com mensagem de erro, sem "Array"');
+require_once CL_ROOT . '/src/I18n.php';
+t_eq(t('err.field_type'), json_decode($r['body'], true)['error'] ?? null, '422 usa a mensagem err.field_type');
 foreach (['rooms', 'amenity'] as $field) {
     $r = $put([$field => 'texto'] + $common);
     t_eq(422, $r['status'], "$field como texto -> 422");
@@ -75,8 +87,48 @@ echo "header com GOOGLE_MAPS_API_KEY configurada\n";
 putenv('GOOGLE_MAPS_API_KEY=chave-falsa-teste');
 $baseMaps = t_server();
 $r = t_http('GET', $baseMaps . '/busca/mapa?localidade=x');
-t_ok(stripos($r['headers'], 'Content-Security-Policy: ' . csp_policy('chave-falsa-teste')) !== false, 'servidor com chave envia CSP do Maps');
+t_ok(stripos($r['headers'], 'Content-Security-Policy: ' . csp_header('chave-falsa-teste')) !== false, 'servidor com chave envia CSP do Maps');
 t_ok(str_contains($r['body'], 'data-key="chave-falsa-teste"'), 'página do mapa recebe a chave');
 putenv('GOOGLE_MAPS_API_KEY=');
+
+echo "safe-dom.js (Node vm): safeHref e el()\n";
+$js = <<<'JS'
+const vm = require('vm'), fs = require('fs');
+class Node {}
+class El extends Node {
+    constructor(t) { super(); this.tag = t; this.attrs = {}; this.kids = []; }
+    setAttribute(k, v) { this.attrs[k] = v; }
+    appendChild(c) { this.kids.push(c); }
+}
+const ctx = { Node, document: { createElement: (t) => new El(t), createTextNode: (t) => ({ text: t }), getElementById: () => null } };
+ctx.window = ctx; // no navegador window é o objeto global
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), ctx);
+const CL = ctx.window.CL;
+const out = {};
+for (const h of ['/imoveis/x', '/', '//evil.com', '/\\evil.com', '/\\/evil.com', 'javascript:alert(1)', 'https://evil.com', '/\t/evil.com', '/\n/x', ' /x', '']) {
+    out['href:' + JSON.stringify(h)] = CL.safeHref(h);
+}
+for (const k of ['onclick', 'onError', 'ONLOAD', 'srcdoc', 'formaction', 'formAction', 'style', 'STYLE']) {
+    try { CL.el('a', { [k]: 'alert(1)' }); out['attr:' + k] = 'aceito'; } catch (e) { out['attr:' + k] = 'recusado'; }
+}
+out.ok = CL.el('a', { href: '/x', title: 't', 'data-x': '1' }).attrs.title;
+out.okHref = CL.el('a', { href: '//evil.com' }).href;
+console.log(JSON.stringify(out));
+JS;
+$tmp = tempnam(sys_get_temp_dir(), 'sd') . '.js';
+file_put_contents($tmp, str_replace('process.argv[1]', var_export(CL_ROOT . '/public/assets/safe-dom.js', true), $js));
+$res = json_decode((string) shell_exec('node ' . escapeshellarg($tmp) . ' 2>&1'), true) ?: [];
+@unlink($tmp);
+t_eq('/imoveis/x', $res['href:"/imoveis/x"'] ?? null, 'safeHref aceita /imoveis/x');
+t_eq('/', $res['href:"/"'] ?? null, 'safeHref aceita /');
+foreach (['"//evil.com"', '"/\\\\evil.com"', '"/\\\\/evil.com"', '"javascript:alert(1)"', '"https://evil.com"', '"/\\t/evil.com"', '"/\\n/x"', '" /x"', '""'] as $h) {
+    t_eq('#', $res['href:' . $h] ?? null, "safeHref recusa $h");
+}
+foreach (['onclick', 'onError', 'ONLOAD', 'srcdoc', 'formaction', 'formAction', 'style', 'STYLE'] as $k) {
+    t_eq('recusado', $res['attr:' . $k] ?? null, "el() recusa atributo $k");
+}
+t_eq('t', $res['ok'] ?? null, 'el() aceita atributo comum');
+t_eq('#', $res['okHref'] ?? null, 'el() passa href por safeHref');
 
 t_done();
