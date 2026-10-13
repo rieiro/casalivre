@@ -16,7 +16,7 @@
     $titleLen = function_exists('mb_strlen') ? mb_strlen($titleValue) : strlen($titleValue);
     $descriptionLen = function_exists('mb_strlen') ? mb_strlen($descriptionValue) : strlen($descriptionValue);
     ?>
-    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>">
+    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>" data-script-error="<?= e(t('form.script_error')) ?>">
         <h1><?= $editing ? e(t('form.edit')) : e(t('form.new')) ?></h1>
         <?php if ($error): ?><p class="error"><?= e($error) ?></p><?php endif; ?>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -79,12 +79,7 @@
             </section>
             <section class="rooms-summary" aria-labelledby="rooms-summary-title" aria-live="polite">
                 <h3 class="rooms-subtitle" id="rooms-summary-title"><?= e(t('form.room_summary_title')) ?></h3>
-                <ul data-room-summary data-empty="<?= e(t('form.room_summary_empty')) ?>">
-                    <?php foreach ($roomLayout as $roomIndex => $room): ?>
-                        <?php $n = count($room['beds']); ?>
-                        <li><?= e(t('form.room')) ?> <?= $roomIndex + 1 ?>: <?= $n ?> <?= e($n === 1 ? t('form.bed_one') : t('form.bed_many')) ?></li>
-                    <?php endforeach; ?>
-                </ul>
+                <ul data-room-summary></ul>
                 <p class="muted" data-room-count></p>
             </section>
             <template data-bed-template>
@@ -230,7 +225,11 @@
         }
         ev.preventDefault();
         // Converte rooms[i][beds][j][campo] e amenity[chave] em objetos/listas (issue #20).
-        const data = window.CasaLivreForm ? window.CasaLivreForm.toObject(form) : Object.fromEntries(new FormData(form).entries());
+        if (!window.CasaLivreForm) {
+            alert(form.dataset.scriptError || 'Erro ao carregar a página. Recarregue e tente de novo.');
+            return;
+        }
+        const data = window.CasaLivreForm.toObject(form);
         const url = editing ? '/api/casas/' + hash : '/api/casas';
         const method = editing ? 'PUT' : 'POST';
         try {
