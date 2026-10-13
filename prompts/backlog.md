@@ -6,15 +6,14 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #21 | Issue #20: camas por quarto e separação no layout | Segurança aprovou com condições; mudanças do Revisor pendentes; QA em andamento |
-| — | XSS armazenado nas views (ALTA) e `str_field()` no HouseService (MÉDIA) | a abrir pelo Programador |
+| #21 | Issue #20: camas por quarto e separação no layout | aprovado pela Segurança e pelo Revisor (ajustes menores); QA em andamento |
+| #23 | XSS nas views, CSP e `str_field()` | mudanças pedidas pelo Revisor; entra depois do #21 |
+| — | Refatoração DRY do que já foi mesclado (Mailer/helpers, base_url, Db::transactional, RequestLog) | sem urgência |
 
 ## Segurança e LGPD
 
 - [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
 - [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
-- [ ] `api_expand_bracket_keys`: responder 413/422 acima de 1000 chaves em vez de cortar em silêncio.
-- [ ] `form-data.js`: descartar nomes malformados (por exemplo, `a[b`).
 - [ ] `Csrf::rawBody` com limite de tamanho (checar `CONTENT_LENGTH`).
 
 - [ ] **ALTA, antes de abrir o cadastro:** enviar o e-mail por fila (storage/mail ou tabela) com worker ou cron, com resposta em tempo constante no esqueci-senha (hoje o tempo revela quais e-mails têm conta).
