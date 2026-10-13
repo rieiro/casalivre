@@ -9,7 +9,9 @@ require_once __DIR__ . '/../src/CityRepository.php';
 require_once __DIR__ . '/../src/CepRepository.php';
 require_once __DIR__ . '/../src/UserRepository.php';
 PasswordPolicy::$minLength = max(1, Settings::int('password_min_length') ?: 8);
+require_once __DIR__ . '/../src/Mailer.php';
 AccountFlow::$sendLink = static function (string $email, string $link): void {
+    Mailer::sendAccountLink($email, $link);
 };
 require_once __DIR__ . '/../src/HouseRepository.php';
 require_once __DIR__ . '/../src/PhotoRepository.php';
