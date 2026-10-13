@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Redact.php';
+require_once __DIR__ . '/LogPrivacy.php';
+
 /**
  * Log estruturado por requisição da API (JSON por linha), gravado localmente.
  *
  * - request_id: reaproveita X-Request-Id válido do cliente ou gera um novo; devolvido no header.
  * - Chaves sensíveis são omitidas; texto livre tem CPF/cartão/e-mail mascarados (no PHP, antes de gravar).
- * - Caminhos com hash de 32 hex (ical_hash) viram {hash}; URLs perdem query string.
- * - user_id é gravado como HMAC-SHA256 com sal (LOG_SALT ou APP_KEY); sem sal, é omitido.
- * - IP truncado (IPv4 /24, IPv6 /48).
+ * - Caminhos com hash de 32 hex (ical_hash) viram {hash}; URLs em texto livre viram [url].
+ * - user, user_agent e URLs viram HMAC com LOG_SALT (obrigatório; sem ele são omitidos). IP truncado (/24, /48).
+ * - Falhas de escrita: contador RequestLog::$writeFailures + error_log sem dados.
  * - Rotação diária (api-AAAA-MM-DD.log) + corte por tamanho; arquivos antigos são apagados.
  * - Diretório 0700 e arquivos 0600.
  *
@@ -56,14 +59,16 @@ final class RequestLog
                     'path' => self::redactPath($path),
                     'status' => http_response_code() ?: 200,
                     'duration_ms' => (int) round((microtime(true) - self::$start) * 1000),
-                    'ip' => self::maskIp((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
-                    'user' => isset($_SESSION['user_id']) ? self::userRef((int) $_SESSION['user_id']) : null,
-                    'user_agent' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200),
+                    'ip' => LogPrivacy::ip((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
+                    'user' => isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
+                    'user_agent' => LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
                     'query' => self::mask($query),
                     'body' => self::mask($body),
                 ]);
             } catch (Throwable) {
-                // Log nunca pode derrubar a requisição.
+                // Log nunca pode derrubar a requisição; sinaliza sem dados.
+                self::$writeFailures++;
+                error_log('CasaLivre: falha ao gravar log de requisições (total=' . self::$writeFailures . ').');
             }
         });
         return self::$requestId;
@@ -105,6 +110,7 @@ final class RequestLog
     public static function maskFreeText(string $s): string
     {
         $s = mb_substr($s, 0, 500);
+        $s = preg_replace('#https?://\S+#i', '[url]', $s) ?? $s;
         $s = preg_replace('/\b\d(?:[ -]?\d){12,18}\b/', '[cartao]', $s) ?? $s;
         $s = preg_replace('/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/', '[cpf]', $s) ?? $s;
         $s = preg_replace_callback('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', static fn ($m) => self::maskEmail($m[0]), $s) ?? $s;
@@ -120,45 +126,32 @@ final class RequestLog
         return mb_substr($email, 0, 1) . '***' . substr($email, $at);
     }
 
-    /** Substitui segmentos de 32 hex (ical_hash) por {hash}. */
+    /** Substitui segmentos de 32 hex (ical_hash) por {hash}. Alinhado com Redact::path. */
     public static function redactPath(string $path): string
     {
-        return preg_replace('/(?<![a-f0-9])[a-f0-9]{32}(?![a-f0-9])/i', '{hash}', $path) ?? $path;
+        return Redact::path($path);
     }
 
-    /** Mantém só esquema + host + caminho (com hashes redigidos); remove credenciais, query e fragmento. */
+    /** URL -> host#hmac(url) (sem LOG_SALT: host#-). */
     public static function redactUrl(string $url): string
     {
-        $p = parse_url($url);
-        if (!is_array($p) || empty($p['host'])) {
-            return self::maskFreeText(preg_replace('/[?#].*$/s', '', $url) ?? '');
-        }
-        $out = (isset($p['scheme']) ? $p['scheme'] . '://' : '') . $p['host'] . (isset($p['port']) ? ':' . $p['port'] : '');
-        return $out . self::redactPath((string) ($p['path'] ?? ''));
+        return (string) LogPrivacy::url($url);
     }
 
-    /** Pseudônimo do usuário: HMAC-SHA256(user_id, sal) truncado. Sem sal configurado, não grava nada. */
+    /** @deprecated use LogPrivacy::user */
     public static function userRef(int $userId): ?string
     {
-        $salt = (string) (getenv('LOG_SALT') ?: getenv('APP_KEY') ?: '');
-        if ($salt === '') {
-            return null;
-        }
-        return substr(hash_hmac('sha256', (string) $userId, $salt), 0, 16);
+        return LogPrivacy::user($userId);
     }
 
-    /** Trunca IP: IPv4 /24, IPv6 /48. */
+    /** @deprecated use LogPrivacy::ip */
     public static function maskIp(string $ip): string
     {
-        $bin = @inet_pton($ip);
-        if ($bin === false) {
-            return '';
-        }
-        if (strlen($bin) === 4) {
-            return (string) inet_ntop(substr($bin, 0, 3) . "\0");
-        }
-        return (string) inet_ntop(substr($bin, 0, 6) . str_repeat("\0", 10));
+        return LogPrivacy::ip($ip);
     }
+
+    /** Número de falhas de escrita do log neste processo (sinalização). */
+    public static int $writeFailures = 0;
 
     private static function directory(): string
     {
@@ -181,7 +174,11 @@ final class RequestLog
             }
             $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
             $new = !is_file($file);
-            file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
+            if ($line === "\n" || @file_put_contents($file, $line, FILE_APPEND | LOCK_EX) === false) {
+                self::$writeFailures++;
+                error_log('CasaLivre: falha ao gravar log de requisições (total=' . self::$writeFailures . ').');
+                return;
+            }
             if ($new) {
                 @chmod($file, 0600);
             }

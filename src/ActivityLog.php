@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/LogPrivacy.php';
+
 interface ActivityStore
 {
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void;
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void;
 
     public function recent(int $limit = 50, ?int $code = null): array;
 }
@@ -43,7 +45,7 @@ final class SqliteActivityStore implements ActivityStore
         }
     }
 
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO activity_log (created_at, action_code, action, actor_id, ip, user_agent, params, valor_anterior, valor_atual)
@@ -95,7 +97,7 @@ final class MongoActivityStore implements ActivityStore
         $this->db = getenv('LOG_MONGO_DB') ?: 'casalivre';
     }
 
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
     {
         $bulk = new \MongoDB\Driver\BulkWrite();
         $bulk->insert([
@@ -231,19 +233,16 @@ final class ActivityLog
             self::store()->append(
                 $code,
                 self::CATALOG[$code] ?? 'Ação não catalogada',
-                isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null,
+                isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
                 $params,
-                (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
-                substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 300),
+                LogPrivacy::ip((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
+                (string) (LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')) ?? ''),
                 self::encodePrevious($valorAnterior),
                 self::encodePrevious($valorAtual)
             );
         } catch (Throwable $e) {
-            file_put_contents(
-                dirname(__DIR__) . '/storage/error.log',
-                date('c') . ' activity ' . $e->getMessage() . "\n",
-                FILE_APPEND
-            );
+            // Sinaliza sem dados (a mensagem pode conter parâmetros).
+            error_log('CasaLivre: falha ao gravar log de atividades (' . $e::class . ').');
         }
     }
 
@@ -257,6 +256,19 @@ final class ActivityLog
             }
             if (is_array($value)) {
                 $clean[$key] = self::safeParams($value);
+                continue;
+            }
+            $lk = strtolower((string) $key);
+            if (is_string($value) && str_contains($lk, 'email')) {
+                $clean[$key] = LogPrivacy::email($value);
+                continue;
+            }
+            if (is_string($value) && ($lk === 'ip' || str_ends_with($lk, '_ip'))) {
+                $clean[$key] = LogPrivacy::ip($value);
+                continue;
+            }
+            if (is_string($value) && (str_contains($lk, 'cpf') || str_contains($lk, 'phone') || str_contains($lk, 'telefone'))) {
+                $clean[$key] = LogPrivacy::hmac($value, $lk);
                 continue;
             }
             if (is_scalar($value) || $value === null) {
