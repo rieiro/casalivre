@@ -97,7 +97,11 @@ function handle_api(string $path, string $method): void
             json_out(403, ['error' => account_text($result['status'])]);
         }
         if ($result['status'] === 'pending') {
-            json_out(403, ['error' => t('err.pending'), 'verification_link' => $result['user']['activation_link'] ?? null]);
+            $pending = ['error' => t('err.pending')];
+            if (expose_account_links()) {
+                $pending['verification_link'] = $result['user']['activation_link'] ?? null;
+            }
+            json_out(403, $pending);
         }
         AccountFlow::openSession((int) $result['user']['id']);
         LoginRateLimiter::clear();
@@ -118,7 +122,11 @@ function handle_api(string $path, string $method): void
             json_out($status, ['error' => account_text($result['error'])]);
         }
         activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-        json_out(201, ['id' => $result['id'], 'status' => 'pending', 'verification_link' => $result['link'], 'expires' => $result['expires']]);
+        $created = ['id' => $result['id'], 'status' => 'pending', 'expires' => $result['expires']];
+        if (expose_account_links()) {
+            $created['verification_link'] = $result['link'];
+        }
+        json_out(201, $created);
     }
 
     $user = current_user();

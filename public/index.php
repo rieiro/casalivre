@@ -222,7 +222,7 @@ if ($path === '/senha/esqueci' && $method === 'POST') {
     if ($sent) {
         activity(ActivityLog::PASSWORD_RESET_ASK, ['email' => $email]);
     }
-    view('password_forgot', ['error' => null, 'link' => $sent['link'] ?? null, 'expires' => $sent['expires'] ?? null, 'notice' => t('auth.reset_missing')]);
+    view('password_forgot', ['error' => null, 'link' => expose_account_links() ? ($sent['link'] ?? null) : null, 'expires' => $sent['expires'] ?? null, 'notice' => t('auth.reset_missing')]);
     return null;
 }
 
@@ -333,7 +333,7 @@ if ($path === '/cadastro' && $method === 'POST') {
         return null;
     }
     activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-    view('verify_pending', ['link' => $result['link'], 'expires' => $result['expires']]);
+    view('verify_pending', ['link' => expose_account_links() ? $result['link'] : null, 'expires' => $result['expires']]);
     return null;
 }
 
@@ -381,7 +381,7 @@ if ($path === '/entrar' && $method === 'POST') {
     }
     if ($result['status'] === 'pending') {
         $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'), request_base() . '/verificar?token=');
-        view('verify_pending', ['link' => $pending['link'], 'expires' => $pending['expires']]);
+        view('verify_pending', ['link' => expose_account_links() ? $pending['link'] : null, 'expires' => $pending['expires']]);
         return null;
     }
     AccountFlow::openSession((int) $result['user']['id']);

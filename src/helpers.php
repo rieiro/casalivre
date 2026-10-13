@@ -648,3 +648,15 @@ function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = nul
     }
     return $count;
 }
+
+/**
+ * Links de ativação/redefinição só podem aparecer em respostas (API ou tela) em ambiente de
+ * desenvolvimento: APP_ENV=dev ou local. Sem APP_ENV (ou qualquer outro valor) => não expõe.
+ */
+function expose_account_links(): bool
+{
+    if (class_exists('Db')) {
+        Db::loadEnv();
+    }
+    return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+}

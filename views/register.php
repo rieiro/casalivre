@@ -5,8 +5,9 @@
         <p class="error" id="register-error" hidden></p>
         <div id="register-success" hidden>
             <h2><?= e(t('auth.pending_title')) ?></h2>
-            <p><?= e(t('auth.pending_body')) ?></p>
-            <p><a id="verify-link" href="#"><?= e(t('auth.open_link')) ?></a></p>
+            <p id="verify-body" hidden><?= e(t('auth.pending_body')) ?></p>
+            <p id="verify-email"><?= e(t('auth.pending_email')) ?></p>
+            <p id="verify-link-row" hidden><a id="verify-link" href="#"><?= e(t('auth.open_link')) ?></a></p>
             <p class="muted"><?= e(t('auth.expires')) ?> <span id="verify-expires"></span></p>
         </div>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -56,7 +57,13 @@
                 return;
             }
             form.querySelectorAll('input, button').forEach(el => { if (el.id !== 'register-submit') el.disabled = true; });
-            document.getElementById('verify-link').href = json.verification_link || '#';
+            if (json.verification_link) {
+                // Só em APP_ENV=dev/local a API devolve o link.
+                document.getElementById('verify-link').href = json.verification_link;
+                document.getElementById('verify-link-row').hidden = false;
+                document.getElementById('verify-body').hidden = false;
+                document.getElementById('verify-email').hidden = true;
+            }
             document.getElementById('verify-expires').textContent = json.expires || '';
             successEl.hidden = false;
             submitBtn.hidden = true;
