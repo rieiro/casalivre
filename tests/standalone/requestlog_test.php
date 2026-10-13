@@ -26,10 +26,13 @@ t_ok(!str_contains($txt, '4111 1111'), 'cartão mascarado em texto livre');
 t_ok(str_contains($txt, 'j***@x.com') && !str_contains($txt, 'joao@'), 'e-mail mascarado em texto livre');
 
 echo "URLs e hashes\n";
+putenv('LOG_SALT=sal-de-teste');
 $out = RequestLog::mask(['external_ical_url' => 'https://u:p@www.airbnb.com/calendar/ical/123.ics?s=SEGREDO#x',
     'url' => 'https://casalivre.test/ical/' . str_repeat('ab', 16) . '?t=1']);
-t_eq('https://www.airbnb.com/calendar/ical/123.ics', $out['external_ical_url'], 'external_ical_url sem credenciais/query/fragmento');
-t_eq('https://casalivre.test/ical/{hash}', $out['url'], 'url com ical_hash redigido');
+t_ok((bool) preg_match('/^www\.airbnb\.com#[0-9a-f]{16}$/', (string) $out['external_ical_url']), 'external_ical_url vira host#hmac');
+t_ok((bool) preg_match('/^casalivre\.test#[0-9a-f]{16}$/', (string) $out['url']), 'url vira host#hmac (sem caminho/hash)');
+$txt = RequestLog::mask(['comment' => 'veja https://x.com/a?token=SEGREDO e http://y.org/b'])['comment'];
+t_ok(!str_contains($txt, 'x.com') && !str_contains($txt, 'SEGREDO') && !str_contains($txt, 'y.org'), 'URLs removidas de texto livre');
 t_eq('/api/ical/{hash}.ics', RequestLog::redactPath('/api/ical/' . str_repeat('0f', 16) . '.ics'), 'path com 32 hex vira {hash}');
 t_eq('/api/imoveis/0123456789abcdef/calendario', RequestLog::redactPath('/api/imoveis/0123456789abcdef/calendario'), 'hash público de 16 hex mantido');
 
@@ -38,9 +41,15 @@ t_eq('203.0.113.0', RequestLog::maskIp('203.0.113.77'), 'IPv4 truncado em /24');
 t_eq('2001:db8:abcd::', RequestLog::maskIp('2001:db8:abcd:12:34::1'), 'IPv6 truncado em /48');
 t_eq('', RequestLog::maskIp('lixo'), 'IP inválido vira vazio');
 putenv('LOG_SALT=');
+putenv('APP_KEY=chave-que-nao-deve-ser-usada');
+t_eq(null, RequestLog::userRef(42), 'sem LOG_SALT (mesmo com APP_KEY): usuário omitido');
+t_eq(null, LogPrivacy::userAgent('Mozilla/5.0'), 'sem LOG_SALT: user agent omitido');
+t_eq('x.com#-', LogPrivacy::url('https://x.com/a?t=1'), 'sem LOG_SALT: URL vira host#-');
 putenv('APP_KEY=');
-t_eq(null, RequestLog::userRef(42), 'sem sal: usuário não é gravado');
 putenv('LOG_SALT=sal-de-teste');
+$ua = LogPrivacy::userAgent('Mozilla/5.0');
+t_ok(is_string($ua) && strlen($ua) === 16 && !str_contains($ua, 'Mozilla'), 'user agent vira HMAC');
+t_ok(LogPrivacy::email('A@B.com') === LogPrivacy::email('a@b.com ') && strlen((string) LogPrivacy::email('a@b.com')) === 16, 'e-mail vira HMAC normalizado');
 $ref = RequestLog::userRef(42);
 t_ok(is_string($ref) && strlen($ref) === 16 && $ref !== '42', 'com sal: HMAC truncado');
 t_eq($ref, RequestLog::userRef(42), 'pseudônimo estável');
@@ -66,8 +75,23 @@ foreach ($files as $f) {
     }
 }
 t_eq(5, $lines, 'nenhuma linha perdida na rotação');
+echo "sinalização de falha de escrita\n";
+$before = RequestLog::$writeFailures;
+RequestLog::$dir = '/proc/nao-gravavel/api';
+$prevLog = ini_set('error_log', '/dev/null');
+RequestLog::write(['x' => 1]);
+ini_set('error_log', (string) $prevLog);
+t_eq($before + 1, RequestLog::$writeFailures, 'falha de escrita incrementa contador');
 array_map('unlink', glob($dir . '/api/*') ?: []);
 @rmdir($dir . '/api');
 @rmdir($dir);
+
+echo "ActivityLog\n";
+require_once CL_ROOT . '/src/ActivityLog.php';
+$p = ActivityLog::safeParams(['email' => 'joao@x.com', 'ip' => '203.0.113.9', 'cpf' => '52998224725', 'password' => 'x', 'imovel_id' => 3]);
+t_eq(LogPrivacy::email('joao@x.com'), $p['email'], 'activity: e-mail vira HMAC');
+t_eq('203.0.113.0', $p['ip'], 'activity: ip truncado');
+t_ok($p['cpf'] !== '52998224725' && strlen((string) $p['cpf']) === 16, 'activity: cpf vira HMAC');
+t_ok(!isset($p['password']) && $p['imovel_id'] === 3, 'activity: senha omitida, demais mantidos');
 
 t_done();
