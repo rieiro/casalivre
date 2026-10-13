@@ -39,6 +39,10 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Migrar fotos, calendário, formulário de imóvel e autenticação para fetch/API.
 - [ ] Trocar `alert()` dos formulários por mensagens na própria página.
 
+## Mapas
+
+- [ ] Trocar o mapa para o OpenMapTiles (decisão do usuário, 13/10) e ajustar o CSP (img-src, connect-src) para os domínios dele. O Google Maps não será usado agora.
+
 ## Bugs
 
 - [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada (achado pelo Programador no #23).
