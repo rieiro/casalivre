@@ -22,7 +22,11 @@ final class CityRepository
         if (!is_array($rows)) {
             return;
         }
-        $pdo->beginTransaction();
+        // Pode rodar dentro do BEGIN IMMEDIATE de Db::pdo() (DEF-008): só abre transação própria se não houver uma.
+        $own = !$pdo->inTransaction();
+        if ($own) {
+            $pdo->beginTransaction();
+        }
         $stmt = $pdo->prepare('INSERT INTO cities (name, uf, label, lat, lng, name_fold, label_fold) VALUES (?, ?, ?, ?, ?, ?, ?)');
         foreach ($rows as $row) {
             $stmt->execute([
@@ -35,7 +39,9 @@ final class CityRepository
                 fold((string) $row['label']),
             ]);
         }
-        $pdo->commit();
+        if ($own) {
+            $pdo->commit();
+        }
     }
 
     public static function suggest(string $query, int $limit = 8): array
