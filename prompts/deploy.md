@@ -76,6 +76,32 @@ Documento único de acompanhamento do deploy. **Só o Bot Gerente Geral edita es
 - **Bloqueante:** o projeto não envia e-mail (`AccountFlow::$sendLink` é uma função vazia). Não abrir o cadastro em produção antes de implementar o envio de ativação e de redefinição de senha.
 - Pendência: o teste SSRF de `::ffff:8.8.8.8` falha no PHP 8.2 e passa no 8.4 (tarefa separada).
 
+## Condições de deploy: PRs #12 (log por allowlist) e #15 (links só em dev/local)
+
+Parecer do Bot Segurança e Arquitetura: #12 aprovado com condições; #15 não aprovado (segura até o envio de e-mail existir).
+
+### Obrigatórias
+- [ ] `APP_ENV=production` explícito no `.env` de produção.
+- [ ] `APP_URL=https://<domínio>` fixo; links de ativação e redefinição não podem depender do cabeçalho `Host` (corrigir `request_base()`).
+- [ ] nginx com `server_name` explícito e `default_server` devolvendo 444.
+- [ ] Envio de e-mail (SMTP/msmtp) funcionando antes de publicar o #15.
+- [ ] Tokens de ativação e redefinição guardados só como hash sha256; apagar as colunas `*_link`.
+- [ ] `LOG_SALT` próprio por ambiente; `zend.exception_ignore_args = On`.
+- [ ] Mesclar o #13 antes do #12 e do #15.
+- [ ] CI rodando `tests/standalone/run.php` em PHP 8.2 e 8.4.
+- [ ] `CalendarSync::isPublicIp` recusando `::ffff:0:0/96` em qualquer versão do PHP.
+- [ ] Limpeza única do `activity.sqlite` (dados pessoais em `valor_anterior`/`valor_atual` gravados antes da allowlist).
+
+### Validar em homologação
+- [ ] Cadastro, ativação e redefinição de ponta a ponta com e-mail real, sem link na tela.
+- [ ] Tempo de resposta igual para e-mail existente e inexistente no esqueci-senha e no cadastro.
+- [ ] Amostra do `activity_log` e do `api-*.log` sem nome, endereço, CEP, e-mail, CPF, telefone, IP completo ou user agent.
+
+### Backlog
+- [ ] `ExceptionShield`: mensagem e trace só no `error.log`, mascarados; no `activity_log`, só classe, código e arquivo:linha.
+- [ ] Resposta genérica no cadastro com e-mail existente (anti-enumeração).
+- [ ] `BODY_VALUE_ALLOWLIST` limitado a valores escalares.
+
 ## Backlog (próximas sprints)
 
 - `verification_link`: ver condição bloqueante 3.
