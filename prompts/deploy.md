@@ -59,9 +59,16 @@ Documento único de acompanhamento do deploy. **Só o Bot Gerente Geral edita es
 - [ ] Retenção sob carga do php-fpm, sem sobrar arquivos `*.ret-*`; exclusão real no Mongo.
 - [ ] Mascaramento de `feeds[].url` no front separado (quando existir).
 
+## Condições bloqueantes de produção (revisão pós-merge Sprint 1)
+
+1. **PHP >= 8.4** até corrigir a transação aninhada em `CityRepository::ensure` na primeira migração (quebra em 8.2/8.3).
+2. **Não publicar em produção** antes de o RequestLog mascarar nome, CEP, endereço e data de nascimento (LGPD).
+3. **Não publicar em produção** enquanto `verification_link` sair no JSON de `POST /api/users` (Api.php:121) e do login de conta pendente (Api.php:100): permite ativar conta com e-mail alheio.
+4. Corrigir o cron `sync-calendars`, que deixou de gravar as auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE`.
+
 ## Backlog (próximas sprints)
 
-- **Antes de produção (Alta)**: a API de cadastro e o login de conta pendente devolvem `verification_link` no JSON; remover ou restringir a ambiente de desenvolvimento.
+- `verification_link`: ver condição bloqueante 3.
 - Trocar `alert()` dos formulários por mensagens na própria página.
 
 - Expor ou gerar o `ical_hash` pela API (hoje só é criado ao abrir `views/calendar.php:140`).
