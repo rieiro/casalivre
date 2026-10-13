@@ -18,6 +18,7 @@ $payload = json_encode($points, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX
 <section class="wrap map-page">
     <p><a href="/busca?<?= e($query) ?>"><?= e(t('home.back_results')) ?></a></p>
     <h1><?= e(t('home.map_title')) ?><?= $filters['localidade'] !== '' ? ' · ' . e($filters['localidade']) : '' ?></h1>
+    <?php if ($searched && $results): ?><p class="muted" data-map-count><?= count($results) ?> <?= e(t('home.found')) ?></p><?php endif; ?>
     <div id="result-map" data-points="<?= e((string) $payload) ?>" data-key="<?= e($maps_key) ?>"></div>
     <?php if ($maps_key === ''): ?><p class="muted"><?= e(t('home.map_osm')) ?></p><?php endif; ?>
     <?php if (!$results): ?><p class="muted"><?= e(t('home.empty')) ?></p><?php endif; ?>
@@ -95,21 +96,3 @@ $payload = json_encode($points, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX
     });
 })();
 </script>
-<?php if (!empty($use_api)): ?>
-<script>
-// Carrega resultados via API quando use_api
-(function () {
-    const params = new URLSearchParams(window.location.search);
-    fetch('/api/busca?' + params.toString(), { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            const list = document.querySelector('.map-results, .results, .wrap') || document.body;
-            const note = document.createElement('p');
-            note.className = 'muted';
-            note.textContent = (data.items || []).length + ' imóveis (via API)';
-            list.prepend(note);
-        })
-        .catch(() => {});
-})();
-</script>
-<?php endif; ?>

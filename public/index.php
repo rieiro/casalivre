@@ -268,15 +268,14 @@ if ($path === '/' && $method === 'GET') {
 }
 
 if ($path === '/busca/mapa' && $method === 'GET') {
-    // Os pontos do mapa saem de data-points (servidor). Mesma busca de /api/busca; sem log aqui porque o
-    // map-2.js da página já chama /api/busca, que registra a busca (evita SEARCH duplicado).
-    [$filters, $results, $searched] = run_search(false);
+    // Página do mapa renderizada no servidor: pontos (data-points) e contagem saem de $results. A busca é
+    // registrada aqui (uma vez); a página não chama /api/busca.
+    [$filters, $results, $searched] = run_search(true);
     view('map', [
         'filters' => $filters,
         'results' => $results,
         'searched' => $searched,
         'maps_key' => maps_key(),
-        'use_api' => true,
     ]);
     return null;
 }
