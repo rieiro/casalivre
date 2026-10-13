@@ -95,11 +95,11 @@ $shape = is_array($j) && count(array_intersect(['cep', 'street', 'neighborhood',
 assert_true($st === 200 && is_json($h) && $shape, "GET /api/ceps?q=88010000 → 200 {cep,street,neighborhood,city,uf} (obtido $st)");
 [$st, , , $j] = api($jarAnon, 'GET', '/api/ceps?q=00000000');
 assert_true(in_array($st, [404, 422], true) && isset($j['error']), "GET /api/ceps CEP inexistente → 404/422 {error} (obtido $st)");
-// Referência: rotas legadas sem prefixo /api
+// Rotas legadas sem prefixo /api foram removidas (PR #3): devem responder 404
 [$st, $h, , $j] = api($jarAnon, 'GET', '/cidades?q=florian');
-assert_true($st === 200 && is_array($j) && isset($j[0]['text']), 'referência: GET /cidades responde lista JSON');
+assert_true($st === 404, "rota legada GET /cidades removida → 404 (obtido $st)");
 [$st, , , $j] = api($jarAnon, 'GET', '/ceps?q=88010000');
-assert_true($st === 200 && ($j['cep'] ?? '') === '88010000', 'referência: GET /ceps responde endereço JSON');
+assert_true($st === 404, "rota legada GET /ceps removida → 404 (obtido $st)");
 
 echo "Caso API-3: IDOR — usuário B não acessa imóvel do usuário A (404)\n";
 $a = new_user($jarA, 'a');
