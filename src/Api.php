@@ -18,9 +18,39 @@ function api_body(): array
     $raw = raw_body();
     if ($raw !== '' && str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json')) {
         $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : [];
+        return is_array($decoded) ? api_expand_bracket_keys($decoded) : [];
     }
     return $_POST;
+}
+
+/**
+ * Defesa para clientes que mandam JSON com chaves planas no formato de formulário
+ * ("rooms[0][beds][0][type]", "amenity[pool]"): converte em arrays aninhados com parse_str,
+ * como o PHP já faz para form-urlencoded (issue #20). Só chaves de topo com valor escalar;
+ * se a chave base já veio aninhada no JSON, ela prevalece. Limite de 1000 chaves.
+ */
+function api_expand_bracket_keys(array $data): array
+{
+    $flat = [];
+    foreach ($data as $key => $value) {
+        if (!is_string($key) || preg_match('/^[A-Za-z0-9_]{1,40}\[/', $key) !== 1) {
+            continue;
+        }
+        unset($data[$key]);
+        if ((is_scalar($value) || $value === null) && count($flat) < 1000) {
+            $flat[] = rawurlencode($key) . '=' . rawurlencode((string) ($value === false ? '' : $value));
+        }
+    }
+    if ($flat === []) {
+        return $data;
+    }
+    parse_str(implode('&', $flat), $nested);
+    foreach ($nested as $base => $value) {
+        if (!array_key_exists($base, $data)) {
+            $data[$base] = $value;
+        }
+    }
+    return $data;
 }
 
 function api_public_user(array $user): array

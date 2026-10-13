@@ -39,9 +39,11 @@
         </div>
         <p class="muted" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
         <?php $roomLayout = Rooms::forForm($posted, $current ?: null); ?>
-        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-max="999">
+        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-bed-one="<?= e(t('form.bed_one')) ?>" data-bed-many="<?= e(t('form.bed_many')) ?>" data-max="999">
             <legend><?= e(t('form.rooms')) ?></legend>
             <p class="muted"><?= e(t('form.rooms_hint')) ?></p>
+            <section class="rooms-editor" aria-labelledby="rooms-editor-title">
+            <h3 class="rooms-subtitle" id="rooms-editor-title"><?= e(t('form.beds_add_title')) ?></h3>
             <div data-room-list>
                 <?php foreach ($roomLayout as $roomIndex => $room): ?>
                     <div class="room-card" data-room>
@@ -74,7 +76,17 @@
                 <?php endforeach; ?>
             </div>
             <button class="danger" type="button" data-add-room><?= e(t('form.add_room')) ?></button>
-            <p class="muted" data-room-count></p>
+            </section>
+            <section class="rooms-summary" aria-labelledby="rooms-summary-title" aria-live="polite">
+                <h3 class="rooms-subtitle" id="rooms-summary-title"><?= e(t('form.room_summary_title')) ?></h3>
+                <ul data-room-summary data-empty="<?= e(t('form.room_summary_empty')) ?>">
+                    <?php foreach ($roomLayout as $roomIndex => $room): ?>
+                        <?php $n = count($room['beds']); ?>
+                        <li><?= e(t('form.room')) ?> <?= $roomIndex + 1 ?>: <?= $n ?> <?= e($n === 1 ? t('form.bed_one') : t('form.bed_many')) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <p class="muted" data-room-count></p>
+            </section>
             <template data-bed-template>
                 <div class="bed-row" data-bed>
                     <select data-bed-type>
@@ -217,7 +229,8 @@
             return;
         }
         ev.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
+        // Converte rooms[i][beds][j][campo] e amenity[chave] em objetos/listas (issue #20).
+        const data = window.CasaLivreForm ? window.CasaLivreForm.toObject(form) : Object.fromEntries(new FormData(form).entries());
         const url = editing ? '/api/casas/' + hash : '/api/casas';
         const method = editing ? 'PUT' : 'POST';
         try {
