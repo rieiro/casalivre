@@ -61,6 +61,9 @@ Documento único de acompanhamento do deploy. **Só o Bot Gerente Geral edita es
 
 ## Backlog (próximas sprints)
 
+- **Antes de produção (Alta)**: a API de cadastro e o login de conta pendente devolvem `verification_link` no JSON; remover ou restringir a ambiente de desenvolvimento.
+- Trocar `alert()` dos formulários por mensagens na própria página.
+
 - Expor ou gerar o `ical_hash` pela API (hoje só é criado ao abrir `views/calendar.php:140`).
 - Criptografar `calendar_feeds.url`, `properties.external_ical_url` e `audit_hold`, com coluna HMAC para duplicados.
 - LGPD: pseudonimizar nome, endereço e CEP em `valor_anterior` (ACCOUNT_UPDATE), política de retenção, hash de IP e e-mail; separar auditoria de BI.
