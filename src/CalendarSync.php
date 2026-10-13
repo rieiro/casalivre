@@ -24,11 +24,11 @@ final class CalendarSync
             if ($body === null) {
                 HouseRepository::markFeed((int) $feed['id'], 'NOK', $now);
                 $nok++;
-                $lines[] = "NOK  imóvel $propertyId  {$feed['url']}";
+                $lines[] = "NOK  imóvel $propertyId  " . self::logRef((string) $feed['url']);
                 if (function_exists('activity')) {
                     activity(ActivityLog::CALENDAR_SYNC, [
                         'imovel_id' => $propertyId,
-                        'url' => (string) $feed['url'],
+                        'url' => self::logRef((string) $feed['url']),
                         'resultado' => 'nok',
                     ]);
                 }
@@ -37,11 +37,11 @@ final class CalendarSync
             $written = import_ics($propertyId, $body, $blockedByProperty[$propertyId]);
             HouseRepository::markFeed((int) $feed['id'], 'OK', $now);
             $ok++;
-            $lines[] = "OK   imóvel $propertyId  novas=$written  {$feed['url']}";
+            $lines[] = "OK   imóvel $propertyId  novas=$written  " . self::logRef((string) $feed['url']);
             if (function_exists('activity')) {
                 activity(ActivityLog::CALENDAR_SYNC, [
                     'imovel_id' => $propertyId,
-                    'url' => (string) $feed['url'],
+                    'url' => self::logRef((string) $feed['url']),
                     'novas' => $written,
                     'resultado' => 'ok',
                 ]);
@@ -62,18 +62,33 @@ final class CalendarSync
     /** Número máximo de redirecionamentos, cada um revalidado. */
     public const MAX_REDIRECTS = 3;
 
+    /** Orçamento total (s) da ressincronização síncrona feita no DELETE de um feed. */
+    public const RESYNC_BUDGET_SECONDS = 15.0;
+    /** Timeout máximo (s) por feed durante a ressincronização síncrona. */
+    public const RESYNC_FEED_TIMEOUT = 6;
+
     /**
-     * Ressincroniza todos os feeds de um imóvel (usado após excluir um feed,
-     * depois de releaseImported). Marca OK/NOK em cada feed.
+     * Ressincroniza os feeds de um imóvel (usado após excluir um feed,
+     * depois de releaseImported). Respeita um orçamento total de tempo: feeds
+     * que não couberem são marcados como PENDENTE e ficam para o cron
+     * (scripts/sync-calendars.php sincroniza todos os feeds).
      *
-     * @return array{ok: int, nok: int}
+     * @return array{ok: int, nok: int, pendentes: int}
      */
-    public static function resyncProperty(int $propertyId): array
+    public static function resyncProperty(int $propertyId, float $budget = self::RESYNC_BUDGET_SECONDS): array
     {
+        $deadline = microtime(true) + $budget;
         $ok = 0;
         $nok = 0;
+        $pending = 0;
         foreach (HouseRepository::feeds($propertyId) as $feed) {
-            $body = self::fetch((string) $feed['url']);
+            $remaining = (int) floor($deadline - microtime(true));
+            if ($remaining < 2) {
+                HouseRepository::markFeedPending((int) $feed['id']);
+                $pending++;
+                continue;
+            }
+            $body = self::fetch((string) $feed['url'], min(self::RESYNC_FEED_TIMEOUT, $remaining));
             $now = date('Y-m-d H:i:s');
             if ($body === null) {
                 HouseRepository::markFeed((int) $feed['id'], 'NOK', $now);
@@ -84,7 +99,26 @@ final class CalendarSync
             HouseRepository::markFeed((int) $feed['id'], 'OK', $now);
             $ok++;
         }
-        return ['ok' => $ok, 'nok' => $nok];
+        return ['ok' => $ok, 'nok' => $nok, 'pendentes' => $pending];
+    }
+
+    /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
+    public static function logRef(?string $url): ?string
+    {
+        if ($url === null || $url === '') {
+            return $url;
+        }
+        $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
+        return ($host !== '' ? strtolower($host) : '?') . '#' . substr(hash('sha256', $url), 0, 12);
+    }
+
+    /** Cópia da linha de feed para auditoria, com a URL substituída por logRef(). */
+    public static function logFeed(mixed $feed): mixed
+    {
+        if (is_array($feed) && isset($feed['url'])) {
+            $feed['url'] = self::logRef((string) $feed['url']);
+        }
+        return $feed;
     }
 
     /**
@@ -95,7 +129,7 @@ final class CalendarSync
      * - redirecionamentos seguidos manualmente e revalidados a cada salto;
      * - corpo limitado a MAX_BYTES.
      */
-    public static function fetch(string $url): ?string
+    public static function fetch(string $url, int $timeout = 20): ?string
     {
         if (function_exists('exported_calendar_body')) {
             $local = exported_calendar_body($url);
@@ -112,7 +146,7 @@ final class CalendarSync
             if ($target === null) {
                 return null;
             }
-            $result = self::request($current, $target);
+            $result = self::request($current, $target, $timeout);
             if ($result === null) {
                 return null;
             }
@@ -210,6 +244,23 @@ final class CalendarSync
             }
             return true;
         }
+        // Prefixos IPv6 que embutem/encaminham IPv4 ou não são roteáveis: recusa (conservador).
+        $hex = bin2hex($bin);
+        $blockedV6 = [
+            ['00000000000000000000000000000000', 96], // ::/96 (IPv4-compatível, inclui ::)
+            ['0064ff9b000000000000000000000000', 96], // 64:ff9b::/96 (NAT64)
+            ['0064ff9b000100000000000000000000', 48], // 64:ff9b:1::/48 (NAT64 local)
+            ['20020000000000000000000000000000', 16], // 2002::/16 (6to4)
+            ['20010000000000000000000000000000', 32], // 2001::/32 (Teredo)
+            ['20010db8000000000000000000000000', 32], // 2001:db8::/32 (documentação)
+            ['01000000000000000000000000000000', 64], // 100::/64 (discard)
+        ];
+        foreach ($blockedV6 as [$net, $bits]) {
+            $nibbles = intdiv($bits, 4);
+            if (strncmp($hex, $net, $nibbles) === 0) {
+                return false;
+            }
+        }
         $first = ord($bin[0]);
         // fc00::/7 (ULA), fe80::/10 (link-local), ff00::/8 (multicast)
         if (($first & 0xFE) === 0xFC || $first === 0xFF || ($first === 0xFE && (ord($bin[1]) & 0xC0) === 0x80)) {
@@ -222,7 +273,7 @@ final class CalendarSync
      * @param array{host: string, port: int, ip: string} $target
      * @return array{0: int, 1: string, 2: string}|null
      */
-    private static function request(string $url, array $target): ?array
+    private static function request(string $url, array $target, int $timeout = 20): ?array
     {
         $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
         $buffer = '';
@@ -232,8 +283,8 @@ final class CalendarSync
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_RESOLVE => [$target['host'] . ':' . $target['port'] . ':' . $ip],
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => max(1, $timeout),
+            CURLOPT_CONNECTTIMEOUT => min(5, max(1, $timeout)),
             CURLOPT_USERAGENT => 'CasaLivre/1.0',
             CURLOPT_HTTPHEADER => ['Accept: text/calendar, text/plain, */*'],
             CURLOPT_NOPROXY => '*',

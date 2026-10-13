@@ -429,6 +429,12 @@ final class HouseRepository
         ]];
     }
 
+    /** Marca o feed para a próxima sincronização do cron, sem alterar last_synced_at. */
+    public static function markFeedPending(int $id): void
+    {
+        db()->prepare("UPDATE calendar_feeds SET last_status = 'PENDENTE' WHERE id = ?")->execute([$id]);
+    }
+
     public static function markFeed(int $id, string $status, string $at): void
     {
         db()->prepare('UPDATE calendar_feeds SET last_status = ?, last_synced_at = ? WHERE id = ?')->execute([$status, $at, $id]);
