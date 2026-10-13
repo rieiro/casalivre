@@ -51,6 +51,20 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)
     print("  alerta:", dialogs)
     rooms.screenshot(path=f"{shots}/{mode}-after-save.png")
+    if mode == "after":
+        # Sem form-data.js: erro visível e nada enviado.
+        page2 = browser.new_page(locale="pt-BR")
+        page2.context.add_cookies(page.context.cookies())
+        page2.route("**/assets/form-data.js*", lambda r: r.abort())
+        sent = []
+        page2.on("request", lambda req: sent.append(req.url) if "/api/casas/" in req.url else None)
+        msgs = []
+        page2.on("dialog", lambda d: (msgs.append(d.message), d.accept()))
+        page2.goto(base + "/imoveis/" + ref + "/editar")
+        page2.check('input[name="amenity[ethernet]"]')
+        page2.locator("[data-save-house]").click()
+        page2.wait_for_timeout(800)
+        check(bool(msgs) and "Recarregue" in msgs[0] and not sent, f"sem conversor: erro visível e nada enviado ({msgs[:1]}, {len(sent)} req)")
     browser.close()
 
 con = sqlite3.connect(db)
