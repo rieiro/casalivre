@@ -114,4 +114,14 @@ php scripts/run-casos-de-teste.php
   15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
   ```
 - **Falhas de escrita** do log de requisições incrementam `RequestLog::$writeFailures` e geram `error_log` sem dados.
+- **Query string no log da API:** rotas de iCal (`/api/ical/…`, `/ical/…`, `*.ics`) gravam a query vazia. Nas demais, só as chaves de `RequestLog::QUERY_VALUE_ALLOWLIST` (`q`, `localidade`, `checkin`, `checkout`, `hospedes`, …) têm o valor gravado. As outras chaves aparecem só pelo nome (valor `null`). Em `/api/ceps` só os nomes das chaves são gravados.
+- **MongoDB (`LOG_DRIVER=mongodb`):** a retenção usa `deleteMany` com `created_at` anterior ao corte. Não há índice TTL porque `created_at` é string, e TTL exige campo Date. Sem a extensão `mongodb`, o passo é ignorado com aviso.
+- **runit (Void Linux):** o serviço `deploy/runit/casalivre-log-retention/run` roda a retenção e dorme 24h; o runit o reinicia, então ela se repete todo dia.
+
+  ```
+  sudo cp -r deploy/runit/casalivre-log-retention /etc/sv/
+  # opcional: /etc/sv/casalivre-log-retention/conf com APP_DIR, APP_USER, RETENTION_DAYS, PHP_BIN
+  sudo ln -s /etc/sv/casalivre-log-retention /var/service/
+  ```
+- **Buscar registros de um usuário:** `php scripts/log-lookup.php <user_id>` calcula o HMAC do id com `LOG_SALT` (mesma função dos logs) e lista os registros do `activity_log` (SQLite e Mongo, se configurado) e dos `storage/logs/api/api-*`, um JSON por linha. Sem `LOG_SALT` o script se recusa a rodar (código 2). Para outra instalação, use `--root=/caminho`.
 
