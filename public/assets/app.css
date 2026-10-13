@@ -14,8 +14,6 @@ header.top a, footer { color: white; text-decoration: none; }
 header.top nav { display: flex; gap: 16px; align-items: center; }
 button.linkish { background: none; border: 0; color: white; cursor: pointer; font: inherit; padding: 0; }
 .hero { background: #003580; color: white; padding: 8px 0 28px; }
-.hero .studio-entry { margin: 12px 0 0; }
-.hero .studio-entry a { color: white; text-decoration: underline; }
 .hero h1 { margin: 0 0 8px; }
 .search { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr) auto; gap: 8px; background: white; padding: 10px; border-radius: 8px; color: var(--ink); }
 .search input, .search select, .panel input, .panel select, .panel textarea, .cal-controls input, button.primary {

@@ -17,6 +17,5 @@
             </label>
             <button type="submit"><?= e(t('home.search')) ?></button>
         </form>
-        <p class="studio-entry"><a href="/busca-novo"><?= e(t('nav.studio')) ?></a></p>
     </div>
 </section>

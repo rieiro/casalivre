@@ -23,7 +23,6 @@
     <label class="nav-toggle-label" for="nav-toggle"><?= e(t('nav.menu')) ?></label>
     <nav>
         <a href="/"><?= e(t('nav.search')) ?></a>
-        <a href="/busca-novo"><?= e(t('nav.studio')) ?></a>
         <?php if (!empty($user)): ?>
             <a href="/painel"><?= e(t('nav.properties')) ?></a>
             <a href="/conta"><?= e(t('nav.account')) ?></a>

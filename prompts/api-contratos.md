@@ -204,7 +204,7 @@ Importar feed iCal.
 #### `DELETE /api/imoveis/{hash}/ical/{id}`
 Remover feed iCal.
 
-#### `GET /api/imoveis/{hash}/calendario.ics`
+#### `GET /api/ical/{ical_hash}.ics` (somente hash secreto de 32 hex; a rota antiga por hash público responde 404)
 Exportar calendário em formato ICS (retorna `text/calendar`).
 
 ---
@@ -224,5 +224,5 @@ Exportar calendário em formato ICS (retorna `text/calendar`).
 ## Notas
 
 - Manter os endpoints atuais de `/api/casas` e `/api/users`.
-- As rotas `/cidades` e `/ceps` podem ser movidas para `/api/cidades` e `/api/ceps` (opcional, por consistência).
+- As rotas legadas `/cidades` e `/ceps` foram removidas; use `/api/cidades` e `/api/ceps`.
 - Quando o frontend for separado, a autenticação por sessão precisará de ajustes (CORS + cookie `SameSite`/`Secure` ou token).

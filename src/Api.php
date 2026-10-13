@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/IpRateLimiter.php';
+require_once __DIR__ . '/RequestLog.php';
+
 function json_out(int $status, array $data): never
 {
     http_response_code($status);
@@ -119,6 +122,41 @@ function handle_api(string $path, string $method): void
     }
 
     $user = current_user();
+
+    // Geo: autocomplete de cidades e consulta de CEP (públicos, somente leitura)
+    // Limite por IP nos endpoints públicos de geo: 60 requisições/minuto por endpoint.
+    if (($path === '/api/cidades' || $path === '/api/ceps') && $method === 'GET') {
+        $wait = IpRateLimiter::hit($path, 60, 60);
+        if ($wait > 0) {
+            header('Retry-After: ' . $wait);
+            json_out(429, ['error' => 'Muitas requisições. Tente novamente em instantes.']);
+        }
+    }
+
+    if ($path === '/api/cidades' && $method === 'GET') {
+        $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 80);
+        json_out(200, CityRepository::suggest($q));
+    }
+
+    if ($path === '/api/ceps' && $method === 'GET') {
+        $digits = preg_replace('/\D+/', '', (string) ($_GET['q'] ?? '')) ?? '';
+        if (strlen($digits) !== 8) {
+            json_out(422, ['error' => 'CEP deve ter 8 dígitos.']);
+        }
+        $row = CepRepository::find($digits);
+        if (!$row || trim((string) $row['street']) === '') {
+            json_out(404, ['error' => 'CEP não encontrado ou sem rua cadastrada.']);
+        }
+        $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
+        json_out(200, [
+            'cep' => $row['cep'],
+            'street' => $row['street'],
+            'neighborhood' => $row['neighborhood'],
+            'city' => $row['city'],
+            'uf' => $row['uf'],
+            'city_label' => $known['label'] ?? ($row['city'] . ', ' . $row['uf']),
+        ]);
+    }
     if (!$user && preg_match('#^/api/(users/eu|casas)#', $path)) {
         json_out(401, ['error' => 'Autenticação necessária.']);
     }
@@ -340,10 +378,10 @@ function handle_api(string $path, string $method): void
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
         $id = (int) $property['id'];
-        HouseRepository::clearBlockedAfter($id, max_calendar_day($property));
+        // Somente leitura: noites além do horizonte são filtradas, não apagadas.
         json_out(200, [
             'id' => property_ref($property),
-            'days' => HouseRepository::calendarDays($id),
+            'days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($property)),
             'feeds' => HouseRepository::feeds($id),
         ]);
     }
@@ -482,22 +520,34 @@ function handle_api(string $path, string $method): void
         if ($error === 'title') {
             json_out(422, ['error' => 'Título obrigatório.']);
         }
-        $icsBody = exported_calendar_body($url) ?? CalendarSync::fetch($url) ?? (string) ($body['ics_body'] ?? '');
+        // Nunca aceitar corpo .ics enviado pelo cliente: só o que o servidor baixar.
+        $icsBody = exported_calendar_body($url) ?? CalendarSync::fetch($url);
         $count = 0;
-        if ($icsBody !== '') {
+        $status = is_string($icsBody) && $icsBody !== '' ? 'OK' : 'NOK';
+        if ($status === 'OK') {
             $count = import_ics((int) $property['id'], $icsBody);
-            foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
-                if ($feed['url'] === $url) {
-                    HouseRepository::markFeed((int) $feed['id'], 'OK', date('Y-m-d H:i:s'));
-                    break;
-                }
+        }
+        foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
+            if ($feed['url'] === $url) {
+                HouseRepository::markFeed((int) $feed['id'], $status, date('Y-m-d H:i:s'));
+                break;
             }
         }
         activity(ActivityLog::CALENDAR_SYNC, [
             'imovel_id' => (int) $property['id'],
-            'url' => $url,
+            'url' => CalendarSync::logRef($url),
             'novas' => $count,
+            'resultado' => strtolower($status),
         ]);
+        if ($status === 'NOK') {
+            json_out(200, [
+                'ok' => true,
+                'status' => 'NOK',
+                'importadas' => 0,
+                'message' => t('cal.import_fail'),
+                'feeds' => HouseRepository::feeds((int) $property['id']),
+            ]);
+        }
         json_out(200, [
             'ok' => true,
             'importadas' => $count,
@@ -519,21 +569,34 @@ function handle_api(string $path, string $method): void
         if (empty($removed['feed'])) {
             json_out(404, ['error' => 'Feed não encontrado.']);
         }
-        activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]]);
-        json_out(200, ['ok' => true, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+        $released = HouseRepository::nightAudit(HouseRepository::releaseImported((int) $property['id']));
+        activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]], [
+            'feed' => CalendarSync::logFeed($removed['feed']),
+            'link' => CalendarSync::logRef($removed['link'][0]['old']['external_ical_url'] ?? null),
+            'noites' => $released['anterior'],
+        ], [
+            'link' => CalendarSync::logRef($removed['link'][0]['new']['external_ical_url'] ?? null),
+            'noites' => $released['atual'],
+        ]);
+        $resync = CalendarSync::resyncProperty((int) $property['id']);
+        json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
-    // Exportar ICS (por hash público)
-    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path, $m) && $method === 'GET') {
-        $house = HouseRepository::findByPublicHash($m[1]);
+    // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.
+    if (preg_match('#^/api/ical/([a-f0-9]{32})(\.ics)?$#', $path, $m) && $method === 'GET') {
+        $house = HouseRepository::findByIcalHash($m[1]);
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
+            json_out(404, ['error' => 'Não encontrado.']);
         }
         activity(ActivityLog::CALENDAR_EXPORT, ['imovel_id' => (int) $house['id']]);
         header('Content-Type: text/calendar; charset=utf-8');
         header('Content-Disposition: inline; filename="casalivre-' . property_ref($house) . '.ics"');
         echo export_ics($house);
         exit;
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path) && $method === 'GET') {
+        json_out(404, ['error' => 'Não encontrado.']);
     }
 
     json_out(404, ['error' => 'Rota não encontrada.']);
