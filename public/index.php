@@ -35,6 +35,13 @@ SecureSession::start();
 expire_user_session();
 ExceptionShield::register();
 
+// Log por requisição da API iniciado ANTES do pipeline de segurança, para que as
+// respostas 401/419/429 geradas pelos middlewares (que encerram com exit) também
+// sejam registradas pelo shutdown hook do RequestLog.
+if (str_starts_with($path, '/api')) {
+    RequestLog::start($path, $method, api_body());
+}
+
 // CORS para frontend em outro servidor (configurar CORS_ORIGIN no .env)
 $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
 $allowed = getenv('CORS_ORIGIN') ?: '';
@@ -100,7 +107,7 @@ function casa_privado(string $path, string $method): bool
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
 }
 
-function casa_recusar(string $code, string $path): void
+function casa_recusar(string $code, string $path): never
 {
     $api = str_starts_with($path, '/api');
     if ($code === 'csrf') {
@@ -120,10 +127,10 @@ function casa_recusar(string $code, string $path): void
         if ($api) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-            return;
+            exit;
         }
         view('login', ['error' => $message]);
-        return;
+        exit;
     }
     if ($code === 'login') {
         header('Location: /entrar');
