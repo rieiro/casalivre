@@ -39,3 +39,9 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - `logRef` com `LogPrivacy::url()`; `redactPath` cobrindo segmentos opacos de 20+ caracteres; flock/rotação no LogRetention.
 - Fluent Bit, banco de log separado e outbox de auditoria.
 - Migrar fotos, calendário, formulário de imóvel e autenticação para fetch/API.
+
+## PR #8: infraestrutura de testes (PHPUnit)
+
+- [ ] **PHP >= 8.2** em produção e em CI (exigido em `composer.json`: `"php": ">=8.2"`). Extensões usadas pelo app: `pdo_sqlite` (ou `pdo_pgsql`), `curl`, `mbstring`.
+- [ ] **Composer/PHPUnit só para testes**: `phpunit/phpunit` e as outras dependências de desenvolvimento não vão para produção. Em produção, usar `composer install --no-dev --optimize-autoloader` ou não usar composer (o app não depende de `vendor/` em runtime).
+- [ ] **Não publicar** `tests/`, `phpunit.xml`, `.phpunit.cache/` nem `vendor/` de desenvolvimento no servidor. `vendor/` está no `.gitignore`.
