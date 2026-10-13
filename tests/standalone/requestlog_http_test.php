@@ -36,9 +36,13 @@ $e = log_entry($logDir, $r['headers']);
 t_ok(in_array($r['status'], [401, 419], true), 'rota privada sem sessão é recusada (' . $r['status'] . ')');
 t_eq($r['status'], $e['status'] ?? null, 'recusa aparece no log com o mesmo status');
 
-$r = t_http('GET', $base . '/api/ical/' . $owner['ical_hash'] . '.ics');
+$r = t_http('GET', $base . '/api/ical/' . $owner['ical_hash'] . '.ics?t=SECRETQ');
 $e = log_entry($logDir, $r['headers']);
 t_ok($e !== null && !str_contains(json_encode($e), $owner['ical_hash']), 'ical_hash não aparece no log');
+t_ok($e !== null && $e['query'] === [] && !str_contains(json_encode($e), 'SECRETQ'), 'query de rota iCal gravada vazia');
+$r = t_http('GET', $base . '/api/cidades?q=flo&t=SECRETQ');
+$e = log_entry($logDir, $r['headers']);
+t_eq(['q' => 'flo', 't' => null], $e['query'] ?? null, 'query fora da allowlist: só o nome da chave');
 
 echo "429 encerra antes do dispatch\n";
 db()->prepare('INSERT INTO login_rate_limit (ip, failures, locked_until) VALUES (?, ?, ?)')

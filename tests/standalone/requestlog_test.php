@@ -86,6 +86,18 @@ array_map('unlink', glob($dir . '/api/*') ?: []);
 @rmdir($dir . '/api');
 @rmdir($dir);
 
+echo "query string\n";
+t_eq([], RequestLog::queryForLog('/api/ical/' . str_repeat('ab', 16) . '.ics', ['t' => 'SECRET']), '/api/ical: query vazia');
+t_eq([], RequestLog::queryForLog('/ical/' . str_repeat('ab', 16), ['t' => 'SECRET']), '/ical: query vazia');
+t_eq([], RequestLog::queryForLog('/api/qualquer.ics', ['t' => 'SECRET']), '*.ics: query vazia');
+$q = RequestLog::queryForLog('/api/busca', ['localidade' => 'Floripa', 'hospedes' => '2', 't' => 'SECRET', 'token' => 'X']);
+t_eq(['localidade' => 'Floripa', 'hospedes' => '2', 't' => null, 'token' => null], $q, 'allowlist: valores só de chaves permitidas; demais só o nome');
+t_ok(!str_contains((string) json_encode($q), 'SECRET'), 'valor fora da allowlist não aparece');
+t_eq(['q' => null], RequestLog::queryForLog('/api/ceps', ['q' => '88000000']), '/api/ceps: só nome da chave');
+t_eq(['q' => 'flo'], RequestLog::queryForLog('/api/cidades', ['q' => 'flo']), '/api/cidades: q permitido');
+$q = RequestLog::queryForLog('/api/busca', ['localidade' => 'meu cpf 52998224725']);
+t_ok(!str_contains((string) json_encode($q), '52998224725'), 'valor permitido ainda passa pela máscara');
+
 echo "ActivityLog\n";
 require_once CL_ROOT . '/src/ActivityLog.php';
 $p = ActivityLog::safeParams(['email' => 'joao@x.com', 'ip' => '203.0.113.9', 'cpf' => '52998224725', 'password' => 'x', 'imovel_id' => 3]);

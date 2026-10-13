@@ -62,7 +62,7 @@ final class RequestLog
                     'ip' => LogPrivacy::ip((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
                     'user' => isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
                     'user_agent' => LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
-                    'query' => self::mask($query),
+                    'query' => self::queryForLog($path, $query),
                     'body' => self::mask($body),
                 ]);
             } catch (Throwable) {
@@ -124,6 +124,35 @@ final class RequestLog
             return '***';
         }
         return mb_substr($email, 0, 1) . '***' . substr($email, $at);
+    }
+
+    /** Chaves de query cujo VALOR pode ser gravado (demais: só o nome da chave, valor null). */
+    public const QUERY_VALUE_ALLOWLIST = [
+        'q', 'localidade', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
+        'score_min', 'amenidade', 'pagina', 'ordem', 'locale', 'cal_view',
+    ];
+
+    /**
+     * Query string para o log:
+     * - rotas de iCal (/api/ical/..., /ical/..., *.ics): sempre vazia;
+     * - /api/ceps: só nomes de chave (o CEP pode identificar endereço);
+     * - demais: valores só para chaves da allowlist (ainda passam pela máscara); outras chaves -> null.
+     */
+    public static function queryForLog(string $path, array $query): array
+    {
+        if (str_starts_with($path, '/api/ical/') || str_starts_with($path, '/ical/') || str_ends_with(strtolower($path), '.ics')) {
+            return [];
+        }
+        $allow = $path === '/api/ceps' ? [] : self::QUERY_VALUE_ALLOWLIST;
+        $out = [];
+        foreach ($query as $key => $value) {
+            $key = (string) $key;
+            if (preg_match('/^[A-Za-z0-9_.\-\[\]]{1,40}$/', $key) !== 1) {
+                continue;
+            }
+            $out[$key] = in_array($key, $allow, true) ? self::mask($value) : null;
+        }
+        return $out;
     }
 
     /** Substitui segmentos de 32 hex (ical_hash) por {hash}. Alinhado com Redact::path. */
