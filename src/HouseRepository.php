@@ -353,11 +353,39 @@ final class HouseRepository
             ->execute([$origin, $propertyId, $day]);
     }
 
+    /**
+     * Feeds para exibição/API: só campos seguros e URL mascarada (esquema + host + ••••).
+     * A URL real pode conter token; para sincronizar use feedsWithUrl().
+     */
     public static function feeds(int $propertyId): array
+    {
+        $stmt = db()->prepare('SELECT id, property_id, title, url, last_status, last_synced_at FROM calendar_feeds WHERE property_id = ? ORDER BY id');
+        $stmt->execute([$propertyId]);
+        $rows = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $row['url'] = self::maskFeedUrl((string) $row['url']);
+            $rows[] = $row;
+        }
+        return $rows;
+    }
+
+    /** Uso interno (sincronização/comparação): inclui a URL real. Nunca devolver ao cliente. */
+    public static function feedsWithUrl(int $propertyId): array
     {
         $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE property_id = ? ORDER BY id');
         $stmt->execute([$propertyId]);
         return $stmt->fetchAll();
+    }
+
+    /** https://www.airbnb.com/calendar/ical/123.ics?s=TOKEN -> https://www.airbnb.com/•••• */
+    public static function maskFeedUrl(string $url): string
+    {
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!is_string($host) || $host === '') {
+            return '••••';
+        }
+        return (is_string($scheme) ? strtolower($scheme) : 'https') . '://' . strtolower($host) . '/••••';
     }
 
     public static function feedsForActiveAccounts(): array
@@ -435,6 +463,12 @@ final class HouseRepository
             'old' => ['external_ical_url' => is_array($old) ? ($old['external_ical_url'] ?? null) : null],
             'new' => ['external_ical_url' => $rows[0]['external_ical_url'] ?? ''],
         ]];
+    }
+
+    /** Marca o feed para a próxima sincronização do cron, sem alterar last_synced_at. */
+    public static function markFeedPending(int $id): void
+    {
+        db()->prepare("UPDATE calendar_feeds SET last_status = 'PENDENTE' WHERE id = ?")->execute([$id]);
     }
 
     public static function markFeed(int $id, string $status, string $at): void

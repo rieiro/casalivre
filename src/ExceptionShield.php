@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Redact.php';
+
 final class ExceptionShield
 {
     public static function register(): void
@@ -9,7 +11,7 @@ final class ExceptionShield
         set_exception_handler(static function (Throwable $e): void {
             $ref = 'CL-' . strtoupper(bin2hex(random_bytes(4)));
             $when = date('Y-m-d H:i:s');
-            $route = (string) ($_SERVER['REQUEST_URI'] ?? '');
+            $route = Redact::route((string) ($_SERVER['REQUEST_URI'] ?? ''));
             $methodName = (string) ($_SERVER['REQUEST_METHOD'] ?? '');
             $dir = dirname(__DIR__) . '/storage';
             if (!is_dir($dir)) {
@@ -17,7 +19,7 @@ final class ExceptionShield
             }
             @file_put_contents(
                 $dir . '/error.log',
-                date('c') . " $ref " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n",
+                date('c') . " $ref $methodName $route " . Redact::text($e->getMessage()) . "\n" . Redact::text($e->getTraceAsString()) . "\n",
                 FILE_APPEND
             );
             if (function_exists('activity')) {
@@ -28,10 +30,10 @@ final class ExceptionShield
                         'rota' => $route,
                         'metodo' => $methodName,
                         'tipo' => $e::class,
-                        'mensagem' => substr($e->getMessage(), 0, 500),
+                        'mensagem' => substr(Redact::text($e->getMessage()), 0, 500),
                         'arquivo' => $e->getFile(),
                         'linha' => $e->getLine(),
-                        'rastreio' => substr($e->getTraceAsString(), 0, 4000),
+                        'rastreio' => substr(Redact::text($e->getTraceAsString()), 0, 4000),
                     ]);
                 } catch (Throwable) {
                 }

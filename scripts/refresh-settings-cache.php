@@ -4,14 +4,14 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-require $root . '/src/Db.php';
-require $root . '/src/Settings.php';
-require $root . '/src/I18n.php';
-require $root . '/src/CityRepository.php';
+require_once $root . '/src/Db.php';
+require_once $root . '/src/Settings.php';
+require_once $root . '/src/I18n.php';
+require_once $root . '/src/CityRepository.php';
 if (!class_exists('JsonCache', false)) {
-    require $root . '/src/JsonCache.php';
+    require_once $root . '/src/JsonCache.php';
 }
-require $root . '/src/CepRepository.php';
+require_once $root . '/src/CepRepository.php';
 
 $settings = Settings::refresh();
 $translations = I18n::refresh();
