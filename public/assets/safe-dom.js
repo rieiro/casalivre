@@ -8,19 +8,28 @@ window.CL = {
             return {};
         }
     },
+    PROPS: { classname: 'className', textcontent: 'textContent', type: 'type', name: 'name', value: 'value' },
+    URL_ATTRS: ['href', 'src', 'action', 'formaction', 'xlink:href'],
     // el('p', {className: 'muted'}, 'texto', outroNo): texto sempre via textContent.
     el(tag, props, ...children) {
         const node = document.createElement(tag);
         Object.entries(props || {}).forEach(([k, v]) => {
             if (v === null || v === undefined || v === false) return;
-            // Atributos perigosos nunca passam: handlers on*, srcdoc, formaction, style (CSP sem inline).
-            if (/^on/i.test(k) || /^(srcdoc|formaction|style)$/i.test(k)) {
+            // Nome sempre comparado em minúsculas (HREF, OnClick, Src... não escapam das regras).
+            const name = String(k).toLowerCase();
+            // Nunca passam: handlers on*, srcdoc, style (CSP sem inline).
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style') {
                 throw new Error('CL.el: atributo proibido: ' + k);
             }
-            if (k === 'className' || k === 'textContent' || k === 'type' || k === 'name' || k === 'value') node[k] = v;
-            else if (k === 'href') node.href = CL.safeHref(v);
-            else if (k === 'src') node.src = CL.photoUrl(v);
-            else node.setAttribute(k, v === true ? '' : String(v));
+            if (CL.PROPS[name]) {
+                node[CL.PROPS[name]] = v;
+            } else if (CL.URL_ATTRS.includes(name)) {
+                // Atributos de URL: só caminhos relativos do site (safeHref); <img src> ainda só /uploads/.
+                const url = CL.safeHref(v);
+                node.setAttribute(name, name === 'src' && node.tagName === 'IMG' ? CL.photoUrl(url) : url);
+            } else {
+                node.setAttribute(name, v === true ? '' : String(v));
+            }
         });
         children.flat().forEach((c) => {
             if (c === null || c === undefined || c === false) return;

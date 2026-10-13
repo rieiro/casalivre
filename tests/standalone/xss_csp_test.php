@@ -98,7 +98,7 @@ $js = <<<'JS'
 const vm = require('vm'), fs = require('fs');
 class Node {}
 class El extends Node {
-    constructor(t) { super(); this.tag = t; this.attrs = {}; this.kids = []; }
+    constructor(t) { super(); this.tagName = String(t).toUpperCase(); this.attrs = {}; this.kids = []; }
     setAttribute(k, v) { this.attrs[k] = v; }
     appendChild(c) { this.kids.push(c); }
 }
@@ -111,11 +111,26 @@ const out = {};
 for (const h of ['/imoveis/x', '/', '//evil.com', '/\\evil.com', '/\\/evil.com', 'javascript:alert(1)', 'https://evil.com', '/\t/evil.com', '/\n/x', ' /x', '']) {
     out['href:' + JSON.stringify(h)] = CL.safeHref(h);
 }
-for (const k of ['onclick', 'onError', 'ONLOAD', 'srcdoc', 'formaction', 'formAction', 'style', 'STYLE']) {
+for (const k of ['onclick', 'onError', 'ONLOAD', 'OnClick', 'srcdoc', 'SRCDOC', 'style', 'STYLE', 'Style']) {
     try { CL.el('a', { [k]: 'alert(1)' }); out['attr:' + k] = 'aceito'; } catch (e) { out['attr:' + k] = 'recusado'; }
 }
 out.ok = CL.el('a', { href: '/x', title: 't', 'data-x': '1' }).attrs.title;
-out.okHref = CL.el('a', { href: '//evil.com' }).href;
+out.okHref = CL.el('a', { href: '//evil.com' }).attrs.href;
+// Atributos de URL (qualquer caixa) passam por safeHref; <img src> ainda só /uploads/.
+const urlCases = {
+    HREF: ['a', 'HREF', 'javascript:alert(1)'], Href: ['a', 'Href', '/\\evil.com'], action: ['form', 'action', 'https://evil.com/x'],
+    ACTION: ['form', 'ACTION', '//evil.com'], formaction: ['button', 'formaction', 'javascript:alert(1)'],
+    formAction: ['button', 'formAction', '//evil.com'], xlink: ['a', 'xlink:href', 'javascript:alert(1)'],
+    XLINK: ['a', 'XLINK:HREF', 'data:text/html,x'], srcIframe: ['iframe', 'src', 'javascript:alert(1)'],
+    SrcImg: ['img', 'Src', 'javascript:alert(1)'], srcImgUpload: ['img', 'SRC', '/uploads/a.jpg'],
+    okAction: ['form', 'action', '/imoveis/x'], okFormaction: ['button', 'formAction', '/x/excluir'],
+};
+for (const [key, [tag, attr, val]] of Object.entries(urlCases)) {
+    const node = CL.el(tag, { [attr]: val });
+    out['url:' + key] = node.attrs[attr.toLowerCase()];
+    out['urlraw:' + key] = Object.keys(node.attrs).filter((a) => a !== attr.toLowerCase()).length;
+}
+out.classProp = CL.el('p', { CLASSNAME: 'x' }).className;
 console.log(JSON.stringify(out));
 JS;
 $tmp = tempnam(sys_get_temp_dir(), 'sd') . '.js';
@@ -127,10 +142,18 @@ t_eq('/', $res['href:"/"'] ?? null, 'safeHref aceita /');
 foreach (['"//evil.com"', '"/\\\\evil.com"', '"/\\\\/evil.com"', '"javascript:alert(1)"', '"https://evil.com"', '"/\\t/evil.com"', '"/\\n/x"', '" /x"', '""'] as $h) {
     t_eq('#', $res['href:' . $h] ?? null, "safeHref recusa $h");
 }
-foreach (['onclick', 'onError', 'ONLOAD', 'srcdoc', 'formaction', 'formAction', 'style', 'STYLE'] as $k) {
+foreach (['onclick', 'onError', 'ONLOAD', 'OnClick', 'srcdoc', 'SRCDOC', 'style', 'STYLE', 'Style'] as $k) {
     t_eq('recusado', $res['attr:' . $k] ?? null, "el() recusa atributo $k");
 }
 t_eq('t', $res['ok'] ?? null, 'el() aceita atributo comum');
 t_eq('#', $res['okHref'] ?? null, 'el() passa href por safeHref');
+$urlExpect = ['HREF' => '#', 'Href' => '#', 'action' => '#', 'ACTION' => '#', 'formaction' => '#', 'formAction' => '#',
+    'xlink' => '#', 'XLINK' => '#', 'srcIframe' => '#', 'SrcImg' => '/assets/placeholder.svg', 'srcImgUpload' => '/uploads/a.jpg',
+    'okAction' => '/imoveis/x', 'okFormaction' => '/x/excluir'];
+foreach ($urlExpect as $key => $want) {
+    t_eq($want, $res['url:' . $key] ?? null, "el(): atributo de URL $key -> $want");
+    t_eq(0, $res['urlraw:' . $key] ?? null, "el(): $key não deixa cópia crua com outra caixa");
+}
+t_eq('x', $res['classProp'] ?? null, 'el(): CLASSNAME em qualquer caixa vira className');
 
 t_done();
