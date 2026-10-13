@@ -87,7 +87,7 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2; // 2: auth.pending_email
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int

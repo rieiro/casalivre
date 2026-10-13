@@ -66,6 +66,8 @@ function t_server(): string
     }
     $port = random_int(20000, 40000);
     $env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => (string) getenv('DB_DSN')]);
+    // APP_URL fixa (obrigatória fora de dev/local); o teste pode definir outra antes de subir o servidor.
+    $env['APP_URL'] = (string) (getenv('APP_URL') ?: 'http://127.0.0.1:' . $port);
     $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', CL_ROOT . '/public/index.php'];
     $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, CL_ROOT, $env);
     register_shutdown_function(static function () use ($proc): void {
