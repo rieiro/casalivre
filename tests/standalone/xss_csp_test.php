@@ -3,7 +3,6 @@
 // rooms/amenity só como array.
 require __DIR__ . '/lib.php';
 t_temp_db();
-putenv('GOOGLE_MAPS_API_KEY=');
 $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 $base = t_server();
@@ -11,7 +10,7 @@ $jar = tempnam(sys_get_temp_dir(), 'jar');
 $strictExpected = "default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
 $csp = 'Content-Security-Policy: ' . $strictExpected;
 
-echo "csp_header(): sem e com maps_key\n";
+echo "csp_header(): sempre estrita\n";
 $parse = static function (string $policy): array {
     $dir = [];
     foreach (explode(';', $policy) as $part) {
@@ -20,22 +19,21 @@ $parse = static function (string $policy): array {
     }
     return $dir;
 };
-$strict = csp_header('');
-t_eq($strictExpected, $strict, 'sem chave: estrita + tiles OSM + frame-ancestors/form-action');
-t_ok(!str_contains($strict, 'google') && !str_contains($strict, 'unsafe') && !str_contains($strict, '*'), 'sem chave: nenhum host Google, unsafe-* ou curinga');
-$dir = $parse(csp_header('chave'));
-t_eq(["'self'", 'https://maps.googleapis.com'], $dir['script-src'] ?? null, 'com chave: script-src = self + maps.googleapis.com');
-t_eq(["'self'", 'https://maps.googleapis.com'], $dir['connect-src'] ?? null, 'com chave: connect-src = self + maps.googleapis.com');
-foreach (['https://tile.openstreetmap.org', 'https://maps.gstatic.com', 'https://*.googleapis.com'] as $host) {
-    t_ok(in_array($host, $dir['img-src'] ?? [], true), "com chave: img-src contém $host");
-}
-t_eq(['https://fonts.gstatic.com'], $dir['font-src'] ?? null, 'com chave: font-src = fonts.gstatic.com');
-t_ok(in_array("'unsafe-inline'", $dir['style-src'] ?? [], true), "com chave: style-src com 'unsafe-inline' (atributos style= do Maps)");
-t_ok(!in_array("'unsafe-inline'", $dir['script-src'] ?? [], true) && !str_contains(csp_header('chave'), 'unsafe-eval'), 'com chave: script sem unsafe-inline/unsafe-eval');
+$strict = csp_header();
+t_eq($strictExpected, $strict, 'csp_header() = política estrita exata');
+$dir = $parse($strict);
+t_eq(["'self'"], $dir['script-src'] ?? null, "script-src só 'self'");
+t_eq(["'self'", 'https://tile.openstreetmap.org'], $dir['img-src'] ?? null, "img-src só 'self' + tiles OSM");
 foreach (['object-src' => "'none'", 'base-uri' => "'none'", 'frame-ancestors' => "'self'", 'form-action' => "'self'"] as $d => $v) {
-    t_eq([$v], $dir[$d] ?? null, "com chave: $d $v");
-    t_eq([$v], $parse($strict)[$d] ?? null, "sem chave: $d $v");
+    t_eq([$v], $dir[$d] ?? null, "$d $v");
 }
+foreach (['style-src', 'connect-src', 'font-src', 'worker-src'] as $d) {
+    t_ok(!isset($dir[$d]), "sem $d próprio (cai em default-src 'self')");
+}
+foreach (['google', 'gstatic', 'unsafe', 'data:', 'blob:', '*'] as $bad) {
+    t_ok(!str_contains($strict, $bad), "CSP sem '$bad'");
+}
+t_ok(!function_exists('maps_key'), 'maps_key() removida');
 t_eq(4, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 4 (err.field_type/js.* semeados em bancos existentes)');
 
 echo "header CSP\n";
@@ -83,13 +81,17 @@ $r = t_http('POST', $base . '/api/casas', json_encode(['title' => ['a']] + $comm
 t_eq(422, $r['status'], 'POST /api/casas com title array -> 422');
 t_eq('Casa Teste', HouseRepository::find($owner['house_id'])['title'], 'imóvel não alterado pelos 422');
 
-echo "header com GOOGLE_MAPS_API_KEY configurada\n";
-putenv('GOOGLE_MAPS_API_KEY=chave-falsa-teste');
-$baseMaps = t_server();
-$r = t_http('GET', $baseMaps . '/busca/mapa?localidade=x');
-t_ok(stripos($r['headers'], 'Content-Security-Policy: ' . csp_header('chave-falsa-teste')) !== false, 'servidor com chave envia CSP do Maps');
-t_ok(str_contains($r['body'], 'data-key="chave-falsa-teste"'), 'página do mapa recebe a chave');
-putenv('GOOGLE_MAPS_API_KEY=');
+echo "sem caminho Google (mesmo com GOOGLE_MAPS_API_KEY no ambiente)\n";
+putenv('GOOGLE_MAPS_API_KEY=chave-que-nao-deve-ser-usada');
+$baseEnv = t_server();
+$r = t_http('GET', $baseEnv . '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'));
+t_ok(stripos($r['headers'], $csp) !== false, 'CSP continua estrita com a variável no ambiente');
+t_ok(!str_contains($r['body'], 'chave-que-nao-deve-ser-usada') && !str_contains($r['body'], 'data-key'), 'página do mapa sem chave/data-key');
+putenv('GOOGLE_MAPS_API_KEY');
+foreach (['public/assets/pages/map.js', 'views/map.php', 'src/helpers.php', 'public/index.php', '.env.example'] as $file) {
+    $text = (string) file_get_contents(CL_ROOT . '/' . $file);
+    t_ok(!preg_match('/google|gstatic|GOOGLE_MAPS/i', $text), "$file sem Google Maps");
+}
 
 echo "safe-dom.js (Node vm): safeHref e el()\n";
 $js = <<<'JS'

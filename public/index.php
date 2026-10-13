@@ -71,7 +71,7 @@ if ($origin !== '') {
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
-header('Content-Security-Policy: ' . csp_header(maps_key()));
+header('Content-Security-Policy: ' . csp_header());
 
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
@@ -284,7 +284,6 @@ if ($path === '/busca/mapa' && $method === 'GET') {
         'filters' => $filters,
         'results' => [],
         'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
-        'maps_key' => maps_key(),
         'use_api' => true,
     ]);
     return null;

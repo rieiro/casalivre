@@ -2,25 +2,7 @@
     const box = document.getElementById('result-map');
     if (!box) return;
     const points = JSON.parse(box.getAttribute('data-points') || '[]');
-    const key = box.getAttribute('data-key') || '';
     if (!points.length) return;
-    if (key) {
-        const script = document.createElement('script');
-        script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&callback=casalivreMap';
-        script.async = true;
-        window.casalivreMap = function () {
-            const map = new google.maps.Map(box, {center: {lat: points[0].lat, lng: points[0].lng}, zoom: 12, mapTypeControl: false});
-            const bounds = new google.maps.LatLngBounds();
-            points.forEach(function (point) {
-                const marker = new google.maps.Marker({position: {lat: point.lat, lng: point.lng}, map: map, title: point.title});
-                bounds.extend(marker.getPosition());
-                marker.addListener('click', function () { window.location = point.href; });
-            });
-            if (points.length > 1) map.fitBounds(bounds);
-        };
-        document.body.appendChild(script);
-        return;
-    }
     const zoom = 13;
     const world = function (lat, lng) {
         const n = Math.pow(2, zoom);

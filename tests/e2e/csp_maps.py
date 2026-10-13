@@ -1,11 +1,11 @@
-"""E2E CSP de mapas. Modo osm: tiles do OpenStreetMap carregam sem violação de CSP (busca e /mapa).
-Modo maps (chave falsa): o script do Google Maps não é bloqueado pela CSP (rede pode falhar)."""
+"""E2E CSP de mapas: tiles do OpenStreetMap carregam sem violação de CSP (busca e /busca/mapa) e nenhum host
+do Google é requisitado (CSP sempre estrita, sem Google Maps)."""
 import sys
 import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
-base, mode = sys.argv[1:3]
+base = sys.argv[1]
 loc = urllib.parse.quote('Florianópolis, SC')
 failures = []
 
@@ -39,33 +39,18 @@ with sync_playwright() as pw:
                 s.src = '/assets/pages/map.js?e2e=' + Date.now();
                 document.body.appendChild(s);
             }'''
-            if mode == 'maps':
-                # Espera explícita pelo script do Google (a rede externa pode demorar).
-                try:
-                    with page.expect_request(lambda r: 'maps.googleapis.com/maps/api/js' in r.url, timeout=15000):
-                        page.evaluate(inject)
-                except Exception:
-                    pass
-                page.wait_for_timeout(4000)
-            else:
-                page.evaluate(inject)
+            page.evaluate(inject)
             page.wait_for_load_state('networkidle')
         page.wait_for_timeout(1500)
         csp = [m for m in console if 'Content Security Policy' in m]
         for m in csp:
             print('  csp  ' + m[:300])
-        if mode == 'osm':
-            check(not csp, path + ': nenhuma violação de CSP')
-            tiles = [s for u, s in responses if 'tile.openstreetmap.org' in u]
-            check(tiles and all(s == 200 for s in tiles), path + ': tiles OSM carregados (%d, status %s)' % (len(tiles), sorted(set(s for s in tiles))))
-        else:
-            google = [m for m in csp if 'google' in m or 'gstatic' in m]
-            check(not google, path + ': nenhuma violação de CSP para hosts Google')
-            check(not csp, path + ': nenhuma violação de CSP')
-            if path.startswith('/busca/mapa'):
-                check(any('maps.googleapis.com/maps/api/js' in u for u in requests), path + ': script do Google Maps requisitado (não bloqueado)')
-                print('  info hosts Google requisitados: ' + ', '.join(sorted({urllib.parse.urlsplit(u).netloc for u in requests if 'goog' in u or 'gstatic' in u})))
+        check(not csp, path + ': nenhuma violação de CSP')
+        tiles = [st for u, st in responses if 'tile.openstreetmap.org' in u]
+        check(tiles and all(st == 200 for st in tiles), path + ': tiles OSM carregados (%d, status %s)' % (len(tiles), sorted(set(tiles))))
+        google = [u for u in requests if 'google' in u or 'gstatic' in u]
+        check(not google, path + ': nenhum host Google requisitado')
     browser.close()
 
-print('E2E csp_maps %s: %s' % (mode, 'PASSOU' if not failures else 'FALHOU (%d)' % len(failures)))
+print('E2E csp_maps: %s' % ('PASSOU' if not failures else 'FALHOU (%d)' % len(failures)))
 sys.exit(1 if failures else 0)

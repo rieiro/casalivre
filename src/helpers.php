@@ -478,12 +478,6 @@ function primary_photo(int $propertyId): ?string
     return PhotoRepository::primaryPath($propertyId);
 }
 
-function maps_key(): string
-{
-    Db::loadEnv();
-    return trim((string) (getenv('GOOGLE_MAPS_API_KEY') ?: ''));
-}
-
 function search_query(array $filters): string
 {
     $query = $filters;
@@ -717,26 +711,18 @@ function photo_url(?string $path): string
 }
 
 /**
- * Único ponto que monta o valor do header Content-Security-Policy.
- * Sempre: estrita (sem inline em script), tiles OSM em img-src, frame-ancestors/form-action 'self'.
- * Só com chave do Google Maps: maps.googleapis.com em script-src/connect-src, maps.gstatic.com e
- * *.googleapis.com em img-src, fonts.gstatic.com em font-src. style-src ganha 'unsafe-inline' (o Maps
- * aplica atributos style= que nonce/hash não cobrem); script-src nunca tem 'unsafe-inline'/'unsafe-eval'.
+ * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
+ * script, sem 'unsafe-inline' em style, sem data:/blob:; só os tiles do OpenStreetMap como imagem externa.
  */
-function csp_header(string $mapsKey = ''): string
+function csp_header(): string
 {
-    $osm = 'https://tile.openstreetmap.org';
-    $tail = ["object-src 'none'", "base-uri 'none'", "frame-ancestors 'self'", "form-action 'self'"];
-    if ($mapsKey === '') {
-        return implode('; ', array_merge(["default-src 'self'", "script-src 'self'", "img-src 'self' $osm"], $tail));
-    }
-    return implode('; ', array_merge([
+    return implode('; ', [
         "default-src 'self'",
-        "script-src 'self' https://maps.googleapis.com",
-        "img-src 'self' $osm https://maps.gstatic.com https://*.googleapis.com data:",
-        "connect-src 'self' https://maps.googleapis.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        'font-src https://fonts.gstatic.com',
-        'worker-src blob:',
-    ], $tail));
+        "script-src 'self'",
+        "img-src 'self' https://tile.openstreetmap.org",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+    ]);
 }
