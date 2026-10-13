@@ -91,6 +91,11 @@ A API, com a sessão autenticada e o token CSRF, expõe o CRUD:
 - `GET|POST /api/casas`, `GET|PUT|DELETE /api/casas/{id}`
 - `POST /api/casas/{id}/fotos`, `DELETE /api/casas/{id}/fotos/{foto}`
 
+## Logs de erro e privacidade
+
+- `public/index.php` faz `ini_set('zend.exception_ignore_args', '1')` para que stack traces não incluam valores de argumentos. Em produção, defina também no `php.ini` (ou no pool do PHP-FPM): `zend.exception_ignore_args = On`.
+- `ExceptionShield` grava em `storage/error.log` e no log de atividades só o caminho da rota, sem query string, com segmentos de 32 hex (ex.: `ical_hash`) trocados por `{hash}` (`src/Redact.php`).
+
 ## Casos de teste
 
 Com o servidor no ar:

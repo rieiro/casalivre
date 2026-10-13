@@ -204,7 +204,7 @@ Importar feed iCal.
 #### `DELETE /api/imoveis/{hash}/ical/{id}`
 Remover feed iCal.
 
-#### `GET /api/imoveis/{hash}/calendario.ics`
+#### `GET /api/ical/{ical_hash}.ics` (somente hash secreto de 32 hex; a rota antiga por hash público responde 404)
 Exportar calendário em formato ICS (retorna `text/calendar`).
 
 ---

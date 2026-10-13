@@ -24,6 +24,9 @@ require_once __DIR__ . '/../src/ActivityLog.php';
 require_once __DIR__ . '/../src/SecureSession.php';
 require_once __DIR__ . '/../src/ExceptionShield.php';
 
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
+
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
@@ -677,11 +680,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             if ($body === null) {
                 $body = CalendarSync::fetch($url);
             }
-            if ($body === null && isset($_POST['ics_body'])) {
-                $body = (string) $_POST['ics_body'];
-            }
             $feedId = null;
-            foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
+            foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
                 if ($feed['url'] === $url) {
                     $feedId = (int) $feed['id'];
                 }
@@ -695,7 +695,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
                 $message = t('cal.imported') . ' ' . $count . ' ' . t('cal.blocked_dates');
                 activity(ActivityLog::CALENDAR_SYNC, [
                     'imovel_id' => (int) $property['id'],
-                    'url' => $url,
+                    'url' => CalendarSync::logRef($url),
                     'novas' => $count,
                     'resultado' => 'ok',
                 ]);
@@ -708,7 +708,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             }
         }
     }
-    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => $url, 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => $error['feed'], 'link' => $error['link'][0]['new']['external_ical_url'] ?? null] : null);
+    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => CalendarSync::logRef($url), 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null);
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),
@@ -730,22 +730,15 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
             'imovel_id' => house_id($m[1]),
             'feed_id' => (int) $m[2],
         ], [
-            'feed' => $gone['feed'],
-            'link' => $gone['link'][0]['old']['external_ical_url'] ?? null,
+            'feed' => CalendarSync::logFeed($gone['feed']),
+            'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
             'noites' => $released['anterior'],
         ], [
-            'link' => $gone['link'][0]['new']['external_ical_url'] ?? null,
+            'link' => CalendarSync::logRef($gone['link'][0]['new']['external_ical_url'] ?? null),
             'noites' => $released['atual'],
         ]);
     }
-    foreach (HouseRepository::feeds(house_id($m[1])) as $feed) {
-        $body = CalendarSync::fetch((string) $feed['url']);
-        if (!is_string($body)) {
-            continue;
-        }
-        import_ics(house_id($m[1]), $body);
-        HouseRepository::markFeed((int) $feed['id'], 'OK', date('Y-m-d H:i:s'));
-    }
+    CalendarSync::resyncProperty(house_id($m[1]));
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
