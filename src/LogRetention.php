@@ -102,48 +102,84 @@ final class LogRetention
         return null;
     }
 
-    /** @return int linhas removidas */
+    /**
+     * Poda um log de texto sem perder linhas gravadas em paralelo (error_log do PHP,
+     * file_put_contents FILE_APPEND), que não usam flock e abrem o arquivo a cada escrita:
+     * 1. renomeia o original para um arquivo de trabalho (atômico): escritas novas criam um novo $file;
+     * 2. lê o arquivo de trabalho, relendo a cauda até estabilizar (escritas em voo no inode antigo);
+     * 3. ANEXA as entradas retidas ao $file atual (O_APPEND, uma entrada por fwrite) — nunca
+     *    substitui o arquivo, então nenhuma escrita concorrente é sobrescrita.
+     * Consequência: entradas retidas podem aparecer depois de linhas novas gravadas durante a
+     * poda (ordem não estritamente cronológica); cada entrada continua íntegra e datada.
+     *
+     * @return int linhas removidas
+     */
     public static function pruneTextLog(string $file, int $cutoff): int
     {
-        $in = @fopen($file, 'rb');
+        $work = $file . '.ret-' . bin2hex(random_bytes(4));
+        if (!@rename($file, $work)) {
+            error_log('CasaLivre: retenção não conseguiu renomear um arquivo de log.');
+            return 0;
+        }
+        $in = @fopen($work, 'rb');
         if ($in === false) {
             error_log('CasaLivre: retenção não conseguiu abrir um arquivo de log.');
             return 0;
         }
-        $tmp = $file . '.ret-' . bin2hex(random_bytes(3));
-        $old = umask(0077);
-        $out = @fopen($tmp, 'wb');
-        umask($old);
-        if ($out === false) {
-            fclose($in);
-            error_log('CasaLivre: retenção não conseguiu gravar arquivo temporário.');
-            return 0;
-        }
-        $keep = true; // linhas antes da primeira data: mantém (conservador)
         $removed = 0;
-        while (($line = fgets($in)) !== false) {
-            $t = self::lineTime($line);
-            if ($t !== null) {
-                $keep = $t >= $cutoff;
+        $keep = true; // linhas antes da primeira data: mantém (conservador)
+        $entries = [];
+        $entry = '';
+        $buffer = '';
+        $stable = 0;
+        while ($stable < 3) {
+            $chunk = fread($in, 65536);
+            if ($chunk === '' || $chunk === false) {
+                usleep(20000);
+                $stable++;
+                continue;
             }
-            if ($keep) {
-                fwrite($out, $line);
-            } else {
-                $removed++;
+            $stable = 0;
+            $buffer .= $chunk;
+            while (($pos = strpos($buffer, "\n")) !== false) {
+                $line = substr($buffer, 0, $pos + 1);
+                $buffer = substr($buffer, $pos + 1);
+                $t = self::lineTime($line);
+                if ($t !== null) {
+                    if ($entry !== '') {
+                        $entries[] = $entry;
+                    }
+                    $entry = '';
+                    $keep = $t >= $cutoff;
+                }
+                if ($keep) {
+                    $entry .= $line;
+                } else {
+                    $removed++;
+                }
             }
+        }
+        if ($buffer !== '' && $keep) {
+            $entry .= $buffer . "\n";
+        }
+        if ($entry !== '') {
+            $entries[] = $entry;
         }
         fclose($in);
+
+        $old = umask(0077);
+        $out = @fopen($file, 'ab');
+        umask($old);
+        if ($out === false) {
+            error_log('CasaLivre: retenção não conseguiu reabrir um arquivo de log (conteúdo mantido no arquivo .ret).');
+            return 0;
+        }
+        foreach ($entries as $e) {
+            fwrite($out, $e);
+        }
         fclose($out);
-        if ($removed === 0) {
-            @unlink($tmp);
-            return 0;
-        }
-        if (!@rename($tmp, $file)) {
-            @unlink($tmp);
-            error_log('CasaLivre: retenção não conseguiu substituir um arquivo de log.');
-            return 0;
-        }
         @chmod($file, 0600);
+        @unlink($work);
         return $removed;
     }
 }
