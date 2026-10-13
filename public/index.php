@@ -653,9 +653,6 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             if ($body === null) {
                 $body = CalendarSync::fetch($url);
             }
-            if ($body === null && isset($_POST['ics_body'])) {
-                $body = (string) $_POST['ics_body'];
-            }
             $feedId = null;
             foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
                 if ($feed['url'] === $url) {
@@ -714,14 +711,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
             'noites' => $released['atual'],
         ]);
     }
-    foreach (HouseRepository::feeds(house_id($m[1])) as $feed) {
-        $body = CalendarSync::fetch((string) $feed['url']);
-        if (!is_string($body)) {
-            continue;
-        }
-        import_ics(house_id($m[1]), $body);
-        HouseRepository::markFeed((int) $feed['id'], 'OK', date('Y-m-d H:i:s'));
-    }
+    CalendarSync::resyncProperty(house_id($m[1]));
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
