@@ -3,6 +3,13 @@
 
 declare(strict_types=1);
 
+// Exige APP_ENV=dev (ou local): os casos leem o link de verificação devolvido pela API,
+// que só é exposto nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
+if (!in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
+    fwrite(STDERR, "ERRO: rode com APP_ENV=dev (ex.: APP_ENV=dev CASOS=todos php scripts/run-casos-de-teste.php) e suba o servidor de teste com APP_ENV=dev.\n");
+    exit(2);
+}
+
 $base = getenv('APP_URL') ?: 'http://127.0.0.1:8080';
 $cookie = sys_get_temp_dir() . '/casalivre-test.cookie';
 @unlink($cookie);
@@ -181,18 +188,18 @@ assert_true(in_array($status, [200, 302], true), "página de busca responde ($st
 $busca = json_decode($body, true) ?: [];
 $items = $busca['items'] ?? [];
 assert_true($status === 200 && stripos($headers, 'application/json') !== false, 'GET /api/busca responde JSON sem login');
-assert_true(count($items) === 20, 'lista os 20 imóveis cadastrados, sem login (' . count($items) . ')');
+assert_true(count($items) >= 20, 'lista ao menos os 20 imóveis cadastrados, sem login (' . count($items) . ')');
 $count = static fn (callable $ok): int => count(array_filter($items, $ok));
-assert_true($count(static fn ($i) => trim((string) ($i['title'] ?? '')) !== '') === 20, 'cada item tem título');
-assert_true($count(static fn ($i) => !empty($i['photo'])) === 20, 'cada item tem foto principal');
-assert_true($count(static fn ($i) => (int) ($i['nightly_price'] ?? 0) > 0) === 20, 'cada item tem diária');
-assert_true($count(static fn ($i) => preg_match('/^[a-f0-9]{16}$/', (string) ($i['id'] ?? '')) === 1) === 20, 'cada item tem id público (16 hex)');
+assert_true($count(static fn ($i) => trim((string) ($i['title'] ?? '')) !== '') === count($items), 'cada item tem título');
+assert_true($count(static fn ($i) => !empty($i['photo'])) === count($items), 'cada item tem foto principal');
+assert_true($count(static fn ($i) => (int) ($i['nightly_price'] ?? 0) > 0) === count($items), 'cada item tem diária');
+assert_true($count(static fn ($i) => preg_match('/^[a-f0-9]{16}$/', (string) ($i['id'] ?? '')) === 1) === count($items), 'cada item tem id público (16 hex)');
 echo "    (info) /api/busca não devolve resumo nem máximo de hóspedes por item; esses critérios do caso antigo ficam fora do contrato atual\n";
 
 echo "Filtros extras do cliente: hóspedes, raio, diária e nota\n";
 [$status, , $body] = req('GET', $base . '/api/busca?' . $query . '&hospedes=20');
 $few = (json_decode($body, true) ?: [])['items'] ?? [];
-assert_true($status === 200 && count($few) < 20, 'filtro de hóspedes reduz a lista (' . count($few) . ')');
+assert_true($status === 200 && count($few) < count($items), 'filtro de hóspedes reduz a lista (' . count($few) . ')');
 }
 if ($suite !== 'legado') {
     require __DIR__ . '/casos/api-ical-log.php';

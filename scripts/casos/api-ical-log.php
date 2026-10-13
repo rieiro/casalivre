@@ -3,6 +3,13 @@
 // Incluído por scripts/run-casos-de-teste.php (CASOS=novos|todos).
 declare(strict_types=1);
 
+// Exige APP_ENV=dev (ou local): os casos leem o link de verificação devolvido pela API,
+// que só é exposto nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
+if (!in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
+    fwrite(STDERR, "ERRO: rode com APP_ENV=dev (ex.: APP_ENV=dev CASOS=todos php scripts/run-casos-de-teste.php) e suba o servidor de teste com APP_ENV=dev.\n");
+    exit(2);
+}
+
 $jarA = sys_get_temp_dir() . '/casalivre-a.cookie';
 $jarB = sys_get_temp_dir() . '/casalivre-b.cookie';
 $jarAnon = sys_get_temp_dir() . '/casalivre-anon.cookie';
@@ -188,7 +195,7 @@ assert_true($all !== [], 'arquivo de log de requisições existe (storage/logs/a
 $statuses = [];
 foreach ($lines as $l) { $j = json_decode($l, true); if (isset($j['status'])) { $statuses[(int) $j['status']] = ($statuses[(int) $j['status']] ?? 0) + 1; } }
 ksort($statuses);
-$hist = implode(', ', array_map(static fn ($k, $v) => "$k×$v", array_keys($statuses), $statuses));
+$hist = implode(', ', array_map(static fn ($k, $v) => "{$k}×{$v}", array_keys($statuses), $statuses));
 assert_true(count($lines) === $apiCount, "uma linha por requisição /api em qualquer status (esperado $apiCount, obtido " . count($lines) . "; status: $hist)");
 foreach ([401, 404, 419, 429] as $code) {
     assert_true(isset($statuses[$code]), "requisições com status $code também são registradas");
