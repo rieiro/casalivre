@@ -13,7 +13,7 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] **Permissões**: diretório `storage/logs/api` com `0700` e arquivos de log com `0600`.
 - [ ] **IP atrás de proxy**: se houver proxy ou load balancer, configurar o IP real do cliente (ex.: `real_ip` no nginx). Caso contrário, `REMOTE_ADDR` será o do proxy e todos os usuários dividirão o mesmo contador de rate limit.
 - [ ] **CORS**: allowlist explícita de origens (PR #4). Nunca `*` com credenciais.
-- [ ] **Ordem de merge na develop**: #7, #4, #2, #1 (squash), #3, #5 (rebase após #1), #6 (squash), #8.
+- [ ] **Ordem de merge na develop**: #9, #7, #4, #1 (squash), #5 (rebase após #1), #2, #3, #6 (squash), #8, #10. Nas seções do deploy.md em conflito, manter todas.
 
 ## Não verificado ainda (validar em homologação)
 
