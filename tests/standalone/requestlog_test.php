@@ -106,4 +106,22 @@ t_eq('203.0.113.0', $p['ip'], 'activity: ip truncado');
 t_ok($p['cpf'] !== '52998224725' && strlen((string) $p['cpf']) === 16, 'activity: cpf vira HMAC');
 t_ok(!isset($p['password']) && $p['imovel_id'] === 3, 'activity: senha omitida, demais mantidos');
 
+echo "corpo: allowlist (LGPD)\n";
+$pii = ['name' => 'Maria Silva', 'cep' => '88015-200', 'street' => 'Rua Bocaiuva', 'address_number' => '1234',
+    'address_complement' => 'Apto 501', 'birth_date' => '1990-05-17', 'email' => 'maria@x.com', 'cpf' => '52998224725',
+    'description' => 'Ligue 48999990000', 'title' => 'Casa', 'nested' => ['street' => 'Rua X'],
+    'price' => 250, 'min_nights' => 2, 'locale' => 'pt_BR'];
+$out = RequestLog::bodyForLog($pii);
+foreach (['name', 'cep', 'street', 'address_number', 'address_complement', 'birth_date', 'email', 'cpf'] as $k) {
+    t_ok(!array_key_exists($k, $out), "corpo omite '$k'");
+}
+t_ok(array_key_exists('title', $out) && $out['title'] === null, 'chave fora da allowlist: só o nome');
+t_ok(array_key_exists('nested', $out) && $out['nested'] === null, 'estrutura fora da allowlist não é gravada');
+t_eq(250, $out['price'] ?? null, 'valor da allowlist mantido (price)');
+t_eq('pt_BR', $out['locale'] ?? null, 'valor da allowlist mantido (locale)');
+$json = json_encode($out);
+foreach (['Maria', '88015', 'Bocaiuva', '1234', 'Apto', '1990-05-17', 'maria@', '529982', '4899999', 'Rua X'] as $secret) {
+    t_ok(!str_contains($json, $secret), "corpo: '$secret' não aparece");
+}
+
 t_done();
