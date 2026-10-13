@@ -497,7 +497,7 @@ function handle_api(string $path, string $method): void
         }
         activity(ActivityLog::CALENDAR_SYNC, [
             'imovel_id' => (int) $property['id'],
-            'url' => $url,
+            'url' => CalendarSync::logRef($url),
             'novas' => $count,
             'resultado' => strtolower($status),
         ]);
@@ -533,11 +533,11 @@ function handle_api(string $path, string $method): void
         }
         $released = HouseRepository::nightAudit(HouseRepository::releaseImported((int) $property['id']));
         activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]], [
-            'feed' => $removed['feed'],
-            'link' => $removed['link'][0]['old']['external_ical_url'] ?? null,
+            'feed' => CalendarSync::logFeed($removed['feed']),
+            'link' => CalendarSync::logRef($removed['link'][0]['old']['external_ical_url'] ?? null),
             'noites' => $released['anterior'],
         ], [
-            'link' => $removed['link'][0]['new']['external_ical_url'] ?? null,
+            'link' => CalendarSync::logRef($removed['link'][0]['new']['external_ical_url'] ?? null),
             'noites' => $released['atual'],
         ]);
         $resync = CalendarSync::resyncProperty((int) $property['id']);

@@ -668,7 +668,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
                 $message = t('cal.imported') . ' ' . $count . ' ' . t('cal.blocked_dates');
                 activity(ActivityLog::CALENDAR_SYNC, [
                     'imovel_id' => (int) $property['id'],
-                    'url' => $url,
+                    'url' => CalendarSync::logRef($url),
                     'novas' => $count,
                     'resultado' => 'ok',
                 ]);
@@ -681,7 +681,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             }
         }
     }
-    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => $url, 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => $error['feed'], 'link' => $error['link'][0]['new']['external_ical_url'] ?? null] : null);
+    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => CalendarSync::logRef($url), 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null);
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),
@@ -703,11 +703,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
             'imovel_id' => house_id($m[1]),
             'feed_id' => (int) $m[2],
         ], [
-            'feed' => $gone['feed'],
-            'link' => $gone['link'][0]['old']['external_ical_url'] ?? null,
+            'feed' => CalendarSync::logFeed($gone['feed']),
+            'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
             'noites' => $released['anterior'],
         ], [
-            'link' => $gone['link'][0]['new']['external_ical_url'] ?? null,
+            'link' => CalendarSync::logRef($gone['link'][0]['new']['external_ical_url'] ?? null),
             'noites' => $released['atual'],
         ]);
     }
