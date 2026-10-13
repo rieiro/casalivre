@@ -224,5 +224,5 @@ Exportar calendário em formato ICS (retorna `text/calendar`).
 ## Notas
 
 - Manter os endpoints atuais de `/api/casas` e `/api/users`.
-- As rotas `/cidades` e `/ceps` podem ser movidas para `/api/cidades` e `/api/ceps` (opcional, por consistência).
+- As rotas legadas `/cidades` e `/ceps` foram removidas; use `/api/cidades` e `/api/ceps`.
 - Quando o frontend for separado, a autenticação por sessão precisará de ajustes (CORS + cookie `SameSite`/`Secure` ou token).
