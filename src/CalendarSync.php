@@ -239,16 +239,21 @@ final class CalendarSync
 
     public static function isPublicIp(string $ip): bool
     {
-        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return false;
-        }
+        // Checagem por bytes ANTES do filter_var: o resultado do filter_var para endereços
+        // IPv4 mapeados muda entre PHP 8.2 e 8.4.
         $bin = @inet_pton($ip);
         if ($bin === false) {
             return false;
         }
-        // IPv4 mapeado em IPv6 (::ffff:a.b.c.d) -> valida o IPv4.
-        if (strlen($bin) === 16 && str_starts_with($bin, str_repeat("\0", 10) . "\xff\xff")) {
-            return self::isPublicIp((string) inet_ntop(substr($bin, 12)));
+        // ::ffff:0:0/96 (IPv4 mapeado) e ::ffff:0:0:0/96 (IPv4 traduzido, SIIT): recusa sempre.
+        if (strlen($bin) === 16 && (
+            str_starts_with($bin, str_repeat("\0", 10) . "\xff\xff")
+            || str_starts_with($bin, str_repeat("\0", 8) . "\xff\xff\0\0")
+        )) {
+            return false;
+        }
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
         }
         if (strlen($bin) === 4) {
             $n = unpack('N', $bin)[1];
