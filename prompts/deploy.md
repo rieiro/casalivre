@@ -32,3 +32,21 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - `logRef` com `LogPrivacy::url()`; `redactPath` cobrindo segmentos opacos de 20+ caracteres; flock/rotação no LogRetention.
 - Fluent Bit, banco de log separado e outbox de auditoria.
 - Migrar fotos, calendário, formulário de imóvel e autenticação para fetch/API.
+
+## Condições de deploy: PRs #1 (iCal) e #5 (log), parecer final de segurança
+
+### Obrigatórias
+- [ ] nginx: `log_format` sem query string e com `/ical/` e `/api/ical/` redigidos (ou `access_log off` nessas rotas).
+- [ ] `zend.exception_ignore_args = On` no `php.ini` ou no pool do php-fpm.
+- [ ] Retenção: instalar `deploy/runit/casalivre-log-retention` (`/etc/sv/` + `ln -s` em `/var/service/`, `conf` com APP_DIR, APP_USER, RETENTION_DAYS e PHP_BIN), rodando com o mesmo usuário do php-fpm. Confirmar a primeira execução com `sv status` e a saída do script.
+- [ ] Saída HTTP 80/443 e DNS liberados para os feeds iCal (o fetch não usa proxy). Extensão `php-curl` instalada.
+- [ ] Se `LOG_DRIVER=mongodb`: extensão `mongodb` instalada e retenção validada via `deleteMany`.
+
+### Validar em homologação
+- [ ] Retenção sob carga do php-fpm, sem sobrar arquivos `*.ret-*`.
+- [ ] Mascaramento de `feeds[].url` no front separado (quando existir).
+
+### Backlog
+- [ ] `LogRetention::run` incluir arquivos `*.ret-*` que sobrarem.
+- [ ] Criptografar também o `audit_hold` no banco.
+- [ ] Pseudonimizar nome e endereço em `valor_anterior`.
