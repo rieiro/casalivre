@@ -57,7 +57,8 @@ const vm = require('vm');
 const fs = require('fs');
 const entries = [['title','Casa'],['rooms[0][beds][0][type]','double'],['rooms[0][beds][0][variant]','queen'],
   ['rooms[0][beds][1][type]','single'],['rooms[1][beds][0][type]','bunk'],['amenity[pool]','1'],['amenity[wifi]','1'],
-  ['__proto__[polluted]','1'],['a[constructor][prototype][p]','1'],['b[__proto__][q]','1']];
+  ['__proto__[polluted]','1'],['a[constructor][prototype][p]','1'],['b[__proto__][q]','1'],
+  ['m1[b','1'],['m2]b','1'],['m3[]]','1'],['m4[]','1'],['m5[x]y','1'],['m6[x][','1'],['[m7]','1'],['m8[a b]','1']];
 const ctx = { window: {}, FormData: function () { return entries; } };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), ctx);
@@ -72,6 +73,7 @@ JS;
     t_eq(['0' => ['beds' => ['0' => ['type' => 'double', 'variant' => 'queen'], '1' => ['type' => 'single']]], '1' => ['beds' => ['0' => ['type' => 'bunk']]]], $o['rooms'] ?? null, 'rooms[i][beds][j][campo] vira objeto aninhado');
     t_eq(['pool' => '1', 'wifi' => '1'], $o['amenity'] ?? null, 'amenity[chave] vira objeto');
     t_eq('Casa', $o['title'] ?? null, 'campo simples mantido');
+    t_eq([], array_values(array_filter(array_keys($o), static fn ($k) => str_starts_with((string) $k, 'm') || $k === '' || str_contains((string) $k, '['))), 'nomes malformados descartados (a[b, a]b, a[]], a[], ...)');
     t_ok(($res['clean'] ?? false) === true && !isset($o['a']) && !isset($o['b']) && !isset($o['__proto__']), 'sem poluição de protótipo');
 }
 t_done();

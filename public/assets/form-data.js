@@ -6,8 +6,12 @@ window.CasaLivreForm = {
     toObject(form) {
         const out = {};
         for (const [name, value] of new FormData(form)) {
+            // Só nomes bem formados: base[chave][chave]... (descarta "a[b", "a]b", "a[]]", "a[]" etc.).
+            if (typeof value !== 'string' || !/^[A-Za-z0-9_]+(\[[A-Za-z0-9_]+\])*$/.test(name)) {
+                continue;
+            }
             const keys = name.replace(/\]/g, '').split('[');
-            if (typeof value !== 'string' || keys.some((k) => k === '__proto__' || k === 'constructor' || k === 'prototype')) {
+            if (keys.some((k) => k === '__proto__' || k === 'constructor' || k === 'prototype')) {
                 continue;
             }
             let node = out;
