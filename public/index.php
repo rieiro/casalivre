@@ -2,27 +2,33 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../src/Db.php';
-require __DIR__ . '/../src/Settings.php';
-require __DIR__ . '/../src/I18n.php';
-require __DIR__ . '/../src/CityRepository.php';
-require __DIR__ . '/../src/CepRepository.php';
-require __DIR__ . '/../src/UserRepository.php';
+require_once __DIR__ . '/../src/Db.php';
+require_once __DIR__ . '/../src/Settings.php';
+require_once __DIR__ . '/../src/I18n.php';
+require_once __DIR__ . '/../src/CityRepository.php';
+require_once __DIR__ . '/../src/CepRepository.php';
+require_once __DIR__ . '/../src/UserRepository.php';
 PasswordPolicy::$minLength = max(1, Settings::int('password_min_length') ?: 8);
 AccountFlow::$sendLink = static function (string $email, string $link): void {
 };
-require __DIR__ . '/../src/HouseRepository.php';
-require __DIR__ . '/../src/PhotoRepository.php';
-require __DIR__ . '/../src/PhotoStorage.php';
-require __DIR__ . '/../src/helpers.php';
+require_once __DIR__ . '/../src/HouseRepository.php';
+require_once __DIR__ . '/../src/PhotoRepository.php';
+require_once __DIR__ . '/../src/PhotoStorage.php';
+require_once __DIR__ . '/../src/helpers.php';
 reject_oversize_upload();
-require __DIR__ . '/../src/HouseService.php';
+require_once __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
-require __DIR__ . '/../src/CalendarSync.php';
-require __DIR__ . '/../src/Api.php';
-require __DIR__ . '/../src/ActivityLog.php';
-require __DIR__ . '/../src/SecureSession.php';
-require __DIR__ . '/../src/ExceptionShield.php';
+require_once __DIR__ . '/../src/CalendarSync.php';
+require_once __DIR__ . '/../src/Api.php';
+require_once __DIR__ . '/../src/ActivityLog.php';
+require_once __DIR__ . '/../src/SecureSession.php';
+require_once __DIR__ . '/../src/ExceptionShield.php';
+
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
+
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -31,21 +37,32 @@ if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
 }
 
 SecureSession::start();
+// Log por requisição da API iniciado ANTES do pipeline de segurança, para que as
+// respostas 401/419/429 geradas pelos middlewares (que encerram com exit) também
+// sejam registradas pelo shutdown hook do RequestLog.
+if (str_starts_with($path, '/api')) {
+    RequestLog::start($path, $method, api_body());
+}
 expire_user_session();
 ExceptionShield::register();
 
-// CORS para frontend em outro servidor (configurar CORS_ORIGIN no .env)
+// CORS para frontend em outro servidor.
+// Lista explícita de origens em CORS_ORIGINS (ou CORS_ORIGIN, legado), separadas por vírgula,
+// ex.: https://app.casalivre.com.br,https://admin.casalivre.com.br
+// Comparação exata (esquema+host+porta). '*' NÃO é aceito, pois as credenciais são enviadas.
 $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
-$allowed = getenv('CORS_ORIGIN') ?: '';
-if ($origin !== '' && ($allowed === '*' || $allowed === $origin || ($allowed !== '' && str_contains($allowed, $origin)))) {
-    header('Access-Control-Allow-Origin: ' . ($allowed === '*' ? '*' : $origin));
-    header('Access-Control-Allow-Credentials: true');
-    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization');
-    header('Access-Control-Max-Age: 86400');
-    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
-        http_response_code(204);
-        exit;
+if ($origin !== '') {
+    header('Vary: Origin', false);
+    if (in_array($origin, cors_allowed_origins(), true)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization');
+        header('Access-Control-Max-Age: 86400');
+        if ($method === 'OPTIONS') {
+            http_response_code(204);
+            exit;
+        }
     }
 }
 
@@ -53,8 +70,8 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
 
-require __DIR__ . '/../src/LoginRateLimiter.php';
-require __DIR__ . '/../seguranca/Seguranca.php';
+require_once __DIR__ . '/../src/LoginRateLimiter.php';
+require_once __DIR__ . '/../seguranca/Seguranca.php';
 
 return Seguranca::pipeline(
     [
@@ -66,7 +83,7 @@ return Seguranca::pipeline(
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
-        'recusar' => static function (string $code, string $path): void {
+        'recusar' => static function (string $code, string $path): never {
             casa_recusar($code, $path);
         },
     ],
@@ -75,6 +92,25 @@ return Seguranca::pipeline(
         return dispatch((string) $request['path'], (string) $request['method']);
     }
 );
+
+/** @return list<string> */
+function cors_allowed_origins(): array
+{
+    $raw = (string) (getenv('CORS_ORIGINS') ?: getenv('CORS_ORIGIN') ?: '');
+    $list = [];
+    foreach (explode(',', $raw) as $item) {
+        $item = rtrim(trim($item), '/');
+        if ($item === '' || $item === '*') {
+            continue;
+        }
+        $parts = parse_url($item);
+        if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || empty($parts['host']) || isset($parts['path'])) {
+            continue;
+        }
+        $list[] = $item;
+    }
+    return $list;
+}
 
 function casa_privado(string $path, string $method): bool
 {
@@ -99,6 +135,18 @@ function casa_privado(string $path, string $method): bool
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
 }
 
+/**
+ * Envia a resposta de recusa dos middlewares de segurança e ENCERRA a requisição.
+ *
+ * Todos os casos terminam com exit (por isso o tipo de retorno é never). O dispatch
+ * nunca roda depois de uma recusa. O log da API continua sendo gravado, porque o
+ * RequestLog usa register_shutdown_function, que roda mesmo após exit.
+ *
+ * - 'csrf'       -> 419 (JSON em /api, HTML fora) + exit
+ * - 'rate_limit' -> 429 + Retry-After (enviado pelo RateLimit) (JSON em /api, tela de login fora) + exit
+ * - 'login'      -> 302 para /entrar + exit
+ * - outros       -> 401 JSON + exit
+ */
 function casa_recusar(string $code, string $path): never
 {
     $api = str_starts_with($path, '/api');
@@ -653,11 +701,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             if ($body === null) {
                 $body = CalendarSync::fetch($url);
             }
-            if ($body === null && isset($_POST['ics_body'])) {
-                $body = (string) $_POST['ics_body'];
-            }
             $feedId = null;
-            foreach (HouseRepository::feeds((int) $property['id']) as $feed) {
+            foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
                 if ($feed['url'] === $url) {
                     $feedId = (int) $feed['id'];
                 }
@@ -671,7 +716,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
                 $message = t('cal.imported') . ' ' . $count . ' ' . t('cal.blocked_dates');
                 activity(ActivityLog::CALENDAR_SYNC, [
                     'imovel_id' => (int) $property['id'],
-                    'url' => $url,
+                    'url' => CalendarSync::logRef($url),
                     'novas' => $count,
                     'resultado' => 'ok',
                 ]);
@@ -684,7 +729,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
             }
         }
     }
-    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => $url, 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => $error['feed'], 'link' => $error['link'][0]['new']['external_ical_url'] ?? null] : null);
+    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => CalendarSync::logRef($url), 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null);
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),
@@ -706,22 +751,15 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
             'imovel_id' => house_id($m[1]),
             'feed_id' => (int) $m[2],
         ], [
-            'feed' => $gone['feed'],
-            'link' => $gone['link'][0]['old']['external_ical_url'] ?? null,
+            'feed' => CalendarSync::logFeed($gone['feed']),
+            'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
             'noites' => $released['anterior'],
         ], [
-            'link' => $gone['link'][0]['new']['external_ical_url'] ?? null,
+            'link' => CalendarSync::logRef($gone['link'][0]['new']['external_ical_url'] ?? null),
             'noites' => $released['atual'],
         ]);
     }
-    foreach (HouseRepository::feeds(house_id($m[1])) as $feed) {
-        $body = CalendarSync::fetch((string) $feed['url']);
-        if (!is_string($body)) {
-            continue;
-        }
-        import_ics(house_id($m[1]), $body);
-        HouseRepository::markFeed((int) $feed['id'], 'OK', date('Y-m-d H:i:s'));
-    }
+    CalendarSync::resyncProperty(house_id($m[1]));
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 

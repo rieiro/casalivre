@@ -4,9 +4,9 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-require $root . '/src/Db.php';
-require $root . '/src/JsonCache.php';
-require $root . '/src/CepRepository.php';
+require_once $root . '/src/Db.php';
+require_once $root . '/src/JsonCache.php';
+require_once $root . '/src/CepRepository.php';
 
 $before = CepRepository::count();
 $loaded = CepRepository::ensureLoaded();

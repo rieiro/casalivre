@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-require $root . '/src/Db.php';
-require $root . '/src/UserRepository.php';
-require $root . '/src/HouseRepository.php';
-require $root . '/src/PhotoRepository.php';
-require $root . '/src/PhotoStorage.php';
-require $root . '/src/helpers.php';
-require $root . '/src/CepRepository.php';
-require $root . '/src/CityRepository.php';
+require_once $root . '/src/Db.php';
+require_once $root . '/src/UserRepository.php';
+require_once $root . '/src/HouseRepository.php';
+require_once $root . '/src/PhotoRepository.php';
+require_once $root . '/src/PhotoStorage.php';
+require_once $root . '/src/helpers.php';
+require_once $root . '/src/CepRepository.php';
+require_once $root . '/src/CityRepository.php';
 
 if (!is_file($root . '/storage/db/casalivre.sqlite') && (getenv('DB_DRIVER') ?: 'sqlite') === 'sqlite' && !getenv('DB_DSN')) {
     fwrite(STDERR, "Banco não encontrado. Rode scripts/setup.sh antes.\n");
