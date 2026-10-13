@@ -18,14 +18,14 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
 
     function close() {
         list.hidden = true;
-        list.innerHTML = '';
+        list.replaceChildren();
         input.setAttribute('aria-expanded', 'false');
         active = -1;
         rows = [];
     }
 
     function paint() {
-        list.innerHTML = '';
+        list.replaceChildren();
         rows.forEach((row, index) => {
             const item = document.createElement('li');
             item.setAttribute('role', 'presentation');
@@ -229,7 +229,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     }
 
     function paint() {
-        panel.innerHTML = '';
+        panel.replaceChildren();
         const nav = document.createElement('div');
         nav.className = 'stay-nav';
         const prev = document.createElement('button');
@@ -712,3 +712,23 @@ document.querySelectorAll('[data-money]').forEach((input) => {
 });
 
 
+
+// Substitutos dos handlers inline (CSP sem 'unsafe-inline').
+document.addEventListener('change', (event) => {
+    const t = event.target;
+    if (t instanceof HTMLSelectElement && t.hasAttribute('data-autosubmit') && t.form) {
+        t.form.submit();
+    }
+});
+document.addEventListener('click', (event) => {
+    const t = event.target;
+    if (t instanceof HTMLInputElement && t.hasAttribute('data-select-on-click')) {
+        t.select();
+    }
+});
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form instanceof HTMLFormElement && form.dataset.confirmSubmit && !window.confirm(form.dataset.confirmSubmit)) {
+        event.preventDefault();
+    }
+});

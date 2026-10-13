@@ -8,7 +8,7 @@
         <?php if ($score !== null): ?><p>Nota dos hóspedes: <?= e((string) $score) ?>/10</p><?php endif; ?>
         <div class="gallery">
             <?php foreach ($photos as $photo): ?>
-                <img src="<?= e($photo['path']) ?>" alt="Foto de <?= e($property['title']) ?>" loading="lazy">
+                <img src="<?= e(photo_url($photo['path'])) ?>" alt="Foto de <?= e($property['title']) ?>" loading="lazy">
             <?php endforeach; ?>
         </div>
         <p><?= e($property['description']) ?></p>
@@ -26,49 +26,6 @@
     <?php endif; ?>
 </section>
 <?php if (!empty($use_api)): ?>
-<script>
-(function () {
-    const hash = <?= json_encode($hash ?? '') ?>;
-    const csrf = <?= json_encode($csrf) ?>;
-    const params = new URLSearchParams(window.location.search);
-    const box = document.getElementById('property-detail');
-    fetch('/api/imoveis/' + hash + '?' + params.toString(), { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(data => {
-            const photos = (data.photos || []).map(p => '<img src="' + p.path + '" loading="lazy">').join('');
-            const quote = data.quote ? (data.quote.nightly + ' / noite (' + data.quote.nights + ' noites)') : (data.nightly_price + ' / noite');
-            box.innerHTML = '<h1>' + (data.title || '') + '</h1>'
-                + '<p>' + (data.city || '') + ' · até ' + data.max_guests + ' hóspedes · ' + data.bedrooms + ' quartos</p>'
-                + (data.score ? '<p>Nota: ' + data.score + '/10</p>' : '')
-                + '<div class="gallery">' + photos + '</div>'
-                + '<p>' + (data.description || '') + '</p>'
-                + '<p class="price">' + quote + '</p>'
-                + '<form class="panel" id="review-form">'
-                + '<h2>Avaliar estadia</h2>'
-                + '<label>Nome <input name="author" required></label>'
-                + '<label>Nota (1 a 10) <input type="number" name="score" min="1" max="10" required></label>'
-                + '<label>Comentário <textarea name="comment" rows="3"></textarea></label>'
-                + '<button class="primary" type="submit">Publicar avaliação</button></form>';
-            document.getElementById('review-form').addEventListener('submit', async function (ev) {
-                ev.preventDefault();
-                const formData = Object.fromEntries(new FormData(ev.target).entries());
-                const res = await fetch('/api/imoveis/' + hash + '/avaliar', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body: JSON.stringify(formData)
-                });
-                if (res.ok) {
-                    alert('Avaliação enviada');
-                    window.location.reload();
-                } else {
-                    alert('Erro ao enviar avaliação');
-                }
-            });
-        })
-        .catch(() => {
-            box.innerHTML = '<p>Imóvel não encontrado.</p>';
-        });
-})();
-</script>
+<?php page_data(['hash' => $hash ?? '']); ?>
+<script src="/assets/pages/property.js?v=3"></script>
 <?php endif; ?>

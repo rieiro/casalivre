@@ -4,7 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
-    <link rel="stylesheet" href="/assets/app.css?v=18">
+    <link rel="stylesheet" href="/assets/app.css?v=19">
+    <?= page_data_script($csrf) ?>
+    <script src="/assets/safe-dom.js?v=3"></script>
 </head>
 <body>
 <header class="top">
@@ -12,7 +14,7 @@
     <form class="lang" method="post" action="/idioma">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label><?= e(t('nav.language')) ?>
-            <select name="locale" onchange="this.form.submit()">
+            <select name="locale" data-autosubmit>
                 <?php foreach (I18n::LOCALES as $code => $label): ?>
                     <option value="<?= e($code) ?>" <?= ($locale ?? '') === $code ? 'selected' : '' ?>><?= e($label) ?></option>
                 <?php endforeach; ?>
@@ -40,7 +42,6 @@
     <?= $content ?>
 </main>
 <footer><?= e(t('footer')) ?></footer>
-<script src="/assets/form-data.js?v=1"></script>
-<script src="/assets/app.js?v=17"></script>
+<script src="/assets/app.js?v=18"></script>
 </body>
 </html>
