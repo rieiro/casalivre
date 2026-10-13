@@ -9,7 +9,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
 - [ ] Banco novo no PHP 8.2/8.3 (PR #13). Até ele entrar, exigir PHP >= 8.4.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
-- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Se o nginx, o Apache ou a CDN também mandarem CSP ou X-Frame-Options, remover ou alinhar com o cabeçalho do app. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. O nginx não pode duplicar nem sobrescrever o cabeçalho CSP enviado pelo PHP. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
+- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
 - [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
 
@@ -36,7 +36,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 
 - [ ] **nginx `client_max_body_size`** nas rotas `/api` (por exemplo, 1m; maior só no upload de fotos).
 - [ ] **php.ini:** `max_input_vars=1000` e `max_input_nesting_level=64` (os padrões; não aumentar).
-- [ ] **Cache de assets:** com o PR #21, o layout carrega `form-data.js?v=1` e `app.js?v=17`; limpar o cache ou a CDN no deploy.
+- [ ] **Cache de assets:** com o #23, os assets vão em `app.css?v=19`, `app.js?v=18`, `safe-dom.js?v=3`, `property-form.js?v=3`, `map.js?v=2` e `form-data.js?v=1` (este só no formulário de imóvel); limpar o cache ou a CDN no deploy.
 
 - [ ] **Fotos** servidas só de `/uploads/` (nginx: `location /uploads/` sem execução de PHP e com `add_header X-Content-Type-Options nosniff`). Depois do deploy, revisar as fotos já gravadas: `SELECT id, path FROM photos WHERE path NOT LIKE '/uploads/%' OR path LIKE '%..%'`.
 
