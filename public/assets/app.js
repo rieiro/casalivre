@@ -510,6 +510,9 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
     const roomLabel = root.dataset.roomLabel || 'Quarto';
     const bedroomsLabel = root.dataset.bedroomsLabel || 'Quartos';
     const bedsLabel = root.dataset.bedsLabel || 'Camas';
+    const bedOne = root.dataset.bedOne || 'cama';
+    const bedMany = root.dataset.bedMany || 'camas';
+    const summary = root.querySelector('[data-room-summary]');
     if (!list || !bedTemplate) {
         return;
     }
@@ -579,6 +582,23 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
         const addRoom = root.querySelector('[data-add-room]');
         if (addRoom) {
             addRoom.disabled = rooms.length >= max || bedTotal >= max;
+        }
+        if (summary) {
+            // Resumo por quarto: só textContent (sem innerHTML).
+            while (summary.firstChild) {
+                summary.removeChild(summary.firstChild);
+            }
+            rooms.forEach((room, index) => {
+                const n = room.querySelectorAll('[data-bed]').length;
+                const item = document.createElement('li');
+                item.textContent = roomLabel + ' ' + (index + 1) + ': ' + n + ' ' + (n === 1 ? bedOne : bedMany);
+                summary.appendChild(item);
+            });
+            if (rooms.length === 0) {
+                const item = document.createElement('li');
+                item.textContent = summary.dataset.empty || '';
+                summary.appendChild(item);
+            }
         }
         const count = root.querySelector('[data-room-count]');
         if (count) {
