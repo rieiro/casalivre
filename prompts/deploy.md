@@ -15,6 +15,14 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] **CORS**: allowlist explícita de origens (PR #4). Nunca `*` com credenciais.
 - [ ] **Ordem de merge na develop**: #9, #7, #4, #1 (squash), #5 (rebase após #1), #2, #3, #6 (squash), #8, #10. Nas seções do deploy.md em conflito, manter todas.
 
+
+## Ambiente novo e carga de dados (seeds)
+
+- [ ] Ordem de preparação do banco: `setup.sh` (aplica `database/schema.sql`), depois `php scripts/migrate.php` (confirma `user_version=1`), depois `load-ceps.php` e, só então, os seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`).
+- [ ] `migrate.php` exige o schema base: em banco vazio ele falha com "no such table: users" (`src/Db.php:175`).
+- [ ] Os seeds não precisam de `LOG_SALT`, mas a aplicação continua exigindo a variável.
+- Os seeds não precisaram de alteração nesta sprint (verificado com os PRs #1 a #10 mesclados).
+
 ## Não verificado ainda (validar em homologação)
 
 - [ ] SSRF do `CalendarSync::fetch` com DNS real.
@@ -23,6 +31,8 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] DEF-008: "database is locked" (SQLite) sob carga paralela nos `.ics` (PR #10). No php-fpm real, confirmar o modo WAL e o busy_timeout, e garantir permissão de escrita na pasta do banco para os arquivos `-wal` e `-shm`.
 
 ## Backlog (próximas sprints)
+
+- Expor ou gerar o `ical_hash` pela API: hoje ele só é criado ao abrir a tela web de calendário (`views/calendar.php:140`). Sem isso, um front só com API não obtém o link do `.ics`.
 
 - Criptografar `calendar_feeds.url` e `properties.external_ical_url` no banco, com coluna HMAC para checar duplicados.
 - LGPD: PII em claro (incluindo `valor_anterior` de ACCOUNT_UPDATE), audit_hold com PII, política de retenção, hash de IP e e-mail; separar auditoria de BI.
