@@ -2,9 +2,6 @@
 
 declare(strict_types=1);
 
-// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
-ini_set('zend.exception_ignore_args', '1');
-
 require __DIR__ . '/../src/Db.php';
 require __DIR__ . '/../src/Settings.php';
 require __DIR__ . '/../src/I18n.php';
@@ -26,6 +23,9 @@ require __DIR__ . '/../src/Api.php';
 require __DIR__ . '/../src/ActivityLog.php';
 require __DIR__ . '/../src/SecureSession.php';
 require __DIR__ . '/../src/ExceptionShield.php';
+
+// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
+ini_set('zend.exception_ignore_args', '1');
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
