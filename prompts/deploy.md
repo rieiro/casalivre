@@ -50,6 +50,20 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 ### Feeds iCal (Airbnb, Booking, Google)
 - [ ] Saída HTTP 80/443 e DNS liberados (ver Servidor e PHP); export só pelo `ical_hash` secreto.
 
+## Transferência de dados e cache (nginx)
+Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
+- [ ] `http2 on;` (TLS 1.2+).
+- [ ] /assets/: `Cache-Control "public, max-age=31536000, immutable"` e etag on. Sempre subir o `?v=` ao mudar JS/CSS.
+- [ ] /uploads/: sem PHP (`location ~ \.php$ { return 404; }`), cache immutable de 1 ano, nosniff e etag on. Ao remover uma foto, apagar o arquivo e fazer purge.
+- [ ] gzip + brotli (`ngx_brotli`, de preferência `gzip_static`/`brotli_static`) só em css, js, json e svg. Não comprimir `text/html` (BREACH). `gzip_vary on;`
+- [ ] Rotas autenticadas com `private, no-store`, sem o nginx sobrescrever.
+- [ ] Nenhum cache de resposta com Cookie, Set-Cookie ou Authorization. Chave com `$host` fixo e cache só em /assets/ e /uploads/.
+- [ ] `client_max_body_size` de 1m na API, e no upload igual ao limite do app (alvo: 10m).
+- [ ] Instalar o pacote `libvips`. Depois do PR de fotos, rodar o reprocessamento (WebP 480/960/1600, sem EXIF/GPS) e tirar os originais de public/.
+- [ ] OSM: atribuição "© OpenStreetMap contributors" com link em toda página com mapa (falta em /busca/mapa).
+- [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
+- [ ] CDN (se usada): só /assets/ e /uploads/, num subdomínio sem cookies, com HTML e API na origem. Exige DPA (ela termina o TLS), não pode reescrever CSP nem X-Frame-Options, e precisa de um processo de purge.
+
 ## Banco de dados (SQLite)
 
 - [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
