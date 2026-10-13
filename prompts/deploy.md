@@ -39,3 +39,5 @@ Checklist de acompanhamento antes de publicar em produção. Origem: pareceres d
 - [ ] **Backup**: copiar o banco com `sqlite3 casalivre.sqlite ".backup destino.sqlite"` ou junto com os arquivos `-wal`/`-shm`. Copiar só o `.sqlite` pode perder transações recentes.
 - [ ] **Sistema de arquivos local**: WAL não funciona em NFS e compartilhamentos de rede; manter `storage/db` em disco local.
 - [ ] **Validar em homologação**: carga paralela nos `.ics` com php-fpm real, sem 500 "database is locked" (`busy_timeout = 5000 ms`).
+- [ ] **Migração no deploy**: rodar `php scripts/migrate.php` a cada deploy, antes de liberar o tráfego, com o usuário do php-fpm. O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`. Com o banco atualizado, as requisições não pegam lock de escrita. `--force` reaplica a migração.
+- [ ] **Regra de desenvolvimento**: **aumentar `Db::SCHEMA_VERSION`** sempre que mudar o schema, o `Db::migrate()` ou os seeds (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog). Sem isso, bancos existentes **não** recebem a mudança.
