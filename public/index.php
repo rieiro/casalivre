@@ -74,7 +74,7 @@ return Seguranca::pipeline(
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
-        'recusar' => static function (string $code, string $path): void {
+        'recusar' => static function (string $code, string $path): never {
             casa_recusar($code, $path);
         },
     ],
@@ -107,6 +107,18 @@ function casa_privado(string $path, string $method): bool
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
 }
 
+/**
+ * Envia a resposta de recusa dos middlewares de segurança e ENCERRA a requisição.
+ *
+ * Todos os casos terminam com exit (por isso o tipo de retorno é never). O dispatch
+ * nunca roda depois de uma recusa. O log da API continua sendo gravado, porque o
+ * RequestLog usa register_shutdown_function, que roda mesmo após exit.
+ *
+ * - 'csrf'       -> 419 (JSON em /api, HTML fora) + exit
+ * - 'rate_limit' -> 429 + Retry-After (enviado pelo RateLimit) (JSON em /api, tela de login fora) + exit
+ * - 'login'      -> 302 para /entrar + exit
+ * - outros       -> 401 JSON + exit
+ */
 function casa_recusar(string $code, string $path): never
 {
     $api = str_starts_with($path, '/api');
