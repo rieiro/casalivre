@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../src/Db.php';
-require __DIR__ . '/../src/Settings.php';
-require __DIR__ . '/../src/I18n.php';
-require __DIR__ . '/../src/CityRepository.php';
-require __DIR__ . '/../src/CepRepository.php';
-require __DIR__ . '/../src/UserRepository.php';
+require_once __DIR__ . '/../src/Db.php';
+require_once __DIR__ . '/../src/Settings.php';
+require_once __DIR__ . '/../src/I18n.php';
+require_once __DIR__ . '/../src/CityRepository.php';
+require_once __DIR__ . '/../src/CepRepository.php';
+require_once __DIR__ . '/../src/UserRepository.php';
 PasswordPolicy::$minLength = max(1, Settings::int('password_min_length') ?: 8);
 AccountFlow::$sendLink = static function (string $email, string $link): void {
 };
-require __DIR__ . '/../src/HouseRepository.php';
-require __DIR__ . '/../src/PhotoRepository.php';
-require __DIR__ . '/../src/PhotoStorage.php';
-require __DIR__ . '/../src/helpers.php';
+require_once __DIR__ . '/../src/HouseRepository.php';
+require_once __DIR__ . '/../src/PhotoRepository.php';
+require_once __DIR__ . '/../src/PhotoStorage.php';
+require_once __DIR__ . '/../src/helpers.php';
 reject_oversize_upload();
-require __DIR__ . '/../src/HouseService.php';
+require_once __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
-require __DIR__ . '/../src/CalendarSync.php';
-require __DIR__ . '/../src/Api.php';
-require __DIR__ . '/../src/ActivityLog.php';
-require __DIR__ . '/../src/SecureSession.php';
-require __DIR__ . '/../src/ExceptionShield.php';
+require_once __DIR__ . '/../src/CalendarSync.php';
+require_once __DIR__ . '/../src/Api.php';
+require_once __DIR__ . '/../src/ActivityLog.php';
+require_once __DIR__ . '/../src/SecureSession.php';
+require_once __DIR__ . '/../src/ExceptionShield.php';
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -53,8 +53,8 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: same-origin');
 
-require __DIR__ . '/../src/LoginRateLimiter.php';
-require __DIR__ . '/../seguranca/Seguranca.php';
+require_once __DIR__ . '/../src/LoginRateLimiter.php';
+require_once __DIR__ . '/../seguranca/Seguranca.php';
 
 return Seguranca::pipeline(
     [
