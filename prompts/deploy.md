@@ -102,6 +102,14 @@ Parecer do Bot Segurança e Arquitetura: #12 aprovado com condições; #15 não 
 - [ ] Resposta genérica no cadastro com e-mail existente (anti-enumeração).
 - [ ] `BODY_VALUE_ALLOWLIST` limitado a valores escalares.
 
+## Condições de deploy: PRs #16 (SSRF) e #17 (Mailer SMTP), e ajustes do #12, #14 e #15
+
+- Ordem de merge: #13, #16, #12, #14, #15, #17. O #15 e o #17 entram juntos, e só com o envio de e-mail validado em homologação.
+- #15: `APP_URL=https://<domínio>` obrigatório em produção (sem ele, o app dá erro); `APP_ENV=production` ou ausente; rodar `php scripts/migrate.php` (SCHEMA_VERSION 2).
+- #17: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`SMTP_CA_FILE` só com CA privada). Saída liberada na porta 587 ou 465. SPF e DKIM no domínio do `SMTP_FROM`. O `storage/logs/mail-dev.log` nunca pode existir em produção.
+- #12 e #14: `ACTIVITY_DB_PATH` só para testes, sem valor em produção.
+- #16: CI em PHP 8.2 e 8.4 (no 8.2, fica vermelha até o #13 entrar).
+
 ## Backlog (próximas sprints)
 
 - `verification_link`: ver condição bloqueante 3.
