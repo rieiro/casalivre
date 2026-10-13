@@ -12,6 +12,8 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Segurança e LGPD
 
+- [ ] `CL.el`: passar `action`, `formaction` e `xlink:href` pelo safeHref (vai no #23).
+
 - [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
 - [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
 - [ ] `Csrf::rawBody` com limite de tamanho (checar `CONTENT_LENGTH`).
@@ -41,11 +43,11 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Mapas
 
-- [ ] Trocar o mapa para o OpenMapTiles (decisão do usuário, 13/10) e ajustar o CSP (img-src, connect-src) para os domínios dele. O Google Maps não será usado agora.
+- [ ] Trocar o mapa para o OpenMapTiles (decisão do usuário, 13/10) e ajustar o CSP: liberar só na rota do mapa, com hosts explícitos e sem curinga, usar nonce se precisar de style e nunca liberar um domínio que aceite conteúdo de usuários (no teste com o Google Maps, uma injeção de CSS vazou o token CSRF por `*.googleapis.com`). O Google Maps não será usado agora.
 
 ## Bugs
 
-- [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada (achado pelo Programador no #23).
+- [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada. Correção pronta na branch fix/busca-mapa (PR a abrir; QA depois do #23).
 
 ## Infra e dados
 
