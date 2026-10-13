@@ -2,22 +2,41 @@
 
 declare(strict_types=1);
 
-function base_url(): string
+/**
+ * URL pública da aplicação, usada em links enviados ao usuário (ativação, redefinição, .ics).
+ * Sempre vem de APP_URL (nunca do header Host, que o cliente controla).
+ * Sem APP_URL: em APP_ENV=dev/local cai no Host da requisição; fora disso, falha com erro claro.
+ */
+function app_url(): string
 {
-    $env = getenv('APP_URL');
-    if (is_string($env) && $env !== '') {
+    if (class_exists('Db')) {
+        Db::loadEnv();
+    }
+    $env = trim((string) getenv('APP_URL'));
+    if ($env !== '') {
+        $parts = parse_url($env);
+        if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || empty($parts['host'])
+            || isset($parts['query']) || isset($parts['fragment']) || isset($parts['user'])) {
+            throw new RuntimeException('APP_URL inválida: use esquema://host[:porta][/caminho], sem query.');
+        }
         return rtrim($env, '/');
     }
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
-    return $scheme . '://' . $host;
+    if (expose_account_links()) {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
+        return $scheme . '://' . $host;
+    }
+    throw new RuntimeException('APP_URL não configurada: obrigatória fora de APP_ENV=dev/local (links de e-mail e .ics).');
+}
+
+function base_url(): string
+{
+    return app_url();
 }
 
 function request_base(): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
-    return $scheme . '://' . $host;
+    return app_url();
 }
 
 function e(?string $value): string

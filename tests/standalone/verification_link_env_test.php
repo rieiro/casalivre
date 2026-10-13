@@ -64,5 +64,57 @@ foreach (['' => false, 'production' => false, 'prod' => false, 'dev' => true, 'l
         t_ok(!str_contains($r['body'], '/senha/redefinir?token='), "$label: link de redefinição não aparece");
     }
 }
+
+echo "APP_URL fixa (request_base)\n";
+$_SERVER['HTTP_HOST'] = 'atacante.example';
+putenv('APP_URL');
+putenv('APP_ENV=production');
+$err = null;
+try {
+    request_base();
+} catch (RuntimeException $e) {
+    $err = $e->getMessage();
+}
+t_ok($err !== null && str_contains($err, 'APP_URL não configurada'), 'produção sem APP_URL: erro claro');
 putenv('APP_ENV');
+$err = null;
+try {
+    request_base();
+} catch (RuntimeException $e) {
+    $err = $e->getMessage();
+}
+t_ok($err !== null, 'APP_ENV ausente sem APP_URL: também falha');
+putenv('APP_ENV=dev');
+t_eq('http://atacante.example', request_base(), 'dev sem APP_URL: cai no Host');
+putenv('APP_URL=https://casalivre.example/');
+putenv('APP_ENV=production');
+t_eq('https://casalivre.example', request_base(), 'APP_URL usada (sem barra final), Host ignorado');
+foreach (['ftp://x.com', 'casalivre.example', 'https://x.com/?a=1', 'https://u:p@x.com'] as $bad) {
+    putenv('APP_URL=' . $bad);
+    $err = null;
+    try {
+        request_base();
+    } catch (RuntimeException $e) {
+        $err = $e->getMessage();
+    }
+    t_ok($err !== null && str_contains($err, 'APP_URL inválida'), "APP_URL inválida recusada: $bad");
+}
+unset($_SERVER['HTTP_HOST']);
+
+echo "link montado com APP_URL mesmo com Host forjado (HTTP)\n";
+putenv('APP_ENV=dev');
+putenv('APP_URL=https://casalivre.example');
+$base = t_server();
+$jar = tempnam(sys_get_temp_dir(), 'jar');
+$csrf = csrf_of($base, $jar);
+$email = 'host' . bin2hex(random_bytes(3)) . '@casalivre.test';
+$pass = 'Casa#' . random_int(100000, 999999) . 'xY';
+$r = t_http('POST', $base . '/api/users', json_encode(['name' => 'Host Teste', 'cpf' => '52998224725', 'cep' => '88015-200',
+    'address_number' => '10', 'address_complement' => '', 'phone' => '(48) 99999-0000', 'email' => $email, 'password' => $pass,
+    'password_confirm' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$j = json_decode($r['body'], true) ?: [];
+t_ok(str_starts_with((string) ($j['verification_link'] ?? ''), 'https://casalivre.example/verificar?token='), 'verification_link usa APP_URL');
+putenv('APP_URL');
+putenv('APP_ENV');
+
 t_done();
