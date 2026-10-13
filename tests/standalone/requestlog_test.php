@@ -124,4 +124,55 @@ foreach (['Maria', '88015', 'Bocaiuva', '1234', 'Apto', '1990-05-17', 'maria@', 
     t_ok(!str_contains($json, $secret), "corpo: '$secret' não aparece");
 }
 
+
+echo "ActivityLog: allowlist por ação\n";
+putenv('LOG_SALT=sal-de-teste');
+$p = ActivityLog::safeParams(['email' => 'joao@x.com', 'imovel_id' => 3, 'nome' => 'João Silva', 'cep' => '88015200', 'street' => 'Rua A', 'descricao' => 'texto'], ActivityLog::LOGIN_OK);
+t_eq(['email', 'imovel_id'], array_keys($p), 'LOGIN_OK: só email (HMAC) e comuns; resto omitido');
+t_eq(LogPrivacy::email('joao@x.com'), $p['email'], 'LOGIN_OK: email pseudonimizado');
+$p = ActivityLog::safeParams(['autor' => 'Maria Souza', 'nota' => 5, 'comentario' => 'ligue 48999990000'], ActivityLog::REVIEW);
+t_ok(isset($p['autor']) && $p['autor'] !== 'Maria Souza' && $p['nota'] === 5 && !isset($p['comentario']), 'REVIEW: autor HMAC, nota mantida, comentário omitido');
+$p = ActivityLog::safeParams(['url' => 'https://www.airbnb.com/calendar/ical/1.ics?s=SEGREDO', 'novas' => 2, 'token' => 't'], ActivityLog::CALENDAR_SYNC);
+t_ok(!str_contains((string) json_encode($p), 'SEGREDO') && $p['novas'] === 2 && !isset($p['token']), 'CALENDAR_SYNC: URL pseudonimizada, chave fora da lista omitida');
+$p = ActivityLog::safeParams(['amenidades' => ['pool', 'bbq'], 'localidade' => 'Floripa', 'q' => 'x'], ActivityLog::SEARCH);
+t_eq(['amenidades' => ['pool', 'bbq'], 'localidade' => 'Floripa'], $p, 'SEARCH: lista permitida mantida, q omitido');
+
+echo "ActivityLog: valor_anterior/atual por allowlist\n";
+$j = (string) ActivityLog::encodePrevious(['title' => 'Casa', 'description' => 'Fale comigo 48999990000', 'address' => 'Rua A, 1', 'cep' => '88000000',
+    'street' => 'Rua A', 'lat' => -27.5, 'lng' => -48.5, 'nightly_price' => 200, 'ical_hash' => str_repeat('a', 32), 'user_id' => 7,
+    'external_ical_url' => 'https://x.com/a.ics?s=SEG', 'fotos' => [['id' => 1, 'path' => 'p.jpg', 'audit_hold' => 'h']]]);
+$v = json_decode($j, true);
+foreach (['description', 'address', 'cep', 'street', 'lat', 'lng', 'ical_hash'] as $k) {
+    t_ok(!array_key_exists($k, $v), "valor: omite '$k'");
+}
+t_ok($v['title'] === 'Casa' && $v['nightly_price'] === 200, 'valor: campos do imóvel mantidos');
+t_ok($v['user_id'] !== 7 && !str_contains($j, 'SEG'), 'valor: user_id HMAC e URL sem token');
+t_eq([['id' => 1, 'path' => 'p.jpg']], $v['fotos'], 'valor: lista de fotos filtrada (sem audit_hold)');
+
+echo "ActivityLog: conta grava só nomes de campos alterados\n";
+t_eq(['name', 'phone', 'senha'], ActivityLog::changedFieldNames(
+    ['name' => 'A', 'phone' => '1', 'email' => 'a@x.com', 'password_hash' => 'h1'],
+    ['name' => 'B', 'phone' => '2', 'email' => 'a@x.com', 'password_hash' => 'h2']), 'changedFieldNames');
+require_once CL_ROOT . '/src/Db.php';
+$dir = sys_get_temp_dir() . '/cl-act-' . bin2hex(random_bytes(3));
+mkdir($dir, 0700);
+putenv('ACTIVITY_DB_PATH=' . $dir . '/a.sqlite');
+putenv('LOG_DRIVER=sqlite');
+ActivityLog::record(ActivityLog::ACCOUNT_UPDATE, ['email' => 'joao@x.com', 'nome' => 'João'],
+    ['name' => 'João Silva', 'cpf' => '52998224725', 'street' => 'Rua Velha'], ['name' => 'João S.', 'cpf' => '52998224725', 'street' => 'Rua Nova']);
+ActivityLog::record(ActivityLog::ACCOUNT_DELETE, ['email' => 'joao@x.com', 'ip' => '203.0.113.9'],
+    ['status' => 'active', 'email' => 'joao@x.com'], ['status' => 'deleted', 'email' => 'apagado-1@x']);
+$rows = (new PDO('sqlite:' . $dir . '/a.sqlite'))->query('SELECT action_code, params, valor_anterior, valor_atual FROM activity_log ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+$all = json_encode($rows, JSON_UNESCAPED_UNICODE);
+t_eq(2, count($rows), 'duas linhas de conta gravadas');
+t_eq(null, $rows[0]['valor_anterior'], 'ACCOUNT_UPDATE: sem valor_anterior');
+t_eq(['campos_alterados' => ['name', 'street']], json_decode((string) $rows[0]['valor_atual'], true), 'ACCOUNT_UPDATE: só nomes alterados');
+t_eq(['campos_alterados' => ['email', 'status']], json_decode((string) $rows[1]['valor_atual'], true), 'ACCOUNT_DELETE: só nomes alterados');
+foreach (['João', 'Silva', 'Rua Velha', 'Rua Nova', '52998224725', 'joao@x.com', 'apagado-1', '203.0.113.9'] as $secret) {
+    t_ok(!str_contains($all, $secret), "conta: '$secret' não aparece");
+}
+array_map('unlink', glob($dir . '/*') ?: []);
+@rmdir($dir);
+putenv('ACTIVITY_DB_PATH');
+
 t_done();
