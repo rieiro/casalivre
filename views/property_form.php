@@ -16,7 +16,7 @@
     $titleLen = function_exists('mb_strlen') ? mb_strlen($titleValue) : strlen($titleValue);
     $descriptionLen = function_exists('mb_strlen') ? mb_strlen($descriptionValue) : strlen($descriptionValue);
     ?>
-    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>">
+    <form class="panel" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>" data-script-error="<?= e(t('form.script_error')) ?>">
         <h1><?= $editing ? e(t('form.edit')) : e(t('form.new')) ?></h1>
         <?php if ($error): ?><p class="error"><?= e($error) ?></p><?php endif; ?>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -39,9 +39,11 @@
         </div>
         <p class="muted" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
         <?php $roomLayout = Rooms::forForm($posted, $current ?: null); ?>
-        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-max="999">
+        <fieldset class="rooms" data-rooms data-room-label="<?= e(t('form.room')) ?>" data-bedrooms-label="<?= e(t('form.bedrooms')) ?>" data-beds-label="<?= e(t('form.beds')) ?>" data-bed-one="<?= e(t('form.bed_one')) ?>" data-bed-many="<?= e(t('form.bed_many')) ?>" data-max="999">
             <legend><?= e(t('form.rooms')) ?></legend>
             <p class="muted"><?= e(t('form.rooms_hint')) ?></p>
+            <section class="rooms-editor" aria-labelledby="rooms-editor-title">
+            <h3 class="rooms-subtitle" id="rooms-editor-title"><?= e(t('form.beds_add_title')) ?></h3>
             <div data-room-list>
                 <?php foreach ($roomLayout as $roomIndex => $room): ?>
                     <div class="room-card" data-room>
@@ -74,7 +76,12 @@
                 <?php endforeach; ?>
             </div>
             <button class="danger" type="button" data-add-room><?= e(t('form.add_room')) ?></button>
-            <p class="muted" data-room-count></p>
+            </section>
+            <section class="rooms-summary" aria-labelledby="rooms-summary-title" aria-live="polite">
+                <h3 class="rooms-subtitle" id="rooms-summary-title"><?= e(t('form.room_summary_title')) ?></h3>
+                <ul data-room-summary></ul>
+                <p class="muted" data-room-count></p>
+            </section>
             <template data-bed-template>
                 <div class="bed-row" data-bed>
                     <select data-bed-type>
@@ -163,7 +170,7 @@
         $photoRemaining = max(0, $photoLimit - count($photos));
         $uploadCount = min($uploadCount, max(1, $photoRemaining));
         ?>
-        <form class="panel" style="margin-top:16px" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos" enctype="multipart/form-data" data-upload-limit data-max-post="<?= $uploadBudget ?>" data-max-file="<?= $uploadFile ?>" data-max-count="<?= $photoRemaining ?>" data-msg-count="<?= e(t('form.upload_many')) ?>" data-msg-file="<?= e(t('form.upload_file')) ?>" data-msg-total="<?= e(t('form.upload_total')) ?>">
+        <form class="panel mt-16" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos" enctype="multipart/form-data" data-upload-limit data-max-post="<?= $uploadBudget ?>" data-max-file="<?= $uploadFile ?>" data-max-count="<?= $photoRemaining ?>" data-msg-count="<?= e(t('form.upload_many')) ?>" data-msg-file="<?= e(t('form.upload_file')) ?>" data-msg-total="<?= e(t('form.upload_total')) ?>">
             <h2><?= e(t('form.photos')) ?></h2>
             <?php if (!empty($upload_notice ?? null)): ?><p class="error"><?= e($upload_notice) ?></p><?php endif; ?>
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -176,14 +183,14 @@
             <?php endif; ?>
         </form>
         <?php if ($photos): ?>
-        <form class="panel" style="margin-top:16px" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos/excluir" data-photo-select data-confirm="<?= e(t('form.delete_selected_confirm')) ?>">
+        <form class="panel mt-16" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/fotos/excluir" data-photo-select data-confirm="<?= e(t('form.delete_selected_confirm')) ?>">
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <div class="gallery">
                 <?php foreach ($photos as $photo): ?>
                     <div class="photo-tile">
                         <label class="photo-pick">
                             <input class="photo-check" type="checkbox" name="fotos[]" value="<?= (int) $photo['id'] ?>">
-                            <img src="<?= e($photo['path']) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
+                            <img src="<?= e(photo_url($photo['path'])) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
                             <span class="tick" aria-hidden="true">✓</span>
                         </label>
                         <?php if (!empty($photo['is_primary'])): ?><span class="cover-badge"><?= e(t('form.cover_current')) ?></span><?php endif; ?>
@@ -197,51 +204,12 @@
         <?php else: ?>
             <p class="muted">0 <?= e(t('form.photos_count')) ?></p>
         <?php endif; ?>
-        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" onsubmit="return confirm(<?= json_encode(t('dash.remove_confirm'), JSON_UNESCAPED_UNICODE) ?>)" style="margin-top:12px">
+        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" data-confirm-submit="<?= e(t('dash.remove_confirm')) ?>" class="mt-12">
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <button class="danger" type="submit"><?= e(t('dash.remove')) ?></button>
         </form>
         <p><a href="/imoveis/<?= e(property_ref($property)) ?>/calendario"><?= e(t('dash.calendar')) ?></a></p>
     <?php endif; ?>
 </section>
-<script>
-(function () {
-    const form = document.getElementById('property-form');
-    if (!form) return;
-    const csrf = form.querySelector('[name="_csrf"]').value;
-    const editing = form.dataset.editing === '1';
-    const hash = form.dataset.hash;
-    form.addEventListener('submit', async function (ev) {
-        // Deixa o submit normal se for o botão de excluir fotos (tem data-delete-photos)
-        if (ev.submitter && ev.submitter.hasAttribute('data-delete-photos')) {
-            return;
-        }
-        ev.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
-        const url = editing ? '/api/casas/' + hash : '/api/casas';
-        const method = editing ? 'PUT' : 'POST';
-        try {
-            const res = await fetch(url, {
-                method: method,
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                alert(json.error || 'Erro ao salvar imóvel');
-                return;
-            }
-            const newHash = (json.casa && json.casa.id) || hash;
-            if (!editing) {
-                window.location.href = '/imoveis/' + newHash + '/editar';
-            } else {
-                alert('Imóvel atualizado');
-                window.location.reload();
-            }
-        } catch (e) {
-            alert('Falha de conexão');
-        }
-    });
-})();
-</script>
+<script src="/assets/form-data.js?v=1"></script>
+<script src="/assets/pages/property-form.js?v=3"></script>

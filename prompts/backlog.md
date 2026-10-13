@@ -6,10 +6,17 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #18 | Scripts de teste com APP_ENV=dev e Caso 4 com >= 20 | em revisão |
-| #19 | deploy.md: alerta do mail_not_configured no php.log | aguardando merge |
+| #21 | Issue #20: camas por quarto e separação no layout | aprovado pela Segurança e pelo Revisor (ajustes menores); QA em andamento |
+| #23 | XSS nas views, CSP e `str_field()` | mudanças pedidas pelo Revisor; entra depois do #21 |
+| — | Refatoração DRY do que já foi mesclado (Mailer/helpers, base_url, Db::transactional, RequestLog) | sem urgência |
 
 ## Segurança e LGPD
+
+- [ ] `CL.el`: passar `action`, `formaction` e `xlink:href` pelo safeHref (vai no #23).
+
+- [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
+- [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
+- [ ] `Csrf::rawBody` com limite de tamanho (checar `CONTENT_LENGTH`).
 
 - [ ] **ALTA, antes de abrir o cadastro:** enviar o e-mail por fila (storage/mail ou tabela) com worker ou cron, com resposta em tempo constante no esqueci-senha (hoje o tempo revela quais e-mails têm conta).
 - [ ] Mostrar "Enviamos um link" só depois de enfileirar com sucesso, e avisar o usuário quando o envio falhar.
@@ -34,6 +41,16 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Migrar fotos, calendário, formulário de imóvel e autenticação para fetch/API.
 - [ ] Trocar `alert()` dos formulários por mensagens na própria página.
 
+## Mapas
+
+- [ ] Trocar o mapa para o OpenMapTiles (decisão do usuário, 13/10) e ajustar o CSP: liberar só na rota do mapa, com hosts explícitos e sem curinga, usar nonce se precisar de style e nunca liberar um domínio que aceite conteúdo de usuários (no teste com o Google Maps, uma injeção de CSS vazou o token CSRF por `*.googleapis.com`). O Google Maps não será usado agora.
+
+## Bugs
+
+- [ ] Imóvel antigo com título acima de 25 caracteres não pode ser editado pela API sem encurtar o título (422 com mensagem clara). Definir uma migração ou uma regra de transição.
+
+- [ ] `/busca/mapa` sempre recebe uma lista de resultados vazia, então o mapa nunca desenha nada. Correção pronta na branch fix/busca-mapa (PR a abrir; QA depois do #23).
+
 ## Infra e dados
 
 - [ ] Migrar `activity_log.actor_id` para `actor_ref TEXT`.
@@ -42,6 +59,12 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Fluent Bit, banco de log separado e outbox de auditoria.
 
 ## Concluído
+
+- [x] PRs #18 (scripts de teste) e #19 (docs) mesclados na develop (6b26252).
+
+## Regras
+
+- Próximo PR que mudar seeds ou schema usa `SCHEMA_VERSION` 4, sobre o #21.
 
 - [x] Correções pós-merge: PRs #11 a #17 mesclados na develop (4c609b3) e retestados no PHP 8.2 e no 8.4: standalone 57/57, PHPUnit 27/27, casos 83/0, carga 1000/1000, E2E 15/15, logs sem dados pessoais.
 

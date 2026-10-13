@@ -478,12 +478,6 @@ function primary_photo(int $propertyId): ?string
     return PhotoRepository::primaryPath($propertyId);
 }
 
-function maps_key(): string
-{
-    Db::loadEnv();
-    return trim((string) (getenv('GOOGLE_MAPS_API_KEY') ?: ''));
-}
-
 function search_query(array $filters): string
 {
     $query = $filters;
@@ -678,4 +672,57 @@ function expose_account_links(): bool
         Db::loadEnv();
     }
     return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+}
+
+/**
+ * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
+ * lido por CL.data() em /assets/safe-dom.js.
+ */
+function page_data(array $data = []): array
+{
+    static $registry = [];
+    $registry = array_merge($registry, $data);
+    return $registry;
+}
+
+/**
+ * Bloco JSON único (<script type="application/json" id="page-data">) emitido no <head> pelo layout:
+ * dados registrados pela view + csrf (fonte única do token para CL.api) + textos de erro do CL.api.
+ */
+function page_data_script(string $csrf): string
+{
+    $data = page_data() + [
+        'csrf' => $csrf,
+        'i18n' => ['netError' => t('js.net_error'), 'requestFailed' => t('js.request_failed')],
+    ];
+    return '<script type="application/json" id="page-data">'
+        . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . '</script>';
+}
+
+/** Caminho de foto seguro para src=: só relativo em /uploads/ (sem "..", esquema ou host); senão o placeholder. */
+function photo_url(?string $path): string
+{
+    $path = (string) $path;
+    if (preg_match('#^/uploads/[A-Za-z0-9_/.-]+$#', $path) === 1 && !str_contains($path, '..')) {
+        return $path;
+    }
+    return '/assets/placeholder.svg';
+}
+
+/**
+ * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
+ * script, sem 'unsafe-inline' em style, sem data:/blob:; só os tiles do OpenStreetMap como imagem externa.
+ */
+function csp_header(): string
+{
+    return implode('; ', [
+        "default-src 'self'",
+        "script-src 'self'",
+        "img-src 'self' https://tile.openstreetmap.org",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+    ]);
 }

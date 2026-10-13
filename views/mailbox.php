@@ -2,7 +2,7 @@
     <h1>Caixa local</h1>
     <p class="muted">E-mails de ativação gerados pelo sistema. Clique no link para ativar a conta.</p>
     <?php foreach ($mails as $mail): ?>
-        <article class="panel" style="margin-bottom:16px">
+        <article class="panel mb-16">
             <p class="muted">Mensagem #<?= e($mail['id']) ?></p>
             <?= $mail['html'] ?>
         </article>

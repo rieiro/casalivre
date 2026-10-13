@@ -19,58 +19,10 @@
         <p class="muted"><?= e(t('account.created')) ?> <?= e(format_date((string) $user['created_at'])) ?>.</p>
         <button class="primary" type="submit"><?= e(t('account.save')) ?></button>
     </form>
-    <form id="delete-account" method="post" action="/conta/excluir" style="margin-top:16px">
+    <form id="delete-account" method="post" action="/conta/excluir" class="mt-16">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <button class="danger" type="submit"><?= e(t('account.delete')) ?></button>
     </form>
 </section>
-<script>
-(function () {
-    const csrf = <?= json_encode($csrf) ?>;
-    const form = document.getElementById('account-form');
-    const errorEl = document.getElementById('account-error');
-    const okEl = document.getElementById('account-ok');
-    form.addEventListener('submit', async function (ev) {
-        ev.preventDefault();
-        errorEl.hidden = true;
-        okEl.hidden = true;
-        const data = Object.fromEntries(new FormData(form).entries());
-        try {
-            const res = await fetch('/api/users/eu', {
-                method: 'PUT',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                errorEl.textContent = json.error || 'Erro ao salvar';
-                errorEl.hidden = false;
-                return;
-            }
-            okEl.hidden = false;
-        } catch (e) {
-            errorEl.textContent = 'Falha de conexão';
-            errorEl.hidden = false;
-        }
-    });
-    document.getElementById('delete-account').addEventListener('submit', async function (ev) {
-        ev.preventDefault();
-        if (!confirm(<?= json_encode(t('account.delete_confirm'), JSON_UNESCAPED_UNICODE) ?>)) return;
-        try {
-            const res = await fetch('/api/users/eu', {
-                method: 'DELETE',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-Token': csrf }
-            });
-            if (res.ok) {
-                window.location.href = '/';
-            } else {
-                alert('Erro ao excluir conta');
-            }
-        } catch (e) {
-            alert('Falha de conexão');
-        }
-    });
-})();
-</script>
+<?php page_data(['deleteConfirm' => t('account.delete_confirm')]); ?>
+<script src="/assets/pages/account.js?v=2"></script>
