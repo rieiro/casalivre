@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
     <link rel="stylesheet" href="/assets/app.css?v=18">
-    <script src="/assets/safe-dom.js?v=1"></script>
+    <?= page_data_script($csrf) ?>
+    <script src="/assets/safe-dom.js?v=2"></script>
 </head>
 <body>
 <header class="top">

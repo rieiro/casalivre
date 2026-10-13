@@ -5,15 +5,15 @@
         ev.preventDefault();
         const data = Object.fromEntries(new FormData(form).entries());
         try {
-            await fetch('/api/auth/senha/esqueci', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': data._csrf || '' },
-                body: JSON.stringify(data)
-            });
+            await CL.api('/api/auth/senha/esqueci', { method: 'POST', body: data });
             ok.hidden = false;
         } catch (e) {
-            alert('Falha de conexão');
+            // Resposta neutra (não revela se o e-mail existe); só falha de rede vira alerta.
+            if (e.status) {
+                ok.hidden = false;
+            } else {
+                alert(e.message);
+            }
         }
     });
 })();

@@ -33,4 +33,36 @@ window.CL = {
         const h = String(href || '');
         return h.startsWith('/') && !h.startsWith('//') ? h : '#';
     },
+    /**
+     * Única chamada à API do front: credentials same-origin, CSRF de page_data (fonte única), JSON no corpo.
+     * Resolve com o JSON da resposta; rejeita com Error {status, data, message}: mensagem da API (json.error),
+     * senão opts.error, senão texto i18n genérico; falha de rede -> i18n netError (status 0).
+     */
+    async api(url, opts) {
+        const o = opts || {};
+        const method = (o.method || 'GET').toUpperCase();
+        const headers = { 'X-CSRF-Token': CL.data().csrf || '' };
+        const init = { method: method, credentials: 'same-origin', headers: headers };
+        if (o.body !== undefined) {
+            headers['Content-Type'] = 'application/json';
+            init.body = JSON.stringify(o.body);
+        }
+        const i18n = CL.data().i18n || {};
+        let res;
+        try {
+            res = await fetch(url, init);
+        } catch (e) {
+            const err = new Error(i18n.netError || 'Falha de conexão');
+            err.status = 0;
+            throw err;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const err = new Error((data && data.error) || o.error || i18n.requestFailed || 'Erro');
+            err.status = res.status;
+            err.data = data;
+            throw err;
+        }
+        return data;
+    },
 };

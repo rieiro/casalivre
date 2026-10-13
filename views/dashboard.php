@@ -37,6 +37,6 @@
     </div>
 </section>
 <?php if (!empty($use_api)): ?>
-<?php page_data(['csrf' => $csrf, 'confirm' => t('dash.remove_confirm'), 'empty' => t('dash.empty'), 'edit' => t('dash.edit'), 'calendar' => t('dash.calendar'), 'remove' => t('dash.remove')]); ?>
-<script src="/assets/pages/dashboard.js?v=1"></script>
+<?php page_data(['confirm' => t('dash.remove_confirm'), 'empty' => t('dash.empty'), 'edit' => t('dash.edit'), 'calendar' => t('dash.calendar'), 'remove' => t('dash.remove')]); ?>
+<script src="/assets/pages/dashboard.js?v=2"></script>
 <?php endif; ?>

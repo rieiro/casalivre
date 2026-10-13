@@ -147,7 +147,7 @@ $feeds = $feeds ?? [];
         <div hidden data-cal-restore data-start="<?= e((string) ($restore['inicio'] ?? '')) ?>" data-end="<?= e((string) ($restore['fim'] ?? '')) ?>" data-view="<?= e((string) ($restore['view'] ?? 'day')) ?>"></div>
     <?php endif; ?>
 </section>
-<?php page_data(['hash' => property_ref($property), 'csrf' => $csrf]); ?>
+<?php page_data(['hash' => property_ref($property)]); ?>
 <script src="/assets/pages/calendar.js?v=1"></script>
 <script src="/assets/pages/calendar-2.js?v=1"></script>
-<script src="/assets/pages/calendar-3.js?v=1"></script>
+<script src="/assets/pages/calendar-3.js?v=2"></script>

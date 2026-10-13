@@ -1,5 +1,4 @@
 (function () {
-    const csrf = CL.data().csrf;
     const form = document.getElementById('account-form');
     const errorEl = document.getElementById('account-error');
     const okEl = document.getElementById('account-ok');
@@ -9,21 +8,10 @@
         okEl.hidden = true;
         const data = Object.fromEntries(new FormData(form).entries());
         try {
-            const res = await fetch('/api/users/eu', {
-                method: 'PUT',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                errorEl.textContent = json.error || 'Erro ao salvar';
-                errorEl.hidden = false;
-                return;
-            }
+            await CL.api('/api/users/eu', { method: 'PUT', body: data, error: 'Erro ao salvar' });
             okEl.hidden = false;
         } catch (e) {
-            errorEl.textContent = 'Falha de conexão';
+            errorEl.textContent = e.message;
             errorEl.hidden = false;
         }
     });
@@ -31,18 +19,10 @@
         ev.preventDefault();
         if (!confirm(CL.data().deleteConfirm)) return;
         try {
-            const res = await fetch('/api/users/eu', {
-                method: 'DELETE',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-Token': csrf }
-            });
-            if (res.ok) {
-                window.location.href = '/';
-            } else {
-                alert('Erro ao excluir conta');
-            }
+            await CL.api('/api/users/eu', { method: 'DELETE', error: 'Erro ao excluir conta' });
+            window.location.href = '/';
         } catch (e) {
-            alert('Falha de conexão');
+            alert(e.message);
         }
     });
 })();

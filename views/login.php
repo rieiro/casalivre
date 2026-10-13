@@ -9,4 +9,4 @@
         <p><a href="/senha/esqueci"><?= e(t('auth.forgot')) ?></a></p>
     </form>
 </section>
-<script src="/assets/pages/login.js?v=1"></script>
+<script src="/assets/pages/login.js?v=2"></script>

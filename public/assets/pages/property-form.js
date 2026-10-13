@@ -1,7 +1,6 @@
 (function () {
     const form = document.getElementById('property-form');
     if (!form) return;
-    const csrf = form.querySelector('[name="_csrf"]').value;
     const editing = form.dataset.editing === '1';
     const hash = form.dataset.hash;
     form.addEventListener('submit', async function (ev) {
@@ -10,30 +9,20 @@
             return;
         }
         ev.preventDefault();
+        // TODO(#21): trocar por CasaLivreForm.toObject(form) depois que #21 entrar em develop.
         const data = Object.fromEntries(new FormData(form).entries());
-        const url = editing ? '/api/casas/' + hash : '/api/casas';
-        const method = editing ? 'PUT' : 'POST';
+        const url = editing ? '/api/casas/' + encodeURIComponent(hash) : '/api/casas';
         try {
-            const res = await fetch(url, {
-                method: method,
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                alert(json.error || 'Erro ao salvar imóvel');
-                return;
-            }
+            const json = await CL.api(url, { method: editing ? 'PUT' : 'POST', body: data, error: 'Erro ao salvar imóvel' });
             const newHash = (json.casa && json.casa.id) || hash;
             if (!editing) {
-                window.location.href = '/imoveis/' + newHash + '/editar';
+                window.location.href = '/imoveis/' + encodeURIComponent(newHash) + '/editar';
             } else {
                 alert('Imóvel atualizado');
                 window.location.reload();
             }
         } catch (e) {
-            alert('Falha de conexão');
+            alert(e.message);
         }
     });
 })();

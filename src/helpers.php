@@ -684,9 +684,24 @@ function expose_account_links(): bool
  * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
  * lido por CL.data() em /assets/safe-dom.js.
  */
-function page_data(array $data): void
+function page_data(array $data = []): array
 {
-    echo '<script type="application/json" id="page-data">'
+    static $registry = [];
+    $registry = array_merge($registry, $data);
+    return $registry;
+}
+
+/**
+ * Bloco JSON único (<script type="application/json" id="page-data">) emitido no <head> pelo layout:
+ * dados registrados pela view + csrf (fonte única do token para CL.api) + textos de erro do CL.api.
+ */
+function page_data_script(string $csrf): string
+{
+    $data = page_data() + [
+        'csrf' => $csrf,
+        'i18n' => ['netError' => t('js.net_error'), 'requestFailed' => t('js.request_failed')],
+    ];
+    return '<script type="application/json" id="page-data">'
         . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
         . '</script>';
 }

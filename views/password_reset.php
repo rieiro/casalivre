@@ -9,4 +9,4 @@
         <button class="primary" type="submit"><?= e(t('auth.reset_save')) ?></button>
     </form>
 </section>
-<script src="/assets/pages/password-reset.js?v=1"></script>
+<script src="/assets/pages/password-reset.js?v=2"></script>

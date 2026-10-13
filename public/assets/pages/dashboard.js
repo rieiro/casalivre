@@ -8,19 +8,10 @@
     async function remove(hash) {
         if (!confirm(page.confirm || '')) return;
         try {
-            const res = await fetch('/api/casas/' + encodeURIComponent(hash), {
-                method: 'DELETE',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-Token': page.csrf || '' },
-            });
-            if (!res.ok) {
-                const j = await res.json().catch(() => ({}));
-                alert(j.error || 'Erro ao remover');
-                return;
-            }
+            await CL.api('/api/casas/' + encodeURIComponent(hash), { method: 'DELETE', error: 'Erro ao remover' });
             load();
         } catch (e) {
-            alert('Falha de conexão');
+            alert(e.message);
         }
     }
 
@@ -48,15 +39,14 @@
 
     async function load() {
         try {
-            const res = await fetch('/api/painel', { credentials: 'same-origin' });
-            if (res.status === 401) {
+            const json = await CL.api('/api/painel', { error: 'Erro ao carregar o painel.' });
+            render(json.items || []);
+        } catch (e) {
+            if (e.status === 401) {
                 window.location.href = '/entrar';
                 return;
             }
-            const json = await res.json();
-            render(json.items || []);
-        } catch (e) {
-            box.replaceChildren(el('p', { className: 'muted' }, 'Erro ao carregar o painel.'));
+            box.replaceChildren(el('p', { className: 'muted' }, e.message));
         }
     }
     load();

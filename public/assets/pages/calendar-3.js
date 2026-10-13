@@ -1,7 +1,6 @@
 // Migração para API: intercepta envios do calendário e feeds
 (function () {
-    const hash = CL.data().hash;
-    const csrf = CL.data().csrf;
+    const ref = encodeURIComponent(CL.data().hash || '');
 
     // Formulário principal do calendário
     const calForm = document.querySelector('[data-cal-form]');
@@ -14,23 +13,13 @@
                 data.acao = btn.value;
             }
             try {
-                const res = await fetch('/api/imoveis/' + hash + '/calendario', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body: JSON.stringify(data)
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    alert(json.error || 'Erro ao salvar calendário');
-                    return;
-                }
+                const json = await CL.api('/api/imoveis/' + ref + '/calendario', { method: 'POST', body: data, error: 'Erro ao salvar calendário' });
                 // Recarrega para refletir as mudanças no grid
                 const url = new URL(window.location.href);
                 url.searchParams.set('msg', json.message || 'Salvo');
                 window.location.href = url.toString();
             } catch (e) {
-                alert('Falha de conexão');
+                alert(e.message);
             }
         });
     }
@@ -42,23 +31,14 @@
             ev.preventDefault();
             const data = Object.fromEntries(new FormData(feedForm).entries());
             try {
-                const res = await fetch('/api/imoveis/' + hash + '/ical/importar', {
+                await CL.api('/api/imoveis/' + ref + '/ical/importar', {
                     method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body: JSON.stringify({
-                        url: data.external_ical_url || '',
-                        title: data.feed_title || ''
-                    })
+                    body: { url: data.external_ical_url || '', title: data.feed_title || '' },
+                    error: 'Erro ao importar feed',
                 });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    alert(json.error || 'Erro ao importar feed');
-                    return;
-                }
                 window.location.reload();
             } catch (e) {
-                alert('Falha de conexão');
+                alert(e.message);
             }
         });
     }
@@ -71,19 +51,10 @@
             if (!match) return;
             if (!confirm('Remover este calendário?')) return;
             try {
-                const res = await fetch('/api/imoveis/' + hash + '/ical/' + match[1], {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRF-Token': csrf }
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    alert(json.error || 'Erro ao remover');
-                    return;
-                }
+                await CL.api('/api/imoveis/' + ref + '/ical/' + match[1], { method: 'DELETE', error: 'Erro ao remover' });
                 window.location.reload();
             } catch (e) {
-                alert('Falha de conexão');
+                alert(e.message);
             }
         });
     });

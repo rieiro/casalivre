@@ -26,6 +26,6 @@
     <?php endif; ?>
 </section>
 <?php if (!empty($use_api)): ?>
-<?php page_data(['hash' => $hash ?? '', 'csrf' => $csrf]); ?>
-<script src="/assets/pages/property.js?v=1"></script>
+<?php page_data(['hash' => $hash ?? '']); ?>
+<script src="/assets/pages/property.js?v=2"></script>
 <?php endif; ?>

@@ -204,4 +204,4 @@
         <p><a href="/imoveis/<?= e(property_ref($property)) ?>/calendario"><?= e(t('dash.calendar')) ?></a></p>
     <?php endif; ?>
 </section>
-<script src="/assets/pages/property-form.js?v=1"></script>
+<script src="/assets/pages/property-form.js?v=2"></script>

@@ -75,6 +75,32 @@ with sync_playwright() as pw:
         check(not csp, 'sem violação CSP/erro JS em ' + path + ('' if not csp else ': ' + csp[0][:200]))
 
     check(not dialogs, 'nenhum dialog disparado pelo payload (' + '; '.join(dialogs) + ')')
+
+    # CL.api: CSRF de fonte única (page-data) e erros compartilhados.
+    page.goto(base + '/imoveis/' + phash + '/editar')
+    check(page.locator('#page-data').count() == 1, 'CL.api: um único bloco #page-data')
+    pd = json.loads(page.locator('#page-data').text_content())
+    check(pd.get('csrf') == page.locator('input[name=_csrf]').first.get_attribute('value'), 'CL.api: csrf do page-data = token da sessão')
+    # Sucesso via CL.api na conta (o PUT do formulário de imóvel ainda manda rooms[...] plano até #21 entrar).
+    page.goto(base + '/conta')
+    page.click('#account-form button[type=submit]')
+    page.wait_for_selector('#account-ok:not([hidden])', timeout=5000)
+    check(page.locator('#account-error').is_hidden(), 'CL.api: PUT /api/users/eu pela conta salva (sucesso)')
+    page.goto(base + '/imoveis/' + phash + '/editar')
+    page.wait_for_load_state('networkidle')
+    dialogs.clear()
+    page.route('**/api/casas/**', lambda route: route.abort())
+    page.fill('input[name=title]', 'Casa via CL.api')  # habilita o botão salvar (só ativa com alteração)
+    page.click('#property-form button[type=submit]:not([data-delete-photos])')
+    page.wait_for_timeout(1500)
+    check(dialogs == [pd['i18n']['netError']], 'CL.api: falha de rede mostra texto i18n (' + '; '.join(dialogs) + ')')
+    page.unroute('**/api/casas/**')
+    dialogs.clear()
+    page.fill('input[name=title]', '')
+    page.evaluate("document.querySelector('input[name=title]').removeAttribute('required')")
+    page.click('#property-form button[type=submit]:not([data-delete-photos])')
+    page.wait_for_timeout(1500)
+    check(len(dialogs) == 1 and dialogs[0] not in ('', pd['i18n']['netError']), 'CL.api: erro 422 mostra mensagem da API (' + '; '.join(dialogs) + ')')
     browser.close()
 
 print('E2E xss: %s' % ('PASSOU' if not failures else 'FALHOU (%d)' % len(failures)))

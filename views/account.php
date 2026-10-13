@@ -24,5 +24,5 @@
         <button class="danger" type="submit"><?= e(t('account.delete')) ?></button>
     </form>
 </section>
-<?php page_data(['csrf' => $csrf, 'deleteConfirm' => t('account.delete_confirm')]); ?>
-<script src="/assets/pages/account.js?v=1"></script>
+<?php page_data(['deleteConfirm' => t('account.delete_confirm')]); ?>
+<script src="/assets/pages/account.js?v=2"></script>

@@ -6,22 +6,11 @@
         errorEl.hidden = true;
         const data = Object.fromEntries(new FormData(form).entries());
         try {
-            const res = await fetch('/api/auth/senha/redefinir', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': data._csrf || '' },
-                body: JSON.stringify(data)
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                errorEl.textContent = json.error || 'Erro ao redefinir';
-                errorEl.hidden = false;
-                return;
-            }
+            await CL.api('/api/auth/senha/redefinir', { method: 'POST', body: data, error: 'Erro ao redefinir' });
             alert('Senha alterada. Faça login.');
             window.location.href = '/entrar';
         } catch (e) {
-            errorEl.textContent = 'Falha de conexão';
+            errorEl.textContent = e.message;
             errorEl.hidden = false;
         }
     });

@@ -3,12 +3,10 @@
     const el = CL.el;
     const page = CL.data();
     const hash = String(page.hash || '');
-    const csrf = page.csrf || '';
     const params = new URLSearchParams(window.location.search);
     const box = document.getElementById('property-detail');
     if (!box) return;
-    fetch('/api/imoveis/' + encodeURIComponent(hash) + '?' + params.toString(), { credentials: 'same-origin' })
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
+    CL.api('/api/imoveis/' + encodeURIComponent(hash) + '?' + params.toString())
         .then((data) => {
             const quote = data.quote ? (data.quote.nightly + ' / noite (' + data.quote.nights + ' noites)') : (data.nightly_price + ' / noite');
             const form = el('form', { className: 'panel', id: 'review-form' },
@@ -28,17 +26,12 @@
             form.addEventListener('submit', async (ev) => {
                 ev.preventDefault();
                 const formData = Object.fromEntries(new FormData(form).entries());
-                const res = await fetch('/api/imoveis/' + encodeURIComponent(hash) + '/avaliar', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body: JSON.stringify(formData),
-                });
-                if (res.ok) {
+                try {
+                    await CL.api('/api/imoveis/' + encodeURIComponent(hash) + '/avaliar', { method: 'POST', body: formData, error: 'Erro ao enviar avaliação' });
                     alert('Avaliação enviada');
                     window.location.reload();
-                } else {
-                    alert('Erro ao enviar avaliação');
+                } catch (e) {
+                    alert(e.message);
                 }
             });
         })
