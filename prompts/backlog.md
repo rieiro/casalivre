@@ -62,6 +62,21 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] `applyRange`/`applyMinNights` com o mesmo risco de lock do DEF-008.
 - [ ] Fluent Bit, banco de log separado e outbox de auditoria.
 
+## Redução de dados enviados
+Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca, o detalhe, o painel e a edição baixam cerca de 13,4 MB, e 98% disso são fotos originais.
+- [ ] **PR de fotos (prioridade):** resize no upload com libvips (WebP 480/960/1600, + AVIF), original fora de public/, limite de 50 MP e script de reprocessamento. Ganho medido: 13,4 MB → ~0,3 MB.
+- [ ] **No mesmo PR:** remover EXIF/GPS das fotos, inclusive das já gravadas (LGPD, alto).
+- [ ] **No mesmo PR:** `srcset`/`sizes`, `width`/`height` e `decoding=async` nas imagens.
+- [ ] Upload de 16 MB → ~10 MB, com limite de pixels (DoS).
+- [ ] API pública: tirar `address`, `property_id` e `audit_hold` de `/api/imoveis/{hash}` e das fotos (privacidade).
+- [ ] Sessão só quando há cookie ou rota autenticada. `ETag`/304 nas rotas públicas e `private, no-store` nas autenticadas (pré-requisito de cache/CDN).
+- [ ] Paginação no servidor em `/api/busca` e período `?de=&ate=` no calendário (hoje são 24 meses).
+- [ ] Referer nos tiles da busca.
+- [ ] HTML da página de edição (44 KB): enxugar.
+- [ ] Caminho das fotos sem `user_id`/`property_id` (evita enumerar ids).
+- [ ] Avaliar: cache OSS (só depois da sessão), CDN comercial e tiles próprios (PMTiles/OpenMapTiles).
+- [ ] QA do PR de fotos: verificar que não há EXIF e conferir as variantes geradas.
+
 ## Concluído
 
 - [x] PRs #18 (scripts de teste) e #19 (docs) mesclados na develop (6b26252).
