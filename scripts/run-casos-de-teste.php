@@ -49,6 +49,8 @@ function assert_true(bool $ok, string $message): void
     echo "FALHOU  $message\n";
 }
 
+$suite = getenv('CASOS') ?: 'todos'; // todos | legado | novos
+if ($suite !== 'novos') {
 echo "Caso 1: cadastro pede senha duas vezes e só ativa pelo link gravado\n";
 [$status, , $html] = req('GET', $base . '/cadastro');
 assert_true($status === 200, 'formulário de cadastro abre');
@@ -208,6 +210,11 @@ echo "Filtros extras do cliente: hóspedes, raio, diária e nota\n";
 [$status, , $html] = req('GET', $base . '/?localidade=' . rawurlencode('Florianópolis') . '&checkin=' . $checkin . '&checkout=' . $checkout . '&hospedes=20');
 preg_match_all('/<article class="card"/', $html, $few);
 assert_true($status === 200 && count($few[0]) < 20, 'filtro de hóspedes reduz a lista');
+
+}
+if ($suite !== 'legado') {
+    require __DIR__ . '/casos/api-ical-log.php';
+}
 
 if ($failures) {
     echo "\n" . count($failures) . " falha(s)\n";
