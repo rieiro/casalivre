@@ -103,3 +103,15 @@ Com o servidor no ar:
 ```bash
 php scripts/run-casos-de-teste.php
 ```
+
+## Logs: pseudonimização e retenção
+
+- **`LOG_SALT` (obrigatório, sem fallback):** defina no `.env` um valor secreto e aleatório (`php -r 'echo bin2hex(random_bytes(32));'`). Ele é usado para HMAC-SHA256 de usuário, e-mail, user agent e URLs nos logs de requisições (`storage/logs/api/`) e de atividades (`activity.sqlite`). **Sem `LOG_SALT`**, esses identificadores são omitidos e o PHP emite um único aviso via `error_log`, sem dados. Trocar o sal quebra a correlação com registros antigos.
+- **IP:** truncado em /24 (IPv4) e /48 (IPv6) nos dois logs.
+- **Retenção (14 dias, a confirmar com o Gerente Geral):** rode diariamente `php scripts/log-retention.php [dias]`. Ele cobre `storage/logs/api/api-*`, `storage/logs/activity.sqlite` (DELETE + VACUUM), `storage/error.log`, `storage/logs/calendar-sync.log` e `storage/php.log`/`storage/logs/php.log`. Cron sugerido:
+
+  ```
+  15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
+  ```
+- **Falhas de escrita** do log de requisições incrementam `RequestLog::$writeFailures` e geram `error_log` sem dados.
+
