@@ -90,13 +90,7 @@ header('Content-Security-Policy: ' . csp_header());
 
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
-require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
-require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
-require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
-require_once __DIR__ . '/../src/Acoes/ICalImport.php';
-require_once __DIR__ . '/../src/Acoes/ICalFeedRemove.php';
-require_once __DIR__ . '/../src/Acoes/CoverSet.php';
-require_once __DIR__ . '/../src/Acoes/ReviewAdd.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
 return Seguranca::pipeline(
     [
