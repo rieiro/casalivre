@@ -1,0 +1,8 @@
+STATUS 500 Internal Server Error
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-Type: text/html; charset=utf-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Algo deu errado</title><style>body{margin:0;font:16px/1.45 system-ui,sans-serif;background:#f4f7fb;color:#1a1a1a}main{max-width:560px;margin:8vh auto;background:#fff;border:1px solid #d5dde8;border-radius:12px;padding:28px}a{color:#003580}</style></head><body><main><h1>Não foi possível concluir agora</h1><p>O problema foi registrado. Passe estes dados ao suporte:</p><ul><li>Código: <strong>CL-<REF></strong></li><li>Quando: <DATA></li><li>Página: /api/busca</li><li>Método: GET</li></ul><p><a href="/">Voltar ao início</a></p></main></body></html>

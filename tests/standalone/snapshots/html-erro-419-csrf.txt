@@ -1,0 +1,9 @@
+STATUS 419 Unknown Status Code
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-Type: text/html; charset=utf-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido recusado</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Pedido recusado</h1><p>O token de segurança não confere. Recarregue a página e tente de novo.</p><p><a href="/">Voltar ao início</a></p></body></html>

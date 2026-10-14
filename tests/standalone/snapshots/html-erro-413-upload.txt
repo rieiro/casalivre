@@ -1,0 +1,4 @@
+STATUS 413 Request Entity Too Large
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto;padding:0 1rem"><h1>Envio grande demais</h1><p>Este envio tem 8,0 MB e o limite do sistema é 8 MB. Escolha menos fotos ou arquivos menores.</p><p><a href="javascript:history.back()">Voltar</a></p></body></html>

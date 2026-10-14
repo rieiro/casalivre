@@ -1,0 +1,64 @@
+STATUS 200 OK
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-type: text/html; charset=UTF-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CasaLivre</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+    <link rel="stylesheet" href="/assets/app.css?v=21">
+    <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=4"></script>
+</head>
+<body>
+<header class="top">
+    <a class="brand" href="/">CasaLivre</a>
+    <form class="lang" method="post" action="/idioma">
+        <input type="hidden" name="_csrf" value="<CSRF>">
+        <label>Idioma            <select name="locale" data-autosubmit>
+                                    <option value="pt-BR" selected>Português</option>
+                                    <option value="en" >English</option>
+                                    <option value="es" >Español</option>
+                            </select>
+        </label>
+    </form>
+    <input id="nav-toggle" class="nav-toggle" type="checkbox">
+    <label class="nav-toggle-label" for="nav-toggle">Menu</label>
+    <nav>
+        <a href="/">Buscar</a>
+                    <a href="/cadastro">Anunciar</a>
+            <a href="/entrar">Entrar</a>
+            </nav>
+</header>
+<main>
+    <link rel="stylesheet" href="/assets/vendor/maplibre-gl/maplibre-gl.css?v=5.24.0">
+<section class="wrap map-page">
+    <p><a href="/busca?localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0">Voltar aos resultados</a></p>
+    <h1>Mapa dos imóveis · Florianópolis, SC</h1>
+    <p class="muted" id="map-status" role="status" aria-live="polite" data-map-count>Carregando mapa…</p>
+    <p class="map-notice" id="map-notice" role="alert" hidden></p>
+    <div id="result-map" class="result-map"
+         data-api="/api/busca?localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0"
+         data-query="localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0"
+         data-center="-27.59,-48.55"
+         data-tiles="/tiles/brasil.pmtiles"
+         data-style="/assets/map/style-light.json?v=1"
+         data-worker="/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js?v=5.24.0"
+         aria-label="Mapa dos imóveis encontrados. A lista de resultados é a alternativa pelo teclado."></div>
+    <noscript><p class="muted">O mapa precisa de JavaScript. <a href="/busca?localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0">Ver a lista de resultados</a>.</p></noscript>
+</section>
+<script src="/assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=5.24.0"></script>
+<script src="/assets/vendor/pmtiles/pmtiles.js?v=4.5.0"></script>
+<script src="/assets/pages/map-data.js?v=1"></script>
+<script src="/assets/pages/map.js?v=4"></script>
+</main>
+<footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
+<script src="/assets/app.js?v=18"></script>
+</body>
+</html>

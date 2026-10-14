@@ -1,0 +1,101 @@
+STATUS 200 OK
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-type: text/html; charset=UTF-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CasaLivre</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+    <link rel="stylesheet" href="/assets/app.css?v=21">
+    <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=4"></script>
+</head>
+<body>
+<header class="top">
+    <a class="brand" href="/">CasaLivre</a>
+    <form class="lang" method="post" action="/idioma">
+        <input type="hidden" name="_csrf" value="<CSRF>">
+        <label>Idioma            <select name="locale" data-autosubmit>
+                                    <option value="pt-BR" selected>Português</option>
+                                    <option value="en" >English</option>
+                                    <option value="es" >Español</option>
+                            </select>
+        </label>
+    </form>
+    <input id="nav-toggle" class="nav-toggle" type="checkbox">
+    <label class="nav-toggle-label" for="nav-toggle">Menu</label>
+    <nav>
+        <a href="/">Buscar</a>
+                    <a href="/cadastro">Anunciar</a>
+            <a href="/entrar">Entrar</a>
+            </nav>
+</header>
+<main>
+    <section class="wrap search-page">
+    <form class="search search-query" method="get" action="/busca">
+        <label class="field">Cidade ou localidade            <input name="localidade" data-city-hints value="Florianópolis, SC" required autocomplete="off">
+        </label>
+        <label class="field">Entrada            <input name="checkin" data-stay-date="checkin" data-date-order="dmy" value="" autocomplete="off">
+        </label>
+        <label class="field">Saída            <input name="checkout" data-stay-date="checkout" data-date-order="dmy" value="" autocomplete="off">
+        </label>
+        <label class="field">Hóspedes            <input type="number" min="1" name="hospedes" value="">
+        </label>
+        <input type="hidden" name="raio" value="0">
+        <input type="hidden" name="preco_min" value="">
+        <input type="hidden" name="preco_max" value="">
+        <input type="hidden" name="score_min" value="">
+                <button type="submit">Buscar</button>
+    </form>
+    <div class="search-layout">
+        <div class="search-side">
+            <a class="map-teaser" href="/busca/mapa?localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0">
+                <span class="map-tiles is-empty"></span>
+                <span class="map-pin" aria-hidden="true"></span>
+                <span class="map-open">Ver no mapa</span>
+            </a>
+            <form class="filters-panel" method="get" action="/busca">
+                <h2>Filtrar por</h2>
+                <input type="hidden" name="localidade" value="Florianópolis, SC">
+                <input type="hidden" name="checkin" value="">
+                <input type="hidden" name="checkout" value="">
+                <input type="hidden" name="hospedes" value="">
+                <label class="field">Raio                    <select name="raio">
+                        <option value="0">Cidade</option>
+                                                    <option value="5" >5 km</option>
+                                                    <option value="10" >10 km</option>
+                                                    <option value="25" >25 km</option>
+                                            </select>
+                </label>
+                <label class="field">Diária mín.                    <input type="number" name="preco_min" min="0" value="">
+                </label>
+                <label class="field">Diária máx.                    <input type="number" name="preco_max" min="0" value="">
+                </label>
+                <label class="field">Nota mínima                    <select name="score_min">
+                        <option value="0">Qualquer</option>
+                                                    <option value="6" >6+</option>
+                                                    <option value="7" >7+</option>
+                                                    <option value="8" >8+</option>
+                                                    <option value="9" >9+</option>
+                                            </select>
+                </label>
+                                <button class="primary" type="submit">Buscar</button>
+            </form>
+        </div>
+        <div id="search-results">
+                            <p class="muted" id="search-loading">Carregando resultados…</p>
+                    </div>
+    </div>
+</section>
+<script src="/assets/pages/search.js?v=2"></script>
+</main>
+<footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
+<script src="/assets/app.js?v=18"></script>
+</body>
+</html>
