@@ -8,6 +8,12 @@ $db = new PDO('sqlite:' . $root . '/storage/db/casalivre.sqlite');
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $db->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC')");
 $ids = $db->query("SELECT id FROM properties WHERE status = 'active' ORDER BY id LIMIT 12")->fetchAll(PDO::FETCH_COLUMN);
+// seed.php sorteia CEPs do Brasil inteiro: algum imóvel pode já cair em Florianópolis. Tira-os da cidade
+// para o mapa ter exatamente os 12 imóveis da fixture.
+if ($ids) {
+    $in = implode(',', array_map('intval', $ids));
+    $db->exec("UPDATE properties SET city = 'São José, SC' WHERE city LIKE 'Florian%' AND id NOT IN ($in)");
+}
 $pts = [];
 for ($i = 0; $i < 8; $i++) { $pts[] = [-27.5960 + $i * 0.0004, -48.5480 + $i * 0.0003]; }   // centro
 $pts[] = [-27.6800, -48.4950]; $pts[] = [-27.4600, -48.4400]; $pts[] = [-27.5300, -48.6200]; $pts[] = [-27.7300, -48.5100];

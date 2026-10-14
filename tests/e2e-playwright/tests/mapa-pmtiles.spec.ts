@@ -52,10 +52,16 @@ test('CT-E2E-090 clusters em zoom baixo (soma = total)', async ({ page }) => {
 test('CT-E2E-091 cluster expande ao clicar; pins com link para o imóvel', async ({ page }) => {
   await abrirMapa(page);
   const cl = page.locator('.map-cluster').first();
-  const antes = await page.locator('.map-cluster').count();
   const n = Number(await cl.getAttribute('data-count'));
   await cl.click();
-  await expect.poll(async () => (await page.locator('.map-price').count()) > 0 && (await page.locator('.map-cluster').count()) <= antes, { timeout: 10000 }).toBe(true);
+  // Um clique leva ao zoom de expansão do cluster; dependendo do deslocamento público (300–500 m, varia com o
+  // GEO_SALT de cada ambiente) ele pode virar sub-clusters. Expande até aparecerem pins (máx. 6 cliques).
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(1200); // fim da animação de zoom
+    const subs = page.locator('.map-cluster');
+    if ((await page.locator('.map-price').count()) > 0 || (await subs.count()) === 0) break;
+    await subs.first().click();
+  }
   await page.waitForTimeout(1200);
   expect(await page.locator('.map-price').count()).toBeGreaterThan(0);
   expect(n).toBeGreaterThan(1);
