@@ -400,19 +400,11 @@ function handle_api(string $path, string $method): void
         if (!$property) {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $saved = save_calendar($property, $body);
-        $params = [
-            'imovel_id' => (int) $property['id'],
-            'inicio' => (string) ($body['inicio'] ?? ''),
-            'fim' => (string) ($body['fim'] ?? ''),
-            'resultado' => $saved['message'],
-        ];
-        foreach ($saved['logs'] as $log) {
-            activity($log['code'], $params + $log['extra'], $log['anterior'], $log['atual']);
-        }
+        $res = CalendarSave::run($property, $body);
+        $res->registrar();
         json_out(200, [
             'ok' => true,
-            'message' => $saved['message'],
+            'message' => $res->mensagem,
             'days' => HouseRepository::calendarDays((int) $property['id']),
         ]);
     }

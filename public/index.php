@@ -92,6 +92,7 @@ require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
 require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
 require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
+require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
 
 return Seguranca::pipeline(
     [
@@ -579,18 +580,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $user = require_user();
     csrf_check();
     $property = property_for_user((int) $user['id'], house_id($m[1]));
-    $saved = save_calendar($property, $_POST);
-    $message = $saved['message'];
+    $res = CalendarSave::run($property, $_POST);
+    $res->registrar();
+    $message = $res->mensagem;
     $action = (string) ($_POST['acao'] ?? '');
-    $params = [
-        'imovel_id' => (int) $property['id'],
-        'inicio' => (string) ($_POST['inicio'] ?? ''),
-        'fim' => (string) ($_POST['fim'] ?? ''),
-        'resultado' => $message,
-    ];
-    foreach ($saved['logs'] as $log) {
-        activity($log['code'], $params + $log['extra'], $log['anterior'], $log['atual']);
-    }
     $viewName = (string) ($_POST['cal_view'] ?? 'day');
     if (!in_array($viewName, ['day', 'price', 'min'], true)) {
         $viewName = 'day';
