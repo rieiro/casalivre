@@ -7,7 +7,8 @@ require_once dirname(__DIR__) . '/src/IpRateLimiter.php';
 
 /**
  * Limite por IP (IpRateLimiter) nas rotas da API listadas: [método, regex do caminho, máximo, janela (s), balde].
- * Todas as regras são de /api; o balde agrupa a rota (ex.: todas as casas no upload de fotos).
+ * Regras da API e dos formulários web sensíveis (POST /cadastro, POST /senha/esqueci); o balde
+ * agrupa a rota (ex.: todas as casas no upload de fotos).
  */
 final class ApiRateLimit implements Middleware
 {

@@ -32,6 +32,55 @@ final class UserRepository
         return (int) $stmt->fetchColumn();
     }
 
+    /**
+     * Cadastro sem corrida: INSERT ... ON CONFLICT(email) DO NOTHING. true se criou (rowCount() === 1),
+     * false se o e-mail já existia. Sem catch genérico: outros erros de banco sobem.
+     */
+    public static function insertIfAbsent(array $user): bool
+    {
+        $now = date('Y-m-d H:i:s');
+        $status = $user['status'] ?? 'pending';
+        $stmt = db()->prepare('INSERT INTO users (
+            name, cpf, address, cep, street, address_number, address_complement, phone, email, password_hash,
+            activated_at, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO NOTHING');
+        $stmt->execute([
+            $user['name'], $user['cpf'], $user['address'], $user['cep'] ?? '', $user['street'] ?? '',
+            $user['address_number'] ?? '', $user['address_complement'] ?? '', $user['phone'], $user['email'],
+            $user['password_hash'], $status === 'active' ? $now : null, $status, $now,
+        ]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public static function sessionVersion(int $id): int
+    {
+        $stmt = db()->prepare('SELECT session_version FROM users WHERE id = ?');
+        $stmt->execute([$id]);
+        $v = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        return (int) $v;
+    }
+
+    /** Ativação atômica (uso único): true só se exatamente 1 linha mudou. */
+    public static function consumeActivation(int $id, string $tokenHash, string $now): bool
+    {
+        $stmt = db()->prepare("UPDATE users SET status = 'active', activated_at = ?, deleted_at = NULL, inactivated_at = NULL, inactivated_ip = NULL,
+            activation_token = NULL, activation_expires_at = NULL, failed_logins = 0
+            WHERE id = ? AND activation_token = ? AND activation_expires_at >= ? AND status = 'pending'");
+        $stmt->execute([$now, $id, $tokenHash, $now]);
+        return $stmt->rowCount() === 1;
+    }
+
+    /** Redefinição atômica (uso único) + session_version+1 (encerra as outras sessões). */
+    public static function consumeReset(int $id, string $tokenHash, string $now, string $passwordHash): bool
+    {
+        $stmt = db()->prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0,
+            session_version = session_version + 1
+            WHERE id = ? AND reset_token = ? AND reset_expires_at >= ? AND status = 'active'");
+        $stmt->execute([$passwordHash, $id, $tokenHash, $now]);
+        return $stmt->rowCount() === 1;
+    }
+
     public static function find(int $id): ?array
     {
         $stmt = db()->prepare('SELECT * FROM users WHERE id = ?');
@@ -136,7 +185,7 @@ final class UserRepository
 
     public static function setPassword(int $id, string $hash): void
     {
-        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0 WHERE id = ?')
+        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0, session_version = session_version + 1 WHERE id = ?')
             ->execute([$hash, $id]);
     }
 

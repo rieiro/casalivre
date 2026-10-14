@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
     inactivated_ip TEXT,
     deleted_at TEXT,
     failed_logins INTEGER NOT NULL DEFAULT 0,
+    session_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     audit_hold TEXT
 );
@@ -105,6 +106,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token);
+CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token);
 CREATE INDEX IF NOT EXISTS idx_properties_city ON properties(city);
 CREATE INDEX IF NOT EXISTS idx_properties_user ON properties(user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);

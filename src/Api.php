@@ -115,9 +115,6 @@ function handle_api(string $path, string $method): void
         if ($result['error']) {
             json_out(422, ['error' => account_text($result['error'])]);
         }
-        if ($result['created']) {
-            activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-        }
         // Mesma resposta para e-mail novo ou já cadastrado (anti-enumeração).
         json_out(201, ['status' => 'pending', 'message' => t('auth.pending_email')]);
     }
