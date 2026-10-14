@@ -112,6 +112,9 @@ t_eq(404, $r['status'], 'API avaliar: imóvel inexistente 404');
 t_eq([], c_codes($act, $m), 'API avaliar: erros não gravam');
 t_eq($before, $count(), 'DB: erros não criam review');
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$hid]);
+// Mudança intencional (fix/avaliacao-rate-limit): web e API dividem o limite de 10 avaliações/h por IP.
+// Este arquivo já fez 10 POSTs de avaliação até aqui; zera o limite para checar o 404 de imóvel não ativo.
+t_ratelimit_reset();
 $r = c_api('POST', $base, '/api' . $h . '/avaliar', ['score' => 5], $acsrf, $anon);
 t_eq(404, $r['status'], 'API avaliar: imóvel não ativo 404');
 $r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => 5], $anon);
