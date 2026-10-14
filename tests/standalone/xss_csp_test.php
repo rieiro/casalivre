@@ -89,7 +89,16 @@ $r = t_http('GET', $baseEnv . '/busca/mapa?localidade=' . urlencode('Florianópo
 t_ok(stripos($r['headers'], $csp) !== false, 'CSP continua estrita com a variável no ambiente');
 t_ok(!str_contains($r['body'], 'chave-que-nao-deve-ser-usada') && !str_contains($r['body'], 'data-key'), 'página do mapa sem chave/data-key');
 putenv('GOOGLE_MAPS_API_KEY');
-foreach (['public/assets/pages/map.js', 'public/assets/pages/map-data.js', 'views/map.php', 'views/search.php', 'src/MapTiles.php', 'public/assets/map/style-light.json', 'src/helpers.php', 'public/index.php', '.env.example'] as $file) {
+// helpers.php foi dividido em src/helpers/ (#50): varre helpers.php + src/helpers/**/*.php (recursivo).
+$helperFiles = ['src/helpers.php'];
+foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(CL_ROOT . '/src/helpers', FilesystemIterator::SKIP_DOTS)) as $info) {
+    if ($info->isFile() && $info->getExtension() === 'php') {
+        $helperFiles[] = substr($info->getPathname(), strlen(CL_ROOT) + 1);
+    }
+}
+sort($helperFiles);
+t_ok(count($helperFiles) > 1, 'varredura de helpers cobre helpers.php e src/helpers/ (' . count($helperFiles) . ' arquivos)');
+foreach (array_merge(['public/assets/pages/map.js', 'public/assets/pages/map-data.js', 'views/map.php', 'views/search.php', 'src/MapTiles.php', 'public/assets/map/style-light.json'], $helperFiles, ['public/index.php', '.env.example']) as $file) {
     $text = (string) file_get_contents(CL_ROOT . '/' . $file);
     t_ok(!preg_match('/google|gstatic|GOOGLE_MAPS/i', $text), "$file sem Google Maps");
 }
