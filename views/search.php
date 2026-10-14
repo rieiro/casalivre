@@ -2,8 +2,9 @@
 $facets = $facets ?? [];
 $query = search_query($filters);
 $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
-$mapLat = isset($place['lat']) ? (float) $place['lat'] : (isset($results[0]['lat']) ? (float) $results[0]['lat'] : null);
-$mapLng = isset($place['lng']) ? (float) $place['lng'] : (isset($results[0]['lng']) ? (float) $results[0]['lng'] : null);
+$firstPc = isset($results[0]['lat'], $results[0]['lng'], $results[0]['id']) ? public_coord((int) $results[0]['id'], (float) $results[0]['lat'], (float) $results[0]['lng']) : null;
+$mapLat = isset($place['lat']) ? (float) $place['lat'] : ($firstPc['lat'] ?? null);
+$mapLng = isset($place['lng']) ? (float) $place['lng'] : ($firstPc['lng'] ?? null);
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';

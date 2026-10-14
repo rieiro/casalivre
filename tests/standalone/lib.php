@@ -10,6 +10,14 @@ declare(strict_types=1);
 
 const CL_ROOT = __DIR__ . '/../..';
 
+// Isola os testes do .env real da raiz: Db::loadEnv lê CASALIVRE_ENV_FILE (herdado por php -S e
+// subprocessos). Padrão: um .env vazio temporário; um teste pode apontar para o seu antes de subir o servidor.
+if (getenv('CASALIVRE_ENV_FILE') === false) {
+    $__tEnv = tempnam(sys_get_temp_dir(), 'clenv');
+    putenv('CASALIVRE_ENV_FILE=' . $__tEnv);
+    register_shutdown_function(static fn () => @unlink($__tEnv));
+}
+
 $GLOBALS['__t_fail'] = 0;
 $GLOBALS['__t_pass'] = 0;
 
@@ -75,6 +83,13 @@ function t_server(): string
     $env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
     // APP_URL fixa (obrigatória fora de dev/local); o teste pode definir outra antes de subir o servidor.
     $env['APP_URL'] = (string) (getenv('APP_URL') ?: 'http://127.0.0.1:' . $port);
+    // GEO_SALT é obrigatório fora de dev/local (GeoSalt::enforce); o teste pode definir outro (inclusive vazio).
+    // Se o .env do teste (CASALIVRE_ENV_FILE) já traz GEO_SALT, vale o do arquivo.
+    $envFile = (string) getenv('CASALIVRE_ENV_FILE');
+    $fileHasSalt = $envFile !== '' && is_file($envFile) && preg_match('/^GEO_SALT=/m', (string) file_get_contents($envFile)) === 1;
+    if (getenv('GEO_SALT') === false && !$fileHasSalt) {
+        $env['GEO_SALT'] = str_repeat('t', 64);
+    }
     $stderr = tempnam(sys_get_temp_dir(), 'tsrv');
     $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', __DIR__ . '/router.php'];
     $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT, $env);

@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../src/Db.php';
+require_once __DIR__ . '/../src/GeoSalt.php';
+// Fail closed: fora de dev/local, sem GEO_SALT válido (>= 32 caracteres) o app não atende.
+GeoSalt::enforce();
 require_once __DIR__ . '/../src/Settings.php';
 require_once __DIR__ . '/../src/I18n.php';
 require_once __DIR__ . '/../src/CityRepository.php';
@@ -989,14 +992,16 @@ function search_properties(array $filters, ?array &$facets = null): array
     foreach ($source as $property) {
         $cityFold = fold((string) $property['city']);
         if ($center && $filters['raio'] > 0) {
-            $distance = haversine_km((float) $center['lat'], (float) $center['lng'], (float) $property['lat'], (float) $property['lng']);
+            // Raio e distância sobre a coordenada pública (não revela a posição exata).
+            $distance = public_distance_km($center, $property);
             if ($distance > $filters['raio']) {
                 continue;
             }
-            $property['distance_km'] = round($distance, 1);
+            $property['distance_km'] = $distance;
         } elseif ($center && $cityFold !== $centerFold && $cityFold !== $labelFold && $cityFold !== $displayFold) {
             continue;
-        } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) $property['address']), fold($localidade))) {
+        } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) (house_neighborhood($property) ?? '')), fold($localidade))) {
+            // Só cidade e bairro: buscar no endereço viraria um oráculo ("localidade=Rua X, 123").
             continue;
         }
         if ($filters['hospedes'] > 0 && (int) $property['max_guests'] < $filters['hospedes']) {

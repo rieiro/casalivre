@@ -26,7 +26,8 @@ if [[ ! -f storage/db/casalivre.sqlite ]]; then
     '
 fi
 
-printf 'APP_URL=http://127.0.0.1:8080\nPHP_BIN=%s\nDB_DRIVER=sqlite\nDB_DSN=\nDB_USER=\nDB_PASSWORD=\nLOG_DRIVER=sqlite\nLOG_MONGO_URI=\nLOG_MONGO_DB=\nSTRIPE_SECRET_KEY=\nPAGARME_API_KEY=\nAWS_ACCESS_KEY_ID=\nAWS_SECRET_ACCESS_KEY=\n' "$PHP_BIN" > .env
+# .env: cria (de .env.example ou do zero) ou mantém o existente; garante GEO_SALT (>= 32) e chmod 600.
+"$ROOT/scripts/setup-env.sh" "$PHP_BIN"
 echo "Infraestrutura pronta em $ROOT"
 "$PHP_BIN" "$ROOT/scripts/load-ceps.php"
 echo "Banco: storage/db/casalivre.sqlite"
