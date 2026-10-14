@@ -44,11 +44,7 @@ final class Mailer
 
     public static function isDev(): bool
     {
-        // self::env() carregava o .env (Db::loadEnv) antes de ler APP_ENV; mantido.
-        if (class_exists('Db')) {
-            Db::loadEnv();
-        }
-        return AppEnv::isDev();
+        return AppEnv::isDevWithEnv();
     }
 
     /** Fila usada (testes podem trocar); null = MailQueues::make() (QUEUE_DRIVER). */

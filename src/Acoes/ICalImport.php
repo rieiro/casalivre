@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once __DIR__ . '/Canal.php';
 
 /**
  * Cadastro + primeira importação de um feed iCal (web POST /imoveis/{hash}/ical/importar e
@@ -12,7 +13,7 @@ require_once __DIR__ . '/Resultado.php';
  * A mensagem é o texto da web; a API traduz os tipos de recusa para os textos dela.
  *
  * Diferenças web/API preservadas de propósito (SNAPSHOT, ver tests/standalone/char_calendario_test.php),
- * escolhidas pelo canal ($web):
+ * escolhidas pelo canal ($canal):
  * - URL vazia: web devolve 'vazio' com "link salvo" (sem addFeed); API recusa antes de chamar a ação (422).
  * - CALENDAR_FEED_ADD: só a web grava, e sempre (inclusive recusas e URL vazia), depois do CALENDAR_SYNC.
  * - CALENDAR_SYNC: a web grava só em sucesso; a API grava em sucesso e em falha (resultado ok/nok).
@@ -20,8 +21,9 @@ require_once __DIR__ . '/Resultado.php';
  */
 final class ICalImport
 {
-    public static function run(array $property, int $userId, string $url, string $feedTitle, bool $web): Resultado
+    public static function run(array $property, int $userId, string $url, string $feedTitle, Canal $canal): Resultado
     {
+        $web = $canal === Canal::Web;
         $propertyId = (int) $property['id'];
         $events = [];
         $error = null;
@@ -48,6 +50,8 @@ final class ICalImport
                     $count = import_ics($propertyId, $body);
                 }
                 $now ??= date('Y-m-d H:i:s');
+                // Antes, a web marcava o ÚLTIMO feed com essa URL (sem break) e a API o PRIMEIRO (com break).
+                // Equivalente: calendar_feeds tem UNIQUE (property_id, url), então há no máximo um.
                 foreach (HouseRepository::feedsWithUrl($propertyId) as $feed) {
                     if ($feed['url'] === $url) {
                         HouseRepository::markFeed((int) $feed['id'], $ok ? 'OK' : 'NOK', $now);

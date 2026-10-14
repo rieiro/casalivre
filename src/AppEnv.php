@@ -14,4 +14,16 @@ final class AppEnv
     {
         return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
     }
+
+    /**
+     * Igual a isDev(), mas antes carrega o .env (Db::loadEnv, quando a classe Db existe).
+     * Sequência que estava repetida em Mailer::isDev e expose_account_links (helpers.php).
+     */
+    public static function isDevWithEnv(): bool
+    {
+        if (class_exists('Db')) {
+            Db::loadEnv();
+        }
+        return self::isDev();
+    }
 }

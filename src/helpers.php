@@ -766,10 +766,7 @@ function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = nul
  */
 function expose_account_links(): bool
 {
-    if (class_exists('Db')) {
-        Db::loadEnv();
-    }
-    return AppEnv::isDev();
+    return AppEnv::isDevWithEnv();
 }
 
 /**
