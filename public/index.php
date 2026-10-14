@@ -246,7 +246,7 @@ function casa_html_error(int $status, string $title, string $message): never
     http_response_code($status);
     header('Content-Type: text/html; charset=utf-8');
     $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
-    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>' . $e($title) . '</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>' . $e($title) . '</h1><p>' . $e($message) . '</p><p><a href="/">Voltar ao início</a></p></body></html>';
+    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>' . $e($title) . '</title><link rel="stylesheet" href="' . $e(asset_url('/assets/app.css')) . '"><body class="err-page"><h1>' . $e($title) . '</h1><p>' . $e($message) . '</p><p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
 }
 

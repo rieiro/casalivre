@@ -65,6 +65,8 @@
     --space-22: 22px;
     --space-24: 24px;
     --space-28: 28px;
+    --err-bg: #f4f7fb;
+    --err-line: #d5dde8;
     --font-sans: system-ui, sans-serif;
     --font-size-base: 16px;
     --line-height-base: 1.45;
@@ -316,3 +318,13 @@ button.is-off {
 .mt-16 { margin-top: var(--space-16); }
 .mb-16 { margin-bottom: var(--space-16); }
 .wrap-flush { padding-top: 0; padding-bottom: 0; }
+
+/* Páginas de erro sem layout (antes com style inline, que a CSP bloqueava): casa_html_error, 413 do upload
+   (reject_oversize_upload) e o 500 do ExceptionShield. .err-page desfaz o tema do body para manter o visual
+   simples que o style inline descrevia. */
+body.err-page { box-sizing: content-box; max-width: 36rem; margin: 3rem auto; font: revert; font-family: sans-serif; color: revert; background: revert; }
+body.err-page a { color: revert; }
+body.err-page.err-pad { padding: 0 1rem; }
+body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base) var(--font-sans); background: var(--err-bg); color: var(--ink); }
+.err-shield main { box-sizing: content-box; max-width: 560px; margin: 8vh auto; background: var(--surface); border: 1px solid var(--err-line); border-radius: var(--radius-12); padding: var(--space-28); }
+.err-shield a { color: var(--brand); }

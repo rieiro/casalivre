@@ -7,4 +7,4 @@ Retry-After: 3600
 X-Content-Type-Options: nosniff
 X-Frame-Options: SAMEORIGIN
 
-<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Muitas tentativas</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Muitas tentativas</h1><p>Muitas requisições. Tente novamente em instantes.</p><p><a href="/">Voltar ao início</a></p></body></html>
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Muitas tentativas</title><link rel="stylesheet" href="/assets/app.css?v=2d2fc1621bdc"><body class="err-page"><h1>Muitas tentativas</h1><p>Muitas requisições. Tente novamente em instantes.</p><p><a href="/">Voltar ao início</a></p></body></html>

@@ -123,7 +123,7 @@ function reject_oversize_upload(): void
     $limit = (string) (int) floor($max / 1048576);
     http_response_code(413);
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto;padding:0 1rem"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="javascript:history.back()">Voltar</a></p></body></html>';
+    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="javascript:history.back()">Voltar</a></p></body></html>';
     exit;
 }
 

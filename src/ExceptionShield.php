@@ -43,7 +43,9 @@ final class ExceptionShield
                 header('Content-Type: text/html; charset=utf-8');
             }
             $safe = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Algo deu errado</title><style>body{margin:0;font:16px/1.45 system-ui,sans-serif;background:#f4f7fb;color:#1a1a1a}main{max-width:560px;margin:8vh auto;background:#fff;border:1px solid #d5dde8;border-radius:12px;padding:28px}a{color:#003580}</style></head><body><main><h1>Não foi possível concluir agora</h1><p>O problema foi registrado. Passe estes dados ao suporte:</p><ul><li>Código: <strong>' . $safe($ref) . '</strong></li><li>Quando: ' . $safe($when) . '</li><li>Página: ' . $safe($route === '' ? '/' : $route) . '</li><li>Método: ' . $safe($methodName) . '</li></ul><p><a href="/">Voltar ao início</a></p></main></body></html>';
+            // Estilo em /assets/app.css (.err-shield): a CSP (sem 'unsafe-inline') bloqueava o <style> que havia aqui.
+            $css = function_exists('asset_url') ? asset_url('/assets/app.css') : '/assets/app.css';
+            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Algo deu errado</title><link rel="stylesheet" href="' . $safe($css) . '"></head><body class="err-shield"><main><h1>Não foi possível concluir agora</h1><p>O problema foi registrado. Passe estes dados ao suporte:</p><ul><li>Código: <strong>' . $safe($ref) . '</strong></li><li>Quando: ' . $safe($when) . '</li><li>Página: ' . $safe($route === '' ? '/' : $route) . '</li><li>Método: ' . $safe($methodName) . '</li></ul><p><a href="/">Voltar ao início</a></p></main></body></html>';
         });
     }
 }
