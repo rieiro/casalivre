@@ -29,7 +29,8 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] `ExceptionShield` e `INTERNAL_ERROR`: mensagem e trace (que podem trazer SQL com dado pessoal) só no `error.log`, mascarados; no `activity_log`, só classe, código e arquivo:linha.
 - [ ] Resposta genérica no cadastro com e-mail existente e tempo constante no esqueci-senha (anti-enumeração).
 - [ ] `BODY_VALUE_ALLOWLIST` limitado a valores escalares.
-- [ ] Tokens de ativação e redefinição só como hash sha256; remover as colunas `*_link`.
+- [ ] Tokens de ativação e redefinição só como hash sha256; remover as colunas `*_link` (confirmado pela Segurança na análise do #32, em `UserRepository.php:116-125`).
+- [ ] Cadastro: o `409 email_taken` revela quem tem conta. Trocar por uma resposta genérica, com o aviso indo por e-mail (Segurança, #32, baixa).
 - [ ] Criptografar `calendar_feeds.url`, `properties.external_ical_url` e `audit_hold`, com coluna HMAC para duplicados.
 - [ ] LGPD: política de retenção, hash de IP e e-mail; separar auditoria de BI.
 - [ ] Prefixos IPv6/TEST-NET restantes em `CalendarSync::isPublicIp` (2001:10::/28, 2001:20::/28, 3fff::/20, 5f00::/16, fec0::/10); `logRef` via `LogPrivacy::url()`; `redactPath` cobrindo segmentos opacos de 20+ caracteres.

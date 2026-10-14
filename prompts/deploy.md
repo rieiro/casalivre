@@ -75,6 +75,14 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
 - [ ] **Dados de auditoria**: `activity_log.actor_id` passa a guardar HMAC; registros antigos mantêm o id numérico até a limpeza única abaixo ou a retenção.
 
+## Fila de e-mail (PR #32)
+- [ ] Cron do worker a cada minuto, com o usuário do serviço: `* * * * * php /srv/casalivre/scripts/mail-worker.php` (a saída vai para o log do serviço e tem só contadores).
+- [ ] `storage/` com permissão 0700 e dono do serviço; `storage/mail-worker.lock` com 0600.
+- [ ] `QUEUE_DRIVER=sqlite` (no futuro, `redis` com a extensão `phpredis`) e `MAIL_QUEUE_RETENTION_DAYS=7` ou menos.
+- [ ] Produção com `SMTP_HOST` configurado. Sem ele, nada entra na fila e o php.log mostra `mail_not_configured`: monitorar esse alerta.
+- [ ] Alarme se o worker parar, ou seja, fila `pending` crescendo ou sem purga.
+- [ ] Backups do banco tratados como sigilosos.
+
 ## Jobs agendados (usuário do php-fpm)
 
 - [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, `activity.sqlite` (DELETE + VACUUM), `error.log`, `calendar-sync.log`, `php.log` e Mongo (`deleteMany`). Confirmar a primeira execução (`sv status` e saída do script).
