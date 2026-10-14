@@ -97,6 +97,8 @@ return Seguranca::pipeline(
             ['POST', '#^/api/users$#', 10, 3600, '/api/users'],
             ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
             ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
+            // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
+            ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
             // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
             ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
             ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
@@ -552,7 +554,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
         $_SESSION['upload_notice'] = 'Nenhuma foto chegou. O envio é maior do que o limite do sistema.';
     } elseif ($saved < $sent) {
         $limit = Settings::int('max_photos_per_property') ?: 40;
-        $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png, webp ou gif).";
+        $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png ou webp).";
     }
     activity(ActivityLog::PHOTO_ADD, ['imovel_id' => house_id($m[1]), 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
     redirect('/imoveis/' . $m[1] . '/editar');
@@ -564,7 +566,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
     property_for_user((int) $user['id'], house_id($m[1]));
     $removed = PhotoRepository::deleteIds(house_id($m[1]), array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
-        PhotoStorage::deletePublicFile((string) ($photo['path'] ?? ''));
+        PhotoStorage::deletePhotoFiles($photo);
     }
     if ($removed['old'] !== []) {
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => house_id($m[1]), 'quantidade' => count($removed['old'])], ['fotos' => $removed['old']], ['estado' => 'removida']);
@@ -581,7 +583,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
     property_for_user((int) $user['id'], house_id($m[1]));
     $removed = PhotoRepository::delete(house_id($m[1]), (int) $m[2]);
     if ($removed['old']) {
-        PhotoStorage::deletePublicFile((string) $removed['old']['path']);
+        PhotoStorage::deletePhotoFiles($removed['old']);
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => house_id($m[1]), 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
     }
     if ($removed['capa'] !== []) {

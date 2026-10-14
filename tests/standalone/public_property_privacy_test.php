@@ -6,6 +6,8 @@ t_temp_db();
 $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 db()->prepare("INSERT INTO photos (property_id, path, is_primary, sort_order, audit_hold) VALUES (?, '/uploads/a.jpg', 1, 0, 'retido')")->execute([$owner['house_id']]);
+// Foto do pipeline do #39 ainda em processamento: não pode aparecer no público (só status = ready).
+db()->prepare("INSERT INTO photos (property_id, path, is_primary, sort_order, status, uuid, original) VALUES (?, '/uploads/fotos/proc-uuid-1280.webp', 0, 1, 'processing', 'proc-uuid', 'orig-secreto.jpg')")->execute([$owner['house_id']]);
 $base = t_server();
 $hidden = ['address', 'street', 'address_number', 'address_complement', 'cep', 'audit_hold', 'property_id', 'user_id', 'lat', 'lng'];
 
@@ -15,7 +17,8 @@ $j = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], '200');
 t_eq([], array_values(array_intersect($hidden, array_keys($j))), 'imóvel sem endereço/ids internos');
 t_eq(['Florianópolis, SC', 'Centro'], [$j['city'] ?? null, $j['neighborhood'] ?? null], 'cidade e bairro presentes');
-t_eq(1, count($j['photos'] ?? []), 'uma foto');
+t_eq(1, count($j['photos'] ?? []), 'uma foto (a em processing fica de fora)');
+t_ok(!str_contains($r['body'], 'proc-uuid') && !str_contains($r['body'], 'orig-secreto'), 'sem foto em processing, uuid nem original');
 t_eq(['path', 'is_primary', 'sort_order'], array_keys($j['photos'][0] ?? []), 'foto pública só com path, is_primary, sort_order (sem id)');
 t_ok(!str_contains($r['body'], 'Rua A') && !str_contains($r['body'], 'retido') && !str_contains($r['body'], 'property_id') && !str_contains($r['body'], 'audit_hold'), 'corpo sem rua, audit_hold nem property_id');
 

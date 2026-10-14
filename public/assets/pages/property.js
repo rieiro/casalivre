@@ -20,7 +20,7 @@
                 el('h1', {}, data.title || ''),
                 el('p', {}, [data.neighborhood, data.city].filter(Boolean).join(' · ') + ' · até ' + data.max_guests + ' hóspedes · ' + data.bedrooms + ' quartos'),
                 data.score ? el('p', {}, 'Nota: ' + data.score + '/10') : null,
-                el('div', { className: 'gallery' }, (data.photos || []).map((p) => el('img', { src: p.path, alt: '', loading: 'lazy' }))),
+                el('div', { className: 'gallery' }, (data.photos || []).map((p) => CL.photoImg(p.path, '(max-width: 600px) 50vw, 300px', ''))),
                 el('p', {}, data.description || ''),
                 el('p', { className: 'price' }, quote),
                 form,

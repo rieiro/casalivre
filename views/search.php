@@ -145,6 +145,6 @@ $popular = array_slice($popular, 0, 10);
     </div>
 </section>
 <?php if (!empty($use_api) && $searched): ?>
-<script src="/assets/pages/search.js?v=1"></script>
+<script src="/assets/pages/search.js?v=2"></script>
 <?php endif; ?>
 <script src="/assets/pages/search-tiles.js?v=1"></script>
