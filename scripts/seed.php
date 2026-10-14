@@ -103,8 +103,11 @@ for ($i = 1; $i <= 5; $i++) {
             'garage' => random_int(0, 1),
         ]);
         $binary = solid_png(random_int(20, 80), random_int(70, 140), random_int(140, 210));
-        $public = PhotoStorage::writeGenerated($userId, $houseId, 'capa.png', $binary);
-        PhotoRepository::insert($houseId, $public, 1, 0);
+        // Capa pela fila de imagens (o image-worker gera os WebP).
+        $tmpCover = tempnam(sys_get_temp_dir(), 'seed');
+        file_put_contents($tmpCover, $binary);
+        PhotoStorage::enqueueOriginal($houseId, $tmpCover, 1, 0);
+        @unlink($tmpCover);
         seed_reviews($houseId);
         $lines[] = "   imóvel: $title ({$known['label']})";
     }

@@ -44,9 +44,12 @@ final class PhotoRepository
         return $rows[0]['new'] ?? [];
     }
 
-    public static function markReady(int $photoId, string $path): void
+    /** false se a foto deixou de estar em processing (removida ou imóvel inativado no meio). */
+    public static function markReady(int $photoId, string $path): bool
     {
-        db()->prepare("UPDATE photos SET status = 'ready', path = ?, original = NULL WHERE id = ? AND status = 'processing'")->execute([$path, $photoId]);
+        $stmt = db()->prepare("UPDATE photos SET status = 'ready', path = ?, original = NULL WHERE id = ? AND status = 'processing'");
+        $stmt->execute([$path, $photoId]);
+        return $stmt->rowCount() === 1;
     }
 
     public static function markFailed(int $photoId): void

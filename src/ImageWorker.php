@@ -27,7 +27,7 @@ final class ImageWorker
     public const DEFAULT_BATCH = 20;
     public const RETENTION_DAYS = 7;
     /** Teto de pixels decodificados (protege a memória contra "bombas" de descompressão). */
-    public const MAX_PIXELS = 40_000_000;
+    public const MAX_PIXELS = 25_000_000; // ~100-125 MB de RAM no GD (truecolor)
 
     public static function run(ImageQueue $queue, string $lockFile, int $batch = self::DEFAULT_BATCH, int $maxSeconds = QueueWorker::MAX_RUN_SECONDS): ?array
     {
@@ -92,8 +92,15 @@ final class ImageWorker
             throw $e;
         }
         imagedestroy($img);
-        PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
+        $ready = PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
         PhotoStorage::deleteOriginal((string) $photo['original']);
+        if (!$ready) {
+            // Removida/inativada durante o processamento: não deixa WebP órfão no public/.
+            foreach ($written as $f) {
+                @unlink($f);
+            }
+            return false;
+        }
         return true;
     }
 

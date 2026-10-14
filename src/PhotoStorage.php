@@ -74,6 +74,94 @@ final class PhotoStorage
         return $saved;
     }
 
+    /**
+     * Seeds/scripts: copia um arquivo local para os originais (finfo jpeg/png/webp, 0600), cria a foto em
+     * processing e enfileira; o image-worker gera os WebP. Devolve a linha criada ou null se recusado.
+     */
+    public static function enqueueOriginal(int $houseId, string $sourceFile, int $primary, int $sort): ?array
+    {
+        $ext = is_file($sourceFile) ? self::imageExtension($sourceFile) : null;
+        $dir = self::originalsDir();
+        if ($ext === null || (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir))) {
+            return null;
+        }
+        $uuid = self::randomId();
+        $original = $uuid . '.' . $ext;
+        if (!@copy($sourceFile, $dir . '/' . $original)) {
+            return null;
+        }
+        @chmod($dir . '/' . $original, 0600);
+        $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $primary, $sort);
+        ImageQueues::make()->push((int) ($row['id'] ?? 0));
+        return $row;
+    }
+
+    /**
+     * Fotos antigas em /uploads/users/<id>/imoveis/<id>/...: cada uma é reivindicada (UPDATE condicionado,
+     * seguro com workers concorrentes), o arquivo vai para os originais (fora do public/), sai do public/ e
+     * entra na ImageQueue. Arquivo ausente/inválido: foto failed. Devolve quantas foram enfileiradas.
+     */
+    public static function migrateLegacy(int $limit = 100): int
+    {
+        $rows = db()->query("SELECT id, path FROM photos WHERE status = 'ready' AND path LIKE '/uploads/users/%' ORDER BY id LIMIT " . max(1, $limit))->fetchAll();
+        $root = realpath(self::legacyRoot());
+        $dir = self::originalsDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return 0;
+        }
+        $claim = db()->prepare("UPDATE photos SET status = 'processing', path = '', uuid = ?, original = ? WHERE id = ? AND status = 'ready' AND path = ?");
+        $fail = db()->prepare("UPDATE photos SET status = 'failed', path = '', original = NULL WHERE id = ? AND status = 'ready' AND path = ?");
+        $done = 0;
+        foreach ($rows as $row) {
+            $path = (string) $row['path'];
+            $full = $root === false ? false : realpath($root . '/' . substr($path, strlen('/uploads/users/')));
+            $ext = $full !== false && str_starts_with($full, $root . DIRECTORY_SEPARATOR) && is_file($full) ? self::imageExtension($full) : null;
+            if ($ext === null) {
+                $fail->execute([(int) $row['id'], $path]);
+                continue;
+            }
+            $uuid = self::randomId();
+            $original = $uuid . '.' . $ext;
+            if (!@copy($full, $dir . '/' . $original)) {
+                continue;
+            }
+            @chmod($dir . '/' . $original, 0600);
+            $claim->execute([$uuid, $original, (int) $row['id'], $path]);
+            if ($claim->rowCount() !== 1) {
+                @unlink($dir . '/' . $original); // outro worker já pegou
+                continue;
+            }
+            ImageQueues::make()->push((int) $row['id']);
+            @unlink($full);
+            $done++;
+        }
+        return $done;
+    }
+
+    /** Raiz das fotos antigas (public/uploads/users). */
+    public static function legacyRoot(): string
+    {
+        return self::$legacy ?? dirname(__DIR__) . '/public/uploads/users';
+    }
+
+    public static ?string $legacy = null;
+
+    /**
+     * Imóvel inativado: apaga os WebP públicos e originais de todas as fotos e marca-as como removed
+     * (nunca mais aparecem, nem pelo caminho direto). Não há reativação de imóvel no sistema.
+     */
+    public static function retireHouse(int $houseId): int
+    {
+        $stmt = db()->prepare("SELECT * FROM photos WHERE property_id = ? AND status <> 'removed'");
+        $stmt->execute([$houseId]);
+        $rows = $stmt->fetchAll();
+        foreach ($rows as $photo) {
+            self::deletePhotoFiles($photo);
+        }
+        db()->prepare("UPDATE photos SET status = 'removed', path = '', original = NULL WHERE property_id = ?")->execute([$houseId]);
+        return count($rows);
+    }
+
     /** Testes: substituem is_uploaded_file/move_uploaded_file. @var null|callable */
     public static $acceptFile = null;
     /** @var null|callable */

@@ -10,6 +10,8 @@ $owner = t_seed_owner();
 require_once CL_ROOT . '/src/PhotoStorage.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/ImageWorker.php';
+require_once CL_ROOT . '/src/HouseService.php';
+require_once CL_ROOT . '/src/ActivityLog.php';
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
 $tmp = sys_get_temp_dir() . '/cl-photo-' . bin2hex(random_bytes(3));
 mkdir($tmp, 0700);
@@ -163,6 +165,78 @@ t_ok(!is_file(PhotoStorage::$originals . '/' . $procRow['original']), 'excluir f
 $readyRow = PhotoRepository::listReady($hid)[0];
 PhotoStorage::deletePhotoFiles($readyRow);
 t_ok(!is_file(PhotoStorage::variantFile((string) $readyRow['uuid'], 320)) && !is_file(PhotoStorage::variantFile((string) $readyRow['uuid'], 1920)), 'excluir foto pronta apaga as 3 variantes');
+
+echo "teto de pixels (25 MP)\n";
+t_eq(25_000_000, ImageWorker::MAX_PIXELS, 'MAX_PIXELS = 25 MP');
+// PNG só com cabeçalho IHDR 6000x5000 (30 MP): recusado antes de decodificar.
+$ihdr = pack('NNCCCCC', 6000, 5000, 8, 2, 0, 0, 0);
+$png = "\x89PNG\r\n\x1a\n" . pack('N', 13) . 'IHDR' . $ihdr . pack('N', crc32('IHDR' . $ihdr)) . str_repeat("\0", 64);
+$big = PhotoRepository::insertProcessing($hid, PhotoStorage::randomId(), '', 0, 20);
+$bigOrig = PhotoRepository::findById((int) $big['id'])['uuid'] . '.png';
+db()->prepare('UPDATE photos SET original = ? WHERE id = ?')->execute([$bigOrig, (int) $big['id']]);
+file_put_contents(PhotoStorage::$originals . '/' . $bigOrig, $png);
+$msg = '';
+try {
+    ImageWorker::process((int) $big['id']);
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
+}
+t_eq('Imagem grande demais.', $msg, '30 MP recusado sem decodificar');
+db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) $big['id']]);
+@unlink(PhotoStorage::$originals . '/' . $bigOrig);
+
+echo "seeds e fotos antigas pela fila\n";
+$seedSrc = (string) file_get_contents(CL_ROOT . '/scripts/seed.php') . file_get_contents(CL_ROOT . '/scripts/seed_massive.php');
+t_ok(substr_count($seedSrc, 'PhotoStorage::enqueueOriginal(') === 2 && !str_contains($seedSrc, 'writeGenerated(') && !str_contains($seedSrc, 'PhotoStorage::publicPath('), 'seeds enfileiram o original (sem gravar em /uploads/users)');
+$h2 = HouseRepository::insert(['user_id' => $owner['user_id'], 'title' => 'Casa Seed', 'description' => 'd', 'summary' => 's', 'city' => 'Florianópolis, SC', 'address' => 'Rua B, 2', 'cep' => '88000000', 'street' => 'Rua B', 'address_number' => '2', 'address_complement' => '', 'lat' => -27.6, 'lng' => -48.5, 'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 100, 'checkin_time' => '15:00', 'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0]);
+db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$h2]);
+$seedFile = $tmp . '/seed.png';
+file_put_contents($seedFile, $gd('imagepng', 900, 600));
+$seedRow = PhotoStorage::enqueueOriginal($h2, $seedFile, 1, 0);
+t_eq('processing', $seedRow['status'] ?? null, 'seed: foto em processing');
+t_eq(null, PhotoStorage::enqueueOriginal($h2, $tmp . '/up-e.jpg', 0, 1), 'seed: arquivo que não é imagem recusado');
+PhotoStorage::$legacy = $tmp . '/public/uploads/users';
+mkdir(PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2, 0755, true);
+$legacyFile = PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2 . '/capa.jpg';
+file_put_contents($legacyFile, $jpegWithExif(60, 30, 1));
+$legacyPath = '/uploads/users/' . $owner['user_id'] . '/imoveis/' . $h2 . '/capa.jpg';
+PhotoRepository::insert($h2, $legacyPath, 0, 1);
+PhotoRepository::insert($h2, '/uploads/users/' . $owner['user_id'] . '/imoveis/' . $h2 . '/sumiu.jpg', 0, 2);
+PhotoRepository::insert($h2, '/uploads/users/../../etc/passwd', 0, 3);
+t_eq(1, PhotoStorage::migrateLegacy(), 'legado: 1 foto válida enfileirada');
+t_eq(0, PhotoStorage::migrateLegacy(), 'legado: nada a fazer na 2ª execução');
+t_ok(!is_file($legacyFile), 'legado: arquivo saiu do public/');
+$st = db()->prepare('SELECT status, path FROM photos WHERE property_id = ? ORDER BY sort_order');
+$st->execute([$h2]);
+t_eq(['processing', 'processing', 'failed', 'failed'], array_column($st->fetchAll(), 'status'), 'legado: válida em processing; ausente e traversal em failed');
+@unlink($lock);
+$rep = ImageWorker::run(ImageQueues::make(), $lock);
+t_eq(2, $rep['enviados'] ?? null, 'worker gera os WebP do seed e do legado');
+$st->execute([$h2]);
+$after = $st->fetchAll();
+t_ok($after[0]['status'] === 'ready' && $after[1]['status'] === 'ready' && preg_match('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $after[1]['path']) === 1, 'seed e legado prontos em /uploads/fotos/<uuid>');
+t_ok(!str_contains((string) file_get_contents(PhotoStorage::$public . '/' . basename(photo_variant((string) $after[1]['path'], 'full'))), 'GPSMARKER'), 'legado regravado sem EXIF');
+
+echo "imóvel inativado\n";
+$files2 = [];
+foreach ($after as $r) {
+    if ($r['status'] === 'ready') {
+        foreach (ImageWorker::SIZES as $w) {
+            $files2[] = PhotoStorage::variantFile((string) PhotoRepository::findById((int) db()->query("SELECT id FROM photos WHERE path = " . db()->quote((string) $r['path']))->fetchColumn())['uuid'], $w);
+        }
+    }
+}
+$pend = PhotoStorage::enqueueOriginal($h2, $seedFile, 0, 9);
+t_eq(6, count(array_filter($files2, 'is_file')), '6 WebP públicos antes');
+t_ok(HouseService::remove((int) $owner['user_id'], $h2), 'HouseService::remove inativa');
+t_eq(0, count(array_filter($files2, 'is_file')), 'WebP públicos apagados ao inativar');
+t_ok(!is_file(PhotoStorage::$originals . '/' . PhotoRepository::findById((int) $pend['id'])['uuid'] . '.png'), 'original pendente apagado');
+$st = db()->prepare("SELECT DISTINCT status FROM photos WHERE property_id = ?");
+$st->execute([$h2]);
+t_eq(['removed'], array_column($st->fetchAll(), 'status'), 'fotos marcadas removed');
+$rep = ImageWorker::run(ImageQueues::make(), $lock);
+t_eq([0, 1], [$rep['enviados'] ?? null, $rep['ignorados'] ?? null], 'worker ignora foto de imóvel inativado');
+t_eq([], glob(PhotoStorage::$public . '/' . PhotoRepository::findById((int) $pend['id'])['uuid'] . '-*') ?: [], 'nenhum WebP gerado depois de inativar');
 
 echo "helpers\n";
 $u = '/uploads/fotos/' . PhotoStorage::randomId();
