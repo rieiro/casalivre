@@ -67,7 +67,8 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Banco de dados (SQLite)
 
 - [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
-- [ ] **Migração a cada deploy** (SCHEMA_VERSION 3 com o #21 e 4 com o #23: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`.
+- [ ] **Banco em desenvolvimento** (decisão do usuário, 14/10): sem scripts de migração. Se o schema mudar, recriar o banco (`setup.sh` + seeds). Continua obrigatório aumentar `Db::SCHEMA_VERSION`.
+- [ ] **Migração a cada deploy** (só depois da primeira subida) (SCHEMA_VERSION 3 com o #21 e 4 com o #23: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`.
 - [ ] **WAL**: o diretório `storage/db/` (não só o arquivo) gravável pelo php-fpm, para `-wal` e `-shm`; o mesmo vale para `storage/logs/activity.sqlite`. Disco local (WAL não funciona em NFS). `busy_timeout = 8000 ms`.
 - [ ] **Backup**: `sqlite3 casalivre.sqlite ".backup destino.sqlite"` ou copiar junto com `-wal`/`-shm`.
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
@@ -91,7 +92,9 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Rotas legadas `/cidades` e `/ceps` removidas (404): clientes externos e caches devem usar `/api/cidades` e `/api/ceps`.
 - [ ] Export iCal só pelo `ical_hash` secreto; o link pelo `public_hash` passa a dar 404.
 
-## Homologação (validar antes de produção)
+## Homologação (suspensa até a primeira subida em produção)
+> Decisão do usuário (14/10): enquanto não houver produção, não há homologação por lote. Este checklist roda uma vez, num ambiente de teste, poucos dias antes da primeira subida real.
+
 
 - [ ] `composer install`, `vendor/bin/phpunit` e `CASOS=todos php scripts/run-casos-de-teste.php` (os casos de teste rodam com `APP_ENV=dev`).
 - [ ] CI com `tests/standalone/run.php` em PHP 8.4.
