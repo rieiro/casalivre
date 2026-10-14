@@ -517,12 +517,12 @@ function handle_api(string $path, string $method): void
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
         // API: feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
-        $res = ICalFeedRemove::run((int) $property['id'], (int) $user['id'], (int) $m[2], false);
+        $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2], seguirSemFeed: false);
         $res->registrar();
         if ($res->tipo === 'nao_encontrado') {
             api_error(404, $res->mensagem);
         }
-        $resync = $res->dados['ressincronizados'];
+        $resync = ICalFeedRemove::ressincronizar((int) $property['id']);
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 

@@ -661,8 +661,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $user = require_user();
     csrf_check();
     HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    // Web: feed inexistente ainda libera noites, ressincroniza e redireciona (ver ICalFeedRemove).
-    ICalFeedRemove::run(HouseRepository::idFromPublicRefOrFail($m[1]), (int) $user['id'], (int) $m[2], true)->registrar();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2], seguirSemFeed: true)->registrar();
+    // SNAPSHOT: a web não trata 'nao_encontrado' de propósito. Feed inexistente ainda ressincroniza e
+    // redireciona (302), como antes; tratar o desfecho mudaria o comportamento (a API responde 404).
+    ICalFeedRemove::ressincronizar($propertyId);
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
