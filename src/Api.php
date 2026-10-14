@@ -141,15 +141,10 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/users' && $method === 'POST') {
         $result = AccountFlow::register($body, Settings::int('email_verify_minutes'));
         if ($result['error']) {
-            $status = in_array($result['error'], ['deleted', 'inactive', 'email_taken'], true) ? 409 : 422;
-            json_out($status, ['error' => account_text($result['error'])]);
+            json_out(422, ['error' => account_text($result['error'])]);
         }
-        activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-        $created = ['id' => $result['id'], 'status' => 'pending', 'expires' => $result['expires']];
-        if (expose_account_links()) {
-            $created['verification_link'] = $result['link'];
-        }
-        json_out(201, $created);
+        // Mesma resposta para e-mail novo ou já cadastrado (anti-enumeração).
+        json_out(201, ['status' => 'pending', 'message' => t('auth.pending_email')]);
     }
 
     $user = current_user();

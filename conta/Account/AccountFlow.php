@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Email.php';
 require_once __DIR__ . '/UserRepository.php';
 require_once dirname(__DIR__) . '/Auth/Password.php';
 require_once dirname(__DIR__) . '/Auth/Phone.php';
@@ -16,7 +17,7 @@ final class AccountFlow
     {
         $name = trim((string) ($input['name'] ?? ''));
         $cpf = preg_replace('/\D/', '', (string) ($input['cpf'] ?? ''));
-        $email = strtolower(trim((string) ($input['email'] ?? '')));
+        $email = Email::normalize((string) ($input['email'] ?? ''));
         if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return 'required';
         }
@@ -53,7 +54,7 @@ final class AccountFlow
             'address_number' => $place['address_number'],
             'address_complement' => $place['address_complement'],
             'phone' => PhoneNumber::digits((string) ($input['phone'] ?? '')),
-            'email' => strtolower(trim((string) ($input['email'] ?? ''))),
+            'email' => Email::normalize((string) ($input['email'] ?? '')),
             'password_hash' => $current['password_hash'] ?? PasswordPolicy::hash((string) ($input['password'] ?? '')),
         ];
     }
@@ -64,36 +65,34 @@ final class AccountFlow
         if ($error !== null) {
             return ['error' => $error];
         }
-        $email = strtolower(trim((string) ($input['email'] ?? '')));
-        $existing = UserRepository::findByEmail($email);
-        if ($existing && in_array(($existing['status'] ?? ''), ['inactive', 'apagado'], true)) {
-            return ['error' => ($existing['status'] ?? '') === 'apagado' ? 'deleted' : 'inactive'];
-        }
-        if ($existing) {
-            return ['error' => 'email_taken'];
-        }
+        // Anti-enumeração: e-mail novo ou existente seguem o mesmo caminho (hash da senha, uma
+        // escrita na fila) e devolvem a mesma resposta. Existente recebe só o aviso 'exists'.
+        $email = Email::normalize((string) ($input['email'] ?? ''));
         $fields = self::fields($input);
         $fields['status'] = 'pending';
-        $id = UserRepository::insert($fields);
-        self::notify('activation', $email);
-        return ['error' => null, 'id' => $id, 'email' => $email, 'link' => null, 'expires' => self::until($minutes)];
+        // INSERT ... ON CONFLICT(email) DO NOTHING: rowCount() 1 = criado; 0 = já existia (inclusive em corrida).
+        $created = UserRepository::insertIfAbsent($fields);
+        self::notify($created ? 'activation' : 'exists', $email);
+        if ($created && function_exists('activity') && class_exists('ActivityLog')) {
+            activity(ActivityLog::REGISTER, ['email' => $email]);
+        }
+        return ['error' => null, 'email' => $email, 'created' => $created, 'expires' => self::until($minutes)];
     }
 
+    /** Uso único atômico: só ativa se o UPDATE condicionado ao hash e à validade afetar exatamente 1 linha. */
     public static function activate(string $token): array
     {
         $user = UserRepository::findByToken('activation_token', $token);
-        $ok = $user && ($user['activation_expires_at'] ?? '') >= date('Y-m-d H:i:s') && ($user['status'] ?? '') === 'pending';
-        if ($ok) {
-            UserRepository::activate((int) $user['id']);
-        }
+        $ok = $user && ($user['status'] ?? '') === 'pending'
+            && UserRepository::consumeActivation((int) $user['id'], UserRepository::tokenHash($token), date('Y-m-d H:i:s'));
         return ['ok' => (bool) $ok, 'email' => $ok ? (string) $user['email'] : null];
     }
 
     public static function ensureActivation(array $user, int $minutes): array
     {
         $expires = (string) ($user['activation_expires_at'] ?? '');
-        $link = (string) ($user['activation_link'] ?? '');
-        if ($expires < date('Y-m-d H:i:s') || $link === '') {
+        $token = (string) ($user['activation_token'] ?? '');
+        if ($expires < date('Y-m-d H:i:s') || $token === '') {
             self::notify('activation', (string) $user['email']);
             return ['expires' => self::until($minutes)];
         }
@@ -102,7 +101,7 @@ final class AccountFlow
 
     public static function checkLogin(string $email, string $password, int $maxFailures): array
     {
-        $email = strtolower(trim($email));
+        $email = Email::normalize($email);
         $user = UserRepository::findByEmail($email);
         if ($user && (int) $user['failed_logins'] >= $maxFailures && ($user['status'] ?? '') === 'active') {
             return ['status' => 'locked', 'email' => $email];
@@ -138,12 +137,15 @@ final class AccountFlow
         session_regenerate_id(true);
         $_SESSION['user_id'] = $id;
         $_SESSION['auth_at'] = time();
+        // Guardado no login e conferido a cada requisição (expire_user_session): a redefinição de
+        // senha incrementa users.session_version e encerra as outras sessões.
+        $_SESSION['session_version'] = UserRepository::sessionVersion($id);
     }
 
     /** Sempre enfileira e devolve o mesmo formato, exista ou não a conta (tempo de resposta constante). */
     public static function askReset(string $email, int $minutes): array
     {
-        $email = strtolower(trim($email));
+        $email = Email::normalize($email);
         if ($email !== '') {
             self::notify('reset', $email);
         }
@@ -151,12 +153,12 @@ final class AccountFlow
     }
 
     /**
-     * Worker: gera e grava o token do tipo pedido e devolve o link ($linkPrefix . token), ou null se não
-     * há conta elegível (reset: active; activation: pending).
+     * Worker: gera o token bruto, grava só o sha256 e devolve o link ($linkPrefix . token bruto), ou null
+     * se não há conta elegível (reset: active; activation: pending).
      */
     public static function issueLink(string $type, string $email, int $minutes, string $linkPrefix): ?string
     {
-        $user = UserRepository::findByEmail(strtolower(trim($email)));
+        $user = UserRepository::findByEmail(Email::normalize($email));
         $need = $type === 'reset' ? 'active' : 'pending';
         if (!$user || ($user['status'] ?? '') !== $need) {
             return null;
@@ -165,13 +167,17 @@ final class AccountFlow
         $link = $linkPrefix . $token;
         $expires = self::until($minutes);
         if ($type === 'reset') {
-            UserRepository::setReset((int) $user['id'], $token, $link, $expires);
+            UserRepository::setReset((int) $user['id'], $token, $expires);
         } else {
-            UserRepository::setActivation((int) $user['id'], $token, $link, $expires);
+            UserRepository::setActivation((int) $user['id'], $token, $expires);
         }
         return $link;
     }
 
+    /**
+     * Uso único atômico: senha, limpeza do token e session_version+1 num só UPDATE condicionado ao
+     * hash e à validade; só conta como sucesso com rowCount() === 1.
+     */
     public static function reset(string $token, string $password, string $confirm): array
     {
         $user = UserRepository::findByToken('reset_token', $token);
@@ -182,7 +188,10 @@ final class AccountFlow
         if ($problem !== null) {
             return ['error' => $problem];
         }
-        UserRepository::setPassword((int) $user['id'], PasswordPolicy::hash($password));
+        $ok = UserRepository::consumeReset((int) $user['id'], UserRepository::tokenHash($token), date('Y-m-d H:i:s'), PasswordPolicy::hash($password));
+        if (!$ok) {
+            return ['error' => 'invalid'];
+        }
         return ['error' => null, 'email' => (string) $user['email']];
     }
 
