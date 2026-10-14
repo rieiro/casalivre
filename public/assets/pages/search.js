@@ -18,7 +18,7 @@
                     const price = q.nights ? (q.total + ' total') : (item.nightly_price + ' / noite');
                     const href = '/imoveis/' + encodeURIComponent(String(item.id || '')) + '?' + params.toString();
                     return el('article', { className: 'result' },
-                        el('a', { href: href }, el('img', { src: item.photo, alt: '', loading: 'lazy' })),
+                        el('a', { href: href }, CL.photoImg(item.photo, '(max-width: 600px) 100vw, 400px', '')),
                         el('div', { className: 'body' },
                             el('h2', { className: 'card-title' }, item.title || ''),
                             el('p', { className: 'muted' }, item.city || ''),

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/Rooms.php';
+require_once __DIR__ . '/PhotoStorage.php';
+require_once __DIR__ . '/PhotoRepository.php';
 
 final class HouseService
 {
@@ -242,6 +244,8 @@ final class HouseService
         }
         $old = $changed[0]['old'];
         $new = $changed[0]['new'];
+        // Segurança #39: imóvel inativado não deixa WebP públicos acessíveis pelo caminho direto.
+        PhotoStorage::retireHouse($id);
         activity(ActivityLog::PROPERTY_DELETE, [
             'imovel_id' => $id,
             'titulo' => (string) ($new['title'] ?? ''),

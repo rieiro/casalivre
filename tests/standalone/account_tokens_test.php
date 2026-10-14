@@ -150,7 +150,7 @@ $idx2 = array_column($fresh->query('PRAGMA index_list(users)')->fetchAll(PDO::FE
 t_ok(in_array('idx_users_activation_token', $idx2, true) && in_array('idx_users_reset_token', $idx2, true), 'Db::migrate recria os índices' . ($code ? ' ' . implode(' ', $out) : ''));
 $fresh = null;
 @unlink($freshFile);
-t_eq(6, Db::SCHEMA_VERSION, 'SCHEMA_VERSION continua 6');
+t_ok(Db::SCHEMA_VERSION >= 6, 'SCHEMA_VERSION >= 6 (tokens sha256 do #35)');
 $f = ['name' => 'X', 'cpf' => '52998224725', 'address' => 'Rua', 'phone' => '48999990000', 'email' => 'conf' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password_hash' => 'h', 'status' => 'pending'];
 t_eq([true, false], [UserRepository::insertIfAbsent($f), UserRepository::insertIfAbsent($f)], 'ON CONFLICT(email) DO NOTHING: 1ª cria, 2ª não (rowCount)');
 $src = (string) file_get_contents(CL_ROOT . '/conta/Account/AccountFlow.php') . file_get_contents(CL_ROOT . '/conta/Account/UserRepository.php');

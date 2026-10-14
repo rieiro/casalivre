@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
-    <link rel="stylesheet" href="/assets/app.css?v=19">
+    <link rel="stylesheet" href="/assets/app.css?v=20">
     <?= page_data_script($csrf) ?>
-    <script src="/assets/safe-dom.js?v=3"></script>
+    <script src="/assets/safe-dom.js?v=4"></script>
 </head>
 <body>
 <header class="top">

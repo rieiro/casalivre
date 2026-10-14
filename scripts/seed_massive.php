@@ -118,15 +118,10 @@ foreach ($cities as $index => $city) {
             'bbq' => 0,
             'garage' => 1,
         ]);
-        $dir = PhotoStorage::directory($userId, $houseId);
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-            throw new RuntimeException('Não foi possível criar a pasta de fotos.');
+        // Capa pela fila de imagens (o image-worker gera os WebP).
+        if (PhotoStorage::enqueueOriginal($houseId, $cover, 1, 0) === null) {
+            throw new RuntimeException('Não foi possível enfileirar a foto de capa.');
         }
-        $dest = $dir . '/capa.png';
-        if (!is_file($dest) && !link($cover, $dest) && !copy($cover, $dest)) {
-            throw new RuntimeException('Não foi possível gravar a foto de capa.');
-        }
-        PhotoRepository::insert($houseId, PhotoStorage::publicPath($userId, $houseId, 'capa.png'), 1, 0);
         massive_reviews($review, $houseId);
         foreach ($evenDays as $iso) {
             $block->execute([$houseId, $iso]);

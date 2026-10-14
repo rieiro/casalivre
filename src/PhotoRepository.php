@@ -13,6 +13,50 @@ final class PhotoRepository
         return $stmt->fetchAll();
     }
 
+    /** Só fotos prontas (público). */
+    public static function listReady(int $propertyId): array
+    {
+        $stmt = db()->prepare("SELECT * FROM photos WHERE property_id = ? AND status = 'ready' ORDER BY is_primary DESC, sort_order ASC, id ASC");
+        $stmt->execute([$propertyId]);
+        return $stmt->fetchAll();
+    }
+
+    public static function findById(int $photoId): ?array
+    {
+        $stmt = db()->prepare('SELECT * FROM photos WHERE id = ?');
+        $stmt->execute([$photoId]);
+        $row = $stmt->fetch();
+        $stmt->closeCursor();
+        return $row ?: null;
+    }
+
+    public static function insertProcessing(int $propertyId, string $uuid, string $original, int $primary, int $sort): array
+    {
+        $rows = ReturningWrite::insert('photos', [
+            'property_id' => $propertyId,
+            'path' => '',
+            'is_primary' => $primary,
+            'sort_order' => $sort,
+            'status' => 'processing',
+            'uuid' => $uuid,
+            'original' => $original,
+        ], ['id', 'property_id', 'path', 'is_primary', 'sort_order', 'status']);
+        return $rows[0]['new'] ?? [];
+    }
+
+    /** false se a foto deixou de estar em processing (removida ou imóvel inativado no meio). */
+    public static function markReady(int $photoId, string $path): bool
+    {
+        $stmt = db()->prepare("UPDATE photos SET status = 'ready', path = ?, original = NULL WHERE id = ? AND status = 'processing'");
+        $stmt->execute([$path, $photoId]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public static function markFailed(int $photoId): void
+    {
+        db()->prepare("UPDATE photos SET status = 'failed', original = NULL WHERE id = ? AND status = 'processing'")->execute([$photoId]);
+    }
+
     public static function find(int $propertyId, int $photoId): ?array
     {
         $stmt = db()->prepare('SELECT * FROM photos WHERE id = ? AND property_id = ?');
@@ -30,7 +74,7 @@ final class PhotoRepository
 
     public static function primaryPath(int $propertyId): ?string
     {
-        $stmt = db()->prepare('SELECT path FROM photos WHERE property_id = ? ORDER BY is_primary DESC, sort_order ASC, id ASC LIMIT 1');
+        $stmt = db()->prepare("SELECT path FROM photos WHERE property_id = ? AND status = 'ready' ORDER BY is_primary DESC, sort_order ASC, id ASC LIMIT 1");
         $stmt->execute([$propertyId]);
         $path = $stmt->fetchColumn();
         return $path ? (string) $path : null;
@@ -45,7 +89,7 @@ final class PhotoRepository
                 continue;
             }
             $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-            $stmt = db()->prepare("SELECT property_id, path FROM photos WHERE property_id IN ($placeholders) ORDER BY property_id, is_primary DESC, sort_order ASC, id ASC");
+            $stmt = db()->prepare("SELECT property_id, path FROM photos WHERE property_id IN ($placeholders) AND status = 'ready' ORDER BY property_id, is_primary DESC, sort_order ASC, id ASC");
             $stmt->execute($chunk);
             foreach ($stmt->fetchAll() as $row) {
                 $id = (int) $row['property_id'];
@@ -70,7 +114,7 @@ final class PhotoRepository
 
     public static function delete(int $propertyId, int $photoId): array
     {
-        $rows = ReturningWrite::remove('photos', 'id = ? AND property_id = ?', [$photoId, $propertyId], ['id', 'path', 'is_primary', 'sort_order']);
+        $rows = ReturningWrite::remove('photos', 'id = ? AND property_id = ?', [$photoId, $propertyId], ['id', 'path', 'is_primary', 'sort_order', 'status', 'uuid', 'original']);
         return ['old' => $rows[0]['old'] ?? null, 'capa' => self::ensurePrimary($propertyId)];
     }
 
@@ -81,7 +125,7 @@ final class PhotoRepository
             return ['old' => [], 'capa' => []];
         }
         $marks = implode(', ', array_fill(0, count($ids), '?'));
-        $rows = ReturningWrite::remove('photos', 'property_id = ? AND id IN (' . $marks . ')', [$propertyId, ...$ids], ['id', 'path', 'is_primary', 'sort_order']);
+        $rows = ReturningWrite::remove('photos', 'property_id = ? AND id IN (' . $marks . ')', [$propertyId, ...$ids], ['id', 'path', 'is_primary', 'sort_order', 'status', 'uuid', 'original']);
         return ['old' => array_map(static fn (array $row): array => $row['old'], $rows), 'capa' => self::ensurePrimary($propertyId)];
     }
 

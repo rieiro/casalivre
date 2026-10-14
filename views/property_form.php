@@ -176,7 +176,7 @@
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <p class="muted"><?= e(sprintf(t('form.photos_property'), $photoLimit, count($photos))) ?></p>
             <?php if ($photoRemaining > 0): ?>
-            <label><?= e(t('form.add_photos')) ?> <input type="file" name="fotos[]" accept="image/jpeg,image/png,image/webp,image/gif" multiple required></label>
+            <label><?= e(t('form.add_photos')) ?> <input type="file" name="fotos[]" accept="image/jpeg,image/png,image/webp" multiple required></label>
             <p class="muted"><?= e(sprintf(t('form.photos_limit'), $uploadCount, (int) floor($uploadFile / 1048576), (int) floor($uploadBudget / 1048576))) ?></p>
             <p class="error" data-upload-error hidden></p>
             <button class="primary" type="submit"><?= e(t('form.add_photos')) ?></button>
@@ -190,7 +190,14 @@
                     <div class="photo-tile">
                         <label class="photo-pick">
                             <input class="photo-check" type="checkbox" name="fotos[]" value="<?= (int) $photo['id'] ?>">
-                            <img src="<?= e(photo_url($photo['path'])) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
+                            <?php $photoStatus = (string) ($photo['status'] ?? 'ready'); ?>
+                            <?php if ($photoStatus === 'processing'): ?>
+                                <span class="photo-wait" role="img" aria-label="<?= e(t('form.photo_processing')) ?>"><?= e(t('form.photo_processing')) ?></span>
+                            <?php elseif ($photoStatus === 'failed'): ?>
+                                <span class="photo-wait is-failed" role="img" aria-label="<?= e(t('form.photo_failed')) ?>"><?= e(t('form.photo_failed')) ?></span>
+                            <?php else: ?>
+                                <img src="<?= e(photo_url(photo_variant($photo['path'], 'thumb'))) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
+                            <?php endif; ?>
                             <span class="tick" aria-hidden="true">✓</span>
                         </label>
                         <?php if (!empty($photo['is_primary'])): ?><span class="cover-badge"><?= e(t('form.cover_current')) ?></span><?php endif; ?>

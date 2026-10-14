@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/ImageQueue.php';
+require_once __DIR__ . '/ImageWorker.php';
+
 final class PhotoStorage
 {
     public static function directory(int $userId, int $houseId): string
@@ -14,12 +17,18 @@ final class PhotoStorage
         return '/uploads/users/' . $userId . '/imoveis/' . $houseId . '/' . $filename;
     }
 
+    /**
+     * Upload assíncrono: valida o tipo real (finfo: jpeg/png/webp), grava o original FORA do public/
+     * (storage/fotos/originais/<uuid>.<ext>, 0600), cria a foto com status processing e enfileira na
+     * ImageQueue. Os WebP públicos (/uploads/fotos/<uuid>-<largura>.webp, sem id de usuário nem de
+     * imóvel) são gerados pelo scripts/image-worker.php.
+     */
     public static function storeUploads(int $userId, int $houseId, array $files, ?array &$created = null): int
     {
         $saved = 0;
         $created = [];
-        $dir = self::directory($userId, $houseId);
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        $dir = self::originalsDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
             return 0;
         }
         $existing = PhotoRepository::count($houseId);
@@ -30,6 +39,7 @@ final class PhotoStorage
         if (!is_array($names)) {
             return 0;
         }
+        $queue = null;
         foreach ($names as $i => $name) {
             if (($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 continue;
@@ -38,7 +48,7 @@ final class PhotoStorage
                 break;
             }
             $tmpName = (string) ($tmp[$i] ?? '');
-            if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            if ($tmpName === '' || !(self::$acceptFile ?? 'is_uploaded_file')($tmpName)) {
                 continue;
             }
             $size = (int) ($files['size'][$i] ?? 0);
@@ -49,22 +59,171 @@ final class PhotoStorage
             if ($ext === null) {
                 continue;
             }
-            $filename = self::randomId() . '.' . $ext;
-            if (!move_uploaded_file($tmpName, $dir . '/' . $filename)) {
+            $uuid = self::randomId();
+            $original = $uuid . '.' . $ext;
+            if (!(self::$moveFile ?? 'move_uploaded_file')($tmpName, $dir . '/' . $original)) {
                 continue;
             }
-            $row = PhotoRepository::insert(
-                $houseId,
-                self::publicPath($userId, $houseId, $filename),
-                $existing === 0 && $saved === 0 ? 1 : 0,
-                $existing + $saved
-            );
-            $created[] = ['id' => (int) ($row['id'] ?? 0), 'caminho' => (string) ($row['path'] ?? ''), 'capa' => (int) ($row['is_primary'] ?? 0)];
+            @chmod($dir . '/' . $original, 0600);
+            $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $existing === 0 && $saved === 0 ? 1 : 0, $existing + $saved);
+            $queue ??= ImageQueues::make();
+            $queue->push((int) ($row['id'] ?? 0));
+            $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => 'processing', 'capa' => (int) ($row['is_primary'] ?? 0)];
             $saved++;
         }
         return $saved;
     }
 
+    /**
+     * Seeds/scripts: copia um arquivo local para os originais (finfo jpeg/png/webp, 0600), cria a foto em
+     * processing e enfileira; o image-worker gera os WebP. Devolve a linha criada ou null se recusado.
+     */
+    public static function enqueueOriginal(int $houseId, string $sourceFile, int $primary, int $sort): ?array
+    {
+        $ext = is_file($sourceFile) ? self::imageExtension($sourceFile) : null;
+        $dir = self::originalsDir();
+        if ($ext === null || (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir))) {
+            return null;
+        }
+        $uuid = self::randomId();
+        $original = $uuid . '.' . $ext;
+        if (!@copy($sourceFile, $dir . '/' . $original)) {
+            return null;
+        }
+        @chmod($dir . '/' . $original, 0600);
+        $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $primary, $sort);
+        ImageQueues::make()->push((int) ($row['id'] ?? 0));
+        return $row;
+    }
+
+    /**
+     * Fotos antigas em /uploads/users/<id>/imoveis/<id>/...: cada uma é reivindicada (UPDATE condicionado,
+     * seguro com workers concorrentes), o arquivo vai para os originais (fora do public/), sai do public/ e
+     * entra na ImageQueue. Arquivo ausente/inválido: foto failed. Devolve quantas foram enfileiradas.
+     */
+    public static function migrateLegacy(int $limit = 100): int
+    {
+        $rows = db()->query("SELECT id, path FROM photos WHERE status = 'ready' AND path LIKE '/uploads/users/%' ORDER BY id LIMIT " . max(1, $limit))->fetchAll();
+        $root = realpath(self::legacyRoot());
+        $dir = self::originalsDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return 0;
+        }
+        $claim = db()->prepare("UPDATE photos SET status = 'processing', path = '', uuid = ?, original = ? WHERE id = ? AND status = 'ready' AND path = ?");
+        $fail = db()->prepare("UPDATE photos SET status = 'failed', path = '', original = NULL WHERE id = ? AND status = 'ready' AND path = ?");
+        $done = 0;
+        foreach ($rows as $row) {
+            $path = (string) $row['path'];
+            $full = $root === false ? false : realpath($root . '/' . substr($path, strlen('/uploads/users/')));
+            $ext = $full !== false && str_starts_with($full, $root . DIRECTORY_SEPARATOR) && is_file($full) ? self::imageExtension($full) : null;
+            if ($ext === null) {
+                $fail->execute([(int) $row['id'], $path]);
+                continue;
+            }
+            $uuid = self::randomId();
+            $original = $uuid . '.' . $ext;
+            if (!@copy($full, $dir . '/' . $original)) {
+                continue;
+            }
+            @chmod($dir . '/' . $original, 0600);
+            $claim->execute([$uuid, $original, (int) $row['id'], $path]);
+            if ($claim->rowCount() !== 1) {
+                @unlink($dir . '/' . $original); // outro worker já pegou
+                continue;
+            }
+            ImageQueues::make()->push((int) $row['id']);
+            @unlink($full);
+            $done++;
+        }
+        return $done;
+    }
+
+    /** Raiz das fotos antigas (public/uploads/users). */
+    public static function legacyRoot(): string
+    {
+        return self::$legacy ?? dirname(__DIR__) . '/public/uploads/users';
+    }
+
+    public static ?string $legacy = null;
+
+    /**
+     * Imóvel inativado: apaga os WebP públicos e originais de todas as fotos e marca-as como removed
+     * (nunca mais aparecem, nem pelo caminho direto). Não há reativação de imóvel no sistema.
+     */
+    public static function retireHouse(int $houseId): int
+    {
+        $stmt = db()->prepare("SELECT * FROM photos WHERE property_id = ? AND status <> 'removed'");
+        $stmt->execute([$houseId]);
+        $rows = $stmt->fetchAll();
+        foreach ($rows as $photo) {
+            self::deletePhotoFiles($photo);
+        }
+        db()->prepare("UPDATE photos SET status = 'removed', path = '', original = NULL WHERE property_id = ?")->execute([$houseId]);
+        return count($rows);
+    }
+
+    /** Testes: substituem is_uploaded_file/move_uploaded_file. @var null|callable */
+    public static $acceptFile = null;
+    /** @var null|callable */
+    public static $moveFile = null;
+
+    /** Pasta dos originais (fora do public/). */
+    public static function originalsDir(): string
+    {
+        return self::$originals ?? dirname(__DIR__) . '/storage/fotos/originais';
+    }
+
+    /** Pasta pública dos WebP. */
+    public static function publicDir(): string
+    {
+        return self::$public ?? dirname(__DIR__) . '/public/uploads/fotos';
+    }
+
+    /** Testes: pastas alternativas. */
+    public static ?string $originals = null;
+    public static ?string $public = null;
+
+    public static function originalFile(string $name): ?string
+    {
+        return preg_match('/^[0-9a-f-]{36}\.(jpg|png|webp)$/', $name) === 1 ? self::originalsDir() . '/' . $name : null;
+    }
+
+    public static function deleteOriginal(string $name): void
+    {
+        $file = self::originalFile($name);
+        if ($file !== null && is_file($file)) {
+            @unlink($file);
+        }
+    }
+
+    public static function variantPath(string $uuid, int $width): string
+    {
+        return '/uploads/fotos/' . $uuid . '-' . $width . '.webp';
+    }
+
+    public static function variantFile(string $uuid, int $width): string
+    {
+        if (preg_match('/^[0-9a-f-]{36}$/', $uuid) !== 1) {
+            throw new InvalidArgumentException('uuid inválido.');
+        }
+        return self::publicDir() . '/' . $uuid . '-' . $width . '.webp';
+    }
+
+    /** Remove todos os arquivos de uma foto (original e WebP), qualquer que seja o status. */
+    public static function deletePhotoFiles(array $photo): void
+    {
+        self::deleteOriginal((string) ($photo['original'] ?? ''));
+        $uuid = (string) ($photo['uuid'] ?? '');
+        if (preg_match('/^[0-9a-f-]{36}$/', $uuid) === 1) {
+            foreach (ImageWorker::SIZES as $w) {
+                @unlink(self::variantFile($uuid, $w));
+            }
+            return;
+        }
+        self::deletePublicFile((string) ($photo['path'] ?? ''));
+    }
+
+    /** Tipo real pelo conteúdo (finfo): só jpeg, png e webp. */
     public static function imageExtension(string $path): ?string
     {
         if (!class_exists('finfo')) {
@@ -75,7 +234,6 @@ final class PhotoStorage
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
             'image/webp' => 'webp',
-            'image/gif' => 'gif',
             default => null,
         };
     }

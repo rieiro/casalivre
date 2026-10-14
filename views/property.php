@@ -8,7 +8,7 @@
         <?php if ($score !== null): ?><p>Nota dos hóspedes: <?= e((string) $score) ?>/10</p><?php endif; ?>
         <div class="gallery">
             <?php foreach ($photos as $photo): ?>
-                <img src="<?= e(photo_url($photo['path'])) ?>" alt="Foto de <?= e($property['title']) ?>" loading="lazy">
+                <img src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>"<?= photo_srcset_attr($photo['path'], '(max-width: 600px) 50vw, 300px') ?> alt="Foto de <?= e($property['title']) ?>" loading="lazy">
             <?php endforeach; ?>
         </div>
         <p><?= e($property['description']) ?></p>
@@ -27,5 +27,5 @@
 </section>
 <?php if (!empty($use_api)): ?>
 <?php page_data(['hash' => $hash ?? '']); ?>
-<script src="/assets/pages/property.js?v=3"></script>
+<script src="/assets/pages/property.js?v=4"></script>
 <?php endif; ?>
