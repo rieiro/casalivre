@@ -100,36 +100,20 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        $result = AccountFlow::checkLogin($email, (string) ($body['password'] ?? ''), Settings::int('login_max_failures'));
-        if ($result['status'] === 'locked') {
-            if (isset($result['failures'])) {
-                LoginRateLimiter::hit();
-            }
-            $params = ['email' => $email];
-            if (isset($result['failures'])) {
-                $params['tentativas'] = $result['failures'];
-            }
-            activity(ActivityLog::LOGIN_LOCKED, $params);
-            json_out(423, ['error' => t('err.locked')]);
+        // API: não grava LOGIN_FAIL para conta apagada/inativa e não reenvia ativação (SNAPSHOT, ver LoginAttempt).
+        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), false, false);
+        $res->registrar();
+        $status = match ($res->tipo) {
+            'ok' => 200,
+            'locked' => 423,
+            'rate_limited' => 429,
+            'bad' => 401,
+            default => 403, // deleted | inactive | pending
+        };
+        if ($status === 200) {
+            json_out(200, ['user' => api_public_user($res->dados['user'])]);
         }
-        if ($result['status'] === 'bad') {
-            $ipFailures = LoginRateLimiter::hit();
-            activity(ActivityLog::LOGIN_FAIL, ['email' => $email]);
-            if ($ipFailures >= LoginRateLimiter::maxAttempts()) {
-                json_out(429, ['error' => LoginRateLimiter::message()]);
-            }
-            json_out(401, ['error' => t('err.bad_login')]);
-        }
-        if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-            json_out(403, ['error' => account_text($result['status'])]);
-        }
-        if ($result['status'] === 'pending') {
-            json_out(403, ['error' => t('err.pending')]);
-        }
-        AccountFlow::openSession((int) $result['user']['id']);
-        LoginRateLimiter::clear();
-        activity(ActivityLog::LOGIN_OK, ['email' => $email]);
-        json_out(200, ['user' => api_public_user($result['user'])]);
+        json_out($status, ['error' => $res->mensagem]);
     }
 
     if ($path === '/api/sessao' && $method === 'DELETE') {
@@ -185,19 +169,13 @@ function handle_api(string $path, string $method): void
     }
 
     if ($path === '/api/users/eu' && $method === 'PUT') {
-        $error = user_input_error($body, false);
-        if ($error) {
-            json_out(422, ['error' => $error]);
+        $res = AccountUpdate::run($user, $body);
+        $res->registrar();
+        if ($res->tipo === 'invalido') {
+            json_out(422, ['error' => $res->mensagem]);
         }
-        $fields = user_fields($body, $user);
-        try {
-            $changed = UserRepository::update((int) $user['id'], $fields);
-            $pair = $changed[0] ?? null;
-            if ($pair) {
-                activity(ActivityLog::ACCOUNT_UPDATE, ['email' => $fields['email']], $pair['old'], $pair['new']);
-            }
-        } catch (PDOException) {
-            json_out(409, ['error' => t('err.email_taken')]);
+        if ($res->tipo === 'email_em_uso') {
+            json_out(409, ['error' => $res->mensagem]);
         }
         json_out(200, ['user' => api_public_user(UserRepository::find((int) $user['id']))]);
     }
@@ -379,18 +357,16 @@ function handle_api(string $path, string $method): void
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $score = (int) ($body['score'] ?? 0);
-        $author = trim((string) ($body['author'] ?? 'Hóspede'));
-        $comment = trim((string) ($body['comment'] ?? ''));
-        if ($score < 1 || $score > 10) {
-            json_out(422, ['error' => 'Nota deve ser entre 1 e 10.']);
+        $res = ReviewAdd::run(
+            (int) $house['id'],
+            (int) ($body['score'] ?? 0),
+            trim((string) ($body['author'] ?? 'Hóspede')),
+            trim((string) ($body['comment'] ?? ''))
+        );
+        $res->registrar();
+        if ($res->tipo === 'invalido') {
+            json_out(422, ['error' => $res->mensagem]);
         }
-        HouseRepository::addReview((int) $house['id'], $author === '' ? 'Hóspede' : $author, $score, $comment);
-        activity(ActivityLog::REVIEW, [
-            'imovel_id' => (int) $house['id'],
-            'nota' => $score,
-            'autor' => $author === '' ? 'Hóspede' : $author,
-        ]);
         json_out(201, ['ok' => true]);
     }
 
@@ -422,19 +398,11 @@ function handle_api(string $path, string $method): void
         if (!$property) {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $saved = save_calendar($property, $body);
-        $params = [
-            'imovel_id' => (int) $property['id'],
-            'inicio' => (string) ($body['inicio'] ?? ''),
-            'fim' => (string) ($body['fim'] ?? ''),
-            'resultado' => $saved['message'],
-        ];
-        foreach ($saved['logs'] as $log) {
-            activity($log['code'], $params + $log['extra'], $log['anterior'], $log['atual']);
-        }
+        $res = CalendarSave::run($property, $body);
+        $res->registrar();
         json_out(200, [
             'ok' => true,
-            'message' => $saved['message'],
+            'message' => $res->mensagem,
             'days' => HouseRepository::calendarDays((int) $property['id']),
         ]);
     }
@@ -453,10 +421,7 @@ function handle_api(string $path, string $method): void
         if ($fotoId < 1) {
             json_out(422, ['error' => 'foto_id obrigatório.']);
         }
-        $changed = PhotoRepository::makePrimary((int) $property['id'], $fotoId);
-        if ($changed !== []) {
-            activity(ActivityLog::PHOTO_COVER, ['imovel_id' => (int) $property['id']], array_column($changed, 'old'), array_column($changed, 'new'));
-        }
+        CoverSet::run((int) $property['id'], $fotoId)->registrar();
         json_out(200, ['ok' => true, 'fotos' => PhotoRepository::list((int) $property['id'])]);
     }
 
@@ -537,36 +502,19 @@ function handle_api(string $path, string $method): void
         if ($url === '') {
             json_out(422, ['error' => 'URL obrigatória.']);
         }
-        $error = HouseRepository::addFeed((int) $property['id'], (int) $user['id'], $url, $feedTitle);
-        if ($error === 'limit') {
+        // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
+        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, false);
+        $res->registrar();
+        if ($res->tipo === 'limit') {
             json_out(422, ['error' => 'Limite de feeds atingido.']);
         }
-        if ($error === 'duplicate') {
+        if ($res->tipo === 'duplicate') {
             json_out(409, ['error' => 'Feed já cadastrado.']);
         }
-        if ($error === 'title') {
+        if ($res->tipo === 'title') {
             json_out(422, ['error' => 'Título obrigatório.']);
         }
-        // Nunca aceitar corpo .ics enviado pelo cliente: só o que o servidor baixar.
-        $icsBody = exported_calendar_body($url) ?? CalendarSync::fetch($url);
-        $count = 0;
-        $status = is_string($icsBody) && $icsBody !== '' ? 'OK' : 'NOK';
-        if ($status === 'OK') {
-            $count = import_ics((int) $property['id'], $icsBody);
-        }
-        foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
-            if ($feed['url'] === $url) {
-                HouseRepository::markFeed((int) $feed['id'], $status, date('Y-m-d H:i:s'));
-                break;
-            }
-        }
-        activity(ActivityLog::CALENDAR_SYNC, [
-            'imovel_id' => (int) $property['id'],
-            'url' => CalendarSync::logRef($url),
-            'novas' => $count,
-            'resultado' => strtolower($status),
-        ]);
-        if ($status === 'NOK') {
+        if ($res->tipo === 'nok') {
             json_out(200, [
                 'ok' => true,
                 'status' => 'NOK',
@@ -577,7 +525,7 @@ function handle_api(string $path, string $method): void
         }
         json_out(200, [
             'ok' => true,
-            'importadas' => $count,
+            'importadas' => $res->dados['importadas'],
             'feeds' => HouseRepository::feeds((int) $property['id']),
         ]);
     }
@@ -592,20 +540,13 @@ function handle_api(string $path, string $method): void
         if (!$property) {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $removed = HouseRepository::removeFeed((int) $property['id'], (int) $user['id'], (int) $m[2]);
-        if (empty($removed['feed'])) {
-            json_out(404, ['error' => 'Feed não encontrado.']);
+        // API: feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
+        $res = ICalFeedRemove::run((int) $property['id'], (int) $user['id'], (int) $m[2], false);
+        $res->registrar();
+        if ($res->tipo === 'nao_encontrado') {
+            json_out(404, ['error' => $res->mensagem]);
         }
-        $released = HouseRepository::nightAudit(HouseRepository::releaseImported((int) $property['id']));
-        activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]], [
-            'feed' => CalendarSync::logFeed($removed['feed']),
-            'link' => CalendarSync::logRef($removed['link'][0]['old']['external_ical_url'] ?? null),
-            'noites' => $released['anterior'],
-        ], [
-            'link' => CalendarSync::logRef($removed['link'][0]['new']['external_ical_url'] ?? null),
-            'noites' => $released['atual'],
-        ]);
-        $resync = CalendarSync::resyncProperty((int) $property['id']);
+        $resync = $res->dados['ressincronizados'];
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 

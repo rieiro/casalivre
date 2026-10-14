@@ -90,6 +90,13 @@ header('Content-Security-Policy: ' . csp_header());
 
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
+require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
+require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
+require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
+require_once __DIR__ . '/../src/Acoes/ICalImport.php';
+require_once __DIR__ . '/../src/Acoes/ICalFeedRemove.php';
+require_once __DIR__ . '/../src/Acoes/CoverSet.php';
+require_once __DIR__ . '/../src/Acoes/ReviewAdd.php';
 
 return Seguranca::pipeline(
     [
@@ -383,44 +390,21 @@ if ($path === '/entrar' && $method === 'GET') {
 if ($path === '/entrar' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
-    $result = AccountFlow::checkLogin($email, (string) ($_POST['password'] ?? ''), Settings::int('login_max_failures'));
-    if ($result['status'] === 'locked') {
-        if (isset($result['failures'])) {
-            LoginRateLimiter::hit();
-        }
-        $params = ['email' => $email];
-        if (isset($result['failures'])) {
-            $params['tentativas'] = $result['failures'];
-        }
-        activity(ActivityLog::LOGIN_LOCKED, $params);
-        view('login', ['error' => t('err.locked')]);
+    // Web: grava LOGIN_FAIL para conta apagada/inativa e reenvia a ativação de conta pendente (ver LoginAttempt).
+    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), true, true);
+    $res->registrar();
+    if ($res->tipo === 'ok') {
+        redirect('/painel');
+    }
+    if ($res->tipo === 'pending') {
+        view('verify_pending', ['expires' => $res->dados['expires']]);
         return null;
     }
-    if ($result['status'] === 'bad') {
-        $ipFailures = LoginRateLimiter::hit();
-        activity(ActivityLog::LOGIN_FAIL, ['email' => $email]);
-        if ($ipFailures >= LoginRateLimiter::maxAttempts()) {
-            http_response_code(429);
-            view('login', ['error' => LoginRateLimiter::message()]);
-            return null;
-        }
-        view('login', ['error' => t('err.bad_login')]);
-        return null;
+    if ($res->tipo === 'rate_limited') {
+        http_response_code(429);
     }
-    if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-        activity(ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']);
-        view('login', ['error' => account_text($result['status'])]);
-        return null;
-    }
-    if ($result['status'] === 'pending') {
-        $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
-        view('verify_pending', ['expires' => $pending['expires']]);
-        return null;
-    }
-    AccountFlow::openSession((int) $result['user']['id']);
-    LoginRateLimiter::clear();
-    activity(ActivityLog::LOGIN_OK, ['email' => $email]);
-    redirect('/painel');
+    view('login', ['error' => $res->mensagem]);
+    return null;
 }
 
 if ($path === '/sair' && $method === 'POST') {
@@ -438,20 +422,10 @@ if ($path === '/conta' && $method === 'GET') {
 if ($path === '/conta' && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $error = user_input_error($_POST, false);
-    if ($error) {
-        view('account', ['error' => $error, 'user' => $user]);
-        return null;
-    }
-    $fields = user_fields($_POST, $user);
-    try {
-        $changed = UserRepository::update((int) $user['id'], $fields);
-        $pair = $changed[0] ?? null;
-        if ($pair) {
-            activity(ActivityLog::ACCOUNT_UPDATE, ['email' => $fields['email']], $pair['old'], $pair['new']);
-        }
-    } catch (PDOException) {
-        view('account', ['error' => t('err.email_taken'), 'user' => $user]);
+    $res = AccountUpdate::run($user, $_POST);
+    $res->registrar();
+    if ($res->tipo !== 'ok') {
+        view('account', ['error' => $res->mensagem, 'user' => $user]);
         return null;
     }
     redirect('/painel');
@@ -610,18 +584,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $user = require_user();
     csrf_check();
     $property = property_for_user((int) $user['id'], house_id($m[1]));
-    $saved = save_calendar($property, $_POST);
-    $message = $saved['message'];
+    $res = CalendarSave::run($property, $_POST);
+    $res->registrar();
+    $message = $res->mensagem;
     $action = (string) ($_POST['acao'] ?? '');
-    $params = [
-        'imovel_id' => (int) $property['id'],
-        'inicio' => (string) ($_POST['inicio'] ?? ''),
-        'fim' => (string) ($_POST['fim'] ?? ''),
-        'resultado' => $message,
-    ];
-    foreach ($saved['logs'] as $log) {
-        activity($log['code'], $params + $log['extra'], $log['anterior'], $log['atual']);
-    }
     $viewName = (string) ($_POST['cal_view'] ?? 'day');
     if (!in_array($viewName, ['day', 'price', 'min'], true)) {
         $viewName = 'day';
@@ -664,54 +630,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $property = property_for_user((int) $user['id'], house_id($m[1]));
     $url = trim((string) ($_POST['external_ical_url'] ?? ''));
     $feedTitle = trim((string) ($_POST['feed_title'] ?? ''));
-    $message = t('cal.link_saved');
-    $messageTone = 'ok';
-    $error = null;
-    if ($url !== '') {
-        $error = HouseRepository::addFeed((int) $property['id'], (int) $user['id'], $url, $feedTitle);
-        if ($error === 'limit') {
-            $message = t('cal.feed_limit');
-            $messageTone = 'error';
-        } elseif ($error === 'duplicate') {
-            $message = t('cal.feed_duplicate');
-            $messageTone = 'error';
-        } elseif ($error === 'title') {
-            $message = t('cal.feed_title_required');
-            $messageTone = 'error';
-        } else {
-            $body = exported_calendar_body($url);
-            if ($body === null) {
-                $body = CalendarSync::fetch($url);
-            }
-            $feedId = null;
-            foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
-                if ($feed['url'] === $url) {
-                    $feedId = (int) $feed['id'];
-                }
-            }
-            $now = date('Y-m-d H:i:s');
-            if (is_string($body) && $body !== '') {
-                $count = import_ics((int) $property['id'], $body);
-                if ($feedId) {
-                    HouseRepository::markFeed($feedId, 'OK', $now);
-                }
-                $message = t('cal.imported') . ' ' . $count . ' ' . t('cal.blocked_dates');
-                activity(ActivityLog::CALENDAR_SYNC, [
-                    'imovel_id' => (int) $property['id'],
-                    'url' => CalendarSync::logRef($url),
-                    'novas' => $count,
-                    'resultado' => 'ok',
-                ]);
-            } else {
-                if ($feedId) {
-                    HouseRepository::markFeed($feedId, 'NOK', $now);
-                }
-                $message = t('cal.import_fail');
-                $messageTone = 'error';
-            }
-        }
-    }
-    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => CalendarSync::logRef($url), 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null);
+    // Web: URL vazia vira "link salvo", CALENDAR_FEED_ADD sempre, CALENDAR_SYNC só em sucesso (ver ICalImport).
+    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, true);
+    $res->registrar();
+    $message = $res->mensagem;
+    $messageTone = in_array($res->tipo, ['vazio', 'ok'], true) ? 'ok' : 'error';
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),
@@ -726,22 +649,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $user = require_user();
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
-    $gone = HouseRepository::removeFeed(house_id($m[1]), (int) $user['id'], (int) $m[2]);
-    $released = HouseRepository::nightAudit(HouseRepository::releaseImported(house_id($m[1])));
-    if ($gone['feed']) {
-        activity(ActivityLog::CALENDAR_FEED_REMOVE, [
-            'imovel_id' => house_id($m[1]),
-            'feed_id' => (int) $m[2],
-        ], [
-            'feed' => CalendarSync::logFeed($gone['feed']),
-            'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
-            'noites' => $released['anterior'],
-        ], [
-            'link' => CalendarSync::logRef($gone['link'][0]['new']['external_ical_url'] ?? null),
-            'noites' => $released['atual'],
-        ]);
-    }
-    CalendarSync::resyncProperty(house_id($m[1]));
+    // Web: feed inexistente ainda libera noites, ressincroniza e redireciona (ver ICalFeedRemove).
+    ICalFeedRemove::run(house_id($m[1]), (int) $user['id'], (int) $m[2], true)->registrar();
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
@@ -750,11 +659,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
     $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
+    // Web: 0 ou 2+ fotos marcadas são ignoradas em silêncio (a API exige foto_id; ver CoverSet).
     if (count($ids) === 1) {
-        $changed = PhotoRepository::makePrimary(house_id($m[1]), $ids[0]);
-        if ($changed !== []) {
-            activity(ActivityLog::PHOTO_COVER, ['imovel_id' => house_id($m[1])], array_column($changed, 'old'), array_column($changed, 'new'));
-        }
+        CoverSet::run(house_id($m[1]), $ids[0])->registrar();
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -763,10 +670,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     $user = require_user();
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
-    $changed = PhotoRepository::makePrimary(house_id($m[1]), (int) $m[2]);
-    if ($changed !== []) {
-        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => house_id($m[1])], array_column($changed, 'old'), array_column($changed, 'new'));
-    }
+    CoverSet::run(house_id($m[1]), (int) $m[2])->registrar();
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
@@ -777,12 +681,13 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
         http_response_code(404);
         exit('Imóvel não encontrado.');
     }
-    $score = (int) ($_POST['score'] ?? 0);
-    $author = trim((string) ($_POST['author'] ?? 'Hóspede'));
-    if ($score >= 1 && $score <= 10) {
-        HouseRepository::addReview((int) $property['id'], $author === '' ? 'Hóspede' : $author, $score, trim((string) ($_POST['comment'] ?? '')));
-        activity(ActivityLog::REVIEW, ['imovel_id' => (int) $property['id'], 'nota' => $score, 'autor' => $author === '' ? 'Hóspede' : $author]);
-    }
+    // Web: nota inválida é ignorada em silêncio e segue para o redirect (a API responde 422; ver ReviewAdd).
+    ReviewAdd::run(
+        (int) $property['id'],
+        (int) ($_POST['score'] ?? 0),
+        trim((string) ($_POST['author'] ?? 'Hóspede')),
+        trim((string) ($_POST['comment'] ?? ''))
+    )->registrar();
     $back = safe_search_return((string) ($_POST['volta'] ?? ''));
     redirect('/imoveis/' . $m[1] . ($back !== '/' ? '?' . http_build_query(['volta' => $back]) : ''));
 }
