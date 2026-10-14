@@ -70,7 +70,9 @@ test('CT-E2E-083 limites: arquivo > 16 MB avisado na tela; 31º envio pela API d
   await form.locator('input[type="file"]').setInputFiles([fixtureFoto('grande-17mb.png')]);
   await expect(form.locator('[data-upload-error]')).toBeVisible();
   await expect(form.locator('[data-upload-error]')).not.toHaveText('');
-  // Limite da API: 30 envios por 10 min por IP. Envia sem arquivo válido (salvas=0) para não encher o imóvel.
+  // Limite: 30 envios por 10 min por IP, somando API e formulário web (#39 c25c61c). Os testes anteriores
+  // já enviaram pela tela, então zera o balde antes de contar. Envia sem arquivo válido (salvas=0).
+  limparRateLimit();
   const r = await page.evaluate(async (hash) => {
     const csrf = (document.querySelector('input[name="_csrf"]') as HTMLInputElement).value;
     const out: { s: number; ra: string | null }[] = [];
