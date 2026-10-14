@@ -169,19 +169,13 @@ function handle_api(string $path, string $method): void
     }
 
     if ($path === '/api/users/eu' && $method === 'PUT') {
-        $error = user_input_error($body, false);
-        if ($error) {
-            json_out(422, ['error' => $error]);
+        $res = AccountUpdate::run($user, $body);
+        $res->registrar();
+        if ($res->tipo === 'invalido') {
+            json_out(422, ['error' => $res->mensagem]);
         }
-        $fields = user_fields($body, $user);
-        try {
-            $changed = UserRepository::update((int) $user['id'], $fields);
-            $pair = $changed[0] ?? null;
-            if ($pair) {
-                activity(ActivityLog::ACCOUNT_UPDATE, ['email' => $fields['email']], $pair['old'], $pair['new']);
-            }
-        } catch (PDOException) {
-            json_out(409, ['error' => t('err.email_taken')]);
+        if ($res->tipo === 'email_em_uso') {
+            json_out(409, ['error' => $res->mensagem]);
         }
         json_out(200, ['user' => api_public_user(UserRepository::find((int) $user['id']))]);
     }

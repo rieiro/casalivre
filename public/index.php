@@ -91,6 +91,7 @@ header('Content-Security-Policy: ' . csp_header());
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
 require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
+require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
 
 return Seguranca::pipeline(
     [
@@ -416,20 +417,10 @@ if ($path === '/conta' && $method === 'GET') {
 if ($path === '/conta' && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $error = user_input_error($_POST, false);
-    if ($error) {
-        view('account', ['error' => $error, 'user' => $user]);
-        return null;
-    }
-    $fields = user_fields($_POST, $user);
-    try {
-        $changed = UserRepository::update((int) $user['id'], $fields);
-        $pair = $changed[0] ?? null;
-        if ($pair) {
-            activity(ActivityLog::ACCOUNT_UPDATE, ['email' => $fields['email']], $pair['old'], $pair['new']);
-        }
-    } catch (PDOException) {
-        view('account', ['error' => t('err.email_taken'), 'user' => $user]);
+    $res = AccountUpdate::run($user, $_POST);
+    $res->registrar();
+    if ($res->tipo !== 'ok') {
+        view('account', ['error' => $res->mensagem, 'user' => $user]);
         return null;
     }
     redirect('/painel');
