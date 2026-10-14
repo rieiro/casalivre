@@ -50,6 +50,8 @@ final class ICalImport
                     $count = import_ics($propertyId, $body);
                 }
                 $now ??= date('Y-m-d H:i:s');
+                // Antes, a web marcava o ÚLTIMO feed com essa URL (sem break) e a API o PRIMEIRO (com break).
+                // Equivalente: calendar_feeds tem UNIQUE (property_id, url), então há no máximo um.
                 foreach (HouseRepository::feedsWithUrl($propertyId) as $feed) {
                     if ($feed['url'] === $url) {
                         HouseRepository::markFeed((int) $feed['id'], $ok ? 'OK' : 'NOK', $now);
