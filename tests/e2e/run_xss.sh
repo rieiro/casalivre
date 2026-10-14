@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sobe php -S com banco semeado e roda o E2E do fix/xss-views.
-# Também roda tests/e2e/csp_maps.py (tiles OSM sob a CSP estrita).
+# Também roda tests/e2e/csp_maps.py (mapa MapLibre + PMTiles sob a CSP estrita).
 # Uso: tests/e2e/run_xss.sh <raiz_do_app> <dir_prints> [python]
 set -euo pipefail
 app="$1"; shots="$2"; py="${3:-python3}"

@@ -288,6 +288,10 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/busca' && $method === 'GET') {
         [$filters, $results, $searched, $facets] = run_search(true);
         $items = array_map(static function (array $item): array {
+            // Coordenada pública (#36: deslocamento fixo de 300 a 500 m), nunca a exata; usada pelos pins do mapa.
+            $pc = isset($item['lat'], $item['lng']) && $item['lat'] !== null && $item['lng'] !== null
+                ? public_coord((int) $item['id'], (float) $item['lat'], (float) $item['lng'])
+                : null;
             return [
                 'id' => property_ref($item),
                 'title' => $item['title'],
@@ -297,6 +301,8 @@ function handle_api(string $path, string $method): void
                 'score' => $item['score'] ?? null,
                 'quote' => $item['quote'] ?? null,
                 'distance_km' => isset($item['distance_km']) ? (int) $item['distance_km'] : null,
+                'lat' => $pc['lat'] ?? null,
+                'lng' => $pc['lng'] ?? null,
             ];
         }, $results);
         json_out(200, [

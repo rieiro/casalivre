@@ -122,11 +122,10 @@ footer { padding: 16px; }
 .search-query { border: 3px solid #febb02; align-items: end; }
 .search-side { display: grid; gap: 12px; align-content: start; }
 .map-teaser { position: relative; display: block; height: 168px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #d5e2ea; text-decoration: none; }
-.map-tiles { position: absolute; inset: 0; background-size: 50% 50%; background-position: 0 0, 100% 0, 0 100%, 100% 100%; background-repeat: no-repeat; }
-.map-tiles.is-empty { background: #c5d4df; }
+.map-tiles { position: absolute; inset: 0; }
+.map-tiles.is-empty { background: linear-gradient(135deg, #dfe8ee 0%, #c5d4df 100%); }
 .map-pin { position: absolute; left: 50%; top: 46%; width: 16px; height: 16px; margin-left: -8px; background: #003580; border: 2px solid white; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
 .map-open { position: absolute; left: 12px; bottom: 28px; background: #003580; color: white; border-radius: 8px; padding: 8px 12px; font-weight: 700; }
-.map-credit { position: absolute; right: 6px; bottom: 4px; color: #243038; font-size: .65rem; background: rgba(255,255,255,.8); padding: 0 4px; }
 .filters-panel h2 { margin: 0; font-size: 1.05rem; }
 .filter-list { display: grid; gap: 6px; }
 .filter-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; font-weight: 500; font-size: .9rem; }
@@ -134,8 +133,20 @@ footer { padding: 16px; }
 .pager { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
 .pager a, .pager span { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: white; text-decoration: none; color: var(--ink); }
 .pager .is-on { background: #003580; color: white; border-color: #003580; }
-#result-map { position: relative; min-height: 420px; height: 70vh; background: #d5e2ea; overflow: auto; border-radius: 12px; border: 1px solid var(--line); }
-.map-marker { position: absolute; z-index: 2; transform: translate(-50%, -100%); background: #003580; color: white; text-decoration: none; font-size: .75rem; font-weight: 700; padding: 4px 6px; border-radius: 6px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#result-map { position: relative; min-height: 420px; height: 70vh; background: #e8eef2; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+/* Pins e clusters (marcadores HTML do MapLibre): alvo >= 24 px, foco visível, selecionado não só por cor. */
+.map-price, .map-cluster { font: inherit; cursor: pointer; min-width: 44px; min-height: 28px; border: 2px solid #003580; font-weight: 700; font-size: .8rem; line-height: 1; }
+.map-price { background: #fff; color: #003580; border-radius: 14px; padding: 6px 8px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.map-price.is-visited { color: #4b2a7a; border-color: #4b2a7a; }
+.map-price.is-selected { background: #003580; color: #fff; border-color: #001a40; outline: 3px solid #febb02; outline-offset: 1px; }
+.map-cluster { background: #003580; color: #fff; border-color: #fff; border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0 6px; box-shadow: 0 0 0 4px rgba(0,53,128,.25); }
+.map-price:focus-visible, .map-cluster:focus-visible { outline: 3px solid #febb02; outline-offset: 2px; }
+.map-popup img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; }
+.map-popup-title { font-weight: 700; margin: .4rem 0 .2rem; }
+.map-notice { background: #fff8e1; border: 1px solid #e0b400; border-radius: 8px; padding: 8px 12px; }
+.link-button { background: none; border: 0; color: #0057b8; text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+.maplibregl-ctrl-attrib { font-size: .75rem; }
+@media (prefers-reduced-motion: reduce) { .maplibregl-marker, .maplibregl-popup { transition: none !important; } }
 .search-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
 .filters-panel { display: grid; gap: 10px; background: white; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
 .amenity-block { min-width: 0; }

@@ -1,10 +1,6 @@
 <?php
 $facets = $facets ?? [];
 $query = search_query($filters);
-$place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
-$firstPc = isset($results[0]['lat'], $results[0]['lng'], $results[0]['id']) ? public_coord((int) $results[0]['id'], (float) $results[0]['lat'], (float) $results[0]['lng']) : null;
-$mapLat = isset($place['lat']) ? (float) $place['lat'] : ($firstPc['lat'] ?? null);
-$mapLng = isset($place['lng']) ? (float) $place['lng'] : ($firstPc['lng'] ?? null);
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
@@ -44,28 +40,9 @@ $popular = array_slice($popular, 0, 10);
     <div class="search-layout">
         <div class="search-side">
             <a class="map-teaser" href="/busca/mapa?<?= e($query) ?>">
-                <?php if ($mapLat !== null && $mapLng !== null): ?>
-                    <?php
-                    $zoom = 13;
-                    $n = 2 ** $zoom;
-                    $tx = (int) floor(($mapLng + 180) / 360 * $n);
-                    $latRad = deg2rad($mapLat);
-                    $ty = (int) floor((1 - log(tan($latRad) + 1 / cos($latRad)) / M_PI) / 2 * $n);
-                    $tiles = [[$tx, $ty], [$tx + 1, $ty], [$tx, $ty + 1], [$tx + 1, $ty + 1]];
-                    ?>
-                    <span class="map-tiles" data-tiles="<?php
-                    $images = [];
-                    foreach ($tiles as [$x, $y]) {
-                        $images[] = 'https://tile.openstreetmap.org/' . $zoom . '/' . $x . '/' . $y . '.png';
-                    }
-                    echo e(implode(' ', $images));
-                    ?>"></span>
-                <?php else: ?>
-                    <span class="map-tiles is-empty"></span>
-                <?php endif; ?>
+                <span class="map-tiles is-empty"></span>
                 <span class="map-pin" aria-hidden="true"></span>
                 <span class="map-open"><?= e(t('home.show_map')) ?></span>
-                <span class="map-credit">© OpenStreetMap</span>
             </a>
             <form class="filters-panel" method="get" action="/busca">
                 <h2><?= e(t('home.filter_by')) ?></h2>
@@ -147,4 +124,3 @@ $popular = array_slice($popular, 0, 10);
 <?php if (!empty($use_api) && $searched): ?>
 <script src="/assets/pages/search.js?v=2"></script>
 <?php endif; ?>
-<script src="/assets/pages/search-tiles.js?v=1"></script>

@@ -71,17 +71,25 @@ final class Db
         if (!is_file($file)) {
             return;
         }
+        // O ambiente tem precedência: o .env só preenche chaves ainda não definidas (getenv, $_ENV ou $_SERVER),
+        // igual a scripts/env-lib.sh (start.sh). Ex.: APP_ENV=dev na linha de comando vence APP_ENV=production.
         foreach (file($file, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
             $line = trim($line);
-            if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+            if (str_starts_with($line, 'export ')) {
+                $line = ltrim(substr($line, 7));
+            }
+            if ($line === '' || str_starts_with($line, '#') || preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/', $line, $m) !== 1) {
                 continue;
             }
-            [$key, $value] = explode('=', $line, 2);
-            $key = trim($key);
-            $value = trim($value);
-            if ($key !== '' && getenv($key) === false) {
-                putenv($key . '=' . $value);
+            $key = $m[1];
+            $value = trim($m[2]);
+            if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && $value[-1] === $value[0]) {
+                $value = substr($value, 1, -1);
             }
+            if (getenv($key) !== false || array_key_exists($key, $_ENV) || (array_key_exists($key, $_SERVER) && is_string($_SERVER[$key]))) {
+                continue;
+            }
+            putenv($key . '=' . $value);
         }
     }
 
