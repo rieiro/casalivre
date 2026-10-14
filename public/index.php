@@ -94,6 +94,7 @@ require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
 require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
 require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
 require_once __DIR__ . '/../src/Acoes/ICalImport.php';
+require_once __DIR__ . '/../src/Acoes/ICalFeedRemove.php';
 
 return Seguranca::pipeline(
     [
@@ -646,22 +647,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $user = require_user();
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
-    $gone = HouseRepository::removeFeed(house_id($m[1]), (int) $user['id'], (int) $m[2]);
-    $released = HouseRepository::nightAudit(HouseRepository::releaseImported(house_id($m[1])));
-    if ($gone['feed']) {
-        activity(ActivityLog::CALENDAR_FEED_REMOVE, [
-            'imovel_id' => house_id($m[1]),
-            'feed_id' => (int) $m[2],
-        ], [
-            'feed' => CalendarSync::logFeed($gone['feed']),
-            'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
-            'noites' => $released['anterior'],
-        ], [
-            'link' => CalendarSync::logRef($gone['link'][0]['new']['external_ical_url'] ?? null),
-            'noites' => $released['atual'],
-        ]);
-    }
-    CalendarSync::resyncProperty(house_id($m[1]));
+    // Web: feed inexistente ainda libera noites, ressincroniza e redireciona (ver ICalFeedRemove).
+    ICalFeedRemove::run(house_id($m[1]), (int) $user['id'], (int) $m[2], true)->registrar();
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 

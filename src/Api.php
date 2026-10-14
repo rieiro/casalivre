@@ -545,20 +545,13 @@ function handle_api(string $path, string $method): void
         if (!$property) {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $removed = HouseRepository::removeFeed((int) $property['id'], (int) $user['id'], (int) $m[2]);
-        if (empty($removed['feed'])) {
-            json_out(404, ['error' => 'Feed não encontrado.']);
+        // API: feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
+        $res = ICalFeedRemove::run((int) $property['id'], (int) $user['id'], (int) $m[2], false);
+        $res->registrar();
+        if ($res->tipo === 'nao_encontrado') {
+            json_out(404, ['error' => $res->mensagem]);
         }
-        $released = HouseRepository::nightAudit(HouseRepository::releaseImported((int) $property['id']));
-        activity(ActivityLog::CALENDAR_FEED_REMOVE, ['imovel_id' => (int) $property['id'], 'feed_id' => (int) $m[2]], [
-            'feed' => CalendarSync::logFeed($removed['feed']),
-            'link' => CalendarSync::logRef($removed['link'][0]['old']['external_ical_url'] ?? null),
-            'noites' => $released['anterior'],
-        ], [
-            'link' => CalendarSync::logRef($removed['link'][0]['new']['external_ical_url'] ?? null),
-            'noites' => $released['atual'],
-        ]);
-        $resync = CalendarSync::resyncProperty((int) $property['id']);
+        $resync = $res->dados['ressincronizados'];
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
