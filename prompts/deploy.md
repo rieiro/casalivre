@@ -100,6 +100,12 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Sem gzip/brotli nesse arquivo (quebra o Range). Se houver CDN, `Range` na chave de cache.
 - [ ] Validar com `nginx -t` antes do reload (o bloco não foi validado no PR).
 
+#### Desempenho do mapa
+- [ ] Usar um único `brasil.pmtiles`. O navegador lê só os tiles visíveis via HTTP Range, então um arquivo grande não deixa o mapa lento; custa apenas espaço em disco e tempo de geração.
+- [ ] Não dividir em vários arquivos regionais: como fontes separadas, eles se sobrepõem nas divisas (rótulos duplicados e emendas nas ruas); trocar de arquivo por região deixa o mapa sem base fora da região.
+- [ ] O que acelera: cache no nginx (`Cache-Control`, `ETag`), CDN com `Range` na chave de cache, HTTP/2 ligado e `maxzoom` limitado (13 ou 14) na geração, o que reduz o arquivo e o número de tiles.
+- [ ] Regenerar periodicamente a partir do build do Protomaps e trocar com `mv` atômico; um arquivo novo muda o `ETag`.
+
 ### Rate limit nos formulários web (#35, #39)
 - [ ] `POST /cadastro` (10/h), `POST /senha/esqueci` (5/15 min) e o envio de fotos pela web (30/10 min, somado com a API) usam `REMOTE_ADDR`: atrás de proxy/CDN, `real_ip` é obrigatório; senão todos os visitantes dividem o mesmo limite.
 
