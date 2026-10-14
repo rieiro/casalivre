@@ -131,7 +131,17 @@ return Seguranca::pipeline(
     ],
     ['path' => $path, 'method' => $method],
     static function (array $request): mixed {
-        return dispatch((string) $request['path'], (string) $request['method']);
+        try {
+            return dispatch((string) $request['path'], (string) $request['method']);
+        } catch (ImovelNaoEncontrado $e) {
+            // 404 das rotas web que resolvem imóvel (HouseRepository::*OrFail), com as mesmas respostas de antes.
+            http_response_code(404);
+            if ($e->motivo === 'dono') {
+                exit('Imóvel não encontrado.');
+            }
+            view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);
+            exit;
+        }
     }
 );
 

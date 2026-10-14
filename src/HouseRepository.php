@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
+require_once __DIR__ . '/ImovelNaoEncontrado.php';
 
 final class HouseRepository
 {
@@ -584,7 +585,7 @@ final class HouseRepository
         return $pairs;
     }
 
-    // Resolução de imóvel para as rotas web (movido de public/index.php sem alterar os corpos).
+    // Resolução de imóvel para as rotas web: lança ImovelNaoEncontrado; o 404 é renderizado pela camada web.
     public static function idFromPublicRefOrFail(string $ref): int
     {
         static $cache = [];
@@ -593,9 +594,7 @@ final class HouseRepository
         }
         $row = HouseRepository::findByPublicHash($ref);
         if (!$row || ($row['status'] ?? 'active') !== 'active') {
-            http_response_code(404);
-            view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);
-            exit;
+            throw new ImovelNaoEncontrado('publico');
         }
         $cache[$ref] = (int) $row['id'];
         return $cache[$ref];
@@ -605,8 +604,7 @@ final class HouseRepository
     {
         $row = self::findByUser($userId, $id);
         if (!$row) {
-            http_response_code(404);
-            exit('Imóvel não encontrado.');
+            throw new ImovelNaoEncontrado('dono');
         }
         return $row;
     }
