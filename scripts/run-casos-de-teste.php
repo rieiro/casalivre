@@ -121,6 +121,33 @@ function processar_fotos(int $rodadas = 3): void
 
 limpar_rodada_anterior();
 
+/**
+ * Pré-requisito: fila de imagens vazia. Os seeds só enfileiram as capas (fotos assíncronas, #39); sem o
+ * worker, imóveis dos seeds sem foto pronta podem cair na busca do Caso 4 ("cada item tem foto principal").
+ * Roda o image-worker em laço até a fila esvaziar, com teto de CASOS_FILA_FOTOS_SEGUNDOS (padrão 300 s;
+ * ~10 mil capas dos seeds levam ~4-5 min). No teto, avisa e segue.
+ */
+function esvaziar_fila_de_fotos(): void
+{
+    $teto = max(1, (int) (getenv('CASOS_FILA_FOTOS_SEGUNDOS') ?: 300));
+    $sql = "SELECT COUNT(*) FROM image_queue WHERE status IN ('pending', 'processing')";
+    $inicio = microtime(true);
+    $antes = (int) db()->query($sql)->fetchColumn();
+    $resta = $antes;
+    while ($resta > 0 && microtime(true) - $inicio < $teto) {
+        processar_fotos(1);
+        $resta = (int) db()->query($sql)->fetchColumn();
+    }
+    $seg = round(microtime(true) - $inicio, 1);
+    if ($resta > 0) {
+        echo "AVISO: fila de fotos não esvaziou em {$teto} s ($resta de $antes pendentes); seguindo. Casos com fotos podem falhar; aumente CASOS_FILA_FOTOS_SEGUNDOS.\n";
+        return;
+    }
+    echo "Fila de fotos: $antes pendente(s) processada(s) em {$seg} s\n";
+}
+
+esvaziar_fila_de_fotos();
+
 $suite = getenv('CASOS') ?: 'todos'; // todos | legado | novos
 if ($suite !== 'novos') {
 echo "Caso 1: cadastro (via API) pede senha duas vezes e só ativa pelo link gravado\n";
