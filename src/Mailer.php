@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/MailQueue.php';
+
 /**
  * Envio de e-mail por SMTP, sem dependências.
  *
@@ -14,8 +17,9 @@ declare(strict_types=1);
  *  O certificado é sempre verificado (nome e cadeia). AUTH PLAIN/LOGIN só depois do TLS.
  *
  * Links de conta: sempre remontados sobre APP_URL (o Host da requisição nunca entra no e-mail).
- * Sem SMTP_HOST: em APP_ENV=dev/local grava em storage/logs/mail-dev.log (0600); fora disso,
- * não envia e grava só 'mail_not_configured' no error_log (sem e-mail nem link).
+ * A requisição só enfileira (MailQueue); o envio é do worker (scripts/mail-worker.php -> deliver()).
+ * Sem SMTP_HOST: em APP_ENV=dev/local o worker grava em storage/logs/mail-dev.log (0600); fora disso,
+ * nada é enfileirado e só 'mail_not_configured' vai para o error_log (sem e-mail nem link).
  */
 final class Mailer
 {
@@ -42,12 +46,23 @@ final class Mailer
         return in_array(strtolower(self::env('APP_ENV')), ['dev', 'local'], true);
     }
 
-    /** Callback para AccountFlow::$sendLink. Nunca lança: falha de e-mail não derruba o cadastro. */
+    /** Fila usada (testes podem trocar); null = MailQueues::make() (QUEUE_DRIVER). */
+    public static ?MailQueue $queue = null;
+
+    public static function queue(): MailQueue
+    {
+        return self::$queue ??= MailQueues::make();
+    }
+
+    /**
+     * Callback para AccountFlow::$sendLink: só enfileira e retorna (sem SMTP na requisição).
+     * Nunca lança: falha de e-mail não derruba o cadastro.
+     */
     public static function sendAccountLink(string $email, string $link): bool
     {
         try {
             if (self::env('SMTP_HOST') === '' && !self::isDev()) {
-                // Produção (ou APP_ENV ausente) sem SMTP: não envia, não grava o link em lugar
+                // Produção (ou APP_ENV ausente) sem SMTP: não enfileira, não grava o link em lugar
                 // nenhum; só o marcador fixo, sem dados pessoais.
                 error_log(self::NOT_CONFIGURED);
                 return false;
@@ -59,15 +74,32 @@ final class Mailer
                 ? "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
                 : "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n")
                 . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n";
-            if (self::env('SMTP_HOST') === '') {
-                return self::writeDevLog($email, $subject, $url);
-            }
-            self::send($email, $subject, $body);
+            self::queue()->push($email, $subject, $body);
             return true;
         } catch (Throwable $e) {
-            error_log('CasaLivre: falha ao enviar e-mail (' . $e::class . ').');
+            error_log('CasaLivre: falha ao enfileirar e-mail (' . $e::class . ').');
             return false;
         }
+    }
+
+    /**
+     * Entrega um e-mail da fila (worker). Sem SMTP_HOST: em dev grava no mail-dev.log; fora de dev registra
+     * mail_not_configured e lança (o worker conta como falha). Com SMTP usa send(). Lança em qualquer falha.
+     */
+    public static function deliver(string $to, string $subject, string $body): void
+    {
+        if (self::env('SMTP_HOST') === '') {
+            if (!self::isDev()) {
+                error_log(self::NOT_CONFIGURED);
+                throw new RuntimeException(self::NOT_CONFIGURED);
+            }
+            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? $m[0] : '';
+            if (!self::writeDevLog($to, $subject, $link)) {
+                throw new RuntimeException('Falha ao gravar mail-dev.log.');
+            }
+            return;
+        }
+        self::send($to, $subject, $body);
     }
 
     /**

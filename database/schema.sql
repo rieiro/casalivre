@@ -113,3 +113,17 @@ CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);
 CREATE INDEX IF NOT EXISTS idx_photos_property ON photos(property_id);
 CREATE INDEX IF NOT EXISTS idx_photos_cover ON photos(property_id, is_primary, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_reviews_property ON reviews(property_id);
+
+-- Fila de e-mails (src/MailQueue.php; envio pelo scripts/mail-worker.php)
+CREATE TABLE IF NOT EXISTS mail_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mail_queue_ready ON mail_queue(status, next_attempt_at);
