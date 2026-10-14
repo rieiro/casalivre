@@ -19,7 +19,7 @@ final class ExceptionShield
             }
             @file_put_contents(
                 $dir . '/error.log',
-                date('c') . " $ref $methodName $route " . Redact::text($e->getMessage()) . "\n" . Redact::text($e->getTraceAsString()) . "\n",
+                date('c') . " $ref $methodName $route " . Redact::secrets($e->getMessage()) . "\n" . Redact::secrets($e->getTraceAsString()) . "\n",
                 FILE_APPEND
             );
             if (function_exists('activity')) {
@@ -30,10 +30,10 @@ final class ExceptionShield
                         'rota' => $route,
                         'metodo' => $methodName,
                         'tipo' => $e::class,
-                        'mensagem' => substr(Redact::text($e->getMessage()), 0, 500),
+                        'mensagem' => substr(Redact::secrets($e->getMessage()), 0, 500),
                         'arquivo' => $e->getFile(),
                         'linha' => $e->getLine(),
-                        'rastreio' => substr(Redact::text($e->getTraceAsString()), 0, 4000),
+                        'rastreio' => substr(Redact::secrets($e->getTraceAsString()), 0, 4000),
                     ]);
                 } catch (Throwable) {
                 }

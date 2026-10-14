@@ -26,6 +26,12 @@
 
 ---
 
+| Revisão | 0.5 | Lista de alterações | 14/10/2026
+
+- acrescentada a seção "Implementação atual" (descrição do código; requisitos inalterados)
+
+---
+
 1. Arquitetura: PHP + backend; O backend deve ser desacoplado do front end, adotando o padrão MVC. Deve ser possível, sem esforço, migrar para outro banco de dados, como postgres, por exemplo.
 2. Implementar CRUD para elementos básicos: Proprietarios, Casas.
 3. O site deverá poder ser visualizado, sem perda de funcionalidade, tanto em desktops quanto em celulares.
@@ -48,3 +54,19 @@ ix. use funcoes nativas e atualizadas do php para fazer hash como password_hash(
 x. Não manter chaves criptograficas de credenciais de APIs (Stripe, Pagar.me, AWS), chaves criptográficas e senhas do banco de dados escritas diretamente nos arquivos de código PHP (config.php). Armazene-as em arquivos .env.
 
 xi. Nos eventos de upload de arquivo, por exemplo, fotos, certifique-se: -&gt; Mude o nome do arquivo original para um ID aleatório (ex: uuid()), e -&gt; Nunca confie apenas na extensão do arquivo (.jpg), valide o Mime-Type real lendo os bytes do arquivo (usando a extensão finfo do PHP).
+
+---
+
+**Implementação atual** (descrição do código; não altera os requisitos acima)
+
+- Pipeline em cebola: `seguranca/` — `Middleware` (interface; define `WRITE_METHODS`), `Pipeline` (executor) e `Seguranca::pipeline()`, chamado por `public/index.php` antes do `dispatch()`. Camadas, de fora para dentro:
+  1. `ApiRateLimit`: limite por IP (IPv6 por /64) em rotas da API listadas em `public/index.php` (`api_limites`: cidades, ceps e busca 60/min; esqueci a senha 5/15 min; cadastro 10/h; avaliar 10/h; upload de fotos 30/10 min), via `IpRateLimiter` (arquivos em `storage/cache/ratelimit`, limpeza própria e teto de arquivos; falha aberta registrada no error_log). Excesso: 429 com `Retry-After`.
+  2. `BodyLimit`: em métodos de escrita não-multipart, `Transfer-Encoding` ou falta de `Content-Length` (exceto DELETE sem corpo) -> 411; corpo acima de 1 MiB (`BodyLimit::MAX_BYTES`) -> 413.
+  3. `Sanitize`: `htmlspecialchars` recursivo em `$_GET`/`$_POST` (exceto campos puros: senhas, `_csrf`, URL de iCal).
+  4. `Csrf`: token de sessão (`random_bytes`), exigido nos métodos de escrita (campo `_csrf`, cabeçalho `X-CSRF-Token` ou JSON). Recusa: 419.
+  5. `RateLimit`: bloqueio de login (`POST /entrar`, `POST /api/sessao`) por `LoginRateLimiter`; 429 com `Retry-After`.
+  6. `Auth`: rotas privadas exigem `$_SESSION['user_id']`; web redireciona para `/entrar`, API responde 401.
+- Recusas: `casa_recusar()` em `public/index.php` envia a resposta e encerra; na API o corpo é sempre `{"error": "..."}`.
+- Erros: `ExceptionShield` (`set_exception_handler`) grava em `storage/error.log` mensagem e trace com `Redact::secrets()` (e-mails, senhas/tokens, hashes e query strings mascarados) e mostra tela genérica com código de referência. `zend.exception_ignore_args` ligado em `public/index.php`.
+- Sessão: aberta só com cookie de sessão, em rota autenticada ou quando uma página pede o token CSRF (`csrf_token()`). `SecureSession` -> `SessionGuard` (`conta/Auth/Session.php`): cookie HttpOnly, Secure em HTTPS, SameSite=Lax (ou `SESSION_SAMESITE`). Banco: repositórios com PDO e prepared statements; senhas com `password_hash` (Argon2id, ou Bcrypt se indisponível).
+

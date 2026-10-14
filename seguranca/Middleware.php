@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 interface Middleware
 {
+    /** Métodos que escrevem (têm corpo e exigem CSRF). */
+    public const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
     /**
      * @param array<string, mixed> $request
      * @param callable(array<string, mixed>): mixed $next
