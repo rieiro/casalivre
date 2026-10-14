@@ -30,4 +30,4 @@
         <button class="primary" type="submit" id="register-submit"><?= e(t('auth.create')) ?></button>
     </form>
 </section>
-<script src="/assets/pages/register.js?v=2"></script>
+<script src="<?= e(asset_url('/assets/pages/register.js')) ?>"></script>

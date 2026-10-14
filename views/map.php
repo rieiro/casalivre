@@ -7,7 +7,7 @@ $query = search_query($filters);
 $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
 $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) . ',' . round((float) $place['lng'], 2) : '';
 ?>
-<link rel="stylesheet" href="/assets/vendor/maplibre-gl/maplibre-gl.css?v=5.24.0">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">
 <section class="wrap map-page">
     <p><a href="/busca?<?= e($query) ?>"><?= e(t('home.back_results')) ?></a></p>
     <h1><?= e(t('home.map_title')) ?><?= $filters['localidade'] !== '' ? ' · ' . e($filters['localidade']) : '' ?></h1>
@@ -18,12 +18,12 @@ $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) 
          data-query="<?= e($query) ?>"
          data-center="<?= e($center) ?>"
          data-tiles="/tiles/brasil.pmtiles"
-         data-style="/assets/map/style-light.json?v=1"
-         data-worker="/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js?v=5.24.0"
+         data-style="<?= e(asset_url('/assets/map/style-light.json')) ?>"
+         data-worker="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js')) ?>"
          aria-label="Mapa dos imóveis encontrados. A lista de resultados é a alternativa pelo teclado."></div>
     <noscript><p class="muted">O mapa precisa de JavaScript. <a href="/busca?<?= e($query) ?>">Ver a lista de resultados</a>.</p></noscript>
 </section>
-<script src="/assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=5.24.0"></script>
-<script src="/assets/vendor/pmtiles/pmtiles.js?v=4.5.0"></script>
-<script src="/assets/pages/map-data.js?v=1"></script>
-<script src="/assets/pages/map.js?v=4"></script>
+<script src="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl-csp.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/vendor/pmtiles/pmtiles.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/pages/map-data.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/pages/map.js')) ?>"></script>

@@ -25,4 +25,4 @@
     </form>
 </section>
 <?php page_data(['deleteConfirm' => t('account.delete_confirm')]); ?>
-<script src="/assets/pages/account.js?v=2"></script>
+<script src="<?= e(asset_url('/assets/pages/account.js')) ?>"></script>

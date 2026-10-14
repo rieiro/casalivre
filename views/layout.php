@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
-    <link rel="stylesheet" href="/assets/app.css?v=21">
+    <link rel="stylesheet" href="<?= e(asset_url('/assets/app.css')) ?>">
     <?= page_data_script($csrf) ?>
-    <script src="/assets/safe-dom.js?v=4"></script>
+    <script src="<?= e(asset_url('/assets/safe-dom.js')) ?>"></script>
 </head>
 <body>
 <header class="top">
@@ -43,6 +43,6 @@
     <?= $content ?>
 </main>
 <footer><?= e(t('footer')) ?></footer>
-<script src="/assets/app.js?v=18"></script>
+<script src="<?= e(asset_url('/assets/app.js')) ?>"></script>
 </body>
 </html>
