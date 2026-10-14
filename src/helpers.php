@@ -302,7 +302,8 @@ function haversine_km(float $lat1, float $lng1, float $lat2, float $lng2): float
  * aplica um deslocamento fixo por imóvel de 300 a 500 m (direção e distância derivadas de
  * HMAC-SHA256('property:'+id, GEO_SALT)) e arredonda para 3 casas; o resultado final fica
  * sempre entre 300 e 500 m do ponto real. Sem GEO_SALT fora de dev/local: sem deslocamento,
- * arredonda para 2 casas (~1 km) e registra geo_salt_missing uma vez. Em dev/local usa um
+ * arredonda para 2 casas (~1 km) e registra geo_salt_missing uma vez (defesa extra para CLI/scripts:
+ * o app web nem sobe sem GEO_SALT >= 32, ver GeoSalt::enforce). Em dev/local usa um
  * sal fixo. O dono continua vendo a coordenada exata no painel.
  *
  * @return array{lat: float, lng: float}
@@ -338,7 +339,7 @@ function geo_salt(): ?string
         Db::loadEnv();
     }
     $salt = trim((string) getenv('GEO_SALT'));
-    if ($salt !== '') {
+    if (strlen($salt) >= 32) {
         return $salt;
     }
     if (in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {

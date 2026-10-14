@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../src/Db.php';
+require_once __DIR__ . '/../src/GeoSalt.php';
+// Fail closed: fora de dev/local, sem GEO_SALT válido (>= 32 caracteres) o app não atende.
+GeoSalt::enforce();
 require_once __DIR__ . '/../src/Settings.php';
 require_once __DIR__ . '/../src/I18n.php';
 require_once __DIR__ . '/../src/CityRepository.php';
