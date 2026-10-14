@@ -37,6 +37,15 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
     return false;
 }
+// Tiles do mapa (PMTiles): em produção o nginx serve o arquivo; em dev/local (php -S) esta rota, com Range.
+// URL exata (sem parâmetro de caminho); fora de dev/local cai no 404 normal.
+if ($path === '/tiles/brasil.pmtiles') {
+    require_once __DIR__ . '/../src/MapTiles.php';
+    if (MapTiles::devRouteEnabled()) {
+        MapTiles::serve($method, isset($_SERVER['HTTP_RANGE']) ? (string) $_SERVER['HTTP_RANGE'] : null);
+        exit;
+    }
+}
 
 // Sessão só com cookie de sessão ou rota autenticada; páginas com formulário abrem a sessão
 // ao pedir o token CSRF (csrf_token() em view()).
@@ -310,30 +319,19 @@ if ($path === '/' && $method === 'GET') {
 }
 
 if ($path === '/busca/mapa' && $method === 'GET') {
-    // Página do mapa renderizada no servidor: pontos (data-points) e contagem saem de $results. A busca é
-    // registrada aqui (uma vez); a página não chama /api/busca.
-    [$filters, $results, $searched] = run_search(true);
+    // Página do mapa (MapLibre + PMTiles): só o esqueleto; os pins vêm de /api/busca no navegador (GeoJSON com
+    // clusters). A busca é registrada uma vez, pela API; a página não roda a busca no servidor.
+    $filters = search_filters_from_query();
     view('map', [
         'filters' => $filters,
-        'results' => $results,
-        'searched' => $searched,
+        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
     ]);
     return null;
 }
 
 if ($path === '/busca' && $method === 'GET') {
     // Resultados vêm da API (/api/busca). A view só monta o formulário e carrega via JS.
-    $filters = [
-        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
-        'checkin' => (string) ($_GET['checkin'] ?? ''),
-        'checkout' => (string) ($_GET['checkout'] ?? ''),
-        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
-        'raio' => (int) ($_GET['raio'] ?? 0),
-        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
-        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
-        'score_min' => (float) ($_GET['score_min'] ?? 0),
-        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
-    ];
+    $filters = search_filters_from_query();
     $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
     view('search', [
         'filters' => $filters,

@@ -7,7 +7,7 @@ $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
-$strictExpected = "default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
+$strictExpected = "default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
 $csp = 'Content-Security-Policy: ' . $strictExpected;
 
 echo "csp_header(): sempre estrita\n";
@@ -23,7 +23,8 @@ $strict = csp_header();
 t_eq($strictExpected, $strict, 'csp_header() = política estrita exata');
 $dir = $parse($strict);
 t_eq(["'self'"], $dir['script-src'] ?? null, "script-src só 'self'");
-t_eq(["'self'", 'https://tile.openstreetmap.org'], $dir['img-src'] ?? null, "img-src só 'self' + tiles OSM");
+t_eq(["'self'"], $dir['img-src'] ?? null, "img-src só 'self' (mapa PMTiles local; tiles raster do OSM removidos)");
+t_ok(!str_contains($strict, 'openstreetmap') && !str_contains($strict, 'http'), 'CSP sem host externo (nem tile.openstreetmap.org)');
 foreach (['object-src' => "'none'", 'base-uri' => "'none'", 'frame-ancestors' => "'self'", 'form-action' => "'self'"] as $d => $v) {
     t_eq([$v], $dir[$d] ?? null, "$d $v");
 }
@@ -88,7 +89,7 @@ $r = t_http('GET', $baseEnv . '/busca/mapa?localidade=' . urlencode('Florianópo
 t_ok(stripos($r['headers'], $csp) !== false, 'CSP continua estrita com a variável no ambiente');
 t_ok(!str_contains($r['body'], 'chave-que-nao-deve-ser-usada') && !str_contains($r['body'], 'data-key'), 'página do mapa sem chave/data-key');
 putenv('GOOGLE_MAPS_API_KEY');
-foreach (['public/assets/pages/map.js', 'views/map.php', 'src/helpers.php', 'public/index.php', '.env.example'] as $file) {
+foreach (['public/assets/pages/map.js', 'public/assets/pages/map-data.js', 'views/map.php', 'views/search.php', 'src/MapTiles.php', 'public/assets/map/style-light.json', 'src/helpers.php', 'public/index.php', '.env.example'] as $file) {
     $text = (string) file_get_contents(CL_ROOT . '/' . $file);
     t_ok(!preg_match('/google|gstatic|GOOGLE_MAPS/i', $text), "$file sem Google Maps");
 }

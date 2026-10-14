@@ -57,11 +57,13 @@ $noExact = static function (string $body) use ($exact): bool {
     }
     return true;
 };
+// Pins do mapa: lat/lng de /api/busca (GeoJSON montado no navegador).
+$r = t_http('GET', $base . '/api/busca?localidade=' . $loc);
+$p = json_decode($r['body'], true)['items'] ?? [];
+t_eq([$expected['lat'], $expected['lng']], [$p[0]['lat'] ?? null, $p[0]['lng'] ?? null], 'mapa (API) usa a coordenada pública');
+t_ok($noExact($r['body']), 'API do mapa sem a coordenada exata');
 $r = t_http('GET', $base . '/busca/mapa?localidade=' . $loc);
-preg_match('/data-points="([^"]*)"/', $r['body'], $m);
-$p = json_decode(html_entity_decode($m[1] ?? '', ENT_QUOTES | ENT_HTML5), true) ?: [];
-t_eq([$expected['lat'], $expected['lng']], [$p[0]['lat'] ?? null, $p[0]['lng'] ?? null], 'mapa usa a coordenada pública');
-t_ok($noExact($r['body']), 'mapa sem a coordenada exata');
+t_ok($r['status'] === 200 && $noExact($r['body']), 'página do mapa sem a coordenada exata');
 foreach (['/busca?localidade=' . $loc, '/busca?localidade=' . $loc . '&raio=50', '/api/busca?localidade=' . $loc . '&raio=50', '/api/imoveis/' . $owner['hash'], '/imoveis/' . $owner['hash']] as $u) {
     $r = t_http('GET', $base . $u);
     t_ok($r['status'] === 200 && $noExact($r['body']), "$u sem coordenada exata");

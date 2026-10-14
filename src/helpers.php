@@ -277,6 +277,22 @@ function word_count(string $text): int
     return count(array_filter($words, static fn ($w) => $w !== ''));
 }
 
+/** Filtros da busca lidos da query string (páginas /busca e /busca/mapa; a busca em si é da API). */
+function search_filters_from_query(): array
+{
+    return [
+        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
+        'checkin' => (string) ($_GET['checkin'] ?? ''),
+        'checkout' => (string) ($_GET['checkout'] ?? ''),
+        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
+        'raio' => (int) ($_GET['raio'] ?? 0),
+        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
+        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
+        'score_min' => (float) ($_GET['score_min'] ?? 0),
+        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
+    ];
+}
+
 function property_ref(array $property): string
 {
     return HouseRepository::ensurePublicHash($property);
@@ -821,14 +837,16 @@ function photo_srcset_attr(?string $path, string $sizes): string
 
 /**
  * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
- * script, sem 'unsafe-inline' em style, sem data:/blob:; só os tiles do OpenStreetMap como imagem externa.
+ * script, sem 'unsafe-inline' em style, sem data:/blob:, sem host externo. O mapa (MapLibre build CSP + PMTiles)
+ * usa só arquivos do próprio site: script e worker em /assets/vendor, estilo/fontes/sprites em /assets/map,
+ * tiles em /tiles/brasil.pmtiles (fetch com Range, coberto por default-src 'self').
  */
 function csp_header(): string
 {
     return implode('; ', [
         "default-src 'self'",
         "script-src 'self'",
-        "img-src 'self' https://tile.openstreetmap.org",
+        "img-src 'self'",
         "object-src 'none'",
         "base-uri 'none'",
         "frame-ancestors 'self'",

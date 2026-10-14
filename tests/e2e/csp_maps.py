@@ -1,11 +1,15 @@
-"""E2E CSP de mapas: tiles do OpenStreetMap carregam sem violação de CSP (busca e /busca/mapa) e nenhum host
-do Google é requisitado (CSP sempre estrita, sem Google Maps)."""
+"""E2E do mapa (MapLibre GL + PMTiles) sob a CSP estrita: zero violações de CSP (inclui o worker do MapLibre),
+zero requisições a hosts externos (Google incluído), atribuição "© OpenStreetMap contributors · Protomaps"
+visível com link, e tiles do /tiles/brasil.pmtiles via Range (206) quando o arquivo existe; sem o arquivo, o
+mapa abre só com os pins e mostra o aviso. Cobre CT-MAPA-010..012 (CT-E2E-092/093).
+Uso: csp_maps.py <base_url> [executável do Chrome]"""
 import sys
 import urllib.parse
 
 from playwright.sync_api import sync_playwright
 
 base = sys.argv[1]
+chrome = sys.argv[2] if len(sys.argv) > 2 else None
 loc = urllib.parse.quote('Florianópolis, SC')
 failures = []
 
@@ -17,39 +21,42 @@ def check(cond, msg):
 
 
 with sync_playwright() as pw:
-    browser = pw.chromium.launch()
+    args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    browser = pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
     page = browser.new_page()
     console, responses, requests = [], [], []
     page.on('console', lambda m: console.append(m.text))
     page.on('pageerror', lambda e: console.append('pageerror: ' + str(e)))
     page.on('request', lambda r: requests.append(r.url))
     page.on('response', lambda r: responses.append((r.url, r.status)))
-    paths = ['/busca?localidade=' + loc, '/busca/mapa?localidade=' + loc]
-    for path in paths:
+    page.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI));")
+    for path in ['/busca?localidade=' + loc, '/busca/mapa?localidade=' + loc]:
         console.clear(); responses.clear(); requests.clear()
         page.goto(base + path)
         page.wait_for_load_state('networkidle')
         if path.startswith('/busca/mapa'):
-            # A rota (modo API) entrega data-points vazio e o mapa nunca desenha (bug pré-existente). Para exercitar
-            # o map.js real sob a CSP real, injeta pontos e recarrega o script do próprio site ('self').
-            inject = '''() => {
-                document.getElementById('result-map').setAttribute('data-points', JSON.stringify([
-                    {title: 'Casa', lat: -27.59, lng: -48.54, href: '/'}]));
-                const s = document.createElement('script');
-                s.src = '/assets/pages/map.js?e2e=' + Date.now();
-                document.body.appendChild(s);
-            }'''
-            page.evaluate(inject)
-            page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(1500)
-        csp = [m for m in console if 'Content Security Policy' in m]
+            page.wait_for_function("document.getElementById('result-map').dataset.points !== undefined", timeout=20000)
+            page.wait_for_timeout(1500)
+            attrib = page.locator('.maplibregl-ctrl-attrib')
+            check(attrib.is_visible() and 'OpenStreetMap contributors' in attrib.inner_text() and 'Protomaps' in attrib.inner_text(),
+                  path + ': atribuição OSM/Protomaps visível')
+            check(attrib.locator('a[href="https://www.openstreetmap.org/copyright"]').count() == 1, path + ': link do copyright OSM')
+            tiles = [st for u, st in responses if '/tiles/brasil.pmtiles' in u]
+            notice = page.locator('#map-notice')
+            if tiles and all(st in (200, 206) for st in tiles):
+                check(206 in tiles, path + ': tiles via Range (206) (%d respostas)' % len(tiles))
+            else:
+                check(notice.is_visible() and 'indispon' in notice.inner_text(), path + ': sem brasil.pmtiles -> aviso e mapa só com pins')
+        csp = page.evaluate('window.__csp') + [m for m in console if 'Content Security Policy' in m]
         for m in csp:
-            print('  csp  ' + m[:300])
+            print('  csp  ' + str(m)[:300])
         check(not csp, path + ': nenhuma violação de CSP')
-        tiles = [st for u, st in responses if 'tile.openstreetmap.org' in u]
-        check(tiles and all(st == 200 for st in tiles), path + ': tiles OSM carregados (%d, status %s)' % (len(tiles), sorted(set(tiles))))
+        external = [u for u in requests if not u.startswith(base)]
+        check(not external, path + ': nenhuma requisição externa (%s)' % external[:3])
         google = [u for u in requests if 'google' in u or 'gstatic' in u]
         check(not google, path + ': nenhum host Google requisitado')
+        errors = [m for m in console if 'pageerror' in m]
+        check(not errors, path + ': sem erro de JS (%s)' % errors[:2])
     browser.close()
 
 print('E2E csp_maps: %s' % ('PASSOU' if not failures else 'FALHOU (%d)' % len(failures)))
