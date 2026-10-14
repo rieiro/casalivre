@@ -79,8 +79,17 @@ foreach (array_keys($fonts) as $font) {
 }
 
 echo "sem Google, sem tiles raster do OSM\n";
+// src/ varrido recursivamente: helpers.php foi dividido em src/helpers/ (#50) e há src/Acoes/.
+$srcFiles = [];
+foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(CL_ROOT . '/src', FilesystemIterator::SKIP_DOTS)) as $info) {
+    if ($info->isFile() && $info->getExtension() === 'php') {
+        $srcFiles[] = $info->getPathname();
+    }
+}
+sort($srcFiles);
+t_ok(count(array_filter($srcFiles, static fn (string $f): bool => str_contains($f, '/src/helpers/'))) > 1, 'varredura de src/ inclui src/helpers/');
 $appFiles = array_merge(
-    glob(CL_ROOT . '/views/*.php') ?: [], glob(CL_ROOT . '/src/*.php') ?: [], glob(CL_ROOT . '/public/assets/*.js') ?: [],
+    glob(CL_ROOT . '/views/*.php') ?: [], $srcFiles, glob(CL_ROOT . '/public/assets/*.js') ?: [],
     glob(CL_ROOT . '/public/assets/pages/*.js') ?: [], [CL_ROOT . '/public/index.php', CL_ROOT . '/public/assets/app.css', CL_ROOT . '/public/assets/map/style-light.json'],
     glob(CL_ROOT . '/public/assets/vendor/*/*.{js,css}', GLOB_BRACE) ?: []
 );

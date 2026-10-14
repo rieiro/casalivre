@@ -524,7 +524,7 @@ function handle_api(string $path, string $method): void
         if ($res->tipo === 'nao_encontrado') {
             api_error(404, $res->mensagem);
         }
-        $resync = ICalFeedRemove::ressincronizar((int) $property['id']);
+        $resync = CalendarSync::resyncProperty((int) $property['id']);
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 

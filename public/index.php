@@ -130,7 +130,7 @@ return Seguranca::pipeline(
         } catch (ImovelNaoEncontrado $e) {
             // 404 das rotas web que resolvem imóvel (HouseRepository::*OrFail), com as mesmas respostas de antes.
             http_response_code(404);
-            if ($e->motivo === 'dono') {
+            if ($e->motivo === ImovelNaoEncontrado::DONO) {
                 exit('Imóvel não encontrado.');
             }
             view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);
@@ -486,9 +486,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $updated = HouseService::update((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]), $_POST);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $updated = HouseService::update((int) $user['id'], $propertyId, $_POST);
     if (isset($updated['error'])) {
-        $property = HouseRepository::findByUser((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+        $property = HouseRepository::findByUser((int) $user['id'], $propertyId);
         view('property_form', [
             'error' => $updated['error'],
             'property' => $property,
@@ -498,7 +499,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') 
         ]);
         return null;
     }
-    activity(ActivityLog::PROPERTY_UPDATE, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1]), 'titulo' => (string) ($_POST['title'] ?? ''), 'cidade' => (string) ($_POST['city'] ?? '')] + HouseService::amenityChange($updated['anterior'] ?? [], $updated['atual'] ?? []), $updated['anterior'] ?? null, $updated['atual'] ?? null);
+    activity(ActivityLog::PROPERTY_UPDATE, ['imovel_id' => $propertyId, 'titulo' => (string) ($_POST['title'] ?? ''), 'cidade' => (string) ($_POST['city'] ?? '')] + HouseService::amenityChange($updated['anterior'] ?? [], $updated['atual'] ?? []), $updated['anterior'] ?? null, $updated['atual'] ?? null);
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
@@ -526,9 +527,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/editar$#', $path, $m) && $method === '
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
     $createdPhotos = [];
-    $saved = save_uploaded_photos((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]), $_FILES['fotos'] ?? [], $createdPhotos);
+    $saved = save_uploaded_photos((int) $user['id'], $propertyId, $_FILES['fotos'] ?? [], $createdPhotos);
     $sent = is_array($_FILES['fotos']['name'] ?? null) ? count(array_filter($_FILES['fotos']['name'], static fn ($name) => $name !== '')) : 0;
     if ($sent === 0) {
         $_SESSION['upload_notice'] = 'Nenhuma foto chegou. O envio é maior do que o limite do sistema.';
@@ -536,23 +538,24 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
         $limit = Settings::int('max_photos_per_property') ?: 40;
         $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png ou webp).";
     }
-    activity(ActivityLog::PHOTO_ADD, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1]), 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
+    activity(ActivityLog::PHOTO_ADD, ['imovel_id' => $propertyId, 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    $removed = PhotoRepository::deleteIds(HouseRepository::idFromPublicRefOrFail($m[1]), array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    $removed = PhotoRepository::deleteIds($propertyId, array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
         PhotoStorage::deletePhotoFiles($photo);
     }
     if ($removed['old'] !== []) {
-        activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1]), 'quantidade' => count($removed['old'])], ['fotos' => $removed['old']], ['estado' => 'removida']);
+        activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => $propertyId, 'quantidade' => count($removed['old'])], ['fotos' => $removed['old']], ['estado' => 'removida']);
     }
     if ($removed['capa'] !== []) {
-        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1])], $removed['capa'][0]['old'] ?? null, $removed['capa'][0]['new'] ?? null);
+        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => $propertyId], $removed['capa'][0]['old'] ?? null, $removed['capa'][0]['new'] ?? null);
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -560,14 +563,15 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    $removed = PhotoRepository::delete(HouseRepository::idFromPublicRefOrFail($m[1]), (int) $m[2]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    $removed = PhotoRepository::delete($propertyId, (int) $m[2]);
     if ($removed['old']) {
         PhotoStorage::deletePhotoFiles($removed['old']);
-        activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1]), 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
+        activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => $propertyId, 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
     }
     if ($removed['capa'] !== []) {
-        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => HouseRepository::idFromPublicRefOrFail($m[1])], $removed['capa'][0]['old'] ?? null, $removed['capa'][0]['new'] ?? null);
+        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => $propertyId], $removed['capa'][0]['old'] ?? null, $removed['capa'][0]['new'] ?? null);
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -576,7 +580,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $user = require_user();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
-    // (save_calendar), no import_ics e no cron scripts/sync-calendars.php.
+    // (CalendarService::save), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
@@ -654,23 +658,24 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
 if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
     ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2], seguirSemFeed: true)->registrar();
     // SNAPSHOT: a web não trata 'nao_encontrado' de propósito. Feed inexistente ainda ressincroniza e
     // redireciona (302), como antes; tratar o desfecho mudaria o comportamento (a API responde 404).
-    ICalFeedRemove::ressincronizar($propertyId);
+    CalendarSync::resyncProperty($propertyId);
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
     $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     // Web: 0 ou 2+ fotos marcadas são ignoradas em silêncio (a API exige foto_id; ver CoverSet).
     if (count($ids) === 1) {
-        CoverSet::run(HouseRepository::idFromPublicRefOrFail($m[1]), $ids[0])->registrar();
+        CoverSet::run($propertyId, $ids[0])->registrar();
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -678,8 +683,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    CoverSet::run(HouseRepository::idFromPublicRefOrFail($m[1]), (int) $m[2])->registrar();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    CoverSet::run($propertyId, (int) $m[2])->registrar();
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 

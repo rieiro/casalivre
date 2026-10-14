@@ -9,7 +9,7 @@ require_once __DIR__ . '/Resultado.php';
  * Duas etapas, chamadas pelo adaptador nesta ordem (a mesma de antes no activity_log):
  *   1. remover(): removeFeed -> releaseImported (+ nightAudit); devolve CALENDAR_FEED_REMOVE em eventos;
  *      o adaptador grava com registrar();
- *   2. ressincronizar(): CalendarSync::resyncProperty, que grava os próprios CALENDAR_SYNC (por isso depois).
+ *   2. o adaptador chama CalendarSync::resyncProperty, que grava os próprios CALENDAR_SYNC (por isso depois).
  * Desfechos de remover(): ok | nao_encontrado.
  *
  * Diferença web/API preservada de propósito (SNAPSHOT, ver tests/standalone/char_calendario_test.php):
@@ -40,10 +40,5 @@ final class ICalFeedRemove
             ]];
         }
         return new Resultado($gone['feed'] ? 'ok' : 'nao_encontrado', $gone['feed'] ? null : 'Feed não encontrado.', [], $events);
-    }
-
-    public static function ressincronizar(int $propertyId): array
-    {
-        return CalendarSync::resyncProperty($propertyId);
     }
 }
