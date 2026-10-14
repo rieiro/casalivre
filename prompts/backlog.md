@@ -6,19 +6,41 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ### Sprint 2 (ordem)
 
-1. **#35** — tokens sha256 + resposta genérica no cadastro (`email_taken`)
-2. **#36** — API pública sem endereço + coordenada pública aproximada
-3. Fotos assíncronas em WebP (caminho com uuid)
-4. Mapas PMTiles (Brasil) + MapLibre GL
-5. Refatoração DRY (Mailer/helpers, base_url, Db::transactional, RequestLog)
+1. ~~**#35** — tokens sha256 + resposta genérica no cadastro (`email_taken`)~~ (mesclado)
+2. ~~**#36** — API pública sem endereço + coordenada pública aproximada~~ (mesclado)
+3. ~~**#39** — Fotos assíncronas em WebP (caminho com uuid)~~ (mesclado)
+4. ~~**#40** — Mapas PMTiles (Brasil) + MapLibre GL~~ (mesclado)
+5. **Próximo passo:** Refatoração DRY (sprint 2) (Mailer/helpers, base_url, Db::transactional, RequestLog)
 
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #35 | Tokens só como hash; cadastro sem revelar e-mail existente | em andamento |
-| #36 | API pública sem `address`; bairro e cidade; coordenada aproximada | em andamento |
-| — | Fotos WebP assíncronas (libvips, caminho uuid) | a seguir |
-| — | Mapas PMTiles + MapLibre | a seguir |
-| — | Refatoração DRY | sem urgência |
+| #35 | Tokens só como hash; cadastro sem revelar e-mail existente | concluído (mesclado) |
+| #36 | API pública sem `address`; bairro e cidade; coordenada aproximada | concluído (mesclado) |
+| #38 | (sprint 2) | concluído (mesclado) |
+| #39 | Fotos WebP assíncronas (caminho uuid) | concluído (mesclado) |
+| #40 | Mapas PMTiles + MapLibre | concluído (mesclado) |
+| — | Refatoração DRY | próximo passo |
+
+### Decisões (sprint 2)
+- Envio de fotos continua pelo formulário web, sem depender de JavaScript, porque o dono configura o imóvel no desktop (decisão do usuário, 14/10). A API de fotos fica para o futuro app Android.
+
+### Pendências baixas (sprint 2)
+- [ ] #35: depois de redefinir a senha, a página diz "Conta ativada"; o formulário sem JS não mostra o erro.
+- [ ] #35: `MailQueue.php:85` usa valor fixo quando `LOG_SALT` está vazio.
+- [ ] #36: bairro com nome de cidade é buscado como a cidade.
+- [ ] #36: `public_coord` pode sair da faixa depois de 64 tentativas.
+- [ ] #39: arquivo recusado devolve 201 "salvas: 0" em vez de 422.
+- [ ] #39: foto corrompida fica "Processando" por minutos.
+- [ ] #40: glifos só para alfabetos latinos.
+- [ ] #40 (info): o bloco nginx dos tiles não envia CSP.
+- [ ] Testes: `mailer_test`/`mailer_unconfigured_test` instáveis por resíduo de rate limit em `storage/cache/ratelimit`.
+
+### Mapa: fora do #40
+- [ ] Buscar ao mover o mapa / "Buscar nesta área".
+- [ ] Lista e mapa lado a lado.
+- [ ] Carrossel no mobile.
+- [ ] Skeletons dos cards.
+- [ ] Sincronização entre card e pino.
 
 ## Segurança e LGPD
 
@@ -92,6 +114,8 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca
 - [ ] QA do PR de fotos: verificar que não há EXIF e conferir as variantes geradas.
 
 ## Concluído
+
+- [x] Sprint 2: PRs #35, #36, #38, #39 e #40 mesclados na develop (fca4832).
 
 - [x] PR #34 (pipeline de segurança: rate limit da API, `Csrf::rawBody`/413, máscara no `error.log`, sessão preguiçosa) mesclado na develop (7de17a9).
 - [x] PRs #18 (scripts de teste) e #19 (docs) mesclados na develop (6b26252).
