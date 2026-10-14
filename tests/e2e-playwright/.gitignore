@@ -1,0 +1,5 @@
+node_modules
+resultados/
+relatorio-html/
+fixtures/fotos/*
+!fixtures/fotos/gerar.py
