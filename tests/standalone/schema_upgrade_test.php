@@ -1,9 +1,9 @@
 <?php
-// Upgrade de schema: banco existente em v2 (antes do #21), v3 (#21) e v4 (#23) sobe para v5 com os seeds
-// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) e a tabela mail_queue (v5).
+// Upgrade de schema: banco existente em v2 (antes do #21), v3 (#21) e v4 (#23) sobe para v6 com os seeds
+// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6).
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
-t_eq(5, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 5');
+t_eq(6, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 6');
 $v3 = ['form.beds_add_title', 'form.room_summary_title', 'form.bed_one', 'form.bed_many', 'form.script_error'];
 $v4 = ['err.field_type', 'js.net_error', 'js.request_failed'];
 $langs = ['pt-BR', 'en', 'es'];
@@ -26,10 +26,10 @@ foreach ([2 => array_merge($v3, $v4), 3 => $v4, 4 => []] as $from => $missing) {
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out, $code);
     $text = implode("\n", $out);
     $out = [];
-    t_eq(0, $code, "v$from -> v5: migrate.php sai com 0 ($text)");
+    t_eq(0, $code, "v$from -> v6: migrate.php sai com 0 ($text)");
     $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    t_eq(5, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), "v$from -> v5: user_version = 5");
-    t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'mail_queue'")->fetchColumn(), "v$from -> v5: tabela mail_queue criada");
+    t_eq(6, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), "v$from -> v6: user_version = 6");
+    t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'mail_queue'")->fetchColumn(), "v$from -> v6: tabela mail_queue criada");
     $st = $pdo->prepare('SELECT COUNT(*) FROM translations WHERE tkey = ? AND lang = ? AND text <> \'\'');
     $absent = [];
     foreach (array_merge($v3, $v4) as $key) {
@@ -40,7 +40,7 @@ foreach ([2 => array_merge($v3, $v4), 3 => $v4, 4 => []] as $from => $missing) {
             }
         }
     }
-    t_eq([], $absent, "v$from -> v5: seeds de v3 e v4 presentes nos 3 idiomas");
+    t_eq([], $absent, "v$from -> v6: seeds de v3 e v4 presentes nos 3 idiomas");
 }
 
 t_done();

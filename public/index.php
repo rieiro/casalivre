@@ -94,6 +94,9 @@ return Seguranca::pipeline(
             ['POST', '#^/api/users$#', 10, 3600, '/api/users'],
             ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
             ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
+            // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
+            ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
+            ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
@@ -172,7 +175,9 @@ function casa_recusar(string $code, string $path): never
             : casa_html_error(419, 'Pedido recusado', 'O token de segurança não confere. Recarregue a página e tente de novo.');
     }
     if ($code === 'api_rate_limit') {
-        casa_json_error(429, 'Muitas requisições. Tente novamente em instantes.'); // Retry-After enviado pelo ApiRateLimit
+        // Retry-After enviado pelo ApiRateLimit; formulários web recebem o mesmo 429 em HTML.
+        $api ? casa_json_error(429, 'Muitas requisições. Tente novamente em instantes.')
+            : casa_html_error(429, 'Muitas tentativas', 'Muitas requisições. Tente novamente em instantes.');
     }
     if ($code === 'too_large') {
         $api ? casa_json_error(413, 'Corpo da requisição grande demais.')
@@ -356,7 +361,6 @@ if ($path === '/cadastro' && $method === 'POST') {
         view('register', ['error' => account_text($result['error']), 'old' => $registerOld]);
         return null;
     }
-    activity(ActivityLog::REGISTER, ['email' => $result['email']]);
     view('verify_pending', ['expires' => $result['expires']]);
     return null;
 }

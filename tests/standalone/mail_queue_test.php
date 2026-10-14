@@ -174,8 +174,11 @@ t_eq([2, 2], [$rep['enviados'], $rep['ignorados']], 'worker: 2 enviados; ausente
 $dev = (string) @file_get_contents($dir . '/mail-dev.log');
 $t1 = $tok('reset_token', 'gil@casalivre.test');
 $t2 = $tok('activation_token', 'hugo@casalivre.test');
-t_ok($t1 !== '' && str_contains($dev, 'http://127.0.0.1:8080/senha/redefinir?token=' . $t1), 'reset: token gerado pelo worker, link com APP_URL');
-t_ok($t2 !== '' && str_contains($dev, 'http://127.0.0.1:8080/verificar?token=' . $t2), 'activation: token gerado pelo worker');
+$raw = static fn (string $prefix): string => preg_match('#' . preg_quote($prefix, '#') . '([0-9a-f]{32})#', $dev, $mm) === 1 ? $mm[1] : '';
+$rawReset = $raw('http://127.0.0.1:8080/senha/redefinir?token=');
+$rawAct = $raw('http://127.0.0.1:8080/verificar?token=');
+t_ok($rawReset !== '' && hash_equals($t1, hash('sha256', $rawReset)), 'reset: link com APP_URL e token bruto; banco guarda o sha256');
+t_ok($rawAct !== '' && hash_equals($t2, hash('sha256', $rawAct)), 'activation: link com token bruto; banco guarda o sha256');
 t_ok(!str_contains($dev, 'ninguem@'), 'usuário inexistente: nada enviado');
 t_eq('', $tok('reset_token', 'hugo@casalivre.test'), 'conta pendente não recebe reset');
 t_eq(0, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE recipient <> '' OR status <> 'sent'")->fetchColumn(), 'todos ack e limpos');
