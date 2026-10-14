@@ -5,8 +5,8 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 ## Papéis e divisão de tarefas
 | Bot | Faz | Não faz |
 |---|---|---|
-| **Bot Gerente Geral** | Coordena sprints semanais, faz o resumo diário, monta o plano semanal (aprovado pelo usuário) e a revisão de fim de semana. É o único que edita `prompts/deploy.md`, `prompts/backlog.md` e este arquivo, e o único que faz merge, sempre depois da liberação do usuário. Libera os pushes do Programador e encaminha QA e revisões. | Implementar funcionalidades no lugar do Programador. |
-| **Bot Programador** | Implementa funcionalidades e correções, inclusive o que o Revisor, a Segurança e o Teste pedirem (sempre via Gerente). Roda só os testes do que mudou, no PHP 8.4. | Rodar a suíte completa, o E2E ou a regressão (são do Teste). Fazer push sem liberação. Trabalhar fora da tarefa sem perguntar ao Gerente. |
+| **Bot Gerente Geral** | Coordena sprints semanais, faz o resumo diário, monta o plano semanal (aprovado pelo usuário) e a revisão de fim de semana. É o único que edita `prompts/deploy.md`, `prompts/backlog.md` e este arquivo, e o único que faz merge na develop, depois do QA e das revisões exigidas, sem pedir aprovação ao usuário. Encaminha QA e revisões. | Implementar funcionalidades no lugar do Programador. |
+| **Bot Programador** | Implementa funcionalidades e correções, inclusive o que o Revisor, a Segurança e o Teste pedirem (sempre via Gerente). Roda só os testes do que mudou, no PHP 8.4. | Rodar a suíte completa, o E2E ou a regressão (são do Teste). Trabalhar fora da tarefa sem perguntar ao Gerente. |
 | **Bot Teste** | QA dos PRs e regressão da develop. Pode publicar comentários de QA nos PRs. Dono dos PRs de testes (`test/...`). | Corrigir código do app. |
 | **Bot Revisor Codigo** | Revisa só o código do Programador, só sob DRY, KISS, YAGNI e SOLID, e só quando o Gerente pede. Manda os pedidos de mudança ao Gerente. | Implementar ou corrigir, rodar testes, analisar segurança ou deploy. |
 | **Bot Segurança e Arquitetura** | Analisa segurança, LGPD e arquitetura, e manda os pedidos de mudança e os blocos de `deploy.md` ao Gerente. Pode fazer uma rodada de verificação na develop a qualquer momento. Nos PRs, só entra quando eles tocam login, upload, API pública ou dados pessoais. | Fazer push ou editar código. Revisar princípios de código (é do Revisor). |
@@ -16,15 +16,16 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - Repositório: https://github.com/rieiro/casalivre. Base de trabalho: `develop`. `main` só recebe a develop, com aprovação do usuário.
 - Cada bot usa um clone próprio: Programador `/workspace/casalivre-dev`, Teste `/workspace/casalivre-testes/repo`, Gerente `/workspace/casalivre-gerente`, Segurança `/workspace/casalivre-seguranca`, Revisor `/workspace/casalivre-revisor`. `/workspace/casalivre` não é usado.
 - Só o dono da branch faz push nela. Sem force-push e sem rebase: a branch é atualizada com merge da develop.
-- Os merges são squash, feitos pelo Gerente com `--match-head-commit`, só depois da liberação do usuário.
+- Os merges são squash, feitos pelo Gerente com `--match-head-commit`, depois do QA e das revisões exigidas (sem pedir aprovação ao usuário).
+- Cada bot faz push na própria branch ao fim de cada bloco de trabalho. Só o QA congela um PR.
 - Nada é publicado no GitHub em nome do usuário sem aprovação. A exceção são os comentários de QA do Teste.
 
 ## Fluxo de um PR
 1. O Programador (ou o dono) abre o PR e avisa o Gerente.
 2. O Revisor revisa o código do Programador, menos em PR pequeno de correção, que vai direto ao QA. A Segurança só analisa quando o PR toca login, upload, API pública ou dados pessoais.
 3. QA: um PR de cada vez, na ordem de merge. O head fica **congelado** durante o QA. O Teste testa um SHA fixo e para se o head mudar.
-4. Correções: o Gerente libera **um push único**, e o Programador avisa o novo SHA. O re-QA cobre só o diff.
-5. O Gerente pede ao usuário a liberação do merge e mescla.
+4. Correções: o Programador faz push na própria branch e avisa o novo SHA ao Gerente. O re-QA cobre só o diff.
+5. Com o QA e as revisões exigidas aprovados, o Gerente mescla na develop sem pedir aprovação ao usuário. O usuário é consultado só nas decisões antes do PR ou em dúvidas realmente relevantes.
 6. Lote: fazer todos os merges primeiro e só então pedir **uma** regressão completa na develop.
 
 ## Fase atual: desenvolvimento acelerado (decisão do usuário, 14/10)

@@ -10,7 +10,10 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 2. ~~**#36** — API pública sem endereço + coordenada pública aproximada~~ (mesclado)
 3. ~~**#39** — Fotos assíncronas em WebP (caminho com uuid)~~ (mesclado)
 4. ~~**#40** — Mapas PMTiles (Brasil) + MapLibre GL~~ (mesclado)
-5. **Próximo passo:** Refatoração DRY (sprint 2) (Mailer/helpers, base_url, Db::transactional, RequestLog)
+5. ~~**#43** — script `run-casos-de-teste`~~ (mesclado)
+6. ~~**#44–#47, #49, #50** — Refatoração DRY (PRs 0 a 5)~~ (mesclado)
+7. ~~**#48** — limite de avaliação pela web igual ao da API~~ (mesclado)
+8. **Próximo passo:** sprint 3 (tema visual)
 
 | PR | Assunto | Situação |
 |----|---------|----------|
@@ -19,7 +22,14 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 | #38 | (sprint 2) | concluído (mesclado) |
 | #39 | Fotos WebP assíncronas (caminho uuid) | concluído (mesclado) |
 | #40 | Mapas PMTiles + MapLibre | concluído (mesclado) |
-| — | Refatoração DRY | próximo passo |
+| #43 | Script `run-casos-de-teste` | concluído (mesclado) |
+| #44 | Refatoração 0: testes de caracterização | concluído (mesclado) |
+| #45 | Refatoração 1: app-env | concluído (mesclado) |
+| #46 | Refatoração 2: index-servicos | concluído (mesclado) |
+| #47 | Refatoração 3: ações compartilhadas | concluído (mesclado) |
+| #48 | Avaliação pela web com o mesmo limite da API (10/h por IP, contado junto) | concluído (mesclado) |
+| #49 | Refatoração 4: api-guardas | concluído (mesclado) |
+| #50 | Refatoração 5: helpers por tema | concluído (mesclado) |
 
 ### Decisões (sprint 2)
 - Envio de fotos continua pelo formulário web, sem depender de JavaScript, porque o dono configura o imóvel no desktop (decisão do usuário, 14/10). A API de fotos fica para o futuro app Android.
@@ -34,6 +44,17 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] #40: glifos só para alfabetos latinos.
 - [ ] #40 (info): o bloco nginx dos tiles não envia CSP.
 - [ ] Testes: `mailer_test`/`mailer_unconfigured_test` instáveis por resíduo de rate limit em `storage/cache/ratelimit`.
+- [ ] Testes instáveis: `CT-E2E-070` falha às vezes quando roda junto com o 071 (corrida de tempo no teste).
+- [ ] Testes instáveis: `account_tokens_test` (13 de 15 já na develop 5d697b0); abrir issue separada.
+- [ ] #48 (obs. baixa, por design): o limite de avaliação por IP vale para todos os imóveis juntos, e não por imóvel.
+
+### Comportamentos achados no #44 (sem correção)
+- [ ] Salvar a conta sem mudanças registra `ACCOUNT_UPDATE`.
+- [ ] O `activity_log` grava e-mail e autor como `null`.
+- [ ] O dono de um imóvel pausado recebe 404 ao editar.
+- [ ] A API responde `ok:true` com erro de validação no calendário e com falha no iCal.
+- [ ] A API dá 419 em vez de 401 sem sessão.
+- [ ] Na web, excluir um feed inexistente dispara a liberação de datas e a ressincronização.
 
 ### Mapa: fora do #40
 - [ ] Buscar ao mover o mapa / "Buscar nesta área".
@@ -42,8 +63,30 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] Skeletons dos cards.
 - [ ] Sincronização entre card e pino.
 
+## Sprint 3
+
+### Tema visual (em etapas)
+Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
+- [ ] Etapa 0: `asset_url` com hash, OPcache e brotli.
+- [ ] Etapa 1: tokens CSS e páginas de erro sem estilo inline.
+- [ ] Etapa 2: `brand.php`, logo e pasta do tema.
+- [ ] Etapa 3: estilo do mapa gerado.
+- [ ] Etapa 4: fonte do mapa, se mudar.
+- [ ] Etapa 5 (opcional): e-mail HTML.
+
+### Tema escolhido pelo banco
+- [ ] Tema do site todo em `settings.theme`, com cache num arquivo mantido pelo OPcache e CSS e estilo do mapa com hash por tema. Aceitar só nomes da lista do manifesto; troca só pelo admin, com CSRF e log. Entra junto com o PR do `brand.php`. Modo claro e escuro, se houver, por `prefers-color-scheme`.
+
+### Proposta em avaliação: grupos com tema próprio (o usuário ainda não decidiu a sprint)
+- [ ] Grupos de usuários (imobiliária ou rede) com tema próprio. Tabelas `groups`, `group_members` (papéis `owner`, `admin` e `member`), `properties.group_id` e `themes` (só temas aprovados, tokens validados).
+- [ ] O tema aparece na página do imóvel e no painel; a busca e o mapa geral ficam no tema da plataforma; o selo da plataforma é sempre visível; vincular imóvel exige aceite do dono.
+- [ ] PRs: A (grupos), B (catálogo de temas), C (aplicar o tema) e D, opcional (vitrine `/g/<slug>/`). Subdomínio por grupo fica para depois.
+
 ## Segurança e LGPD
 
+- [ ] (Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.
+- [ ] (Baixa, #47, já existia) O catch genérico de `PDOException` no `AccountUpdate` vira "e-mail em uso"; deveria tratar só a violação de unicidade.
+- [ ] (Baixa, #47, já existia) `PhotoRepository::makePrimary` aceita foto que não está com status `ready`.
 - [ ] `CL.el`: passar `action`, `formaction` e `xlink:href` pelo safeHref (vai no #23).
 
 - [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
@@ -115,6 +158,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca
 
 ## Concluído
 
+- [x] Sprint 2: refatoração (#44 testes de caracterização, #45 app-env, #46 index-servicos, #47 ações compartilhadas, #49 api-guardas, #50 helpers por tema), #43 (script `run-casos-de-teste`) e #48 (avaliação pela web com limite de 10/h por IP, igual à API) mesclados na develop (b13328b).
 - [x] Sprint 2: PRs #35, #36, #38, #39 e #40 mesclados na develop (fca4832).
 
 - [x] PR #34 (pipeline de segurança: rate limit da API, `Csrf::rawBody`/413, máscara no `error.log`, sessão preguiçosa) mesclado na develop (7de17a9).
