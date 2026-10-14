@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/AppEnv.php';
+
 /**
  * Arquivo de tiles vetoriais do mapa (PMTiles, basemap Protomaps recortado para o Brasil).
  *
@@ -21,7 +23,7 @@ final class MapTiles
     /** A rota PHP só existe em dev/local. */
     public static function devRouteEnabled(): bool
     {
-        return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+        return AppEnv::isDev();
     }
 
     /** Diretório permitido para o arquivo de tiles (storage/tiles/ da raiz do projeto). */

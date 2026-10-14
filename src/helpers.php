@@ -64,6 +64,7 @@ function safe_search_return(?string $value): string
     return is_string($query) && $query !== '' ? $path . '?' . $query : $path;
 }
 
+require_once __DIR__ . '/AppEnv.php';
 require_once dirname(__DIR__) . '/conta/Auth/Password.php';
 require_once dirname(__DIR__) . '/conta/Auth/Phone.php';
 require_once dirname(__DIR__) . '/conta/Auth/Session.php';
@@ -364,7 +365,7 @@ function geo_salt(): ?string
     if (strlen($salt) >= 32) {
         return $salt;
     }
-    if (in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
+    if (AppEnv::isDev()) {
         return 'casalivre-dev-geo-salt-nao-usar-em-producao';
     }
     static $logged = false;
@@ -768,7 +769,7 @@ function expose_account_links(): bool
     if (class_exists('Db')) {
         Db::loadEnv();
     }
-    return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+    return AppEnv::isDev();
 }
 
 /**
