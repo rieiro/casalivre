@@ -583,4 +583,31 @@ final class HouseRepository
         }
         return $pairs;
     }
+
+    // Resolução de imóvel para as rotas web (movido de public/index.php sem alterar os corpos).
+    public static function idFromPublicRefOrFail(string $ref): int
+    {
+        static $cache = [];
+        if (isset($cache[$ref])) {
+            return $cache[$ref];
+        }
+        $row = HouseRepository::findByPublicHash($ref);
+        if (!$row || ($row['status'] ?? 'active') !== 'active') {
+            http_response_code(404);
+            view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);
+            exit;
+        }
+        $cache[$ref] = (int) $row['id'];
+        return $cache[$ref];
+    }
+
+    public static function findByUserOrFail(int $userId, int $id): array
+    {
+        $row = HouseRepository::findByUser($userId, $id);
+        if (!$row) {
+            http_response_code(404);
+            exit('Imóvel não encontrado.');
+        }
+        return $row;
+    }
 }
