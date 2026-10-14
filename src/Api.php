@@ -12,6 +12,32 @@ function json_out(int $status, array $data): never
     exit;
 }
 
+/** Resposta de erro da API: {"error": mensagem} com o status dado, e encerra. */
+function api_error(int $status, string $message): never
+{
+    json_out($status, ['error' => $message]);
+}
+
+/** Exige sessão: devolve o usuário já carregado ou responde 401 'Autenticação necessária.'. */
+function api_require_user(?array $user): array
+{
+    if (!$user) {
+        api_error(401, 'Autenticação necessária.');
+    }
+    return $user;
+}
+
+/** Imóvel do hash público que pertence ao usuário (e está ativo), ou 404 'Imóvel não encontrado.'. */
+function api_owned_property(array $user, string $hash): array
+{
+    $found = HouseRepository::findByPublicHash($hash);
+    $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
+    if (!$property) {
+        api_error(404, 'Imóvel não encontrado.');
+    }
+    return $property;
+}
+
 function api_body(): array
 {
     $raw = raw_body();
@@ -94,7 +120,7 @@ function handle_api(string $path, string $method): void
     if (!in_array($method, ['GET', 'HEAD'], true)) {
         $sent = (string) ($body['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
         if (!hash_equals($_SESSION['csrf'] ?? '', $sent)) {
-            json_out(419, ['error' => 'Token de segurança inválido.']);
+            api_error(419, 'Token de segurança inválido.');
         }
     }
 
@@ -125,7 +151,7 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/users' && $method === 'POST') {
         $result = AccountFlow::register($body, Settings::int('email_verify_minutes'));
         if ($result['error']) {
-            json_out(422, ['error' => account_text($result['error'])]);
+            api_error(422, account_text($result['error']));
         }
         // Mesma resposta para e-mail novo ou já cadastrado (anti-enumeração).
         json_out(201, ['status' => 'pending', 'message' => t('auth.pending_email')]);
@@ -144,11 +170,11 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/ceps' && $method === 'GET') {
         $digits = preg_replace('/\D+/', '', (string) ($_GET['q'] ?? '')) ?? '';
         if (strlen($digits) !== 8) {
-            json_out(422, ['error' => 'CEP deve ter 8 dígitos.']);
+            api_error(422, 'CEP deve ter 8 dígitos.');
         }
         $row = CepRepository::find($digits);
         if (!$row || trim((string) $row['street']) === '') {
-            json_out(404, ['error' => 'CEP não encontrado ou sem rua cadastrada.']);
+            api_error(404, 'CEP não encontrado ou sem rua cadastrada.');
         }
         $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
         json_out(200, [
@@ -161,7 +187,7 @@ function handle_api(string $path, string $method): void
         ]);
     }
     if (!$user && preg_match('#^/api/(users/eu|casas)#', $path)) {
-        json_out(401, ['error' => 'Autenticação necessária.']);
+        api_error(401, 'Autenticação necessária.');
     }
 
     if ($path === '/api/users/eu' && $method === 'GET') {
@@ -172,10 +198,10 @@ function handle_api(string $path, string $method): void
         $res = AccountUpdate::run($user, $body);
         $res->registrar();
         if ($res->tipo === 'invalido') {
-            json_out(422, ['error' => $res->mensagem]);
+            api_error(422, $res->mensagem);
         }
         if ($res->tipo === 'email_em_uso') {
-            json_out(409, ['error' => $res->mensagem]);
+            api_error(409, $res->mensagem);
         }
         json_out(200, ['user' => api_public_user(UserRepository::find((int) $user['id']))]);
     }
@@ -205,12 +231,8 @@ function handle_api(string $path, string $method): void
     }
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})$#', $path, $m)) {
-        $house = HouseRepository::findByPublicHash($m[1]);
-        $id = (int) ($house['id'] ?? 0);
-        $house = $house ? HouseRepository::findByUser((int) $user['id'], $id) : null;
-        if (!$house) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $house = api_owned_property($user, $m[1]);
+        $id = (int) $house['id'];
         if ($method === 'GET') {
             $payload = api_public_house($house);
             $payload['fotos'] = PhotoRepository::list($id);
@@ -232,11 +254,7 @@ function handle_api(string $path, string $method): void
     }
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'POST') {
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $house = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$house) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $house = api_owned_property($user, $m[1]);
         $createdPhotos = [];
         $saved = PhotoStorage::storeUploads((int) $user['id'], (int) $house['id'], $_FILES['fotos'] ?? [], $createdPhotos);
         activity(ActivityLog::PHOTO_ADD, ['imovel_id' => (int) $house['id'], 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
@@ -244,14 +262,10 @@ function handle_api(string $path, string $method): void
     }
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})/fotos/(\d+)$#', $path, $m) && $method === 'DELETE') {
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $house = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$house) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $house = api_owned_property($user, $m[1]);
         $removed = PhotoRepository::delete((int) $house['id'], (int) $m[2]);
         if (!$removed['old']) {
-            json_out(404, ['error' => 'Foto não encontrada.']);
+            api_error(404, 'Foto não encontrada.');
         }
         PhotoStorage::deletePhotoFiles($removed['old']);
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => (int) $house['id'], 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
@@ -294,7 +308,7 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByPublicHash($m[1]);
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
+            api_error(404, 'Imóvel não encontrado.');
         }
         $id = (int) $house['id'];
         $checkin = (string) ($_GET['checkin'] ?? '');
@@ -334,9 +348,7 @@ function handle_api(string $path, string $method): void
     }
 
     if ($path === '/api/painel' && $method === 'GET') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
+        $user = api_require_user($user);
         $properties = HouseRepository::listByUser((int) $user['id']);
         $items = [];
         foreach ($properties as $item) {
@@ -355,7 +367,7 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
         $house = HouseRepository::findByPublicHash($m[1]);
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
+            api_error(404, 'Imóvel não encontrado.');
         }
         $res = ReviewAdd::run(
             (int) $house['id'],
@@ -365,21 +377,15 @@ function handle_api(string $path, string $method): void
         );
         $res->registrar();
         if ($res->tipo === 'invalido') {
-            json_out(422, ['error' => $res->mensagem]);
+            api_error(422, $res->mensagem);
         }
         json_out(201, ['ok' => true]);
     }
 
     // Calendário
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         $id = (int) $property['id'];
         // Somente leitura: noites além do horizonte são filtradas, não apagadas.
         json_out(200, [
@@ -390,14 +396,8 @@ function handle_api(string $path, string $method): void
     }
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'POST') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         $res = CalendarSave::run($property, $body);
         $res->registrar();
         json_out(200, [
@@ -409,17 +409,11 @@ function handle_api(string $path, string $method): void
 
     // Definir foto de capa
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         $fotoId = (int) ($body['foto_id'] ?? 0);
         if ($fotoId < 1) {
-            json_out(422, ['error' => 'foto_id obrigatório.']);
+            api_error(422, 'foto_id obrigatório.');
         }
         CoverSet::run((int) $property['id'], $fotoId)->registrar();
         json_out(200, ['ok' => true, 'fotos' => PhotoRepository::list((int) $property['id'])]);
@@ -433,7 +427,7 @@ function handle_api(string $path, string $method): void
             json_out(200, ['ok' => true, 'email' => $result['email']]);
         }
         activity(ActivityLog::EMAIL_VERIFY, ['resultado' => 'invalido']);
-        json_out(400, ['error' => 'Token inválido ou expirado.']);
+        api_error(400, 'Token inválido ou expirado.');
     }
 
     if ($path === '/api/auth/senha/esqueci' && $method === 'POST') {
@@ -452,7 +446,7 @@ function handle_api(string $path, string $method): void
             (string) ($body['password_confirm'] ?? '')
         );
         if ($result['error']) {
-            json_out(422, ['error' => account_text($result['error'])]);
+            api_error(422, account_text($result['error']));
         }
         activity(ActivityLog::PASSWORD_RESET, ['email' => $result['email']]);
         json_out(200, ['ok' => true]);
@@ -461,7 +455,7 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/idioma' && $method === 'POST') {
         $locale = (string) ($body['locale'] ?? '');
         if (!isset(I18n::LOCALES[$locale])) {
-            json_out(422, ['error' => 'Idioma inválido.']);
+            api_error(422, 'Idioma inválido.');
         }
         $_SESSION['locale'] = $locale;
         activity(ActivityLog::LOCALE, ['idioma' => $locale]);
@@ -470,14 +464,8 @@ function handle_api(string $path, string $method): void
 
     // Dados para formulário de edição
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/editar$#', $path, $m) && $method === 'GET') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         $id = (int) $property['id'];
         json_out(200, [
             'casa' => api_public_house($property),
@@ -489,30 +477,24 @@ function handle_api(string $path, string $method): void
 
     // Importar feed iCal
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         $url = trim((string) ($body['url'] ?? $body['external_ical_url'] ?? ''));
         $feedTitle = trim((string) ($body['title'] ?? $body['feed_title'] ?? ''));
         if ($url === '') {
-            json_out(422, ['error' => 'URL obrigatória.']);
+            api_error(422, 'URL obrigatória.');
         }
         // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
         $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, false);
         $res->registrar();
         if ($res->tipo === 'limit') {
-            json_out(422, ['error' => 'Limite de feeds atingido.']);
+            api_error(422, 'Limite de feeds atingido.');
         }
         if ($res->tipo === 'duplicate') {
-            json_out(409, ['error' => 'Feed já cadastrado.']);
+            api_error(409, 'Feed já cadastrado.');
         }
         if ($res->tipo === 'title') {
-            json_out(422, ['error' => 'Título obrigatório.']);
+            api_error(422, 'Título obrigatório.');
         }
         if ($res->tipo === 'nok') {
             json_out(200, [
@@ -532,19 +514,13 @@ function handle_api(string $path, string $method): void
 
     // Excluir feed iCal
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)$#', $path, $m) && $method === 'DELETE') {
-        if (!$user) {
-            json_out(401, ['error' => 'Autenticação necessária.']);
-        }
-        $found = HouseRepository::findByPublicHash($m[1]);
-        $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-        if (!$property) {
-            json_out(404, ['error' => 'Imóvel não encontrado.']);
-        }
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
         // API: feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
         $res = ICalFeedRemove::run((int) $property['id'], (int) $user['id'], (int) $m[2], false);
         $res->registrar();
         if ($res->tipo === 'nao_encontrado') {
-            json_out(404, ['error' => $res->mensagem]);
+            api_error(404, $res->mensagem);
         }
         $resync = $res->dados['ressincronizados'];
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
@@ -554,7 +530,7 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/ical/([a-f0-9]{32})(\.ics)?$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByIcalHash($m[1]);
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
-            json_out(404, ['error' => 'Não encontrado.']);
+            api_error(404, 'Não encontrado.');
         }
         activity(ActivityLog::CALENDAR_EXPORT, ['imovel_id' => (int) $house['id']]);
         header('Content-Type: text/calendar; charset=utf-8');
@@ -564,10 +540,10 @@ function handle_api(string $path, string $method): void
     }
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path) && $method === 'GET') {
-        json_out(404, ['error' => 'Não encontrado.']);
+        api_error(404, 'Não encontrado.');
     }
 
-    json_out(404, ['error' => 'Rota não encontrada.']);
+    api_error(404, 'Rota não encontrada.');
 }
 
 function account_text(?string $code): ?string
