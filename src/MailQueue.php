@@ -9,7 +9,7 @@ declare(strict_types=1);
  */
 interface MailQueue
 {
-    public const TYPES = ['activation', 'reset'];
+    public const TYPES = ['activation', 'reset', 'exists'];
     public const COOLDOWN_SECONDS = 300;
 
     /** Enfileira (tipo, e-mail). Devolve false se já houve pedido igual nos últimos COOLDOWN_SECONDS. */

@@ -89,6 +89,17 @@ final class Mailer
     {
         require_once __DIR__ . '/Settings.php';
         require_once dirname(__DIR__) . '/conta/Account/AccountFlow.php';
+        if ($type === 'exists') {
+            if (!UserRepository::findByEmail(strtolower(trim($email)))) {
+                return false;
+            }
+            $body = "Alguém tentou cadastrar este e-mail na CasaLivre, mas ele já tem uma conta.\r\n\r\n"
+                . "Se foi você, entre com sua senha ou use \"Esqueci a senha\":\r\n"
+                . self::linkFromAppUrl('http://localhost/senha/esqueci') . "\r\n\r\n"
+                . "Se não foi você, ignore este e-mail; nada foi alterado na sua conta.\r\n";
+            self::deliver($email, 'CasaLivre: alguém tentou cadastrar seu e-mail', $body);
+            return true;
+        }
         $isReset = $type === 'reset';
         $path = $isReset ? '/senha/redefinir?token=' : '/verificar?token=';
         $minutes = Settings::int($isReset ? 'password_reset_minutes' : 'email_verify_minutes');

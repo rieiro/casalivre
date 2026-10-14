@@ -325,7 +325,9 @@ if ($path === '/cadastro' && $method === 'POST') {
         view('register', ['error' => account_text($result['error']), 'old' => $registerOld]);
         return null;
     }
-    activity(ActivityLog::REGISTER, ['email' => $result['email']]);
+    if ($result['created']) {
+        activity(ActivityLog::REGISTER, ['email' => $result['email']]);
+    }
     view('verify_pending', ['expires' => $result['expires']]);
     return null;
 }

@@ -64,19 +64,23 @@ final class AccountFlow
         if ($error !== null) {
             return ['error' => $error];
         }
+        // Anti-enumeração: e-mail novo ou existente seguem o mesmo caminho (hash da senha, uma
+        // escrita na fila) e devolvem a mesma resposta. Existente recebe só o aviso 'exists'.
         $email = strtolower(trim((string) ($input['email'] ?? '')));
-        $existing = UserRepository::findByEmail($email);
-        if ($existing && in_array(($existing['status'] ?? ''), ['inactive', 'apagado'], true)) {
-            return ['error' => ($existing['status'] ?? '') === 'apagado' ? 'deleted' : 'inactive'];
-        }
-        if ($existing) {
-            return ['error' => 'email_taken'];
-        }
         $fields = self::fields($input);
         $fields['status'] = 'pending';
-        $id = UserRepository::insert($fields);
-        self::notify('activation', $email);
-        return ['error' => null, 'id' => $id, 'email' => $email, 'link' => null, 'expires' => self::until($minutes)];
+        $existing = UserRepository::findByEmail($email);
+        $created = false;
+        if (!$existing) {
+            try {
+                UserRepository::insert($fields);
+                $created = true;
+            } catch (PDOException) {
+                $created = false; // corrida com outro cadastro do mesmo e-mail: trata como existente
+            }
+        }
+        self::notify($created ? 'activation' : 'exists', $email);
+        return ['error' => null, 'email' => $email, 'created' => $created, 'expires' => self::until($minutes)];
     }
 
     public static function activate(string $token): array
@@ -92,8 +96,8 @@ final class AccountFlow
     public static function ensureActivation(array $user, int $minutes): array
     {
         $expires = (string) ($user['activation_expires_at'] ?? '');
-        $link = (string) ($user['activation_link'] ?? '');
-        if ($expires < date('Y-m-d H:i:s') || $link === '') {
+        $token = (string) ($user['activation_token'] ?? '');
+        if ($expires < date('Y-m-d H:i:s') || $token === '') {
             self::notify('activation', (string) $user['email']);
             return ['expires' => self::until($minutes)];
         }
@@ -148,8 +152,8 @@ final class AccountFlow
     }
 
     /**
-     * Worker: gera e grava o token do tipo pedido e devolve o link ($linkPrefix . token), ou null se não
-     * há conta elegível (reset: active; activation: pending).
+     * Worker: gera o token bruto, grava só o sha256 e devolve o link ($linkPrefix . token bruto), ou null
+     * se não há conta elegível (reset: active; activation: pending).
      */
     public static function issueLink(string $type, string $email, int $minutes, string $linkPrefix): ?string
     {
@@ -162,9 +166,9 @@ final class AccountFlow
         $link = $linkPrefix . $token;
         $expires = self::until($minutes);
         if ($type === 'reset') {
-            UserRepository::setReset((int) $user['id'], $token, $link, $expires);
+            UserRepository::setReset((int) $user['id'], $token, $expires);
         } else {
-            UserRepository::setActivation((int) $user['id'], $token, $link, $expires);
+            UserRepository::setActivation((int) $user['id'], $token, $expires);
         }
         return $link;
     }
