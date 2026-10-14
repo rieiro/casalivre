@@ -603,7 +603,7 @@ final class HouseRepository
 
     public static function findByUserOrFail(int $userId, int $id): array
     {
-        $row = HouseRepository::findByUser($userId, $id);
+        $row = self::findByUser($userId, $id);
         if (!$row) {
             http_response_code(404);
             exit('Imóvel não encontrado.');
