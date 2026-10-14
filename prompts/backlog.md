@@ -75,12 +75,15 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 - [ ] Etapa 5 (opcional): e-mail HTML.
 
 ### Tema escolhido pelo banco
-- [ ] Tema do site todo em `settings.theme`, com cache num arquivo mantido pelo OPcache e CSS e estilo do mapa com hash por tema. Aceitar só nomes da lista do manifesto; troca só pelo admin, com CSRF e log. Entra junto com o PR do `brand.php`. Modo claro e escuro, se houver, por `prefers-color-scheme`.
+- [ ] Tema padrão da plataforma (usado quando a requisição não tem grupo) em `settings.theme`, com cache num arquivo mantido pelo OPcache e CSS e estilo do mapa com hash por tema. Aceitar só nomes da lista do manifesto; troca só pelo admin, com CSRF e log. Entra junto com o PR do `brand.php`. Modo claro e escuro, se houver, por `prefers-color-scheme`.
 
-### Proposta em avaliação: grupos com tema próprio (o usuário ainda não decidiu a sprint)
-- [ ] Grupos de usuários (imobiliária ou rede) com tema próprio. Tabelas `groups`, `group_members` (papéis `owner`, `admin` e `member`), `properties.group_id` e `themes` (só temas aprovados, tokens validados).
-- [ ] O tema aparece na página do imóvel e no painel; a busca e o mapa geral ficam no tema da plataforma; o selo da plataforma é sempre visível; vincular imóvel exige aceite do dono.
-- [ ] PRs: A (grupos), B (catálogo de temas), C (aplicar o tema) e D, opcional (vitrine `/g/<slug>/`). Subdomínio por grupo fica para depois.
+### Temas por grupo de imóveis (decisão do usuário, 14/10)
+- [ ] Temas por grupo de imóveis (imobiliária ou rede). Cada tema é uma identidade visual completa (logo, favicon, imagens, cores, fontes, ícones e sprite, estilo do mapa, cabeçalho e rodapé de e-mail) numa pasta `themes/<nome>/` preparada pelo time e versionada no repositório. Não há upload de imagens pelo grupo. O layout e as funcionalidades não mudam: o código só aponta para os arquivos do tema. Um build gera os arquivos com hash e um manifesto.
+- [ ] Uma função única descobre o grupo e o tema de cada requisição, nesta ordem: (1) o domínio, por uma lista fixa de domínios aceitos; (2) o endereço `/g/<nome>/`; (3) o grupo do imóvel; (4) o tema da plataforma (`settings.theme`).
+- [ ] A vitrine `/g/<nome>/` tem home, busca e mapa só com os imóveis do grupo, no tema dele, e os links continuam dentro da vitrine. O nome do endereço é único e usa só letras minúsculas, números e hífen.
+- [ ] Links e e-mails saem gerados com o domínio certo do grupo.
+- [ ] Modelo de dados: `groups` (slug, nome, tema), `group_members` (papéis), `properties.group_id` e a lista de domínios por grupo. Vincular um imóvel a um grupo exige o aceite do dono do imóvel. Toda mudança vai para a auditoria. O tema é aceito só da lista do manifesto. O selo da plataforma fica sempre visível.
+- [ ] Ficam para depois: a configuração do nginx, os certificados por domínio e a sessão ou login separados por domínio.
 
 ## Segurança e LGPD
 
