@@ -1,6 +1,6 @@
 <?php
-// verification_link (e links de ativação/redefinição) só aparecem em APP_ENV=dev/local.
-// Sem APP_ENV ou com APP_ENV=production: nunca na API nem nas telas.
+// Token/link de conta são gerados só pelo worker da fila: nunca aparecem na API nem nas telas,
+// em nenhum APP_ENV. Em dev o link sai no mail-dev.log, sobre APP_URL.
 require __DIR__ . '/lib.php';
 t_temp_db();
 require_once CL_ROOT . '/src/Db.php';
@@ -36,33 +36,30 @@ foreach (['' => false, 'production' => false, 'prod' => false, 'dev' => true, 'l
     $r = t_http('POST', $base . '/api/users', json_encode($user), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
     $j = json_decode($r['body'], true) ?: [];
     t_eq(201, $r['status'], "$label: POST /api/users -> 201");
-    t_eq($expose, isset($j['verification_link']), "$label: verification_link no 201 " . ($expose ? 'presente' : 'ausente'));
-    t_eq($expose, str_contains($r['body'], '/verificar?token='), "$label: token de ativação no corpo do 201");
+    t_ok(!str_contains($r['body'], 'token='), "$label: nenhum token no corpo do 201");
 
     // API: login com conta pendente
     $r = t_http('POST', $base . '/api/sessao', json_encode(['email' => $email, 'password' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
     t_eq(403, $r['status'], "$label: login pendente -> 403");
-    t_eq($expose, str_contains($r['body'], '/verificar?token='), "$label: link no 403 de conta pendente");
+    t_ok(!str_contains($r['body'], '/verificar?token='), "$label: link fora do 403 de conta pendente");
 
     // Web: login com conta pendente -> tela verify_pending
     $wjar = tempnam(sys_get_temp_dir(), 'jar');
     $c = csrf_of($base, $wjar);
     $r = t_http('POST', $base . '/entrar', form(['_csrf' => $c, 'email' => $email, 'password' => $pass]), ['Content-Type: application/x-www-form-urlencoded'], $wjar);
-    t_eq($expose, str_contains($r['body'], '/verificar?token='), "$label: link na tela de conta pendente (web)");
+    t_ok(!str_contains($r['body'], '/verificar?token='), "$label: link fora da tela de conta pendente (web)");
 
     // Web: cadastro -> tela verify_pending
     $email2 = 'web' . bin2hex(random_bytes(3)) . '@casalivre.test';
     $c = csrf_of($base, $wjar, '/cadastro');
     $r = t_http('POST', $base . '/cadastro', form(['_csrf' => $c] + ['email' => $email2] + $user), ['Content-Type: application/x-www-form-urlencoded'], $wjar);
-    t_ok(str_contains($r['body'], $expose ? 'Ativar conta' : 'Enviamos um link'), "$label: tela de cadastro concluído coerente");
-    t_eq($expose, str_contains($r['body'], '/verificar?token='), "$label: link na tela pós-cadastro (web)");
+    t_ok(str_contains($r['body'], 'Enviamos um link'), "$label: tela de cadastro concluído coerente");
+    t_ok(!str_contains($r['body'], '/verificar?token='), "$label: link fora da tela pós-cadastro (web)");
 
     // Web: esqueci a senha
     $c = csrf_of($base, $wjar, '/senha/esqueci');
     $r = t_http('POST', $base . '/senha/esqueci', form(['_csrf' => $c, 'email' => $email]), ['Content-Type: application/x-www-form-urlencoded'], $wjar);
-    if (!$expose) {
-        t_ok(!str_contains($r['body'], '/senha/redefinir?token='), "$label: link de redefinição não aparece");
-    }
+    t_ok(!str_contains($r['body'], '/senha/redefinir?token='), "$label: link de redefinição não aparece");
 }
 
 echo "APP_URL fixa (request_base)\n";
@@ -112,8 +109,17 @@ $pass = 'Casa#' . random_int(100000, 999999) . 'xY';
 $r = t_http('POST', $base . '/api/users', json_encode(['name' => 'Host Teste', 'cpf' => '52998224725', 'cep' => '88015-200',
     'address_number' => '10', 'address_complement' => '', 'phone' => '(48) 99999-0000', 'email' => $email, 'password' => $pass,
     'password_confirm' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
-$j = json_decode($r['body'], true) ?: [];
-t_ok(str_starts_with((string) ($j['verification_link'] ?? ''), 'https://casalivre.example/verificar?token='), 'verification_link usa APP_URL');
+t_eq(201, $r['status'], 'cadastro 201');
+require_once CL_ROOT . '/src/MailWorker.php';
+$dir = sys_get_temp_dir() . '/cl-vl-' . bin2hex(random_bytes(3));
+mkdir($dir, 0700);
+Mailer::$devLogDir = $dir;
+$lock = $dir . '/w.lock';
+MailWorker::run(MailQueues::make(), $lock);
+$dev = (string) @file_get_contents($dir . '/mail-dev.log');
+t_ok(str_contains($dev, $email) && str_contains($dev, 'https://casalivre.example/verificar?token='), 'dev: link no mail-dev.log usa APP_URL');
+array_map('unlink', glob($dir . '/*') ?: []);
+@rmdir($dir);
 putenv('APP_URL');
 putenv('APP_ENV');
 

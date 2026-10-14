@@ -9,8 +9,8 @@ require_once dirname(__DIR__) . '/Geo/CepRepository.php';
 
 final class AccountFlow
 {
-    /** @var null|callable(string, string): void */
-    public static $sendLink = null;
+    /** Enfileira (tipo, e-mail); token e link são gerados pelo worker (issueLink). @var null|callable(string, string): mixed */
+    public static $enqueue = null;
 
     public static function problem(array $input, bool $requirePassword = true): ?string
     {
@@ -58,7 +58,7 @@ final class AccountFlow
         ];
     }
 
-    public static function register(array $input, int $minutes, string $linkPrefix): array
+    public static function register(array $input, int $minutes): array
     {
         $error = self::problem($input, true);
         if ($error !== null) {
@@ -72,17 +72,11 @@ final class AccountFlow
         if ($existing) {
             return ['error' => 'email_taken'];
         }
-        $token = bin2hex(random_bytes(16));
-        $expires = self::until($minutes);
-        $link = $linkPrefix . $token;
         $fields = self::fields($input);
         $fields['status'] = 'pending';
-        $fields['activation_token'] = $token;
-        $fields['activation_link'] = $link;
-        $fields['activation_expires_at'] = $expires;
         $id = UserRepository::insert($fields);
-        self::notify($email, $link);
-        return ['error' => null, 'id' => $id, 'email' => $email, 'link' => $link, 'expires' => $expires];
+        self::notify('activation', $email);
+        return ['error' => null, 'id' => $id, 'email' => $email, 'link' => null, 'expires' => self::until($minutes)];
     }
 
     public static function activate(string $token): array
@@ -95,16 +89,13 @@ final class AccountFlow
         return ['ok' => (bool) $ok, 'email' => $ok ? (string) $user['email'] : null];
     }
 
-    public static function ensureActivation(array $user, int $minutes, string $linkPrefix): array
+    public static function ensureActivation(array $user, int $minutes): array
     {
         $expires = (string) ($user['activation_expires_at'] ?? '');
         $link = (string) ($user['activation_link'] ?? '');
         if ($expires < date('Y-m-d H:i:s') || $link === '') {
-            $token = bin2hex(random_bytes(16));
-            $expires = self::until($minutes);
-            $link = $linkPrefix . $token;
-            UserRepository::setActivation((int) $user['id'], $token, $link, $expires);
-            self::notify((string) $user['email'], $link);
+            self::notify('activation', (string) $user['email']);
+            return ['link' => null, 'expires' => self::until($minutes)];
         }
         return ['link' => $link, 'expires' => $expires];
     }
@@ -146,19 +137,36 @@ final class AccountFlow
         $_SESSION['auth_at'] = time();
     }
 
-    public static function askReset(string $email, int $minutes, string $linkPrefix): ?array
+    /** Sempre enfileira e devolve o mesmo formato, exista ou não a conta (tempo de resposta constante). */
+    public static function askReset(string $email, int $minutes): array
     {
         $email = strtolower(trim($email));
-        $user = UserRepository::findByEmail($email);
-        if (!$user || ($user['status'] ?? '') !== 'active') {
+        if ($email !== '') {
+            self::notify('reset', $email);
+        }
+        return ['email' => $email, 'link' => null, 'expires' => self::until($minutes)];
+    }
+
+    /**
+     * Worker: gera e grava o token do tipo pedido e devolve o link ($linkPrefix . token), ou null se não
+     * há conta elegível (reset: active; activation: pending).
+     */
+    public static function issueLink(string $type, string $email, int $minutes, string $linkPrefix): ?string
+    {
+        $user = UserRepository::findByEmail(strtolower(trim($email)));
+        $need = $type === 'reset' ? 'active' : 'pending';
+        if (!$user || ($user['status'] ?? '') !== $need) {
             return null;
         }
         $token = bin2hex(random_bytes(16));
-        $expires = self::until($minutes);
         $link = $linkPrefix . $token;
-        UserRepository::setReset((int) $user['id'], $token, $link, $expires);
-        self::notify($email, $link);
-        return ['email' => $email, 'link' => $link, 'expires' => $expires];
+        $expires = self::until($minutes);
+        if ($type === 'reset') {
+            UserRepository::setReset((int) $user['id'], $token, $link, $expires);
+        } else {
+            UserRepository::setActivation((int) $user['id'], $token, $link, $expires);
+        }
+        return $link;
     }
 
     public static function reset(string $token, string $password, string $confirm): array
@@ -180,10 +188,10 @@ final class AccountFlow
         return (new DateTimeImmutable('now'))->modify('+' . max(1, $minutes) . ' minutes')->format('Y-m-d H:i:s');
     }
 
-    private static function notify(string $email, string $link): void
+    private static function notify(string $type, string $email): void
     {
-        if (self::$sendLink !== null) {
-            (self::$sendLink)($email, $link);
+        if (self::$enqueue !== null) {
+            (self::$enqueue)($type, $email);
         }
     }
 

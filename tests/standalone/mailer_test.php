@@ -1,22 +1,22 @@
 <?php
 // Mailer SMTP contra servidor falso local: sem TLS (só localhost), STARTTLS e TLS implícito com AUTH;
 // link sempre sobre APP_URL; mail-dev.log em dev sem SMTP; integração com POST /api/users.
-// O envio passa pela fila: sendAccountLink() só enfileira e o worker (MailWorker::run) entrega.
+// Transporte via Mailer::deliver(); a fila e a geração de token no worker estão em mail_queue_test.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/Mailer.php';
 require_once CL_ROOT . '/src/MailWorker.php';
 t_temp_db();
 $lock = tempnam(sys_get_temp_dir(), 'mwlock');
-/** Enfileira e roda um lote do worker; true se o e-mail foi entregue. */
+/** Entrega direta (como o worker faz) com o link remontado sobre APP_URL; true se entregou. */
 function send_now(string $email, string $link): bool
 {
-    global $lock;
-    if (!Mailer::sendAccountLink($email, $link)) {
+    try {
+        Mailer::deliver($email, 'CasaLivre: teste', "abra:\r\n" . Mailer::linkFromAppUrl($link) . "\r\n");
+        return true;
+    } catch (Throwable) {
         return false;
     }
-    $report = MailWorker::run(Mailer::queue(), $lock);
-    return ($report['enviados'] ?? 0) === 1;
 }
 
 $tmp = sys_get_temp_dir() . '/cl-mail-' . bin2hex(random_bytes(3));
@@ -100,7 +100,8 @@ t_eq('0600', substr(sprintf('%o', fileperms($f)), -4), 'permissão 0600');
 t_ok(str_contains((string) file_get_contents($f), 'http://127.0.0.1:8080/verificar?token=TOKDEV'), 'link com APP_URL no arquivo');
 putenv('APP_ENV=production');
 t_ok(!send_now('ana@casalivre.test', 'http://h/verificar?token=TOKPROD'), 'produção sem SMTP: não envia');
-t_eq(0, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE body LIKE '%TOKPROD%'")->fetchColumn(), 'produção sem SMTP: link não enfileirado');
+t_ok(!Mailer::enqueueAccountMail('activation', 'ana@casalivre.test'), 'produção sem SMTP: enqueue recusa');
+t_eq(0, (int) db()->query('SELECT COUNT(*) FROM mail_queue')->fetchColumn(), 'produção sem SMTP: nada enfileirado');
 t_ok(!str_contains((string) file_get_contents($f), 'TOKPROD'), 'produção sem SMTP: nada no mail-dev.log');
 Mailer::$devLogDir = null;
 
@@ -189,11 +190,16 @@ $r = t_http('POST', $base . '/api/users', json_encode(['name' => 'Api Teste', 'c
     'password' => $pass, 'password_confirm' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . ($mm[1] ?? '')], $jar);
 t_eq(201, $r['status'], 'cadastro 201');
 t_eq(null, last_msg($out), 'requisição não fala com o SMTP (só enfileira)');
-t_eq(1, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE status = 'pending'")->fetchColumn(), 'um e-mail pendente na fila');
+t_eq(1, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE status = 'pending' AND type = 'activation'")->fetchColumn(), 'um pedido activation pendente na fila');
 t_eq(1, MailWorker::run(Mailer::queue(), $lock)['enviados'] ?? null, 'worker envia o e-mail da fila');
 $m = last_msg($out);
 t_ok($m !== null && str_contains(implode(',', $m['to']), $email), 'e-mail entregue ao SMTP');
 t_ok($m !== null && str_contains(body_of($m), 'https://casalivre.example/verificar?token='), 'link de ativação com APP_URL');
+$tok = db()->prepare('SELECT activation_token FROM users WHERE email = ?');
+$tok->execute([$email]);
+$tok = (string) $tok->fetchColumn();
+t_ok($tok !== '' && $m !== null && str_contains(body_of($m), 'token=' . $tok), 'token gerado pelo worker e gravado no usuário');
+t_eq('', (string) db()->query('SELECT recipient FROM mail_queue')->fetchColumn(), 'após ack: destinatário apagado');
 
 foreach (['APP_ENV', 'APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'SMTP_SECURE', 'SMTP_CA_FILE'] as $k) {
     putenv($k);
