@@ -29,9 +29,6 @@ require_once __DIR__ . '/../src/ExceptionShield.php';
 // Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
 ini_set('zend.exception_ignore_args', '1');
 
-// Stack traces sem valores de argumentos (evita vazar tokens/senhas em logs de erro).
-ini_set('zend.exception_ignore_args', '1');
-
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
@@ -83,6 +80,10 @@ return Seguranca::pipeline(
         'login' => [
             ['POST', '/entrar'],
             ['POST', '/api/sessao'],
+        ],
+        'api_limites' => [
+            ['GET', '/api/cidades', 60, 60],
+            ['GET', '/api/ceps', 60, 60],
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
@@ -146,6 +147,8 @@ function casa_privado(string $path, string $method): bool
  * RequestLog usa register_shutdown_function, que roda mesmo após exit.
  *
  * - 'csrf'       -> 419 (JSON em /api, HTML fora) + exit
+ * - 'too_large'  -> 413 (corpo acima de Csrf::MAX_BODY_BYTES; JSON em /api, HTML fora) + exit
+ * - 'api_rate_limit' -> 429 JSON + Retry-After (enviado pelo ApiRateLimit) + exit
  * - 'rate_limit' -> 429 + Retry-After (enviado pelo RateLimit) (JSON em /api, tela de login fora) + exit
  * - 'login'      -> 302 para /entrar + exit
  * - outros       -> 401 JSON + exit
@@ -162,6 +165,24 @@ function casa_recusar(string $code, string $path): never
         }
         header('Content-Type: text/html; charset=utf-8');
         echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido recusado</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Pedido recusado</h1><p>O token de segurança não confere. Recarregue a página e tente de novo.</p><p><a href="/">Voltar ao início</a></p></body></html>';
+        exit;
+    }
+    if ($code === 'api_rate_limit') {
+        // Retry-After já enviado pelo ApiRateLimit.
+        http_response_code(429);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Muitas requisições. Tente novamente em instantes.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if ($code === 'too_large') {
+        http_response_code(413);
+        if ($api) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Corpo da requisição grande demais.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Envio grande demais</h1><p>O conteúdo enviado passa do limite permitido.</p><p><a href="/">Voltar ao início</a></p></body></html>';
         exit;
     }
     if ($code === 'rate_limit') {

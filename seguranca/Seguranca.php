@@ -6,6 +6,7 @@ require_once __DIR__ . '/Pipeline.php';
 require_once __DIR__ . '/Sanitize.php';
 require_once __DIR__ . '/Csrf.php';
 require_once __DIR__ . '/RateLimit.php';
+require_once __DIR__ . '/ApiRateLimit.php';
 require_once __DIR__ . '/Auth.php';
 
 final class Seguranca
@@ -15,6 +16,7 @@ final class Seguranca
      *   campos_puros?: list<string>,
      *   sem_csrf?: list<string>,
      *   login?: list<array{0: string, 1: string}>,
+     *   api_limites?: list<array{0: string, 1: string, 2: int, 3: int}>,
      *   bloqueado: callable(): bool,
      *   privado: callable(string, string): bool,
      *   recusar: callable(string, string): void
@@ -28,6 +30,7 @@ final class Seguranca
         return (new Pipeline([
             new Sanitize($regras['campos_puros'] ?? []),
             new Csrf($regras['sem_csrf'] ?? [], $recusar),
+            new ApiRateLimit($regras['api_limites'] ?? [], $recusar),
             new RateLimit($regras['login'] ?? [], $regras['bloqueado'], $recusar),
             new Auth($regras['privado'], $recusar),
         ]))->handle($request, $destino);

@@ -19,12 +19,23 @@ final class Csrf implements Middleware
         return (string) $_SESSION['csrf'];
     }
 
+    /** Limite do corpo bruto (JSON/form) lido por rawBody(); uploads multipart seguem post_max_size. */
+    public const MAX_BODY_BYTES = 1048576;
+
+    /** true se o corpo não-multipart excede MAX_BODY_BYTES (pelo CONTENT_LENGTH declarado). */
+    public static function tooLarge(): bool
+    {
+        $type = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+        return !str_starts_with($type, 'multipart/form-data') && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > self::MAX_BODY_BYTES;
+    }
+
+    /** Corpo bruto, no máximo MAX_BODY_BYTES (acima disso devolve ''). */
     public static function rawBody(): string
     {
         static $cached = null;
         if ($cached === null) {
-            $read = file_get_contents('php://input');
-            $cached = is_string($read) ? $read : '';
+            $read = self::tooLarge() ? '' : file_get_contents('php://input', false, null, 0, self::MAX_BODY_BYTES + 1);
+            $cached = is_string($read) && strlen($read) <= self::MAX_BODY_BYTES ? $read : '';
         }
         return $cached;
     }
@@ -33,6 +44,10 @@ final class Csrf implements Middleware
     {
         $method = strtoupper((string) ($request['method'] ?? 'GET'));
         $path = (string) ($request['path'] ?? '/');
+        if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && self::tooLarge()) {
+            ($this->recusar)('too_large', $path);
+            exit;
+        }
         if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && !in_array($path, $this->semCsrf, true) && !$this->valid()) {
             ($this->recusar)('csrf', $path);
             exit;

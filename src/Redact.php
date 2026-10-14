@@ -25,6 +25,18 @@ final class Redact
         return self::path($path);
     }
 
+    /**
+     * Para o error.log: além de text(), mascara e-mails, valores de chaves sensíveis
+     * (senha/password/token/secret/_csrf...) e sequências longas tipo token.
+     */
+    public static function secrets(string $text): string
+    {
+        $text = self::text($text);
+        $text = preg_replace('/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/', '{email}', $text) ?? $text;
+        $text = preg_replace('/\b((?:password|passwd|senha|pass|token|secret|segredo|_csrf|api[_-]?key|authorization)[A-Za-z_]*)(["\']?\s*(?:=>|[:=])\s*)(["\']?)[^\s"\',;&)]+/i', '$1$2$3{redacted}', $text) ?? $text;
+        return preg_replace('/(?<![A-Za-z0-9_\-])[A-Za-z0-9_\-]{32,}(?![A-Za-z0-9_\-])/', '{token}', $text) ?? $text;
+    }
+
     /** Texto livre (mensagens, stack traces): hashes redigidos e query strings removidas. */
     public static function text(string $text): string
     {

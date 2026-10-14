@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/IpRateLimiter.php';
 require_once __DIR__ . '/RequestLog.php';
 
 function json_out(int $status, array $data): never
@@ -127,15 +126,8 @@ function handle_api(string $path, string $method): void
 
     $user = current_user();
 
-    // Geo: autocomplete de cidades e consulta de CEP (públicos, somente leitura)
-    // Limite por IP nos endpoints públicos de geo: 60 requisições/minuto por endpoint.
-    if (($path === '/api/cidades' || $path === '/api/ceps') && $method === 'GET') {
-        $wait = IpRateLimiter::hit($path, 60, 60);
-        if ($wait > 0) {
-            header('Retry-After: ' . $wait);
-            json_out(429, ['error' => 'Muitas requisições. Tente novamente em instantes.']);
-        }
-    }
+    // Geo: autocomplete de cidades e consulta de CEP (públicos, somente leitura).
+    // Limite por IP (60/min por endpoint) na camada ApiRateLimit do pipeline (public/index.php).
 
     if ($path === '/api/cidades' && $method === 'GET') {
         $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 80);
