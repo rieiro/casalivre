@@ -5,7 +5,7 @@
                 <?php if (!empty($item['photo'])): ?>
                     <img src="<?= e(photo_url(photo_variant($item['photo'], 'card'))) ?>"<?= photo_srcset_attr($item['photo'], '(max-width: 600px) 100vw, 400px') ?> alt="Foto principal de <?= e($item['title']) ?>" loading="lazy">
                 <?php else: ?>
-                    <img src="/assets/placeholder.svg" alt="<?= e(t('home.no_photo')) ?>" loading="lazy">
+                    <img src="<?= e(photo_url(null)) ?>" alt="<?= e(t('home.no_photo')) ?>" loading="lazy">
                 <?php endif; ?>
             </a>
             <div class="body">

@@ -53,6 +53,7 @@ window.CL = {
         });
     },
     // Fotos: só caminhos relativos em /uploads/ (mesma regra de photo_url() no PHP); o resto vira placeholder.
+    // O caminho do placeholder fica repetido aqui de propósito (o JS não chama o PHP); manter igual ao de photo_url().
     photoUrl(path) {
         const p = String(path || '');
         return /^\/uploads\/[A-Za-z0-9_\/.-]+$/.test(p) && !p.includes('..') ? p : '/assets/placeholder.svg';

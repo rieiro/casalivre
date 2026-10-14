@@ -13,7 +13,7 @@
                         <?php if (!empty($item['photo'])): ?>
                             <img src="<?= e(photo_url($item['photo'])) ?>" alt="Foto de <?= e($item['title']) ?>" loading="lazy">
                         <?php else: ?>
-                            <img src="/assets/placeholder.svg" alt="Sem foto" loading="lazy">
+                            <img src="<?= e(photo_url(null)) ?>" alt="Sem foto" loading="lazy">
                         <?php endif; ?>
                         <div class="body">
                             <h2><?= e($item['title']) ?></h2>
