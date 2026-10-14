@@ -34,7 +34,7 @@ foreach (['google', 'gstatic', 'unsafe', 'data:', 'blob:', '*'] as $bad) {
     t_ok(!str_contains($strict, $bad), "CSP sem '$bad'");
 }
 t_ok(!function_exists('maps_key'), 'maps_key() removida');
-t_eq(4, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 4 (err.field_type/js.* semeados em bancos existentes)');
+t_ok(Db::SCHEMA_VERSION >= 4, 'SCHEMA_VERSION >= 4 (err.field_type/js.* semeados em bancos existentes)');
 
 echo "header CSP\n";
 foreach (['/', '/entrar', '/busca?localidade=Florian%C3%B3polis', '/imoveis/' . $owner['hash'], '/api/busca?localidade=x'] as $path) {

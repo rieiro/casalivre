@@ -1,9 +1,23 @@
 <?php
 // Mailer SMTP contra servidor falso local: sem TLS (só localhost), STARTTLS e TLS implícito com AUTH;
 // link sempre sobre APP_URL; mail-dev.log em dev sem SMTP; integração com POST /api/users.
+// O envio passa pela fila: sendAccountLink() só enfileira e o worker (MailWorker::run) entrega.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/Mailer.php';
+require_once CL_ROOT . '/src/MailWorker.php';
+t_temp_db();
+$lock = tempnam(sys_get_temp_dir(), 'mwlock');
+/** Enfileira e roda um lote do worker; true se o e-mail foi entregue. */
+function send_now(string $email, string $link): bool
+{
+    global $lock;
+    if (!Mailer::sendAccountLink($email, $link)) {
+        return false;
+    }
+    $report = MailWorker::run(Mailer::queue(), $lock);
+    return ($report['enviados'] ?? 0) === 1;
+}
 
 $tmp = sys_get_temp_dir() . '/cl-mail-' . bin2hex(random_bytes(3));
 mkdir($tmp, 0700);
@@ -80,12 +94,13 @@ echo "dev sem SMTP: mail-dev.log 0600\n";
 putenv('APP_ENV=dev');
 putenv('APP_URL=http://127.0.0.1:8080');
 Mailer::$devLogDir = $tmp;
-t_ok(Mailer::sendAccountLink('ana@casalivre.test', 'http://h/verificar?token=TOKDEV'), 'grava no mail-dev.log');
+t_ok(send_now('ana@casalivre.test', 'http://h/verificar?token=TOKDEV'), 'worker grava no mail-dev.log');
 $f = $tmp . '/mail-dev.log';
 t_eq('0600', substr(sprintf('%o', fileperms($f)), -4), 'permissão 0600');
 t_ok(str_contains((string) file_get_contents($f), 'http://127.0.0.1:8080/verificar?token=TOKDEV'), 'link com APP_URL no arquivo');
 putenv('APP_ENV=production');
-t_ok(!Mailer::sendAccountLink('ana@casalivre.test', 'http://h/verificar?token=TOKPROD'), 'produção sem SMTP: não envia');
+t_ok(!send_now('ana@casalivre.test', 'http://h/verificar?token=TOKPROD'), 'produção sem SMTP: não envia');
+t_eq(0, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE body LIKE '%TOKPROD%'")->fetchColumn(), 'produção sem SMTP: link não enfileirado');
 t_ok(!str_contains((string) file_get_contents($f), 'TOKPROD'), 'produção sem SMTP: nada no mail-dev.log');
 Mailer::$devLogDir = null;
 
@@ -99,7 +114,7 @@ putenv('SMTP_SECURE=none');
 putenv('SMTP_FROM=nao-responda@casalivre.example');
 putenv('SMTP_USER=usuario');
 putenv('SMTP_PASS=segredo');
-t_ok(Mailer::sendAccountLink('bia@casalivre.test', 'http://forjado/verificar?token=TOK1'), 'envio ok');
+t_ok(send_now('bia@casalivre.test', 'http://forjado/verificar?token=TOK1'), 'envio ok');
 $m = last_msg($out);
 t_eq('ok', $m['auth'] ?? null, 'AUTH aceito');
 t_ok(str_contains($m['from'] ?? '', 'nao-responda@casalivre.example') && str_contains(implode(',', $m['to'] ?? []), 'bia@casalivre.test'), 'MAIL FROM / RCPT TO');
@@ -108,7 +123,7 @@ t_ok(str_contains($body, 'https://casalivre.example/verificar?token=TOK1') && !s
 t_ok(str_contains((string) $m['data'], 'Subject: =?UTF-8?B?'), 'assunto codificado');
 t_ok(!str_contains(implode("\n", Mailer::$lastTranscript), base64_encode("\0usuario\0segredo")), 'transcript sem credenciais');
 putenv('SMTP_PASS=errada');
-t_ok(!Mailer::sendAccountLink('bia@casalivre.test', 'http://x/verificar?token=TOK2'), 'senha errada: falha sem exceção');
+t_ok(!send_now('bia@casalivre.test', 'http://x/verificar?token=TOK2'), 'senha errada: falha sem exceção');
 putenv('SMTP_PASS=segredo');
 putenv('SMTP_HOST=smtp.exemplo.com');
 $err = null;
@@ -141,9 +156,9 @@ if ($haveSsl) {
         putenv('SMTP_PORT=' . $port);
         putenv('SMTP_SECURE=' . $mode);
         putenv('SMTP_CA_FILE');
-        t_ok(!Mailer::sendAccountLink('cris@casalivre.test', 'http://x/verificar?token=NOCA'), "$mode: certificado não confiável é recusado");
+        t_ok(!send_now('cris@casalivre.test', 'http://x/verificar?token=NOCA'), "$mode: certificado não confiável é recusado");
         putenv('SMTP_CA_FILE=' . $cert);
-        t_ok(Mailer::sendAccountLink('cris@casalivre.test', 'http://x/senha/redefinir?token=TOK3'), "$mode: envio ok com CA");
+        t_ok(send_now('cris@casalivre.test', 'http://x/senha/redefinir?token=TOK3'), "$mode: envio ok com CA");
         $m = last_msg($out);
         t_ok(($m['tls'] ?? false) === true && ($m['auth'] ?? null) === 'ok', "$mode: TLS ativo antes do AUTH");
         t_ok(str_contains(body_of($m ?? []), 'https://casalivre.example/senha/redefinir?token=TOK3'), "$mode: link de redefinição");
@@ -152,8 +167,9 @@ if ($haveSsl) {
     echo "openssl ausente: testes TLS pulados\n";
 }
 
-echo "integração: POST /api/users envia e-mail\n";
-t_temp_db();
+echo "integração: POST /api/users enfileira; o worker envia\n";
+// Mesmo banco temporário do início (db() já está aberto nele); só esvazia a fila dos casos anteriores.
+db()->exec('DELETE FROM mail_queue');
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC')");
 $out = $tmp . '/api.jsonl';
 $port = fake_smtp('plain', $out, $procs);
@@ -172,6 +188,9 @@ $r = t_http('POST', $base . '/api/users', json_encode(['name' => 'Api Teste', 'c
     'address_number' => '1', 'address_complement' => '', 'phone' => '(48) 99999-0000', 'email' => $email,
     'password' => $pass, 'password_confirm' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . ($mm[1] ?? '')], $jar);
 t_eq(201, $r['status'], 'cadastro 201');
+t_eq(null, last_msg($out), 'requisição não fala com o SMTP (só enfileira)');
+t_eq(1, (int) db()->query("SELECT COUNT(*) FROM mail_queue WHERE status = 'pending'")->fetchColumn(), 'um e-mail pendente na fila');
+t_eq(1, MailWorker::run(Mailer::queue(), $lock)['enviados'] ?? null, 'worker envia o e-mail da fila');
 $m = last_msg($out);
 t_ok($m !== null && str_contains(implode(',', $m['to']), $email), 'e-mail entregue ao SMTP');
 t_ok($m !== null && str_contains(body_of($m), 'https://casalivre.example/verificar?token='), 'link de ativação com APP_URL');
