@@ -117,6 +117,8 @@ return Seguranca::pipeline(
             ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
             // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
             ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
+            // Avaliação pelo formulário web: mesmo balde da API (10 por hora por IP, somando os dois).
+            ['POST', '#^/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
             // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
             ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
             ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
