@@ -3,3 +3,4 @@ resultados/
 relatorio-html/
 fixtures/fotos/*
 !fixtures/fotos/gerar.py
+fixtures/tiles/
