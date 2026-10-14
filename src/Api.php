@@ -357,18 +357,16 @@ function handle_api(string $path, string $method): void
         if (!$house || ($house['status'] ?? 'active') !== 'active') {
             json_out(404, ['error' => 'Imóvel não encontrado.']);
         }
-        $score = (int) ($body['score'] ?? 0);
-        $author = trim((string) ($body['author'] ?? 'Hóspede'));
-        $comment = trim((string) ($body['comment'] ?? ''));
-        if ($score < 1 || $score > 10) {
-            json_out(422, ['error' => 'Nota deve ser entre 1 e 10.']);
+        $res = ReviewAdd::run(
+            (int) $house['id'],
+            (int) ($body['score'] ?? 0),
+            trim((string) ($body['author'] ?? 'Hóspede')),
+            trim((string) ($body['comment'] ?? ''))
+        );
+        $res->registrar();
+        if ($res->tipo === 'invalido') {
+            json_out(422, ['error' => $res->mensagem]);
         }
-        HouseRepository::addReview((int) $house['id'], $author === '' ? 'Hóspede' : $author, $score, $comment);
-        activity(ActivityLog::REVIEW, [
-            'imovel_id' => (int) $house['id'],
-            'nota' => $score,
-            'autor' => $author === '' ? 'Hóspede' : $author,
-        ]);
         json_out(201, ['ok' => true]);
     }
 

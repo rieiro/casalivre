@@ -96,6 +96,7 @@ require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
 require_once __DIR__ . '/../src/Acoes/ICalImport.php';
 require_once __DIR__ . '/../src/Acoes/ICalFeedRemove.php';
 require_once __DIR__ . '/../src/Acoes/CoverSet.php';
+require_once __DIR__ . '/../src/Acoes/ReviewAdd.php';
 
 return Seguranca::pipeline(
     [
@@ -680,12 +681,13 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
         http_response_code(404);
         exit('Imóvel não encontrado.');
     }
-    $score = (int) ($_POST['score'] ?? 0);
-    $author = trim((string) ($_POST['author'] ?? 'Hóspede'));
-    if ($score >= 1 && $score <= 10) {
-        HouseRepository::addReview((int) $property['id'], $author === '' ? 'Hóspede' : $author, $score, trim((string) ($_POST['comment'] ?? '')));
-        activity(ActivityLog::REVIEW, ['imovel_id' => (int) $property['id'], 'nota' => $score, 'autor' => $author === '' ? 'Hóspede' : $author]);
-    }
+    // Web: nota inválida é ignorada em silêncio e segue para o redirect (a API responde 422; ver ReviewAdd).
+    ReviewAdd::run(
+        (int) $property['id'],
+        (int) ($_POST['score'] ?? 0),
+        trim((string) ($_POST['author'] ?? 'Hóspede')),
+        trim((string) ($_POST['comment'] ?? ''))
+    )->registrar();
     $back = safe_search_return((string) ($_POST['volta'] ?? ''));
     redirect('/imoveis/' . $m[1] . ($back !== '/' ? '?' . http_build_query(['volta' => $back]) : ''));
 }
