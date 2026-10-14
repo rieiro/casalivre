@@ -97,11 +97,7 @@ function handle_api(string $path, string $method): void
             json_out(403, ['error' => account_text($result['status'])]);
         }
         if ($result['status'] === 'pending') {
-            $pending = ['error' => t('err.pending')];
-            if (expose_account_links()) {
-                $pending['verification_link'] = $result['user']['activation_link'] ?? null;
-            }
-            json_out(403, $pending);
+            json_out(403, ['error' => t('err.pending')]);
         }
         AccountFlow::openSession((int) $result['user']['id']);
         LoginRateLimiter::clear();

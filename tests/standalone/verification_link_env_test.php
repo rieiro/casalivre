@@ -118,6 +118,10 @@ $lock = $dir . '/w.lock';
 MailWorker::run(MailQueues::make(), $lock);
 $dev = (string) @file_get_contents($dir . '/mail-dev.log');
 t_ok(str_contains($dev, $email) && str_contains($dev, 'https://casalivre.example/verificar?token='), 'dev: link no mail-dev.log usa APP_URL');
+// Depois do worker o link está gravado no usuário; o 403 de conta pendente (dev) não pode expô-lo.
+$r = t_http('POST', $base . '/api/sessao', json_encode(['email' => $email, 'password' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(403, $r['status'], 'dev: login pendente -> 403');
+t_ok(!str_contains($r['body'], 'token') && !str_contains($r['body'], 'verificar') && !str_contains($r['body'], 'verification_link'), 'dev: 403 sem link/token (só no mail-dev.log)');
 array_map('unlink', glob($dir . '/*') ?: []);
 @rmdir($dir);
 putenv('APP_URL');
