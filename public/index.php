@@ -580,7 +580,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $user = require_user();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
-    // (save_calendar), no import_ics e no cron scripts/sync-calendars.php.
+    // (CalendarService::save), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
