@@ -90,6 +90,7 @@ header('Content-Security-Policy: ' . csp_header());
 
 require_once __DIR__ . '/../src/LoginRateLimiter.php';
 require_once __DIR__ . '/../seguranca/Seguranca.php';
+require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
 
 return Seguranca::pipeline(
     [
@@ -383,44 +384,21 @@ if ($path === '/entrar' && $method === 'GET') {
 if ($path === '/entrar' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
-    $result = AccountFlow::checkLogin($email, (string) ($_POST['password'] ?? ''), Settings::int('login_max_failures'));
-    if ($result['status'] === 'locked') {
-        if (isset($result['failures'])) {
-            LoginRateLimiter::hit();
-        }
-        $params = ['email' => $email];
-        if (isset($result['failures'])) {
-            $params['tentativas'] = $result['failures'];
-        }
-        activity(ActivityLog::LOGIN_LOCKED, $params);
-        view('login', ['error' => t('err.locked')]);
+    // Web: grava LOGIN_FAIL para conta apagada/inativa e reenvia a ativação de conta pendente (ver LoginAttempt).
+    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), true, true);
+    $res->registrar();
+    if ($res->tipo === 'ok') {
+        redirect('/painel');
+    }
+    if ($res->tipo === 'pending') {
+        view('verify_pending', ['expires' => $res->dados['expires']]);
         return null;
     }
-    if ($result['status'] === 'bad') {
-        $ipFailures = LoginRateLimiter::hit();
-        activity(ActivityLog::LOGIN_FAIL, ['email' => $email]);
-        if ($ipFailures >= LoginRateLimiter::maxAttempts()) {
-            http_response_code(429);
-            view('login', ['error' => LoginRateLimiter::message()]);
-            return null;
-        }
-        view('login', ['error' => t('err.bad_login')]);
-        return null;
+    if ($res->tipo === 'rate_limited') {
+        http_response_code(429);
     }
-    if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-        activity(ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']);
-        view('login', ['error' => account_text($result['status'])]);
-        return null;
-    }
-    if ($result['status'] === 'pending') {
-        $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
-        view('verify_pending', ['expires' => $pending['expires']]);
-        return null;
-    }
-    AccountFlow::openSession((int) $result['user']['id']);
-    LoginRateLimiter::clear();
-    activity(ActivityLog::LOGIN_OK, ['email' => $email]);
-    redirect('/painel');
+    view('login', ['error' => $res->mensagem]);
+    return null;
 }
 
 if ($path === '/sair' && $method === 'POST') {

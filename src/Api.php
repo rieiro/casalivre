@@ -100,36 +100,20 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        $result = AccountFlow::checkLogin($email, (string) ($body['password'] ?? ''), Settings::int('login_max_failures'));
-        if ($result['status'] === 'locked') {
-            if (isset($result['failures'])) {
-                LoginRateLimiter::hit();
-            }
-            $params = ['email' => $email];
-            if (isset($result['failures'])) {
-                $params['tentativas'] = $result['failures'];
-            }
-            activity(ActivityLog::LOGIN_LOCKED, $params);
-            json_out(423, ['error' => t('err.locked')]);
+        // API: não grava LOGIN_FAIL para conta apagada/inativa e não reenvia ativação (SNAPSHOT, ver LoginAttempt).
+        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), false, false);
+        $res->registrar();
+        $status = match ($res->tipo) {
+            'ok' => 200,
+            'locked' => 423,
+            'rate_limited' => 429,
+            'bad' => 401,
+            default => 403, // deleted | inactive | pending
+        };
+        if ($status === 200) {
+            json_out(200, ['user' => api_public_user($res->dados['user'])]);
         }
-        if ($result['status'] === 'bad') {
-            $ipFailures = LoginRateLimiter::hit();
-            activity(ActivityLog::LOGIN_FAIL, ['email' => $email]);
-            if ($ipFailures >= LoginRateLimiter::maxAttempts()) {
-                json_out(429, ['error' => LoginRateLimiter::message()]);
-            }
-            json_out(401, ['error' => t('err.bad_login')]);
-        }
-        if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-            json_out(403, ['error' => account_text($result['status'])]);
-        }
-        if ($result['status'] === 'pending') {
-            json_out(403, ['error' => t('err.pending')]);
-        }
-        AccountFlow::openSession((int) $result['user']['id']);
-        LoginRateLimiter::clear();
-        activity(ActivityLog::LOGIN_OK, ['email' => $email]);
-        json_out(200, ['user' => api_public_user($result['user'])]);
+        json_out($status, ['error' => $res->mensagem]);
     }
 
     if ($path === '/api/sessao' && $method === 'DELETE') {
