@@ -45,6 +45,15 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - Mapas: sem Google Maps. Hoje são os tiles do OSM, e o OpenMapTiles está no backlog.
 - `LOG_SALT` próprio em produção.
 
+## Otimização de recursos (responsabilidade do Gerente)
+- O Gerente aciona cada bot só quando há tarefa real, com escopo mínimo e critério de pronto claro.
+- Nenhum bot trabalha por iniciativa própria nem em revisão automática. Tudo passa pelo Gerente.
+- Uma tarefa por vez por bot, na ordem de merge. Nada de duas pessoas fazendo a mesma checagem.
+- Reaproveitar ambiente, clone, banco e resultados anteriores. Retestar só o diff.
+- Relatórios curtos: veredito, defeitos e evidências. Logs longos ficam em arquivo, não na mensagem.
+- Análises pesadas (carga, medições, varreduras) só quando o Gerente pedir explicitamente.
+- O Gerente acompanha o volume de trabalho de cada bot no resumo diário e corta o que for desperdício.
+
 ## Comunicação e reuniões
 - Tudo em português.
 - Reunião diária com o usuário para ver o progresso. Ela pode ser adiantada quando todos tiverem entregado e o relatório estiver pronto.
