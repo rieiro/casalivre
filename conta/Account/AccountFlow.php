@@ -95,9 +95,9 @@ final class AccountFlow
         $link = (string) ($user['activation_link'] ?? '');
         if ($expires < date('Y-m-d H:i:s') || $link === '') {
             self::notify('activation', (string) $user['email']);
-            return ['link' => null, 'expires' => self::until($minutes)];
+            return ['expires' => self::until($minutes)];
         }
-        return ['link' => $link, 'expires' => $expires];
+        return ['expires' => $expires];
     }
 
     public static function checkLogin(string $email, string $password, int $maxFailures): array

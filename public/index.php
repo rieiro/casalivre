@@ -326,7 +326,7 @@ if ($path === '/cadastro' && $method === 'POST') {
         return null;
     }
     activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-    view('verify_pending', ['link' => expose_account_links() ? $result['link'] : null, 'expires' => $result['expires']]);
+    view('verify_pending', ['expires' => $result['expires']]);
     return null;
 }
 
@@ -374,7 +374,7 @@ if ($path === '/entrar' && $method === 'POST') {
     }
     if ($result['status'] === 'pending') {
         $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
-        view('verify_pending', ['link' => expose_account_links() ? $pending['link'] : null, 'expires' => $pending['expires']]);
+        view('verify_pending', ['expires' => $pending['expires']]);
         return null;
     }
     AccountFlow::openSession((int) $result['user']['id']);

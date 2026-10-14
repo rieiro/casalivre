@@ -122,6 +122,10 @@ t_ok(str_contains($dev, $email) && str_contains($dev, 'https://casalivre.example
 $r = t_http('POST', $base . '/api/sessao', json_encode(['email' => $email, 'password' => $pass]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 t_eq(403, $r['status'], 'dev: login pendente -> 403');
 t_ok(!str_contains($r['body'], 'token') && !str_contains($r['body'], 'verificar') && !str_contains($r['body'], 'verification_link'), 'dev: 403 sem link/token (só no mail-dev.log)');
+$wjar = tempnam(sys_get_temp_dir(), 'jar');
+$r = t_http('POST', $base . '/entrar', http_build_query(['_csrf' => csrf_of($base, $wjar), 'email' => $email, 'password' => $pass]), ['Content-Type: application/x-www-form-urlencoded'], $wjar);
+t_ok(str_contains($r['body'], 'Enviamos um link'), 'dev: tela de conta pendente (web)');
+t_ok(!str_contains($r['body'], 'token=') && !str_contains($r['body'], '/verificar'), 'dev: tela pendente (web) sem token nem link /verificar');
 array_map('unlink', glob($dir . '/*') ?: []);
 @rmdir($dir);
 putenv('APP_URL');
