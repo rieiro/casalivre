@@ -403,7 +403,7 @@ if ($path === '/entrar' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     // Web: grava LOGIN_FAIL para conta apagada/inativa e reenvia a ativação de conta pendente (ver LoginAttempt).
-    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), true, true);
+    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), logInactive: true, ensureActivation: true);
     $res->registrar();
     if ($res->tipo === 'ok') {
         redirect('/painel');
@@ -643,7 +643,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $url = trim((string) ($_POST['external_ical_url'] ?? ''));
     $feedTitle = trim((string) ($_POST['feed_title'] ?? ''));
     // Web: URL vazia vira "link salvo", CALENDAR_FEED_ADD sempre, CALENDAR_SYNC só em sucesso (ver ICalImport).
-    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, true);
+    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, Canal::Web);
     $res->registrar();
     $message = $res->mensagem;
     $messageTone = in_array($res->tipo, ['vazio', 'ok'], true) ? 'ok' : 'error';

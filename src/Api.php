@@ -127,7 +127,7 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
         // API: não grava LOGIN_FAIL para conta apagada/inativa e não reenvia ativação (SNAPSHOT, ver LoginAttempt).
-        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), false, false);
+        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), logInactive: false, ensureActivation: false);
         $res->registrar();
         $status = match ($res->tipo) {
             'ok' => 200,
@@ -485,7 +485,7 @@ function handle_api(string $path, string $method): void
             api_error(422, 'URL obrigatória.');
         }
         // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
-        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, false);
+        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, Canal::Api);
         $res->registrar();
         if ($res->tipo === 'limit') {
             api_error(422, 'Limite de feeds atingido.');
