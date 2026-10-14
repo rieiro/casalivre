@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/JobQueue.php';
+require_once dirname(__DIR__) . '/conta/Account/Email.php';
 
 /**
  * Fila de e-mails de conta. A requisição só enfileira o tipo e o e-mail (push); o worker
@@ -13,8 +14,10 @@ interface MailQueue extends JobQueue
 {
     public const TYPES = ['activation', 'reset', 'exists'];
     public const COOLDOWN_SECONDS = 300;
+    /** Aviso 'exists' (alguém tentou cadastrar o e-mail / reenvio da ativação): 1 por destinatário a cada 24 h. */
+    public const EXISTS_COOLDOWN_SECONDS = 86400;
 
-    /** Enfileira (tipo, e-mail). Devolve false se já houve pedido igual nos últimos COOLDOWN_SECONDS. */
+    /** Enfileira (tipo, e-mail). Devolve false se já houve pedido igual dentro do intervalo do tipo (MailQueues::cooldownSeconds). */
     public function push(string $type, string $recipient): bool;
 }
 
@@ -29,6 +32,12 @@ final class MailQueues
         return match (Queues::driver()) {
             'sqlite' => new SqliteMailQueue(db()),
         };
+    }
+
+    /** Intervalo mínimo entre pedidos iguais (tipo + destinatário): exists 24 h, demais 5 min. */
+    public static function cooldownSeconds(string $type): int
+    {
+        return $type === 'exists' ? MailQueue::EXISTS_COOLDOWN_SECONDS : MailQueue::COOLDOWN_SECONDS;
     }
 
     public static function backoffSeconds(int $attempts): int
@@ -65,7 +74,7 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
     public static function cooldownKey(string $type, string $recipient): string
     {
         $salt = (string) (getenv('LOG_SALT') ?: 'casalivre-mail-queue');
-        return hash_hmac('sha256', $type . "\n" . strtolower(trim($recipient)), $salt);
+        return hash_hmac('sha256', $type . "\n" . Email::normalize($recipient), $salt);
     }
 
     public function push(string $type, string $recipient): bool
@@ -75,13 +84,13 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
         }
         $key = self::cooldownKey($type, $recipient);
         $recent = $this->pdo->prepare('SELECT 1 FROM mail_queue WHERE cooldown_key = ? AND created_at > ? LIMIT 1');
-        $recent->execute([$key, self::now(-self::COOLDOWN_SECONDS)]);
+        $recent->execute([$key, self::now(-MailQueues::cooldownSeconds($type))]);
         $hit = $recent->fetchColumn() !== false;
         $recent->closeCursor();
         if ($hit) {
             return false;
         }
-        $this->insertJob(['type' => $type, 'recipient' => strtolower(trim($recipient)), 'cooldown_key' => $key]);
+        $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient), 'cooldown_key' => $key]);
         return true;
     }
 }

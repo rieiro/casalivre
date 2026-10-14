@@ -89,6 +89,21 @@ final class Mailer
     {
         require_once __DIR__ . '/Settings.php';
         require_once dirname(__DIR__) . '/conta/Account/AccountFlow.php';
+        $email = Email::normalize($email);
+        if ($type === 'exists') {
+            $user = UserRepository::findByEmail($email);
+            if (!$user) {
+                return false;
+            }
+            if (($user['status'] ?? '') !== 'pending') {
+                [$subject, $body] = self::existsNotice();
+                self::deliver($email, $subject, $body);
+                return true;
+            }
+            // Conta ainda não ativada: reenvia a ativação no lugar do aviso (continua limitado
+            // pelo intervalo de 24 h do tipo exists).
+            $type = 'activation';
+        }
         $isReset = $type === 'reset';
         $path = $isReset ? '/senha/redefinir?token=' : '/verificar?token=';
         $minutes = Settings::int($isReset ? 'password_reset_minutes' : 'email_verify_minutes');
@@ -96,13 +111,38 @@ final class Mailer
         if ($url === null) {
             return false;
         }
-        $subject = $isReset ? 'CasaLivre: redefinição de senha' : 'CasaLivre: ative sua conta';
-        $body = ($isReset
-            ? "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
-            : "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n")
-            . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n";
+        [$subject, $body] = self::linkMail($type, $url);
         self::deliver($email, $subject, $body);
         return true;
+    }
+
+    /** Aviso "alguém tentou cadastrar seu e-mail" (sem token). @return array{0: string, 1: string} assunto e corpo */
+    public static function existsNotice(): array
+    {
+        return [
+            'CasaLivre: alguém tentou cadastrar seu e-mail',
+            "Alguém tentou cadastrar este e-mail na CasaLivre, mas ele já tem uma conta.\r\n\r\n"
+                . "Se foi você, entre com sua senha ou use \"Esqueci a senha\":\r\n"
+                . self::linkFromAppUrl('http://localhost/senha/esqueci') . "\r\n\r\n"
+                . "Se não foi você, ignore este e-mail; nada foi alterado na sua conta.\r\n",
+        ];
+    }
+
+    /** E-mail com link de uso único (activation ou reset). @return array{0: string, 1: string} assunto e corpo */
+    public static function linkMail(string $type, string $url): array
+    {
+        if ($type === 'reset') {
+            return [
+                'CasaLivre: redefinição de senha',
+                "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
+                    . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
+            ];
+        }
+        return [
+            'CasaLivre: ative sua conta',
+            "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n"
+                . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
+        ];
     }
 
     /**

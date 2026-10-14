@@ -198,7 +198,8 @@ t_ok($m !== null && str_contains(body_of($m), 'https://casalivre.example/verific
 $tok = db()->prepare('SELECT activation_token FROM users WHERE email = ?');
 $tok->execute([$email]);
 $tok = (string) $tok->fetchColumn();
-t_ok($tok !== '' && $m !== null && str_contains(body_of($m), 'token=' . $tok), 'token gerado pelo worker e gravado no usuário');
+$rawTok = $m !== null && preg_match('/token=([0-9a-f]{32})/', body_of($m), $mm) === 1 ? $mm[1] : '';
+t_ok($rawTok !== '' && hash_equals($tok, hash('sha256', $rawTok)) && !str_contains(body_of($m), $tok), 'e-mail leva o token bruto; usuário guarda só o sha256');
 t_eq('', (string) db()->query('SELECT recipient FROM mail_queue')->fetchColumn(), 'após ack: destinatário apagado');
 
 foreach (['APP_ENV', 'APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'SMTP_SECURE', 'SMTP_CA_FILE'] as $k) {

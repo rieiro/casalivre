@@ -96,6 +96,9 @@ return Seguranca::pipeline(
             ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
             // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
             ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
+            // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
+            ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
+            ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
@@ -360,7 +363,6 @@ if ($path === '/cadastro' && $method === 'POST') {
         view('register', ['error' => account_text($result['error']), 'old' => $registerOld]);
         return null;
     }
-    activity(ActivityLog::REGISTER, ['email' => $result['email']]);
     view('verify_pending', ['expires' => $result['expires']]);
     return null;
 }

@@ -82,6 +82,12 @@ function expire_user_session(): void
 {
     $minutes = max(1, Settings::int('session_minutes') ?: 60);
     SessionGuard::expire($minutes);
+    // Redefinição de senha incrementa users.session_version: sessões abertas antes saem.
+    if (!empty($_SESSION['user_id'])
+        && (int) ($_SESSION['session_version'] ?? 0) !== UserRepository::sessionVersion((int) $_SESSION['user_id'])) {
+        unset($_SESSION['user_id'], $_SESSION['auth_at'], $_SESSION['session_version']);
+        $_SESSION['session_expired'] = 1;
+    }
 }
 
 function account_previous(array $user): array

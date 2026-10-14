@@ -11,17 +11,16 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     activation_token TEXT,
-    activation_link TEXT,
     activation_expires_at TIMESTAMP,
     activated_at TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'active',
     reset_token TEXT,
-    reset_link TEXT,
     reset_expires_at TIMESTAMP,
     inactivated_at TIMESTAMP,
     inactivated_ip TEXT,
     deleted_at TIMESTAMP,
     failed_logins INTEGER NOT NULL DEFAULT 0,
+    session_version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     audit_hold TEXT
 );
@@ -109,6 +108,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token) WHERE activation_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_properties_city ON properties(city);
 CREATE INDEX IF NOT EXISTS idx_properties_user ON properties(user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);
