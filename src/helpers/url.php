@@ -122,8 +122,13 @@ function reject_oversize_upload(): void
     $sent = number_format($length / 1048576, 1, ',', '');
     $limit = (string) (int) floor($max / 1048576);
     http_response_code(413);
+    // Roda antes dos headers globais do index.php: manda aqui os mesmos headers de segurança.
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: same-origin');
+    header('Content-Security-Policy: ' . csp_header());
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="javascript:history.back()">Voltar</a></p></body></html>';
+    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
 }
 
