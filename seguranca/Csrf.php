@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Middleware.php';
+require_once __DIR__ . '/BodyLimit.php';
 
 final class Csrf implements Middleware
 {
@@ -19,12 +20,13 @@ final class Csrf implements Middleware
         return (string) $_SESSION['csrf'];
     }
 
+    /** Corpo bruto, no máximo BodyLimit::MAX_BYTES; vazio se o BodyLimit recusaria a requisição. */
     public static function rawBody(): string
     {
         static $cached = null;
         if ($cached === null) {
-            $read = file_get_contents('php://input');
-            $cached = is_string($read) ? $read : '';
+            $read = BodyLimit::status() !== null ? '' : file_get_contents('php://input', false, null, 0, BodyLimit::MAX_BYTES + 1);
+            $cached = is_string($read) && strlen($read) <= BodyLimit::MAX_BYTES ? $read : '';
         }
         return $cached;
     }
@@ -33,7 +35,7 @@ final class Csrf implements Middleware
     {
         $method = strtoupper((string) ($request['method'] ?? 'GET'));
         $path = (string) ($request['path'] ?? '/');
-        if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && !in_array($path, $this->semCsrf, true) && !$this->valid()) {
+        if (in_array($method, self::WRITE_METHODS, true) && !in_array($path, $this->semCsrf, true) && !$this->valid()) {
             ($this->recusar)('csrf', $path);
             exit;
         }

@@ -4,11 +4,21 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Em andamento
 
+### Sprint 2 (ordem)
+
+1. **#35** — tokens sha256 + resposta genérica no cadastro (`email_taken`)
+2. **#36** — API pública sem endereço + coordenada pública aproximada
+3. Fotos assíncronas em WebP (caminho com uuid)
+4. Mapas PMTiles (Brasil) + MapLibre GL
+5. Refatoração DRY (Mailer/helpers, base_url, Db::transactional, RequestLog)
+
 | PR | Assunto | Situação |
 |----|---------|----------|
-| #21 | Issue #20: camas por quarto e separação no layout | aprovado pela Segurança e pelo Revisor (ajustes menores); QA em andamento |
-| #23 | XSS nas views, CSP e `str_field()` | mudanças pedidas pelo Revisor; entra depois do #21 |
-| — | Refatoração DRY do que já foi mesclado (Mailer/helpers, base_url, Db::transactional, RequestLog) | sem urgência |
+| #35 | Tokens só como hash; cadastro sem revelar e-mail existente | em andamento |
+| #36 | API pública sem `address`; bairro e cidade; coordenada aproximada | em andamento |
+| — | Fotos WebP assíncronas (libvips, caminho uuid) | a seguir |
+| — | Mapas PMTiles + MapLibre | a seguir |
+| — | Refatoração DRY | sem urgência |
 
 ## Segurança e LGPD
 
@@ -16,7 +26,6 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 - [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
 - [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
-- [ ] `Csrf::rawBody` com limite de tamanho (checar `CONTENT_LENGTH`).
 
 - [ ] **ALTA, antes de abrir o cadastro:** enviar o e-mail por fila (storage/mail ou tabela) com worker ou cron, com resposta em tempo constante no esqueci-senha (hoje o tempo revela quais e-mails têm conta).
 - [ ] Mostrar "Enviamos um link" só depois de enfileirar com sucesso, e avisar o usuário quando o envio falhar.
@@ -26,11 +35,11 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] `.env.example` com `APP_URL` vazio.
 - [ ] Login de conta pendente pela API reenviando o link quando ele expirou.
 
-- [ ] `ExceptionShield` e `INTERNAL_ERROR`: mensagem e trace (que podem trazer SQL com dado pessoal) só no `error.log`, mascarados; no `activity_log`, só classe, código e arquivo:linha.
-- [ ] Resposta genérica no cadastro com e-mail existente e tempo constante no esqueci-senha (anti-enumeração).
+- [ ] **Em andamento (#35):** resposta genérica no cadastro com e-mail existente e tempo constante no esqueci-senha (anti-enumeração).
 - [ ] `BODY_VALUE_ALLOWLIST` limitado a valores escalares.
-- [ ] Tokens de ativação e redefinição só como hash sha256; remover as colunas `*_link` (confirmado pela Segurança na análise do #32, em `UserRepository.php:116-125`).
-- [ ] Cadastro: o `409 email_taken` revela quem tem conta. Trocar por uma resposta genérica, com o aviso indo por e-mail (Segurança, #32, baixa).
+- [ ] **Em andamento (#35):** tokens de ativação e redefinição só como hash sha256; remover as colunas `*_link`.
+- [ ] **Em andamento (#35):** cadastro com resposta genérica (sem `409 email_taken`); aviso por e-mail ao dono, no máximo 1×/dia.
+- [ ] Troca de e-mail estando logado: confirmar o e-mail novo por link (hoje ainda devolve `email_taken`).
 - [ ] Criptografar `calendar_feeds.url`, `properties.external_ical_url` e `audit_hold`, com coluna HMAC para duplicados.
 - [ ] LGPD: política de retenção, hash de IP e e-mail; separar auditoria de BI.
 - [ ] Prefixos IPv6/TEST-NET restantes em `CalendarSync::isPublicIp` (2001:10::/28, 2001:20::/28, 3fff::/20, 5f00::/16, fec0::/10); `logRef` via `LogPrivacy::url()`; `redactPath` cobrindo segmentos opacos de 20+ caracteres.
@@ -44,13 +53,17 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ## Mapas
 
-- [ ] Trocar o mapa para o OpenMapTiles (decisão do usuário, 13/10) e ajustar o CSP: liberar só na rota do mapa, com hosts explícitos e sem curinga, usar nonce se precisar de style e nunca liberar um domínio que aceite conteúdo de usuários (no teste com o Google Maps, uma injeção de CSS vazou o token CSRF por `*.googleapis.com`). O Google Maps não será usado agora.
+- [ ] **PMTiles do Brasil** (decisão do usuário, 14/10): arquivo Protomaps (`pmtiles extract`), servido estático pelo nginx em produção; em dev, rota PHP com HTTP Range. Front com **MapLibre GL** (não Leaflet). Atribuição obrigatória "© OpenStreetMap contributors". Mapa com lazy-load e clusters em GeoJSON. CSP: liberar só na rota do mapa, com hosts explícitos e sem curinga; nonce se precisar de style; nunca liberar domínio que aceite conteúdo de usuários. O Google Maps não será usado.
 
 ## Bugs
 
 - [ ] Testes: no erro de nonce do t_server(), mostrar só as últimas 20 linhas do stderr, e não umas 200.
 
-- [ ] Mapa: imóveis da mesma cidade têm a mesma lat/lng, então só 1 marcador aparece. Agrupar com contador ou dar um pequeno deslocamento (junto com o OpenMapTiles).
+- [ ] Baixa (QA #34): o aviso do teto cheio do rate limit vai para `php.log`.
+- [ ] Baixa (QA #34): a suíte standalone deixa estado em `storage/cache/ratelimit`.
+- [ ] Baixa (QA #34): não há E2E que submeta avaliação.
+
+- [ ] **Em andamento (#36 / mapas):** coordenada pública aproximada (3 casas + deslocamento fixo 300–500 m por imóvel) e clusters no MapLibre; resolve marcadores empilhados e o vazamento da lat/lng exata.
 
 - [ ] Imóvel antigo com título acima de 25 caracteres não pode ser editado pela API sem encurtar o título (422 com mensagem clara). Sem migração: recriar o banco ou validar só na criação.
 
@@ -69,7 +82,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca
 - [ ] **No mesmo PR:** remover EXIF/GPS das fotos, inclusive das já gravadas (LGPD, alto).
 - [ ] **No mesmo PR:** `srcset`/`sizes`, `width`/`height` e `decoding=async` nas imagens.
 - [ ] Upload de 16 MB → ~10 MB, com limite de pixels (DoS).
-- [ ] API pública: tirar `address`, `property_id` e `audit_hold` de `/api/imoveis/{hash}` e das fotos (privacidade).
+- [ ] **Em andamento (#36):** API pública sem `address`, `property_id` e `audit_hold` em `/api/imoveis/{hash}` e nas fotos; página pública com "bairro · cidade"; coordenada aproximada no mapa.
 - [ ] Sessão só quando há cookie ou rota autenticada. `ETag`/304 nas rotas públicas e `private, no-store` nas autenticadas (pré-requisito de cache/CDN).
 - [ ] Paginação no servidor em `/api/busca` e período `?de=&ate=` no calendário (hoje são 24 meses).
 - [ ] Referer nos tiles da busca.
@@ -80,6 +93,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca
 
 ## Concluído
 
+- [x] PR #34 (pipeline de segurança: rate limit da API, `Csrf::rawBody`/413, máscara no `error.log`, sessão preguiçosa) mesclado na develop (7de17a9).
 - [x] PRs #18 (scripts de teste) e #19 (docs) mesclados na develop (6b26252).
 
 ## Regras

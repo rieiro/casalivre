@@ -212,8 +212,18 @@ function raw_body(): string
     return Csrf::rawBody();
 }
 
+/** Abre a sessão sob demanda (antes de qualquer saída). */
+function ensure_session(): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
+        require_once __DIR__ . '/SecureSession.php';
+        SecureSession::start();
+    }
+}
+
 function csrf_token(): string
 {
+    ensure_session();
     require_once dirname(__DIR__) . '/seguranca/Csrf.php';
     return Csrf::token();
 }

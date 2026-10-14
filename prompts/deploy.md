@@ -22,6 +22,15 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **Saída HTTP 80/443 e DNS** liberados para os feeds iCal. O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
 - [ ] **Host fixo**: nginx com `server_name` explícito e `default_server` devolvendo 444 (bloqueia Host forjado nos links de e-mail).
 
+## Limites de requisição (PR #34)
+
+- [ ] **nginx `client_max_body_size 1m`** no geral; maior (ex.: `20m`) só no `location` `^/api/casas/[a-f0-9]{16}/fotos$`.
+- [ ] **`fastcgi_request_buffering on`** (padrão; manter ligado).
+- [ ] **php.ini:** `post_max_size` e `upload_max_filesize` coerentes com o nginx (ex.: `20M` / `16M`); `zend.exception_ignore_args = On`.
+- [ ] **`real_ip`** só atrás de proxy confiável (não aceitar `X-Forwarded-For` de qualquer origem).
+- [ ] **`storage/cache/ratelimit`** com permissão `0700` (dono do php-fpm). O diretório se limpa sozinho; o cron de limpeza fica opcional.
+- [ ] **`storage/logs/error.log`** com permissão `0600`, retenção ativa, e amostrar o arquivo depois do deploy (sem dado pessoal).
+
 ## Variáveis de ambiente
 
 - [ ] **`LOG_SALT` (obrigatório)**: valor aleatório próprio de cada ambiente (`openssl rand -hex 32`), fora do repositório, sem fallback para `APP_KEY`. Sem ele, usuário, e-mail, UA e URLs são omitidos dos logs e `scripts/log-lookup.php` sai com código 2. Trocar o valor depois quebra a busca de registros antigos.
@@ -33,7 +42,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **`ACTIVITY_DB_PATH`**: só para testes, sem valor em produção.
 - [ ] `APP_ENV` e `APP_URL` documentados no `.env.example`.
 
-- [ ] **nginx `client_max_body_size`** nas rotas `/api` (por exemplo, 1m; maior só no upload de fotos).
+- [ ] **nginx `client_max_body_size`:** ver seção Limites de requisição (PR #34).
 - [ ] **php.ini:** `max_input_vars=1000` e `max_input_nesting_level=64` (os padrões; não aumentar).
 - [ ] **Cache de assets:** com o #23, os assets vão em `app.css?v=19`, `app.js?v=18`, `safe-dom.js?v=3`, `property-form.js?v=3`, `map.js?v=2` e `form-data.js?v=1` (este só no formulário de imóvel); limpar o cache ou a CDN no deploy.
 
@@ -87,7 +96,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 - [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, `activity.sqlite` (DELETE + VACUUM), `error.log`, `calendar-sync.log`, `php.log` e Mongo (`deleteMany`). Confirmar a primeira execução (`sv status` e saída do script).
 - [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity.sqlite`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
-- [ ] **Limpeza do rate limit**: `find storage/cache/ratelimit -mmin +120 -delete` no cron (um arquivo por IP, não expiram sozinhos).
+- [ ] **Limpeza do rate limit (opcional):** com o #34 o diretório se limpa sozinho; se quiser, `find storage/cache/ratelimit -mmin +120 -delete` no cron.
 - [ ] **Limpeza única**: apagar o histórico já existente em `activity.sqlite` (dados pessoais em `valor_anterior`/`valor_atual` gravados antes da allowlist).
 
 ## Permissões e arquivos
