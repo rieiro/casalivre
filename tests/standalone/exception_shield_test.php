@@ -19,7 +19,7 @@ $errLog = CL_ROOT . '/storage/error.log';
 $before = is_file($errLog) ? filesize($errLog) : 0;
 // Força exceção: rota existente com banco removido no meio do caminho não é trivial; usamos um handler de teste.
 $probe = CL_ROOT . '/public/__shield_probe.php';
-file_put_contents($probe, '<?php require_once __DIR__ . "/../src/ExceptionShield.php"; ini_set("zend.exception_ignore_args", "1"); ExceptionShield::register(); function boom(string $segredo) { throw new RuntimeException("falha em /ical/' . $h . '?token=SEGREDO"); } boom("ARGSEGREDO");');
+file_put_contents($probe, '<?php require_once __DIR__ . "/../src/ExceptionShield.php"; ini_set("zend.exception_ignore_args", "1"); ExceptionShield::register(); function boom(string $segredo) { throw new RuntimeException("falha em /ical/' . $h . '?token=SEGREDO; usuario ana.silva@casalivre.test password=SENHAX1 token: TOKENY2 chave ' . str_repeat('Zq9', 12) . '"); } boom("ARGSEGREDO");');
 $r = t_http('GET', $base . "/__shield_probe.php?token=QSEGREDO&h=$h");
 @unlink($probe);
 t_eq(500, $r['status'], 'resposta 500');
@@ -27,12 +27,36 @@ t_ok(!str_contains($r['body'], 'QSEGREDO') && !str_contains($r['body'], $h), 'p�
 clearstatcache();
 $new = (string) substr((string) @file_get_contents($errLog), $before);
 t_ok($new !== '', 'error.log recebeu a entrada');
-foreach (['QSEGREDO', 'SEGREDO', 'ARGSEGREDO', $h] as $secret) {
+foreach (['QSEGREDO', 'SEGREDO', 'ARGSEGREDO', $h, 'ana.silva@casalivre.test', 'casalivre.test', 'SENHAX1', 'TOKENY2', str_repeat('Zq9', 12)] as $secret) {
     t_ok(!str_contains($new, $secret), "error.log não contém '$secret'");
 }
 t_ok(str_contains($new, '{hash}'), 'error.log contém {hash}');
+t_ok(str_contains($new, '{email}') && str_contains($new, '{redacted}') && str_contains($new, '{token}'), 'error.log com e-mail, senha/token e token longo mascarados');
+t_ok(str_contains($new, 'RuntimeException') || str_contains($new, 'boom'), 'trace ainda útil (função/classe)');
+
+echo "Redact::secrets\n";
+$x = Redact::secrets('erro {"email":"joao@x.com","password":"abc123","senha"=>\'s3\'} Authorization: Bearer ' . str_repeat('a', 40));
+t_ok(!str_contains($x, 'joao@x.com') && !str_contains($x, 'abc123') && !str_contains($x, "s3'") && !str_contains($x, str_repeat('a', 40)), 'JSON/array/cabeçalho mascarados');
+
+$cases = [
+    'user[password]=Segredo123&x=1' => 'Segredo123',
+    'SMTP_PASS => "abc def ghi"' => 'def ghi',
+    '{"password":"Segredo 123"}' => '123',
+    'Authorization: Bearer eyJshort' => 'eyJshort',
+    'Basic dXNlcjpw' => 'dXNlcjpw',
+    'smtp://mailer:SmtpPass@host:587' => 'mailer',
+    'cpf 529.982.247-25' => '247-25',
+    'cpf 52998224725' => '52998224725',
+    'tel (48) 99999-0000' => '99999-0000',
+    'tel 48 3222-1111' => '3222-1111',
+];
+foreach ($cases as $in => $leak) {
+    t_ok(!str_contains(Redact::secrets($in), $leak), "secrets: '$in' mascarado");
+}
+t_ok(str_contains(Redact::secrets('#0 /src/Db.php(123): PDO->prepare() 2026-10-14 13:00:00'), 'Db.php(123): PDO->prepare() 2026-10-14 13:00:00'), 'secrets: trace e datas preservados');
 
 echo "bootstrap\n";
-t_ok(str_contains((string) file_get_contents(CL_ROOT . '/public/index.php'), "ini_set('zend.exception_ignore_args', '1')"), 'index.php ativa zend.exception_ignore_args');
+$idx = (string) file_get_contents(CL_ROOT . '/public/index.php');
+t_eq(1, substr_count($idx, "ini_set('zend.exception_ignore_args', '1')"), 'index.php ativa zend.exception_ignore_args uma única vez');
 
 t_done();

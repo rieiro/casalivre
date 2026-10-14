@@ -132,6 +132,9 @@ final class AccountFlow
     public static function openSession(int $id): void
     {
         UserRepository::clearFailures($id);
+        if (session_status() !== PHP_SESSION_ACTIVE && function_exists('ensure_session')) {
+            ensure_session();
+        }
         session_regenerate_id(true);
         $_SESSION['user_id'] = $id;
         $_SESSION['auth_at'] = time();

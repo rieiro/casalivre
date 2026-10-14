@@ -25,6 +25,32 @@ final class Redact
         return self::path($path);
     }
 
+    /**
+     * Para o error.log: além de text(), mascara credenciais em URL (user:pass@), Bearer/Basic,
+     * valores de chaves sensíveis (inclusive user[password], SMTP_PASS, valor entre aspas inteiro),
+     * e-mails, CPF, telefones e sequências longas tipo token.
+     */
+    public static function secrets(string $text): string
+    {
+        $text = self::text($text);
+        $text = preg_replace('#\b([a-z][a-z0-9+.\-]*://)[^\s/@]+@#i', '$1{userinfo}@', $text) ?? $text;
+        $text = preg_replace('/\b(Bearer|Basic)\s+[^\s"\',;]+/i', '$1 {redacted}', $text) ?? $text;
+        $text = preg_replace_callback(
+            '/(?<![A-Za-z0-9])([A-Za-z0-9_\-\[\]]*(?:pass|senha|token|secret|segredo|csrf|api[_\-]?key|authorization|cookie)[A-Za-z0-9_\-\[\]]*)'
+            . '(["\']?\]?\s*(?:=>|[:=])\s*)("[^"]*"|\'[^\']*\'|[^\s"\',;&)]+)/i',
+            static function (array $m): string {
+                $q = $m[3][0] ?? '';
+                $wrap = ($q === '"' || $q === "'") ? $q : '';
+                return $m[1] . $m[2] . $wrap . '{redacted}' . $wrap;
+            },
+            $text
+        ) ?? $text;
+        $text = preg_replace('/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/', '{email}', $text) ?? $text;
+        $text = preg_replace('/(?<![\d.\-])\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?![\d.\-])/', '{cpf}', $text) ?? $text;
+        $text = preg_replace('/(?:\+?55\s?)?(?:\(\d{2}\)\s?|(?<!\d)\d{2}\s)9?\d{4}-?\d{4}(?!\d)|(?<![\d.\-])\d{2}\s?9?\d{4}-\d{4}(?!\d)|(?<!\d)\d{2}9\d{8}(?!\d)/', '{telefone}', $text) ?? $text;
+        return preg_replace('/(?<![A-Za-z0-9_\-])[A-Za-z0-9_\-]{32,}(?![A-Za-z0-9_\-])/', '{token}', $text) ?? $text;
+    }
+
     /** Texto livre (mensagens, stack traces): hashes redigidos e query strings removidas. */
     public static function text(string $text): string
     {
