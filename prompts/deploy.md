@@ -74,6 +74,35 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
 - [ ] CDN (se usada): só /assets/ e /uploads/, num subdomínio sem cookies, com HTML e API na origem. Exige DPA (ela termina o TLS), não pode reescrever CSP nem X-Frame-Options, e precisa de um processo de purge.
 
+## Sprint 2: tokens, API pública, fotos e mapas (PRs #35, #36, #39 e #40)
+
+### Variáveis
+- [ ] **`GEO_SALT` (obrigatório)**: valor aleatório com pelo menos 32 caracteres (`php -r "echo bin2hex(random_bytes(32));"`), próprio de cada ambiente e fora do repositório. Sem ele, ou com menos de 32 caracteres, o app se recusa a subir em produção (500 genérico em todas as rotas e `geo_salt_invalid` no log, sem o valor). O `scripts/setup.sh` mantém um `GEO_SALT` existente ou gera um. Trocar o valor muda a posição de todos os pinos públicos.
+- [ ] **`APP_ENV`** nunca `dev`/`local` em produção (em dev o `GEO_SALT` tem valor fixo e público e a rota PHP de tiles fica aberta).
+- [ ] **`MAP_TILES_FILE`** não definido em produção.
+
+### Banco e tokens (#35, #39)
+- [ ] Recriar o banco com `scripts/setup.sh` (SCHEMA_VERSION 7; sem script de migração).
+- [ ] Tokens de ativação e redefinição já emitidos deixam de valer; quem tiver link pendente pede outro.
+- [ ] Redefinir a senha desconecta o usuário em todos os dispositivos.
+
+### Fotos (#39)
+- [ ] PHP com **GD com suporte a WebP** (`php -r 'var_dump(gd_info()["WebP Support"]);'` deve dar `true`); o worker não roda sem ela. Extensão `exif` opcional (corrige a orientação).
+- [ ] `storage/fotos/originais` com permissão `0700`, dono do php-fpm, fora do webroot; lock do worker `0600`; WebP em `public/uploads/fotos/` com `0644`.
+- [ ] nginx: `location /uploads/` sem execução de PHP e com `add_header X-Content-Type-Options nosniff`.
+- [ ] Cron do worker a cada minuto, com o usuário do php-fpm: `* * * * * php /srv/casalivre/scripts/image-worker.php`, com `memory_limit` de pelo menos `256M` no PHP CLI.
+- [ ] Depois do deploy, o worker migra as fotos antigas de `/uploads/users/%` em lotes de 100 por minuto e apaga cada original antigo depois de copiar; ao final, a pasta `public/uploads/users/` pode ser removida.
+- [ ] Limite de 25 MP por imagem (`MAX_PIXELS`). GIF não é mais aceito.
+
+### Mapa PMTiles (#40)
+- [ ] Copiar o bloco `location = /tiles/brasil.pmtiles` de `prompts/mapa-pmtiles.md` para antes do `location /` do PHP, repetindo nele HSTS (com o **mesmo valor** do bloco `server` de produção; o do PR é suposição), `X-Content-Type-Options nosniff`, `X-Frame-Options` e `Referrer-Policy` (o `add_header` no `location` descarta os do `server`).
+- [ ] Arquivo `/srv/casalivre/storage/tiles/brasil.pmtiles`, dono root, modo `0644`, trocado com `mv` atômico de um `.new`.
+- [ ] Sem gzip/brotli nesse arquivo (quebra o Range). Se houver CDN, `Range` na chave de cache.
+- [ ] Validar com `nginx -t` antes do reload (o bloco não foi validado no PR).
+
+### Rate limit nos formulários web (#35, #39)
+- [ ] `POST /cadastro` (10/h), `POST /senha/esqueci` (5/15 min) e o envio de fotos pela web (30/10 min, somado com a API) usam `REMOTE_ADDR`: atrás de proxy/CDN, `real_ip` é obrigatório; senão todos os visitantes dividem o mesmo limite.
+
 ## Banco de dados (SQLite)
 
 - [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.

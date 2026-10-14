@@ -43,7 +43,7 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - `prompts/deploy.md`: só itens de subida em produção (servidor, variáveis, integrações, banco, tarefas agendadas, permissões, homologação e condições bloqueantes).
 - `prompts/backlog.md`: acompanhamento do desenvolvimento (PRs, ordem de merge, pendências por área, concluídos).
 - `prompts/regrasbots.md`: este arquivo.
-- Só o Gerente edita esses arquivos. Os outros bots mandam o bloco de texto ao Gerente.
+- Só o Gerente edita `prompts/deploy.md`, `prompts/backlog.md` e `prompts/regrasbots.md`. Os outros bots nunca alteram esses arquivos, nem nos PRs: as notas de deploy vão na descrição do PR, e os demais blocos de texto vão ao Gerente.
 
 ## Decisões de produto em vigor
 - E-mail (cadastro e redefinição de senha): código pronto e desligado, sem provedor. As duas funções ficam fechadas em produção até a escolha do provedor.
