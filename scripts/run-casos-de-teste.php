@@ -80,6 +80,74 @@ function assert_true(bool $ok, string $message): void
     echo "FALHOU  $message\n";
 }
 
+/**
+ * Limpeza de sobras de rodadas anteriores, para o CASOS rodar duas vezes seguidas no mesmo banco:
+ * - contas criadas pelo Caso 1 (user<10 dígitos de time()>@casalivre.test; os seeds usam 6 hex) e, em cascata,
+ *   os imóveis/fotos delas (Caso 3), com a fila de imagens e os arquivos das fotos;
+ * - trava de login (tabela login_rate_limit; o Caso RL-1 a dispara de propósito) e limites por IP
+ *   (storage/cache/ratelimit; ex.: 30 envios de foto por 10 min, #39).
+ */
+function limpar_rodada_anterior(): void
+{
+    $root = dirname(__DIR__);
+    require_once $root . '/src/Db.php';
+    require_once $root . '/src/helpers.php';
+    require_once $root . '/src/PhotoStorage.php';
+    $pdo = db();
+    $users = "SELECT id FROM users WHERE email GLOB 'user[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]@casalivre.test'";
+    $photos = $pdo->query("SELECT p.* FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users)")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($photos as $photo) {
+        PhotoStorage::deletePhotoFiles($photo);
+    }
+    $pdo->beginTransaction();
+    $pdo->exec("DELETE FROM image_queue WHERE photo_id IN (SELECT p.id FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users))");
+    $contas = $pdo->exec("DELETE FROM users WHERE id IN ($users)"); // imóveis, fotos, calendário e avaliações em cascata
+    $pdo->exec('DELETE FROM login_rate_limit');
+    $pdo->commit();
+    foreach (glob($root . '/storage/cache/ratelimit/*') ?: [] as $f) {
+        @unlink($f);
+    }
+    echo "Limpeza: $contas conta(s) de rodadas anteriores, " . count($photos) . " foto(s); trava de login e limites por IP zerados\n";
+}
+
+/** Fotos são assíncronas (#39): processa a fila de imagens (o servidor de teste não roda o worker). */
+function processar_fotos(int $rodadas = 3): void
+{
+    $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/scripts/image-worker.php') . ' 2>&1';
+    for ($i = 0; $i < $rodadas; $i++) {
+        shell_exec($cmd);
+    }
+}
+
+limpar_rodada_anterior();
+
+/**
+ * Pré-requisito: fila de imagens vazia. Os seeds só enfileiram as capas (fotos assíncronas, #39); sem o
+ * worker, imóveis dos seeds sem foto pronta podem cair na busca do Caso 4 ("cada item tem foto principal").
+ * Roda o image-worker em laço até a fila esvaziar, com teto de CASOS_FILA_FOTOS_SEGUNDOS (padrão 300 s;
+ * ~10 mil capas dos seeds levam ~4-5 min). No teto, avisa e segue.
+ */
+function esvaziar_fila_de_fotos(): void
+{
+    $teto = max(1, (int) (getenv('CASOS_FILA_FOTOS_SEGUNDOS') ?: 300));
+    $sql = "SELECT COUNT(*) FROM image_queue WHERE status IN ('pending', 'processing')";
+    $inicio = microtime(true);
+    $antes = (int) db()->query($sql)->fetchColumn();
+    $resta = $antes;
+    while ($resta > 0 && microtime(true) - $inicio < $teto) {
+        processar_fotos(1);
+        $resta = (int) db()->query($sql)->fetchColumn();
+    }
+    $seg = round(microtime(true) - $inicio, 1);
+    if ($resta > 0) {
+        echo "AVISO: fila de fotos não esvaziou em {$teto} s ($resta de $antes pendentes); seguindo. Casos com fotos podem falhar; aumente CASOS_FILA_FOTOS_SEGUNDOS.\n";
+        return;
+    }
+    echo "Fila de fotos: $antes pendente(s) processada(s) em {$seg} s\n";
+}
+
+esvaziar_fila_de_fotos();
+
 $suite = getenv('CASOS') ?: 'todos'; // todos | legado | novos
 if ($suite !== 'novos') {
 echo "Caso 1: cadastro (via API) pede senha duas vezes e só ativa pelo link gravado\n";
@@ -181,20 +249,19 @@ for ($n = 1; $n <= 20; $n++) {
     $created++;
     $photoCount = 0;
     $rounds = 0;
-    while ($photoCount < 10 && $rounds < 4) {
+    // Limite #39: 30 envios de foto por 10 min por IP. Um POST por imóvel com as 10 fotos (máx. 10 por POST)
+    // = 20 POSTs no caso inteiro; depois o image-worker processa a fila (fotos assíncronas).
+    while ($photoCount < 10 && $rounds < 2) {
         $rounds++;
-        foreach ($photoFiles as $file) {
-            [$status, , $html] = req('GET', $base . "/imoveis/$id/editar");
-            if (!preg_match('/name="_csrf" value="([^"]+)"/', $html, $csrfMatch)) {
-                continue;
+        [$status, , $html] = req('GET', $base . "/imoveis/$id/editar");
+        if (preg_match('/name="_csrf" value="([^"]+)"/', $html, $csrfMatch)) {
+            $fields = ['_csrf' => $csrfMatch[1]];
+            foreach (array_slice(array_values($photoFiles), 0, 10) as $k => $file) {
+                $fields["fotos[$k]"] = new CURLFile($file, 'image/png', basename($file));
             }
-            req('POST', $base . "/imoveis/$id/fotos", [
-                CURLOPT_POSTFIELDS => [
-                    '_csrf' => $csrfMatch[1],
-                    'fotos[0]' => new CURLFile($file, 'image/png', basename($file)),
-                ],
-            ]);
+            req('POST', $base . "/imoveis/$id/fotos", [CURLOPT_POSTFIELDS => $fields]);
         }
+        processar_fotos();
         [$status, , $html] = req('GET', $base . "/imoveis/$id/editar");
         preg_match('/(\d+) fotos neste anúncio/', $html, $count);
         $photoCount = (int) ($count[1] ?? 0);
