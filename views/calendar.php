@@ -148,6 +148,6 @@ $feeds = $feeds ?? [];
     <?php endif; ?>
 </section>
 <?php page_data(['hash' => property_ref($property)]); ?>
-<script src="/assets/pages/calendar.js?v=1"></script>
-<script src="/assets/pages/calendar-2.js?v=1"></script>
-<script src="/assets/pages/calendar-3.js?v=2"></script>
+<script src="<?= e(asset_url('/assets/pages/calendar.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/pages/calendar-2.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/pages/calendar-3.js')) ?>"></script>

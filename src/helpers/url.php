@@ -145,3 +145,5 @@ function csp_header(): string
         "form-action 'self'",
     ]);
 }
+
+require_once dirname(__DIR__) . '/AssetManifest.php';

@@ -9,4 +9,4 @@
         <p><a href="/entrar"><?= e(t('auth.back_login')) ?></a></p>
     </form>
 </section>
-<script src="/assets/pages/password-forgot.js?v=2"></script>
+<script src="<?= e(asset_url('/assets/pages/password-forgot.js')) ?>"></script>

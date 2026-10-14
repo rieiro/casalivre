@@ -13,8 +13,8 @@ X-Frame-Options: SAMEORIGIN
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Página não encontrada</title>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
-    <link rel="stylesheet" href="/assets/app.css?v=21">
-    <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=4"></script>
+    <link rel="stylesheet" href="/assets/app.css?v=f5565238370c">
+    <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=22fa9ec02338"></script>
 </head>
 <body>
 <header class="top">
@@ -46,6 +46,6 @@ X-Frame-Options: SAMEORIGIN
 </section>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=18"></script>
+<script src="/assets/app.js?v=d5f6a95346f6"></script>
 </body>
 </html>

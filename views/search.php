@@ -122,5 +122,5 @@ $popular = array_slice($popular, 0, 10);
     </div>
 </section>
 <?php if (!empty($use_api) && $searched): ?>
-<script src="/assets/pages/search.js?v=2"></script>
+<script src="<?= e(asset_url('/assets/pages/search.js')) ?>"></script>
 <?php endif; ?>

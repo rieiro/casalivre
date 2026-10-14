@@ -218,5 +218,5 @@
         <p><a href="/imoveis/<?= e(property_ref($property)) ?>/calendario"><?= e(t('dash.calendar')) ?></a></p>
     <?php endif; ?>
 </section>
-<script src="/assets/form-data.js?v=1"></script>
-<script src="/assets/pages/property-form.js?v=3"></script>
+<script src="<?= e(asset_url('/assets/form-data.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/pages/property-form.js')) ?>"></script>
