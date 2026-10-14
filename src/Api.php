@@ -278,7 +278,7 @@ function handle_api(string $path, string $method): void
     // --- Novos endpoints (contratos em prompts/api-contratos.md) ---
 
     if ($path === '/api/busca' && $method === 'GET') {
-        [$filters, $results, $searched, $facets] = run_search(true);
+        [$filters, $results, $searched, $facets] = SearchService::run(true);
         $items = array_map(static function (array $item): array {
             // Coordenada pública (#36: deslocamento fixo de 300 a 500 m), nunca a exata; usada pelos pins do mapa.
             $pc = isset($item['lat'], $item['lng']) && $item['lat'] !== null && $item['lng'] !== null

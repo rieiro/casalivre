@@ -20,7 +20,7 @@ final class SearchService
         ];
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         $facets = [];
-        $results = $searched ? search_properties($filters, $facets) : [];
+        $results = $searched ? SearchService::search($filters, $facets) : [];
         if ($searched && $log) {
             activity(ActivityLog::SEARCH, $filters + ['resultados' => count($results)]);
         }
@@ -112,15 +112,4 @@ final class SearchService
         }
         return $rows;
     }
-}
-
-// Nomes globais mantidos (index.php e Api.php chamam por eles).
-function run_search(bool $log = true): array
-{
-    return SearchService::run($log);
-}
-
-function search_properties(array $filters, ?array &$facets = null): array
-{
-    return SearchService::search($filters, $facets);
 }

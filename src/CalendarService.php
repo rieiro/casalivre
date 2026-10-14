@@ -144,19 +144,3 @@ final class CalendarService
         return $done(t('cal.saved') . ' (' . $result['count'] . ')');
     }
 }
-
-// Nomes globais mantidos (index.php e Api.php chamam por eles).
-function calendar_previous(int $propertyId, array $input, array $property): array
-{
-    return CalendarService::previous($propertyId, $input, $property);
-}
-
-function calendar_current(array $antes, array $input): array
-{
-    return CalendarService::current($antes, $input);
-}
-
-function save_calendar(array $property, array $input): array
-{
-    return CalendarService::save($property, $input);
-}

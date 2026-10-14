@@ -14,7 +14,7 @@ final class CalendarSave
 {
     public static function run(array $property, array $input): Resultado
     {
-        $saved = save_calendar($property, $input);
+        $saved = CalendarService::save($property, $input);
         $params = [
             'imovel_id' => (int) $property['id'],
             'inicio' => (string) ($input['inicio'] ?? ''),
