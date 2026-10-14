@@ -152,7 +152,7 @@ final class I18n
             return $rows;
         }
         $decoded = JsonCache::read('translations.json');
-        if (is_array($decoded) && isset($decoded['pt-BR']['nav.studio'])) {
+        if (is_array($decoded) && isset($decoded['pt-BR']['nav.search'])) {
             $rows = $decoded;
             return $rows;
         }

@@ -18,14 +18,14 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
 
     function close() {
         list.hidden = true;
-        list.innerHTML = '';
+        list.replaceChildren();
         input.setAttribute('aria-expanded', 'false');
         active = -1;
         rows = [];
     }
 
     function paint() {
-        list.innerHTML = '';
+        list.replaceChildren();
         rows.forEach((row, index) => {
             const item = document.createElement('li');
             item.setAttribute('role', 'presentation');
@@ -61,8 +61,16 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             return;
         }
         timer = window.setTimeout(async () => {
-            const response = await fetch('/cidades?q=' + encodeURIComponent(query));
-            rows = await response.json();
+            try {
+                const response = await fetch('/api/cidades?q=' + encodeURIComponent(query), { credentials: 'same-origin' });
+                rows = response.ok ? await response.json() : [];
+            } catch (error) {
+                // Falha de rede/JSON (ou 429): sem sugestões; o campo continua editável à mão.
+                rows = [];
+            }
+            if (!Array.isArray(rows)) {
+                rows = [];
+            }
             active = rows.length ? 0 : -1;
             paint();
         }, 150);
@@ -221,7 +229,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     }
 
     function paint() {
-        panel.innerHTML = '';
+        panel.replaceChildren();
         const nav = document.createElement('div');
         nav.className = 'stay-nav';
         const prev = document.createElement('button');
@@ -429,9 +437,22 @@ document.querySelectorAll('[data-cep]').forEach((input) => {
             paint(city, '');
             return;
         }
-        const response = await fetch('/ceps?q=' + digits);
-        const data = await response.json();
-        if (!data.street) {
+        let data = {};
+        try {
+            const response = await fetch('/api/ceps?q=' + digits, { credentials: 'same-origin' });
+            if (response.status === 429) {
+                throw new Error('rate limited');
+            }
+            data = await response.json().catch(() => ({}));
+        } catch (error) {
+            // Falha de rede ou 429: mesmo tratamento.
+            // não apaga o que o usuário já preencheu; só avisa.
+            if (status) {
+                status.textContent = 'Não foi possível consultar o CEP agora. Preencha o endereço manualmente.';
+            }
+            return;
+        }
+        if (!data || !data.street) {
             paint(street, '');
             paint(city, '');
             if (status && data.error) {
@@ -489,6 +510,9 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
     const roomLabel = root.dataset.roomLabel || 'Quarto';
     const bedroomsLabel = root.dataset.bedroomsLabel || 'Quartos';
     const bedsLabel = root.dataset.bedsLabel || 'Camas';
+    const bedOne = root.dataset.bedOne || 'cama';
+    const bedMany = root.dataset.bedMany || 'camas';
+    const summary = root.querySelector('[data-room-summary]');
     if (!list || !bedTemplate) {
         return;
     }
@@ -518,6 +542,18 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
                 variant.value = first.value;
             }
         }
+    };
+    // Resumo por quarto ("Quarto 1: 2 camas"): só textContent, sem innerHTML.
+    const renderSummary = (rooms) => {
+        if (!summary) {
+            return;
+        }
+        summary.replaceChildren(...rooms.map((room, index) => {
+            const n = room.querySelectorAll('[data-bed]').length;
+            const item = document.createElement('li');
+            item.textContent = roomLabel + ' ' + (index + 1) + ': ' + n + ' ' + (n === 1 ? bedOne : bedMany);
+            return item;
+        }));
     };
     const paint = () => {
         const rooms = Array.from(list.querySelectorAll('[data-room]'));
@@ -559,6 +595,7 @@ document.querySelectorAll('[data-rooms]').forEach((root) => {
         if (addRoom) {
             addRoom.disabled = rooms.length >= max || bedTotal >= max;
         }
+        renderSummary(rooms);
         const count = root.querySelector('[data-room-count]');
         if (count) {
             count.textContent = rooms.length + ' ' + bedroomsLabel + ' · ' + bedTotal + ' ' + bedsLabel;
@@ -675,3 +712,23 @@ document.querySelectorAll('[data-money]').forEach((input) => {
 });
 
 
+
+// Substitutos dos handlers inline (CSP sem 'unsafe-inline').
+document.addEventListener('change', (event) => {
+    const t = event.target;
+    if (t instanceof HTMLSelectElement && t.hasAttribute('data-autosubmit') && t.form) {
+        t.form.submit();
+    }
+});
+document.addEventListener('click', (event) => {
+    const t = event.target;
+    if (t instanceof HTMLInputElement && t.hasAttribute('data-select-on-click')) {
+        t.select();
+    }
+});
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form instanceof HTMLFormElement && form.dataset.confirmSubmit && !window.confirm(form.dataset.confirmSubmit)) {
+        event.preventDefault();
+    }
+});

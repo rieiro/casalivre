@@ -22,20 +22,22 @@ final class CityRepository
         if (!is_array($rows)) {
             return;
         }
-        $pdo->beginTransaction();
-        $stmt = $pdo->prepare('INSERT INTO cities (name, uf, label, lat, lng, name_fold, label_fold) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        foreach ($rows as $row) {
-            $stmt->execute([
-                $row['name'],
-                $row['uf'],
-                $row['label'],
-                $row['lat'],
-                $row['lng'],
-                fold((string) $row['name']),
-                fold((string) $row['label']),
-            ]);
-        }
-        $pdo->commit();
+        // Pode rodar dentro do BEGIN IMMEDIATE de Db::pdo() (DEF-008). Db::transactional usa
+        // SAVEPOINT nesse caso: PDO::inTransaction() não enxerga o BEGIN cru no PHP 8.2/8.3.
+        Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
+            $stmt = $pdo->prepare('INSERT INTO cities (name, uf, label, lat, lng, name_fold, label_fold) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            foreach ($rows as $row) {
+                $stmt->execute([
+                    $row['name'],
+                    $row['uf'],
+                    $row['label'],
+                    $row['lat'],
+                    $row['lng'],
+                    fold((string) $row['name']),
+                    fold((string) $row['label']),
+                ]);
+            }
+        });
     }
 
     public static function suggest(string $query, int $limit = 8): array

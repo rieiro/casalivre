@@ -32,13 +32,28 @@ final class Db
         ]);
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             $pdo->exec('PRAGMA foreign_keys = ON');
+            // busy_timeout antes de journal_mode: trocar o modo também pode esperar lock.
+            // (>= 5000 ms exigido pelo DEF-008; mantido 8000 ms, que já era o valor do projeto.)
             $pdo->exec('PRAGMA busy_timeout = 8000');
             $pdo->exec('PRAGMA journal_mode = WAL');
             $pdo->exec('PRAGMA synchronous = NORMAL');
             $pdo->exec('PRAGMA temp_store = MEMORY');
             $pdo->exec('PRAGMA cache_size = -8000');
         }
-        self::migrate($pdo);
+        if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            // DEF-008: só migra quando o banco está atrás de SCHEMA_VERSION. A checagem
+            // (PRAGMA user_version) é uma leitura barata, sem lock de escrita.
+            if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+                try {
+                    self::migrateSqlite($pdo, false);
+                } catch (Throwable $e) {
+                    $pdo = null;
+                    throw $e;
+                }
+            }
+        } else {
+            self::migrate($pdo);
+        }
         return $pdo;
     }
 
@@ -64,6 +79,115 @@ final class Db
             if ($key !== '' && getenv($key) === false) {
                 putenv($key . '=' . $value);
             }
+        }
+    }
+
+    /**
+     * Versão do schema e dos dados semeados (settings, traduções de database/messages.php,
+     * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
+     * ou os seeds; senão os bancos existentes não recebem a mudança.
+     */
+    public const SCHEMA_VERSION = 4; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23)
+
+    /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
+    public static function migrateNow(bool $force = false): int
+    {
+        $pdo = self::pdo();
+        if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            self::migrateSqlite($pdo, $force);
+            return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+        }
+        self::migrate($pdo);
+        return self::SCHEMA_VERSION;
+    }
+
+    /**
+     * Em WAL, promover uma transação de leitura para escrita falha na hora com
+     * "database is locked" (o busy_timeout não se aplica). BEGIN IMMEDIATE pega o lock de
+     * escrita no início (respeitando o busy_timeout); a versão é rechecada dentro do lock
+     * porque outro processo pode ter migrado enquanto esperávamos.
+     */
+    /**
+     * Transação aberta com SQL cru (BEGIN IMMEDIATE em migrateSqlite). No PHP 8.2/8.3,
+     * PDO::inTransaction() não enxerga transações abertas via exec(), então o Db controla isso.
+     */
+    private static bool $rawTransaction = false;
+    private static int $savepoint = 0;
+
+    /** Há transação aberta nesta conexão (via PDO ou via SQL cru do Db)? */
+    public static function inTransaction(PDO $pdo): bool
+    {
+        return self::$rawTransaction || $pdo->inTransaction();
+    }
+
+    /**
+     * Executa $fn numa transação. Se já houver uma aberta (inclusive o BEGIN IMMEDIATE da
+     * migração), usa SAVEPOINT/RELEASE em vez de beginTransaction(), que falharia.
+     *
+     * @template T
+     * @param callable(PDO): T $fn
+     * @return T
+     */
+    public static function transactional(PDO $pdo, callable $fn): mixed
+    {
+        $own = false;
+        if (!self::inTransaction($pdo)) {
+            try {
+                $pdo->beginTransaction();
+                $own = true;
+            } catch (PDOException $e) {
+                // BEGIN cru aberto fora do Db (PHP 8.2/8.3 não o enxerga): cai no SAVEPOINT.
+                if (!str_contains($e->getMessage(), 'within a transaction')) {
+                    throw $e;
+                }
+            }
+        }
+        if ($own) {
+            try {
+                $result = $fn($pdo);
+                $pdo->commit();
+                return $result;
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+        }
+        $name = 'cl_sp_' . (++self::$savepoint);
+        $pdo->exec('SAVEPOINT ' . $name);
+        try {
+            $result = $fn($pdo);
+            $pdo->exec('RELEASE SAVEPOINT ' . $name);
+            return $result;
+        } catch (Throwable $e) {
+            try {
+                $pdo->exec('ROLLBACK TO SAVEPOINT ' . $name);
+                $pdo->exec('RELEASE SAVEPOINT ' . $name);
+            } catch (Throwable) {
+            }
+            throw $e;
+        }
+    }
+
+    private static function migrateSqlite(PDO $pdo, bool $force): void
+    {
+        $pdo->exec('BEGIN IMMEDIATE');
+        self::$rawTransaction = true;
+        try {
+            if ($force || (int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+                self::migrate($pdo);
+                $pdo->exec('PRAGMA user_version = ' . (int) self::SCHEMA_VERSION);
+            }
+            $pdo->exec('COMMIT');
+        } catch (Throwable $e) {
+            try {
+                $pdo->exec('ROLLBACK');
+            } catch (Throwable) {
+            }
+            throw $e;
+        } finally {
+            self::$rawTransaction = false;
         }
     }
 

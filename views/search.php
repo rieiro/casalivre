@@ -52,12 +52,12 @@ $popular = array_slice($popular, 0, 10);
                     $ty = (int) floor((1 - log(tan($latRad) + 1 / cos($latRad)) / M_PI) / 2 * $n);
                     $tiles = [[$tx, $ty], [$tx + 1, $ty], [$tx, $ty + 1], [$tx + 1, $ty + 1]];
                     ?>
-                    <span class="map-tiles" style="<?php
+                    <span class="map-tiles" data-tiles="<?php
                     $images = [];
                     foreach ($tiles as [$x, $y]) {
-                        $images[] = 'url(https://tile.openstreetmap.org/' . $zoom . '/' . $x . '/' . $y . '.png)';
+                        $images[] = 'https://tile.openstreetmap.org/' . $zoom . '/' . $x . '/' . $y . '.png';
                     }
-                    echo e('background-image:' . implode(',', $images));
+                    echo e(implode(' ', $images));
                     ?>"></span>
                 <?php else: ?>
                     <span class="map-tiles is-empty"></span>
@@ -125,7 +125,6 @@ $popular = array_slice($popular, 0, 10);
                 $results = array_slice($results, ($page - 1) * $perPage, $perPage);
                 ?>
                 <h1><?= e($filters['localidade'] !== '' ? $filters['localidade'] . ': ' : '') ?><?= $resultTotal ?> <?= e(t('home.found')) ?></h1>
-                <p><a href="/busca-novo?<?= e($query) ?>"><?= e(t('nav.studio')) ?></a></p>
                 <?php include __DIR__ . '/result_cards.php'; ?>
                 <?php if ($pageCount > 1): ?>
                     <nav class="pager" aria-label="<?= e(t('home.pages')) ?>">
@@ -145,43 +144,6 @@ $popular = array_slice($popular, 0, 10);
     </div>
 </section>
 <?php if (!empty($use_api) && $searched): ?>
-<script>
-(function () {
-    const params = new URLSearchParams(window.location.search);
-    const api = '/api/busca?' + params.toString();
-    const box = document.getElementById('search-results');
-    fetch(api, { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            const items = data.items || [];
-            const total = items.length;
-            const loc = params.get('localidade') || '';
-            let html = '<h1>' + (loc ? loc + ': ' : '') + total + ' encontrados</h1>';
-            if (total === 0) {
-                html += '<p class="muted">Nenhum imóvel encontrado.</p>';
-            } else {
-                html += '<div class="results">';
-                items.forEach(item => {
-                    const photo = item.photo || '/assets/placeholder.svg';
-                    const q = item.quote || {};
-                    const price = q.nights ? (q.total + ' total') : (item.nightly_price + ' / noite');
-                    const href = '/imoveis/' + item.id + '?' + params.toString();
-                    html += '<article class="result">'
-                        + '<a href="' + href + '"><img src="' + photo + '" alt="" loading="lazy"></a>'
-                        + '<div class="body"><h2 class="card-title">' + (item.title || '') + '</h2>'
-                        + '<p class="muted">' + (item.city || '') + '</p>'
-                        + '<p class="summary muted">' + (item.summary || '') + '</p></div>'
-                        + '<div class="offer">'
-                        + (item.score ? '<p class="score-badge">' + item.score + '</p>' : '')
-                        + '<p class="price">' + price + '</p></div></article>';
-                });
-                html += '</div>';
-            }
-            box.innerHTML = html;
-        })
-        .catch(() => {
-            box.innerHTML = '<p class="muted">Erro ao carregar resultados.</p>';
-        });
-})();
-</script>
+<script src="/assets/pages/search.js?v=1"></script>
 <?php endif; ?>
+<script src="/assets/pages/search-tiles.js?v=1"></script>

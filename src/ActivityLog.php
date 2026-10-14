@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/LogPrivacy.php';
+
 interface ActivityStore
 {
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void;
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void;
 
     public function recent(int $limit = 50, ?int $code = null): array;
 }
@@ -43,7 +45,7 @@ final class SqliteActivityStore implements ActivityStore
         }
     }
 
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO activity_log (created_at, action_code, action, actor_id, ip, user_agent, params, valor_anterior, valor_atual)
@@ -95,7 +97,7 @@ final class MongoActivityStore implements ActivityStore
         $this->db = getenv('LOG_MONGO_DB') ?: 'casalivre';
     }
 
-    public function append(int $code, string $action, ?int $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
+    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
     {
         $bulk = new \MongoDB\Driver\BulkWrite();
         $bulk->insert([
@@ -218,52 +220,176 @@ final class ActivityLog
         }
         Db::loadEnv();
         $driver = getenv('LOG_DRIVER') ?: 'sqlite';
-        $store = $driver === 'mongodb' ? new MongoActivityStore() : new SqliteActivityStore();
+        // ACTIVITY_DB_PATH: caminho alternativo do SQLite de atividades (testes); padrão storage/logs/activity.sqlite.
+        $path = getenv('ACTIVITY_DB_PATH') ?: null;
+        $store = $driver === 'mongodb' ? new MongoActivityStore() : new SqliteActivityStore($path);
         return $store;
     }
 
     public static function record(int $code, array $params = [], mixed $valorAnterior = null, mixed $valorAtual = null): void
     {
         try {
-            $params = self::safeParams($params);
+            $params = self::safeParams($params, $code);
+            if (in_array($code, self::FIELD_NAMES_ONLY, true)) {
+                $fields = self::changedFieldNames($valorAnterior, $valorAtual);
+                $valorAnterior = null;
+                $valorAtual = $fields === [] ? null : ['campos_alterados' => $fields];
+            }
             $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
             $params['canal'] = str_starts_with(parse_url($uri, PHP_URL_PATH) ?: '', '/api') ? 'api' : 'web';
             self::store()->append(
                 $code,
                 self::CATALOG[$code] ?? 'Ação não catalogada',
-                isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null,
+                isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
                 $params,
-                (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
-                substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 300),
+                LogPrivacy::ip((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
+                (string) (LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')) ?? ''),
                 self::encodePrevious($valorAnterior),
                 self::encodePrevious($valorAtual)
             );
         } catch (Throwable $e) {
-            file_put_contents(
-                dirname(__DIR__) . '/storage/error.log',
-                date('c') . ' activity ' . $e->getMessage() . "\n",
-                FILE_APPEND
-            );
+            // Sinaliza sem dados (a mensagem pode conter parâmetros).
+            error_log('CasaLivre: falha ao gravar log de atividades (' . $e::class . ').');
         }
     }
 
-    public static function safeParams(array $params): array
+    /** Chaves de identidade: nunca gravadas em claro (HMAC com LOG_SALT ou IP truncado). */
+    public const IDENTITY_KEYS = ['email', 'ip', 'cpf', 'phone', 'telefone', 'user_id', 'autor'];
+
+    /** Parâmetros aceitos em qualquer ação. */
+    public const COMMON_PARAMS = ['imovel_id', 'canal', 'resultado', 'motivo'];
+
+    /**
+     * Parâmetros permitidos por ação (allowlist). Chaves fora da lista são OMITIDAS.
+     * Chaves de identidade (IDENTITY_KEYS) só entram se listadas aqui e sempre pseudonimizadas.
+     */
+    public const ALLOWED_PARAMS = [
+        self::LOGIN_OK => ['email'],
+        self::LOGIN_FAIL => ['email'],
+        self::LOGIN_LOCKED => ['email', 'tentativas'],
+        self::LOGOUT => [],
+        self::REGISTER => ['email'],
+        self::SEARCH => ['localidade', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
+        self::ACCOUNT_UPDATE => ['email'],
+        self::ACCOUNT_DELETE => ['email', 'ip'],
+        self::PROPERTY_CREATE => ['titulo'],
+        self::PROPERTY_UPDATE => ['titulo', 'cidade'],
+        self::PROPERTY_DELETE => ['titulo', 'estado', 'inativado_em'],
+        self::PHOTO_ADD => ['enviadas', 'salvas'],
+        self::PHOTO_DELETE => ['foto_id', 'quantidade'],
+        self::PHOTO_COVER => ['foto_id'],
+        self::CALENDAR_UPDATE => ['inicio', 'fim'],
+        self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
+        self::CALENDAR_EXPORT => [],
+        self::REVIEW => ['autor', 'nota'],
+        self::PROPERTY_VIEW => ['checkin', 'checkout', 'cidade'],
+        self::EMAIL_VERIFY => ['email'],
+        self::PASSWORD_RESET_ASK => ['email'],
+        self::PASSWORD_RESET => ['email'],
+        self::LOCALE => ['idioma'],
+        self::CALENDAR_PRICE => ['inicio', 'fim', 'diaria'],
+        self::CALENDAR_BLOCK => ['inicio', 'fim'],
+        self::CALENDAR_UNBLOCK => ['inicio', 'fim'],
+        self::CALENDAR_FEED_ADD => ['titulo', 'url'],
+        self::CALENDAR_FEED_REMOVE => ['feed_id'],
+        self::CALENDAR_MIN_NIGHTS => ['inicio', 'fim', 'minimo_noites'],
+        self::CALENDAR_SYNC => ['url', 'novas'],
+        self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
+    ];
+
+    /**
+     * Chaves permitidas em valor_anterior/valor_atual (imóvel, calendário, fotos, feeds).
+     * Fora da lista: omitidas (ex.: description, address, cep, street, lat, lng, hashes, audit_hold).
+     */
+    public const VALUE_KEYS = [
+        'id', 'imovel_id', 'property_id', 'foto_id', 'feed_id', 'day', 'dia', 'blocked', 'bloqueado', 'price', 'preco',
+        'diaria', 'min_nights', 'minimo_noites', 'origin', 'origem', 'estado', 'status', 'inactivated_at', 'inativado_em',
+        'title', 'titulo', 'city', 'cidade', 'bedrooms', 'beds', 'rooms', 'quartos', 'camas', 'quartos_camas', 'max_guests',
+        'nightly_price', 'cleaning_fee', 'taxa_limpeza', 'checkin_time', 'checkout_time', 'calendar_months', 'pool', 'bbq',
+        'garage', 'amenities', 'comodidades', 'comodidades_incluidas', 'comodidades_removidas', 'path', 'caminho',
+        'is_primary', 'sort_order', 'capa', 'fotos', 'feed', 'link', 'url', 'external_ical_url', 'last_status',
+        'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados',
+    ];
+
+    /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */
+    public const FIELD_NAMES_ONLY = [self::ACCOUNT_UPDATE, self::ACCOUNT_DELETE];
+
+    /** Parâmetros da ação, por allowlist. */
+    public static function safeParams(array $params, ?int $code = null): array
     {
-        $blocked = ['password', 'password_hash', '_csrf', 'csrf'];
+        $allowed = array_merge(self::COMMON_PARAMS, $code === null ? [] : (self::ALLOWED_PARAMS[$code] ?? []));
         $clean = [];
         foreach ($params as $key => $value) {
-            if (in_array((string) $key, $blocked, true)) {
+            $key = (string) $key;
+            if ($code !== null && !in_array($key, $allowed, true)) {
                 continue;
             }
-            if (is_array($value)) {
-                $clean[$key] = self::safeParams($value);
+            if ($code === null && !in_array($key, $allowed, true) && !in_array($key, self::IDENTITY_KEYS, true)) {
+                // Sem ação informada: só comuns + identidade; o resto é omitido.
                 continue;
             }
-            if (is_scalar($value) || $value === null) {
-                $clean[$key] = $value;
+            $clean[$key] = self::cleanValue($key, $value, 0);
+        }
+        return array_filter($clean, static fn ($v) => $v !== self::DROP);
+    }
+
+    private const DROP = "\0drop";
+
+    private static function cleanValue(string $key, mixed $value, int $depth): mixed
+    {
+        $lk = strtolower($key);
+        if (in_array($lk, self::IDENTITY_KEYS, true)) {
+            if (!is_scalar($value)) {
+                return self::DROP;
+            }
+            return match ($lk) {
+                'email' => LogPrivacy::email((string) $value),
+                'ip' => LogPrivacy::ip((string) $value),
+                'user_id' => LogPrivacy::user((int) $value),
+                default => LogPrivacy::hmac((string) $value, $lk),
+            };
+        }
+        if (in_array($lk, ['url', 'external_ical_url'], true) && is_string($value) && preg_match('#^[a-z][a-z0-9+.-]*://#i', $value) === 1) {
+            return LogPrivacy::url($value);
+        }
+        if (is_array($value)) {
+            return $depth >= 4 ? self::DROP : self::cleanList($value, $depth + 1);
+        }
+        return is_scalar($value) || $value === null ? $value : self::DROP;
+    }
+
+    /** Lista numérica: recursa nos itens; mapa: só VALUE_KEYS (+ identidade pseudonimizada). */
+    private static function cleanList(array $value, int $depth): array
+    {
+        $out = [];
+        foreach ($value as $k => $v) {
+            if (!is_int($k) && !in_array((string) $k, self::VALUE_KEYS, true) && !in_array(strtolower((string) $k), self::IDENTITY_KEYS, true)) {
+                continue;
+            }
+            $c = is_int($k) && is_array($v) ? self::cleanList($v, $depth + 1) : self::cleanValue((string) $k, $v, $depth);
+            if ($c !== self::DROP) {
+                $out[$k] = $c;
             }
         }
-        return $clean;
+        return $out;
+    }
+
+    /** Nomes dos campos que mudaram entre $old e $new (valores nunca são gravados). */
+    public static function changedFieldNames(mixed $old, mixed $new): array
+    {
+        $old = is_array($old) ? $old : [];
+        $new = is_array($new) ? $new : [];
+        $names = [];
+        foreach (array_unique(array_merge(array_keys($old), array_keys($new))) as $k) {
+            if (!is_string($k) || preg_match('/^[a-z0-9_]{1,40}$/i', $k) !== 1) {
+                continue;
+            }
+            if (($old[$k] ?? null) !== ($new[$k] ?? null)) {
+                $names[] = $k === 'password_hash' ? 'senha' : $k;
+            }
+        }
+        sort($names);
+        return array_values(array_unique($names));
     }
 
     public static function encodePrevious(mixed $value): ?string
@@ -272,12 +398,12 @@ final class ActivityLog
             return null;
         }
         if (is_array($value)) {
-            $safe = self::safeParams($value);
+            $safe = self::cleanList($value, 0);
             $json = json_encode($safe, JSON_UNESCAPED_UNICODE);
             return $json === false || $json === '[]' || $json === '{}' ? null : $json;
         }
         if (is_scalar($value)) {
-            return (string) $value;
+            return is_string($value) ? mb_substr($value, 0, 200) : (string) $value;
         }
         return null;
     }

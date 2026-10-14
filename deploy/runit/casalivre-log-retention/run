@@ -1,0 +1,19 @@
+#!/bin/sh
+# Serviço runit: retenção diária de logs do CasaLivre (14 dias por padrão).
+# Instalação (Void Linux):
+#   sudo cp -r deploy/runit/casalivre-log-retention /etc/sv/
+#   sudo ln -s /etc/sv/casalivre-log-retention /var/service/
+# Variáveis opcionais (em /etc/sv/casalivre-log-retention/conf):
+#   APP_DIR=/srv/casalivre  APP_USER=casalivre  RETENTION_DAYS=14  PHP_BIN=/usr/bin/php
+# Funcionamento: roda a retenção uma vez e dorme 24h; ao terminar o sleep o runit
+# reinicia o serviço, o que repete a retenção diariamente.
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+RETENTION_DAYS="${RETENTION_DAYS:-14}"
+PHP_BIN="${PHP_BIN:-php}"
+
+cd "$APP_DIR" || exit 1
+chpst -u "$APP_USER" "$PHP_BIN" scripts/log-retention.php "$RETENTION_DAYS" || echo "log-retention: falhou (código $?)"
+exec chpst -u "$APP_USER" sleep 86400

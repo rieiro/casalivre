@@ -4,15 +4,15 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-require $root . '/src/Db.php';
-require $root . '/src/Settings.php';
-require $root . '/src/UserRepository.php';
-require $root . '/src/HouseRepository.php';
-require $root . '/src/PhotoRepository.php';
-require $root . '/src/PhotoStorage.php';
-require $root . '/src/helpers.php';
-require $root . '/src/CepRepository.php';
-require $root . '/src/CityRepository.php';
+require_once $root . '/src/Db.php';
+require_once $root . '/src/Settings.php';
+require_once $root . '/src/UserRepository.php';
+require_once $root . '/src/HouseRepository.php';
+require_once $root . '/src/PhotoRepository.php';
+require_once $root . '/src/PhotoStorage.php';
+require_once $root . '/src/helpers.php';
+require_once $root . '/src/CepRepository.php';
+require_once $root . '/src/CityRepository.php';
 
 const MASSIVE_CITIES = 100;
 const MASSIVE_HOUSES = 100;

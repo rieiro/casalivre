@@ -1,5 +1,5 @@
 <section class="hero">
-    <div class="wrap" style="padding-top:0;padding-bottom:0">
+    <div class="wrap wrap-flush">
         <h1><?= e(t('home.title')) ?></h1>
         <p><?= e(t('home.lead')) ?></p>
         <form class="search" method="get" action="/busca">
@@ -17,6 +17,5 @@
             </label>
             <button type="submit"><?= e(t('home.search')) ?></button>
         </form>
-        <p class="studio-entry"><a href="/busca-novo"><?= e(t('nav.studio')) ?></a></p>
     </div>
 </section>

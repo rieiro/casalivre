@@ -91,6 +91,11 @@ A API, com a sessão autenticada e o token CSRF, expõe o CRUD:
 - `GET|POST /api/casas`, `GET|PUT|DELETE /api/casas/{id}`
 - `POST /api/casas/{id}/fotos`, `DELETE /api/casas/{id}/fotos/{foto}`
 
+## Logs de erro e privacidade
+
+- `public/index.php` faz `ini_set('zend.exception_ignore_args', '1')` para que stack traces não incluam valores de argumentos. Em produção, defina também no `php.ini` (ou no pool do PHP-FPM): `zend.exception_ignore_args = On`.
+- `ExceptionShield` grava em `storage/error.log` e no log de atividades só o caminho da rota, sem query string, com segmentos de 32 hex (ex.: `ical_hash`) trocados por `{hash}` (`src/Redact.php`).
+
 ## Casos de teste
 
 Com o servidor no ar:
@@ -98,3 +103,25 @@ Com o servidor no ar:
 ```bash
 php scripts/run-casos-de-teste.php
 ```
+
+## Logs: pseudonimização e retenção
+
+- **`LOG_SALT` (obrigatório, sem fallback):** defina no `.env` um valor secreto e aleatório (`php -r 'echo bin2hex(random_bytes(32));'`). Ele é usado para HMAC-SHA256 de usuário, e-mail, user agent e URLs nos logs de requisições (`storage/logs/api/`) e de atividades (`activity.sqlite`). **Sem `LOG_SALT`**, esses identificadores são omitidos e o PHP emite um único aviso via `error_log`, sem dados. Trocar o sal quebra a correlação com registros antigos.
+- **IP:** truncado em /24 (IPv4) e /48 (IPv6) nos dois logs.
+- **Retenção (14 dias, a confirmar com o Gerente Geral):** rode diariamente `php scripts/log-retention.php [dias]`. Ele cobre `storage/logs/api/api-*`, `storage/logs/activity.sqlite` (DELETE + VACUUM), `storage/error.log`, `storage/logs/calendar-sync.log` e `storage/php.log`/`storage/logs/php.log`. Cron sugerido:
+
+  ```
+  15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
+  ```
+- **Falhas de escrita** do log de requisições incrementam `RequestLog::$writeFailures` e geram `error_log` sem dados.
+- **Query string no log da API:** rotas de iCal (`/api/ical/…`, `/ical/…`, `*.ics`) gravam a query vazia. Nas demais, só as chaves de `RequestLog::QUERY_VALUE_ALLOWLIST` (`q`, `localidade`, `checkin`, `checkout`, `hospedes`, …) têm o valor gravado. As outras chaves aparecem só pelo nome (valor `null`). Em `/api/ceps` só os nomes das chaves são gravados.
+- **MongoDB (`LOG_DRIVER=mongodb`):** a retenção usa `deleteMany` com `created_at` anterior ao corte. Não há índice TTL porque `created_at` é string, e TTL exige campo Date. Sem a extensão `mongodb`, o passo é ignorado com aviso.
+- **runit (Void Linux):** o serviço `deploy/runit/casalivre-log-retention/run` roda a retenção e dorme 24h; o runit o reinicia, então ela se repete todo dia.
+
+  ```
+  sudo cp -r deploy/runit/casalivre-log-retention /etc/sv/
+  # opcional: /etc/sv/casalivre-log-retention/conf com APP_DIR, APP_USER, RETENTION_DAYS, PHP_BIN
+  sudo ln -s /etc/sv/casalivre-log-retention /var/service/
+  ```
+- **Buscar registros de um usuário:** `php scripts/log-lookup.php <user_id>` calcula o HMAC do id com `LOG_SALT` (mesma função dos logs) e lista os registros do `activity_log` (SQLite e Mongo, se configurado) e dos `storage/logs/api/api-*`, um JSON por linha. Sem `LOG_SALT` o script se recusa a rodar (código 2). Para outra instalação, use `--root=/caminho`.
+

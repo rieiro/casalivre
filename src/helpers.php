@@ -2,22 +2,41 @@
 
 declare(strict_types=1);
 
-function base_url(): string
+/**
+ * URL pública da aplicação, usada em links enviados ao usuário (ativação, redefinição, .ics).
+ * Sempre vem de APP_URL (nunca do header Host, que o cliente controla).
+ * Sem APP_URL: em APP_ENV=dev/local cai no Host da requisição; fora disso, falha com erro claro.
+ */
+function app_url(): string
 {
-    $env = getenv('APP_URL');
-    if (is_string($env) && $env !== '') {
+    if (class_exists('Db')) {
+        Db::loadEnv();
+    }
+    $env = trim((string) getenv('APP_URL'));
+    if ($env !== '') {
+        $parts = parse_url($env);
+        if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || empty($parts['host'])
+            || isset($parts['query']) || isset($parts['fragment']) || isset($parts['user'])) {
+            throw new RuntimeException('APP_URL inválida: use esquema://host[:porta][/caminho], sem query.');
+        }
         return rtrim($env, '/');
     }
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
-    return $scheme . '://' . $host;
+    if (expose_account_links()) {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
+        return $scheme . '://' . $host;
+    }
+    throw new RuntimeException('APP_URL não configurada: obrigatória fora de APP_ENV=dev/local (links de e-mail e .ics).');
+}
+
+function base_url(): string
+{
+    return app_url();
 }
 
 function request_base(): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080';
-    return $scheme . '://' . $host;
+    return app_url();
 }
 
 function e(?string $value): string
@@ -38,7 +57,7 @@ function safe_search_return(?string $value): string
         return '/';
     }
     $path = parse_url($value, PHP_URL_PATH);
-    if (!is_string($path) || !in_array($path, ['/', '/busca', '/busca-novo'], true)) {
+    if (!is_string($path) || !in_array($path, ['/', '/busca'], true)) {
         return '/';
     }
     $query = parse_url($value, PHP_URL_QUERY);
@@ -459,12 +478,6 @@ function primary_photo(int $propertyId): ?string
     return PhotoRepository::primaryPath($propertyId);
 }
 
-function maps_key(): string
-{
-    Db::loadEnv();
-    return trim((string) (getenv('GOOGLE_MAPS_API_KEY') ?: ''));
-}
-
 function search_query(array $filters): string
 {
     $query = $filters;
@@ -647,4 +660,69 @@ function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = nul
         }
     }
     return $count;
+}
+
+/**
+ * Links de ativação/redefinição só podem aparecer em respostas (API ou tela) em ambiente de
+ * desenvolvimento: APP_ENV=dev ou local. Sem APP_ENV (ou qualquer outro valor) => não expõe.
+ */
+function expose_account_links(): bool
+{
+    if (class_exists('Db')) {
+        Db::loadEnv();
+    }
+    return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+}
+
+/**
+ * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
+ * lido por CL.data() em /assets/safe-dom.js.
+ */
+function page_data(array $data = []): array
+{
+    static $registry = [];
+    $registry = array_merge($registry, $data);
+    return $registry;
+}
+
+/**
+ * Bloco JSON único (<script type="application/json" id="page-data">) emitido no <head> pelo layout:
+ * dados registrados pela view + csrf (fonte única do token para CL.api) + textos de erro do CL.api.
+ */
+function page_data_script(string $csrf): string
+{
+    $data = page_data() + [
+        'csrf' => $csrf,
+        'i18n' => ['netError' => t('js.net_error'), 'requestFailed' => t('js.request_failed')],
+    ];
+    return '<script type="application/json" id="page-data">'
+        . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . '</script>';
+}
+
+/** Caminho de foto seguro para src=: só relativo em /uploads/ (sem "..", esquema ou host); senão o placeholder. */
+function photo_url(?string $path): string
+{
+    $path = (string) $path;
+    if (preg_match('#^/uploads/[A-Za-z0-9_/.-]+$#', $path) === 1 && !str_contains($path, '..')) {
+        return $path;
+    }
+    return '/assets/placeholder.svg';
+}
+
+/**
+ * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
+ * script, sem 'unsafe-inline' em style, sem data:/blob:; só os tiles do OpenStreetMap como imagem externa.
+ */
+function csp_header(): string
+{
+    return implode('; ', [
+        "default-src 'self'",
+        "script-src 'self'",
+        "img-src 'self' https://tile.openstreetmap.org",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+    ]);
 }
