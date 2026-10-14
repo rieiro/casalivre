@@ -991,7 +991,8 @@ function search_properties(array $filters, ?array &$facets = null): array
             $property['distance_km'] = $distance;
         } elseif ($center && $cityFold !== $centerFold && $cityFold !== $labelFold && $cityFold !== $displayFold) {
             continue;
-        } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) $property['address']), fold($localidade))) {
+        } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) (house_neighborhood($property) ?? '')), fold($localidade))) {
+            // Só cidade e bairro: buscar no endereço viraria um oráculo ("localidade=Rua X, 123").
             continue;
         }
         if ($filters['hospedes'] > 0 && (int) $property['max_guests'] < $filters['hospedes']) {
