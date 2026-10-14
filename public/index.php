@@ -93,6 +93,7 @@ require_once __DIR__ . '/../seguranca/Seguranca.php';
 require_once __DIR__ . '/../src/Acoes/LoginAttempt.php';
 require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
 require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
+require_once __DIR__ . '/../src/Acoes/ICalImport.php';
 
 return Seguranca::pipeline(
     [
@@ -626,54 +627,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $property = property_for_user((int) $user['id'], house_id($m[1]));
     $url = trim((string) ($_POST['external_ical_url'] ?? ''));
     $feedTitle = trim((string) ($_POST['feed_title'] ?? ''));
-    $message = t('cal.link_saved');
-    $messageTone = 'ok';
-    $error = null;
-    if ($url !== '') {
-        $error = HouseRepository::addFeed((int) $property['id'], (int) $user['id'], $url, $feedTitle);
-        if ($error === 'limit') {
-            $message = t('cal.feed_limit');
-            $messageTone = 'error';
-        } elseif ($error === 'duplicate') {
-            $message = t('cal.feed_duplicate');
-            $messageTone = 'error';
-        } elseif ($error === 'title') {
-            $message = t('cal.feed_title_required');
-            $messageTone = 'error';
-        } else {
-            $body = exported_calendar_body($url);
-            if ($body === null) {
-                $body = CalendarSync::fetch($url);
-            }
-            $feedId = null;
-            foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
-                if ($feed['url'] === $url) {
-                    $feedId = (int) $feed['id'];
-                }
-            }
-            $now = date('Y-m-d H:i:s');
-            if (is_string($body) && $body !== '') {
-                $count = import_ics((int) $property['id'], $body);
-                if ($feedId) {
-                    HouseRepository::markFeed($feedId, 'OK', $now);
-                }
-                $message = t('cal.imported') . ' ' . $count . ' ' . t('cal.blocked_dates');
-                activity(ActivityLog::CALENDAR_SYNC, [
-                    'imovel_id' => (int) $property['id'],
-                    'url' => CalendarSync::logRef($url),
-                    'novas' => $count,
-                    'resultado' => 'ok',
-                ]);
-            } else {
-                if ($feedId) {
-                    HouseRepository::markFeed($feedId, 'NOK', $now);
-                }
-                $message = t('cal.import_fail');
-                $messageTone = 'error';
-            }
-        }
-    }
-    activity(ActivityLog::CALENDAR_FEED_ADD, ['imovel_id' => (int) $property['id'], 'titulo' => $feedTitle, 'url' => CalendarSync::logRef($url), 'resultado' => $message], null, is_array($error ?? null) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null);
+    // Web: URL vazia vira "link salvo", CALENDAR_FEED_ADD sempre, CALENDAR_SYNC só em sucesso (ver ICalImport).
+    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, true);
+    $res->registrar();
+    $message = $res->mensagem;
+    $messageTone = in_array($res->tipo, ['vazio', 'ok'], true) ? 'ok' : 'error';
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),

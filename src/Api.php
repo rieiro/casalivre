@@ -507,36 +507,19 @@ function handle_api(string $path, string $method): void
         if ($url === '') {
             json_out(422, ['error' => 'URL obrigatória.']);
         }
-        $error = HouseRepository::addFeed((int) $property['id'], (int) $user['id'], $url, $feedTitle);
-        if ($error === 'limit') {
+        // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
+        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, false);
+        $res->registrar();
+        if ($res->tipo === 'limit') {
             json_out(422, ['error' => 'Limite de feeds atingido.']);
         }
-        if ($error === 'duplicate') {
+        if ($res->tipo === 'duplicate') {
             json_out(409, ['error' => 'Feed já cadastrado.']);
         }
-        if ($error === 'title') {
+        if ($res->tipo === 'title') {
             json_out(422, ['error' => 'Título obrigatório.']);
         }
-        // Nunca aceitar corpo .ics enviado pelo cliente: só o que o servidor baixar.
-        $icsBody = exported_calendar_body($url) ?? CalendarSync::fetch($url);
-        $count = 0;
-        $status = is_string($icsBody) && $icsBody !== '' ? 'OK' : 'NOK';
-        if ($status === 'OK') {
-            $count = import_ics((int) $property['id'], $icsBody);
-        }
-        foreach (HouseRepository::feedsWithUrl((int) $property['id']) as $feed) {
-            if ($feed['url'] === $url) {
-                HouseRepository::markFeed((int) $feed['id'], $status, date('Y-m-d H:i:s'));
-                break;
-            }
-        }
-        activity(ActivityLog::CALENDAR_SYNC, [
-            'imovel_id' => (int) $property['id'],
-            'url' => CalendarSync::logRef($url),
-            'novas' => $count,
-            'resultado' => strtolower($status),
-        ]);
-        if ($status === 'NOK') {
+        if ($res->tipo === 'nok') {
             json_out(200, [
                 'ok' => true,
                 'status' => 'NOK',
@@ -547,7 +530,7 @@ function handle_api(string $path, string $method): void
         }
         json_out(200, [
             'ok' => true,
-            'importadas' => $count,
+            'importadas' => $res->dados['importadas'],
             'feeds' => HouseRepository::feeds((int) $property['id']),
         ]);
     }
