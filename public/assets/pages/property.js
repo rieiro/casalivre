@@ -18,7 +18,7 @@
             // Sem nota, o item é null: filtrar para replaceChildren não renderizar o texto "null".
             box.replaceChildren(...[
                 el('h1', {}, data.title || ''),
-                el('p', {}, (data.city || '') + ' · até ' + data.max_guests + ' hóspedes · ' + data.bedrooms + ' quartos'),
+                el('p', {}, [data.neighborhood, data.city].filter(Boolean).join(' · ') + ' · até ' + data.max_guests + ' hóspedes · ' + data.bedrooms + ' quartos'),
                 data.score ? el('p', {}, 'Nota: ' + data.score + '/10') : null,
                 el('div', { className: 'gallery' }, (data.photos || []).map((p) => el('img', { src: p.path, alt: '', loading: 'lazy' }))),
                 el('p', {}, data.description || ''),

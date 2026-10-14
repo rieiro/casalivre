@@ -36,6 +36,35 @@ function api_public_user(array $user): array
     ];
 }
 
+/**
+ * Fotos para respostas públicas: só id, caminho, capa e ordem (sem property_id nem audit_hold).
+ *
+ * @param list<array<string, mixed>> $photos
+ * @return list<array{id: int, path: string, is_primary: int, sort_order: int}>
+ */
+function api_public_photos(array $photos): array
+{
+    return array_map(static fn (array $p): array => [
+        'id' => (int) $p['id'],
+        'path' => (string) $p['path'],
+        'is_primary' => (int) ($p['is_primary'] ?? 0),
+        'sort_order' => (int) ($p['sort_order'] ?? 0),
+    ], $photos);
+}
+
+/** Bairro do imóvel (pelo CEP), para mostrar sem o endereço. */
+function house_neighborhood(array $house): ?string
+{
+    $cep = preg_replace('/\D/', '', (string) ($house['cep'] ?? '')) ?? '';
+    if (strlen($cep) !== 8) {
+        return null;
+    }
+    $row = CepRepository::find($cep);
+    $n = trim((string) ($row['neighborhood'] ?? ''));
+    return $n === '' ? null : $n;
+}
+
+/** Dono (painel e endpoints /api/casas): inclui o endereço. */
 function api_public_house(array $house): array
 {
     return [
@@ -302,7 +331,7 @@ function handle_api(string $path, string $method): void
         $checkout = (string) ($_GET['checkout'] ?? '');
         $nights = nights_between($checkin, $checkout);
         $quote = $nights ? stay_quote($house, $nights) : null;
-        $photos = PhotoRepository::list($id);
+        $photos = api_public_photos(PhotoRepository::list($id));
         $selected = Amenities::selected($house);
         $amenities = array_keys(array_filter($selected));
         activity(ActivityLog::PROPERTY_VIEW, [
@@ -317,7 +346,7 @@ function handle_api(string $path, string $method): void
             'description' => $house['description'],
             'summary' => $house['summary'],
             'city' => $house['city'],
-            'address' => $house['address'],
+            'neighborhood' => house_neighborhood($house),
             'photos' => $photos,
             'score' => review_score($id),
             'quote' => $quote,
