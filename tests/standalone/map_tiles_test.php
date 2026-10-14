@@ -6,7 +6,9 @@ require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/MapTiles.php';
 t_temp_db();
 
-$dir = sys_get_temp_dir() . '/cl-tiles-' . bin2hex(random_bytes(4));
+// MAP_TILES_FILE só vale dentro de storage/tiles/: o arquivo de teste fica num subdiretório próprio dele
+// (nunca mexe num brasil.pmtiles real).
+$dir = MapTiles::tilesDir() . '/cl-test-' . bin2hex(random_bytes(4));
 mkdir($dir, 0700, true);
 $file = $dir . '/teste.pmtiles';
 $data = random_bytes(70000) . 'FIM';
@@ -108,11 +110,49 @@ foreach ([
     t_ok($r['status'] === 404 && !$leak && $hdr($r, 'Content-Range') === null, "$p -> 404, sem servir outro arquivo (status {$r['status']})");
 }
 @unlink(CL_ROOT . '/storage/cache/segredo-tiles-test.txt');
-putenv('MAP_TILES_FILE=/etc/passwd');
-t_eq(realpath(CL_ROOT) . '/' . MapTiles::DEFAULT_FILE, MapTiles::file(), 'MAP_TILES_FILE sem .pmtiles é ignorado (volta ao caminho fixo)');
-t_ok(!str_contains(MapTiles::file(), 'passwd'), 'MAP_TILES_FILE=/etc/passwd não é aceito');
-putenv('MAP_TILES_FILE=/tmp/../etc/x.pmtiles');
-t_ok(!str_contains(MapTiles::file(), '..'), 'MAP_TILES_FILE com .. não é aceito');
+echo "MAP_TILES_FILE restrito a storage/tiles/ (realpath)\n";
+$out = sys_get_temp_dir() . '/cl-fora-' . bin2hex(random_bytes(4));
+mkdir($out, 0700, true);
+file_put_contents($out . '/fora.pmtiles', 'FORA-DO-DIRETORIO');
+$sibling = MapTiles::tilesDir() . '-irmao-' . bin2hex(random_bytes(3)); // storage/tiles-irmao-x: prefixo sem separador
+mkdir($sibling, 0700, true);
+file_put_contents($sibling . '/x.pmtiles', 'IRMAO');
+symlink($out . '/fora.pmtiles', $dir . '/link-fora.pmtiles');
+symlink($out, $dir . '/dir-fora');
+$log = tempnam(sys_get_temp_dir(), 'tileslog');
+$oldLog = ini_set('error_log', $log);
+$cases = [
+    [$out . '/fora.pmtiles', 'caminho fora de storage/tiles/'],
+    [$dir . '/link-fora.pmtiles', 'symlink dentro de storage/tiles/ apontando para fora'],
+    [$dir . '/dir-fora/fora.pmtiles', 'diretório symlink para fora'],
+    [$dir . '/../../../src/Db.php', "'..' saindo de storage/tiles/"],
+    [$dir . '/../../tiles/../../' . basename($out) . '/fora.pmtiles', "'..' encadeado"],
+    [$sibling . '/x.pmtiles', 'diretório irmão storage/tiles-* (prefixo sem separador)'],
+    ['/etc/passwd', '/etc/passwd'],
+    ['relativo.pmtiles', 'caminho relativo'],
+    [$dir . '/nao-existe.pmtiles', 'arquivo inexistente'],
+];
+foreach ($cases as [$path, $label]) {
+    putenv('MAP_TILES_FILE=' . $path);
+    file_put_contents($log, '');
+    t_eq(null, MapTiles::file(), "$label -> recusado (null)");
+    t_ok(str_contains((string) file_get_contents($log), 'map_tiles_file_rejected') && !str_contains((string) file_get_contents($log), $path), "$label -> log sem o caminho");
+}
+putenv('MAP_TILES_FILE=' . $dir . '/../' . basename($dir) . '/teste.pmtiles');
+t_eq(realpath($file), MapTiles::file(), "'..' que continua dentro de storage/tiles/ resolve para o realpath");
+putenv('MAP_TILES_FILE=' . $file);
+t_eq(realpath($file), MapTiles::file(), 'arquivo dentro de storage/tiles/ aceito');
+putenv('MAP_TILES_FILE');
+t_eq(MapTiles::tilesDir() . '/brasil.pmtiles', MapTiles::file(), 'sem MAP_TILES_FILE: caminho fixo storage/tiles/brasil.pmtiles');
+ini_set('error_log', (string) $oldLog);
+
+echo "HTTP com MAP_TILES_FILE fora: 404\n";
+foreach ([$out . '/fora.pmtiles' => 'fora', $dir . '/link-fora.pmtiles' => 'symlink'] as $path => $label) {
+    putenv('MAP_TILES_FILE=' . $path);
+    $b = t_server();
+    $r = t_http('GET', $b . $url, null, ['Range: bytes=0-99']);
+    t_ok($r['status'] === 404 && !str_contains($r['body'], 'FORA-DO-DIRETORIO') && $hdr($r, 'Content-Range') === null, "$label: 404 sem servir o arquivo");
+}
 
 echo "arquivo ausente\n";
 putenv('MAP_TILES_FILE=' . $dir . '/nao-existe.pmtiles');
@@ -133,5 +173,12 @@ t_ok(!str_contains($r['body'], substr($data, 0, 64)) && $hdr($r, 'Content-Range'
 putenv('APP_ENV');
 putenv('MAP_TILES_FILE');
 @unlink($file);
+@unlink($dir . '/link-fora.pmtiles');
+@unlink($dir . '/dir-fora');
 @rmdir($dir);
+@unlink($out . '/fora.pmtiles');
+@rmdir($out);
+@unlink($sibling . '/x.pmtiles');
+@rmdir($sibling);
+@unlink($log);
 t_done();

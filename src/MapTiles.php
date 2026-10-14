@@ -24,17 +24,32 @@ final class MapTiles
         return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
     }
 
+    /** Diretório permitido para o arquivo de tiles (storage/tiles/ da raiz do projeto). */
+    public static function tilesDir(): string
+    {
+        return dirname(__DIR__) . '/' . dirname(self::DEFAULT_FILE);
+    }
+
     /**
      * Caminho do arquivo no disco: fixo (DEFAULT_FILE). MAP_TILES_FILE (configuração do servidor, nunca da
-     * requisição) permite apontar outro arquivo .pmtiles absoluto, p.ex. nos testes.
+     * requisição) pode apontar outro .pmtiles, mas só se o realpath dele (symlinks resolvidos) ficar DENTRO
+     * do realpath de storage/tiles/; a comparação de prefixo inclui o separador ("storage/tiles-x" não passa).
+     * MAP_TILES_FILE inválido -> null (a rota responde 404 e registra o motivo no error_log, sem fallback).
      */
-    public static function file(): string
+    public static function file(): ?string
     {
         $custom = (string) getenv('MAP_TILES_FILE');
-        if ($custom !== '' && str_starts_with($custom, '/') && str_ends_with($custom, '.pmtiles') && !str_contains($custom, '..')) {
-            return $custom;
+        if ($custom === '') {
+            return dirname(__DIR__) . '/' . self::DEFAULT_FILE;
         }
-        return dirname(__DIR__) . '/' . self::DEFAULT_FILE;
+        $dir = realpath(self::tilesDir());
+        $real = realpath($custom);
+        if ($dir === false || $real === false || !str_ends_with($real, '.pmtiles') || !is_file($real)
+            || !str_starts_with($real, rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
+            error_log('map_tiles_file_rejected: MAP_TILES_FILE fora de storage/tiles/, inexistente ou sem .pmtiles');
+            return null;
+        }
+        return $real;
     }
 
     /**
@@ -84,8 +99,10 @@ final class MapTiles
             return;
         }
         $file = self::file();
-        clearstatcache(true, $file);
-        $size = is_file($file) && is_readable($file) ? filesize($file) : false;
+        if ($file !== null) {
+            clearstatcache(true, $file);
+        }
+        $size = $file !== null && is_file($file) && is_readable($file) ? filesize($file) : false;
         if ($size === false) {
             http_response_code(404);
             header('Content-Type: text/plain; charset=utf-8');

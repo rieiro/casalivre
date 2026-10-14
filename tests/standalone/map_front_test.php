@@ -36,6 +36,24 @@ foreach ([
 ] as $f) {
     t_ok(is_file(CL_ROOT . '/' . $f) && filesize(CL_ROOT . '/' . $f) > 0, "$f existe");
 }
+$readme = $read('public/assets/vendor/README.md');
+foreach (['maplibre-gl@5.24.0', 'pmtiles@4.5.0'] as $pkg) {
+    t_ok(preg_match('/`' . preg_quote($pkg, '/') . '`[^\n]*`sha512-[A-Za-z0-9+\/=]{80,}`/', $readme) === 1, "README com dist.integrity de $pkg");
+}
+$hashMismatch = [];
+foreach (['vendor' => '/public/assets/vendor/', 'map' => '/public/assets/map/'] as $root) {
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(CL_ROOT . $root, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $f) {
+        $rel = substr($f->getPathname(), strlen(CL_ROOT . $root));
+        if ($rel === 'README.md') {
+            continue;
+        }
+        if (!str_contains($readme, '| `' . $rel . '` | `' . hash_file('sha256', $f->getPathname()) . '` |')) {
+            $hashMismatch[] = $rel;
+        }
+    }
+}
+t_eq([], $hashMismatch, 'README tem o sha256 correto de cada arquivo vendorizado');
 $css = $read('public/assets/vendor/maplibre-gl/maplibre-gl.css');
 t_ok(!str_contains($css, 'data:'), 'maplibre-gl.css sem data: (ícones viraram arquivos; img-src continua só self)');
 preg_match_all('/url\(([^)]+)\)/', $css, $urls);

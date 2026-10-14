@@ -48,7 +48,7 @@ pmtiles extract "https://build.protomaps.com/$BUILD" storage/tiles/brasil.pmtile
 Com `APP_ENV=dev` (ou `local`), o PHP atende `GET`/`HEAD /tiles/brasil.pmtiles` (`src/MapTiles.php`) com Range:
 206 + `Content-Range`, 416 para faixa fora do arquivo, `Accept-Ranges: bytes`, `HEAD` sem corpo,
 `Content-Type: application/vnd.pmtiles`. O caminho é fixo: `storage/tiles/brasil.pmtiles`. A requisição nunca
-escolhe o arquivo; `MAP_TILES_FILE` (só ambiente, absoluto e terminando em `.pmtiles`) existe para os testes.
+escolhe o arquivo; `MAP_TILES_FILE` (só ambiente) existe para os testes e só é aceito se o realpath ficar dentro de `storage/tiles/`; caso contrário, 404 e log `map_tiles_file_rejected`.
 Fora de dev/local essa rota responde 404.
 
 ```bash
@@ -73,7 +73,12 @@ location = /tiles/brasil.pmtiles {
     gzip off;
     etag on;
     add_header Cache-Control "public, max-age=86400" always;
+    # add_header aqui anula TODOS os add_header herdados do server: repita os de segurança do nível server
+    # (mesmos valores de lá; se o server tiver outros, copie-os também).
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy same-origin always;
     limit_except GET HEAD { deny all; }
 }
 ```
