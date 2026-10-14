@@ -38,6 +38,23 @@ echo "Redact::secrets\n";
 $x = Redact::secrets('erro {"email":"joao@x.com","password":"abc123","senha"=>\'s3\'} Authorization: Bearer ' . str_repeat('a', 40));
 t_ok(!str_contains($x, 'joao@x.com') && !str_contains($x, 'abc123') && !str_contains($x, "s3'") && !str_contains($x, str_repeat('a', 40)), 'JSON/array/cabeçalho mascarados');
 
+$cases = [
+    'user[password]=Segredo123&x=1' => 'Segredo123',
+    'SMTP_PASS => "abc def ghi"' => 'def ghi',
+    '{"password":"Segredo 123"}' => '123',
+    'Authorization: Bearer eyJshort' => 'eyJshort',
+    'Basic dXNlcjpw' => 'dXNlcjpw',
+    'smtp://mailer:SmtpPass@host:587' => 'mailer',
+    'cpf 529.982.247-25' => '247-25',
+    'cpf 52998224725' => '52998224725',
+    'tel (48) 99999-0000' => '99999-0000',
+    'tel 48 3222-1111' => '3222-1111',
+];
+foreach ($cases as $in => $leak) {
+    t_ok(!str_contains(Redact::secrets($in), $leak), "secrets: '$in' mascarado");
+}
+t_ok(str_contains(Redact::secrets('#0 /src/Db.php(123): PDO->prepare() 2026-10-14 13:00:00'), 'Db.php(123): PDO->prepare() 2026-10-14 13:00:00'), 'secrets: trace e datas preservados');
+
 echo "bootstrap\n";
 $idx = (string) file_get_contents(CL_ROOT . '/public/index.php');
 t_eq(1, substr_count($idx, "ini_set('zend.exception_ignore_args', '1')"), 'index.php ativa zend.exception_ignore_args uma única vez');

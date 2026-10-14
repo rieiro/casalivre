@@ -3,29 +3,59 @@
 declare(strict_types=1);
 
 /**
- * Limite simples por IP em janela fixa, com estado em arquivos locais
- * (storage/cache/ratelimit, 0700/0600). Usado nos endpoints públicos de geo
- * (/api/cidades, /api/ceps). O limite de login continua no LoginRateLimiter/RateLimit.
+ * Limite simples por IP em janela fixa, com estado em arquivos locais (storage/cache/ratelimit, 0700/0600).
+ * Usado pela camada ApiRateLimit do pipeline. IPv6 é agrupado pelo /64. Arquivos mais velhos que MAX_AGE
+ * são apagados aqui mesmo (amostragem PURGE_CHANCE e sempre que o teto MAX_FILES é atingido).
+ * Falha aberta (deixa passar) se o estado não puder ser gravado; o evento vai para o error_log.
  */
 final class IpRateLimiter
 {
+    public const MAX_AGE = 7200;      // >= maior janela usada (1 h)
+    public const MAX_FILES = 20000;
+    public const PURGE_CHANCE = 100;  // 1 em N chamadas
+
     public static ?string $dir = null;
+    public static int $maxFiles = self::MAX_FILES;
+    /** 0 desliga a amostragem (testes). */
+    public static int $purgeChance = self::PURGE_CHANCE;
+
+    /** Chave do cliente: IPv4 inteiro; IPv6 pelo prefixo /64. */
+    public static function clientKey(string $ip): string
+    {
+        $bin = @inet_pton($ip);
+        if ($bin !== false && strlen($bin) === 16) {
+            if (str_starts_with($bin, str_repeat("\0", 10) . "\xff\xff")) {
+                return (string) inet_ntop(substr($bin, 12)); // IPv4 mapeado
+            }
+            return bin2hex(substr($bin, 0, 8)) . '::/64';
+        }
+        return $ip;
+    }
 
     /** @return int segundos até liberar (0 = permitido) */
     public static function hit(string $bucket, int $max, int $windowSeconds, ?string $ip = null, ?int $now = null): int
     {
         $ip ??= (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
         $now ??= time();
-        $dir = self::$dir ?? dirname(__DIR__) . '/storage/cache/ratelimit';
+        $dir = self::dir();
         $old = umask(0077);
         try {
-            if (!is_dir($dir)) {
-                @mkdir($dir, 0700, true);
+            if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+                return self::open('diretório indisponível');
             }
-            $file = $dir . '/' . hash('sha256', $bucket . '|' . $ip) . '.json';
+            if (self::$purgeChance > 0 && random_int(1, self::$purgeChance) === 1) {
+                self::purge();
+            }
+            $file = $dir . '/' . hash('sha256', $bucket . '|' . self::clientKey($ip)) . '.json';
+            if (!is_file($file) && self::count() >= self::$maxFiles) {
+                self::purge();
+                if (self::count() >= self::$maxFiles) {
+                    return self::open('teto de arquivos atingido');
+                }
+            }
             $fh = @fopen($file, 'c+');
             if ($fh === false) {
-                return 0; // falha aberta: não derruba a busca de CEP/cidade
+                return self::open('arquivo de estado indisponível');
             }
             flock($fh, LOCK_EX);
             $data = json_decode((string) stream_get_contents($fh), true);
@@ -45,5 +75,35 @@ final class IpRateLimiter
         } finally {
             umask($old);
         }
+    }
+
+    /** Apaga arquivos de estado sem uso há mais de MAX_AGE segundos. Devolve quantos apagou. */
+    public static function purge(?int $now = null): int
+    {
+        $limit = ($now ?? time()) - self::MAX_AGE;
+        $n = 0;
+        foreach (glob(self::dir() . '/*.json') ?: [] as $f) {
+            $m = @filemtime($f);
+            if ($m !== false && $m < $limit && @unlink($f)) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    private static function dir(): string
+    {
+        return self::$dir ?? dirname(__DIR__) . '/storage/cache/ratelimit';
+    }
+
+    private static function count(): int
+    {
+        return count(glob(self::dir() . '/*.json', GLOB_NOSORT) ?: []);
+    }
+
+    private static function open(string $why): int
+    {
+        error_log('ip_rate_limiter: falha aberta (' . $why . ')');
+        return 0;
     }
 }

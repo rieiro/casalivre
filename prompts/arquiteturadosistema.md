@@ -59,13 +59,14 @@ xi. Nos eventos de upload de arquivo, por exemplo, fotos, certifique-se: -&gt; M
 
 **Implementação atual** (descrição do código; não altera os requisitos acima)
 
-- Pipeline em cebola: `seguranca/` — `Middleware` (interface), `Pipeline` (executor) e `Seguranca::pipeline()`, chamado por `public/index.php` antes do `dispatch()`. Camadas, de fora para dentro:
-  1. `Sanitize`: `htmlspecialchars` recursivo em `$_GET`/`$_POST` (exceto campos puros: senhas, `_csrf`, URL de iCal).
-  2. `Csrf`: token de sessão (`random_bytes`), exigido em POST/PUT/PATCH/DELETE (campo `_csrf`, cabeçalho `X-CSRF-Token` ou JSON). Corpo não-multipart acima de 1 MiB (`Csrf::MAX_BODY_BYTES`, pelo `CONTENT_LENGTH`) é recusado com 413. Recusa de token: 419.
-  3. `ApiRateLimit`: limite por IP só em rotas `/api` listadas (`/api/cidades` e `/api/ceps`, 60/min cada), via `IpRateLimiter` (arquivos em `storage/cache/ratelimit`). Excesso: 429 com `Retry-After`.
-  4. `RateLimit`: bloqueio de login (`POST /entrar`, `POST /api/sessao`) por `LoginRateLimiter`; 429 com `Retry-After`.
-  5. `Auth`: rotas privadas exigem `$_SESSION['user_id']`; web redireciona para `/entrar`, API responde 401.
+- Pipeline em cebola: `seguranca/` — `Middleware` (interface; define `WRITE_METHODS`), `Pipeline` (executor) e `Seguranca::pipeline()`, chamado por `public/index.php` antes do `dispatch()`. Camadas, de fora para dentro:
+  1. `ApiRateLimit`: limite por IP (IPv6 por /64) em rotas da API listadas em `public/index.php` (`api_limites`: cidades, ceps e busca 60/min; esqueci a senha 5/15 min; cadastro 10/h; avaliar 10/h; upload de fotos 30/10 min), via `IpRateLimiter` (arquivos em `storage/cache/ratelimit`, limpeza própria e teto de arquivos; falha aberta registrada no error_log). Excesso: 429 com `Retry-After`.
+  2. `BodyLimit`: em métodos de escrita não-multipart, `Transfer-Encoding` ou falta de `Content-Length` (exceto DELETE sem corpo) -> 411; corpo acima de 1 MiB (`BodyLimit::MAX_BYTES`) -> 413.
+  3. `Sanitize`: `htmlspecialchars` recursivo em `$_GET`/`$_POST` (exceto campos puros: senhas, `_csrf`, URL de iCal).
+  4. `Csrf`: token de sessão (`random_bytes`), exigido nos métodos de escrita (campo `_csrf`, cabeçalho `X-CSRF-Token` ou JSON). Recusa: 419.
+  5. `RateLimit`: bloqueio de login (`POST /entrar`, `POST /api/sessao`) por `LoginRateLimiter`; 429 com `Retry-After`.
+  6. `Auth`: rotas privadas exigem `$_SESSION['user_id']`; web redireciona para `/entrar`, API responde 401.
 - Recusas: `casa_recusar()` em `public/index.php` envia a resposta e encerra; na API o corpo é sempre `{"error": "..."}`.
 - Erros: `ExceptionShield` (`set_exception_handler`) grava em `storage/error.log` mensagem e trace com `Redact::secrets()` (e-mails, senhas/tokens, hashes e query strings mascarados) e mostra tela genérica com código de referência. `zend.exception_ignore_args` ligado em `public/index.php`.
-- Sessão: `SecureSession` -> `SessionGuard` (`conta/Auth/Session.php`): cookie HttpOnly, Secure em HTTPS, SameSite=Lax (ou `SESSION_SAMESITE`). Banco: repositórios com PDO e prepared statements; senhas com `password_hash` (Argon2id, ou Bcrypt se indisponível).
+- Sessão: aberta só com cookie de sessão, em rota autenticada ou quando uma página pede o token CSRF (`csrf_token()`). `SecureSession` -> `SessionGuard` (`conta/Auth/Session.php`): cookie HttpOnly, Secure em HTTPS, SameSite=Lax (ou `SESSION_SAMESITE`). Banco: repositórios com PDO e prepared statements; senhas com `password_hash` (Argon2id, ou Bcrypt se indisponível).
 

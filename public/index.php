@@ -35,7 +35,11 @@ if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
     return false;
 }
 
-SecureSession::start();
+// Sessão só com cookie de sessão ou rota autenticada; páginas com formulário abrem a sessão
+// ao pedir o token CSRF (csrf_token() em view()).
+if (isset($_COOKIE[session_name()]) || casa_privado($path, $method)) {
+    SecureSession::start();
+}
 // Log por requisição da API iniciado ANTES do pipeline de segurança, para que as
 // respostas 401/419/429 geradas pelos middlewares (que encerram com exit) também
 // sejam registradas pelo shutdown hook do RequestLog.
@@ -81,9 +85,15 @@ return Seguranca::pipeline(
             ['POST', '/entrar'],
             ['POST', '/api/sessao'],
         ],
+        // [método, caminho, máximo, janela (s), balde] por IP (IPv6 por /64).
         'api_limites' => [
-            ['GET', '/api/cidades', 60, 60],
-            ['GET', '/api/ceps', 60, 60],
+            ['GET', '#^/api/cidades$#', 60, 60, '/api/cidades'],
+            ['GET', '#^/api/ceps$#', 60, 60, '/api/ceps'],
+            ['GET', '#^/api/busca$#', 60, 60, '/api/busca'],
+            ['POST', '#^/api/auth/senha/esqueci$#', 5, 900, '/api/auth/senha/esqueci'],
+            ['POST', '#^/api/users$#', 10, 3600, '/api/users'],
+            ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
+            ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
@@ -147,7 +157,8 @@ function casa_privado(string $path, string $method): bool
  * RequestLog usa register_shutdown_function, que roda mesmo após exit.
  *
  * - 'csrf'       -> 419 (JSON em /api, HTML fora) + exit
- * - 'too_large'  -> 413 (corpo acima de Csrf::MAX_BODY_BYTES; JSON em /api, HTML fora) + exit
+ * - 'too_large'  -> 413 (corpo acima de BodyLimit::MAX_BYTES; JSON em /api, HTML fora) + exit
+ * - 'length_required' -> 411 (Transfer-Encoding ou escrita sem Content-Length) + exit
  * - 'api_rate_limit' -> 429 JSON + Retry-After (enviado pelo ApiRateLimit) + exit
  * - 'rate_limit' -> 429 + Retry-After (enviado pelo RateLimit) (JSON em /api, tela de login fora) + exit
  * - 'login'      -> 302 para /entrar + exit
@@ -157,42 +168,26 @@ function casa_recusar(string $code, string $path): never
 {
     $api = str_starts_with($path, '/api');
     if ($code === 'csrf') {
-        http_response_code(419);
-        if ($api) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => 'Token de segurança inválido.'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-        header('Content-Type: text/html; charset=utf-8');
-        echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido recusado</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Pedido recusado</h1><p>O token de segurança não confere. Recarregue a página e tente de novo.</p><p><a href="/">Voltar ao início</a></p></body></html>';
-        exit;
+        $api ? casa_json_error(419, 'Token de segurança inválido.')
+            : casa_html_error(419, 'Pedido recusado', 'O token de segurança não confere. Recarregue a página e tente de novo.');
     }
     if ($code === 'api_rate_limit') {
-        // Retry-After já enviado pelo ApiRateLimit.
-        http_response_code(429);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => 'Muitas requisições. Tente novamente em instantes.'], JSON_UNESCAPED_UNICODE);
-        exit;
+        casa_json_error(429, 'Muitas requisições. Tente novamente em instantes.'); // Retry-After enviado pelo ApiRateLimit
     }
     if ($code === 'too_large') {
-        http_response_code(413);
-        if ($api) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => 'Corpo da requisição grande demais.'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-        header('Content-Type: text/html; charset=utf-8');
-        echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Envio grande demais</h1><p>O conteúdo enviado passa do limite permitido.</p><p><a href="/">Voltar ao início</a></p></body></html>';
-        exit;
+        $api ? casa_json_error(413, 'Corpo da requisição grande demais.')
+            : casa_html_error(413, 'Envio grande demais', 'O conteúdo enviado passa do limite permitido.');
+    }
+    if ($code === 'length_required') {
+        $api ? casa_json_error(411, 'Content-Length obrigatório.')
+            : casa_html_error(411, 'Pedido recusado', 'O envio precisa informar o tamanho do conteúdo.');
     }
     if ($code === 'rate_limit') {
-        http_response_code(429);
         $message = LoginRateLimiter::message();
         if ($api) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-            exit;
+            casa_json_error(429, $message);
         }
+        http_response_code(429);
         view('login', ['error' => $message]);
         exit;
     }
@@ -200,9 +195,24 @@ function casa_recusar(string $code, string $path): never
         header('Location: /entrar');
         exit;
     }
-    http_response_code(401);
+    casa_json_error(401, 'Não autenticado.');
+}
+
+/** Resposta de erro padronizada da API: {"error": "..."}. */
+function casa_json_error(int $status, string $message): never
+{
+    http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => 'Não autenticado.'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function casa_html_error(int $status, string $title, string $message): never
+{
+    http_response_code($status);
+    header('Content-Type: text/html; charset=utf-8');
+    $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>' . $e($title) . '</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>' . $e($title) . '</h1><p>' . $e($message) . '</p><p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
 }
 
