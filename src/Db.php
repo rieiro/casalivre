@@ -87,7 +87,7 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 5; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue
+    public const SCHEMA_VERSION = 6; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link)
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
@@ -216,10 +216,8 @@ final class Db
         self::renameUsers($pdo, $driver);
         $userColumns = [
             'status' => "TEXT NOT NULL DEFAULT 'active'",
-            'activation_link' => 'TEXT',
             'activation_expires_at' => 'TEXT',
             'reset_token' => 'TEXT',
-            'reset_link' => 'TEXT',
             'reset_expires_at' => 'TEXT',
             'inactivated_at' => 'TEXT',
             'inactivated_ip' => 'TEXT',

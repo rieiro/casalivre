@@ -9,9 +9,9 @@ final class UserRepository
         $now = date('Y-m-d H:i:s');
         $status = $user['status'] ?? 'pending';
         $stmt = db()->prepare('INSERT INTO users (
-            name, cpf, address, cep, street, address_number, address_complement, phone, email, password_hash, activation_token, activation_link,
+            name, cpf, address, cep, street, address_number, address_complement, phone, email, password_hash, activation_token,
             activation_expires_at, activated_at, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id');
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id');
         $stmt->execute([
             $user['name'],
             $user['cpf'],
@@ -24,7 +24,6 @@ final class UserRepository
             $user['email'],
             $user['password_hash'],
             $user['activation_token'] ?? null,
-            $user['activation_link'] ?? null,
             $user['activation_expires_at'] ?? null,
             $status === 'active' ? ($user['activated_at'] ?? $now) : null,
             $status,
@@ -57,15 +56,23 @@ final class UserRepository
         return $row ?: null;
     }
 
+    /** sha256 hex do token bruto: só o hash fica no banco; o token bruto vai apenas no e-mail. */
+    public static function tokenHash(string $token): string
+    {
+        return hash('sha256', $token);
+    }
+
+    /** Busca pelo hash do token recebido e confirma com hash_equals(armazenado, sha256(token)). */
     public static function findByToken(string $column, string $token): ?array
     {
-        if (!in_array($column, ['activation_token', 'reset_token'], true)) {
+        if (!in_array($column, ['activation_token', 'reset_token'], true) || $token === '') {
             return null;
         }
+        $given = self::tokenHash($token);
         $stmt = db()->prepare("SELECT * FROM users WHERE $column = ?");
-        $stmt->execute([$token]);
+        $stmt->execute([$given]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        return $row && hash_equals((string) $row[$column], $given) ? $row : null;
     }
 
     public static function update(int $id, array $user): array
@@ -96,7 +103,7 @@ final class UserRepository
 
     public static function activate(int $id): void
     {
-        db()->prepare("UPDATE users SET status = 'active', activated_at = ?, deleted_at = NULL, inactivated_at = NULL, inactivated_ip = NULL, activation_token = NULL, activation_link = NULL, activation_expires_at = NULL, failed_logins = 0 WHERE id = ?")
+        db()->prepare("UPDATE users SET status = 'active', activated_at = ?, deleted_at = NULL, inactivated_at = NULL, inactivated_ip = NULL, activation_token = NULL, activation_expires_at = NULL, failed_logins = 0 WHERE id = ?")
             ->execute([date('Y-m-d H:i:s'), $id]);
     }
 
@@ -113,21 +120,23 @@ final class UserRepository
         db()->prepare('UPDATE users SET failed_logins = 0 WHERE id = ?')->execute([$id]);
     }
 
-    public static function setActivation(int $id, string $token, string $link, string $expires): void
+    /** Grava só o hash do token bruto (sha256). */
+    public static function setActivation(int $id, string $rawToken, string $expires): void
     {
-        db()->prepare('UPDATE users SET activation_token = ?, activation_link = ?, activation_expires_at = ? WHERE id = ?')
-            ->execute([$token, $link, $expires, $id]);
+        db()->prepare('UPDATE users SET activation_token = ?, activation_expires_at = ? WHERE id = ?')
+            ->execute([self::tokenHash($rawToken), $expires, $id]);
     }
 
-    public static function setReset(int $id, string $token, string $link, string $expires): void
+    /** Grava só o hash do token bruto (sha256). */
+    public static function setReset(int $id, string $rawToken, string $expires): void
     {
-        db()->prepare('UPDATE users SET reset_token = ?, reset_link = ?, reset_expires_at = ? WHERE id = ?')
-            ->execute([$token, $link, $expires, $id]);
+        db()->prepare('UPDATE users SET reset_token = ?, reset_expires_at = ? WHERE id = ?')
+            ->execute([self::tokenHash($rawToken), $expires, $id]);
     }
 
     public static function setPassword(int $id, string $hash): void
     {
-        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_link = NULL, reset_expires_at = NULL, failed_logins = 0 WHERE id = ?')
+        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0 WHERE id = ?')
             ->execute([$hash, $id]);
     }
 
