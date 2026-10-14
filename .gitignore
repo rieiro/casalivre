@@ -7,4 +7,9 @@ public/uploads/
 *.patch
 
 vendor/
+# Bibliotecas do mapa vendorizadas (servidas pelo site; CSP 'self'), não são dependências do Composer
+!public/assets/vendor/
 .phpunit.cache/
+
+# Tiles do mapa (PMTiles, vários GB): nunca no git; ver prompts/mapa-pmtiles.md
+*.pmtiles
