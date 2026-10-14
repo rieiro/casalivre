@@ -5,8 +5,9 @@ declare(strict_types=1);
 /**
  * Limite simples por IP em janela fixa, com estado em arquivos locais (storage/cache/ratelimit, 0700/0600).
  * Usado pela camada ApiRateLimit do pipeline. IPv6 é agrupado pelo /64. Arquivos mais velhos que MAX_AGE
- * são apagados aqui mesmo (amostragem PURGE_CHANCE e sempre que o teto MAX_FILES é atingido).
- * Falha aberta (deixa passar) se o estado não puder ser gravado; o evento vai para o error_log.
+ * são apagados aqui mesmo (amostragem PURGE_CHANCE e sempre que o teto MAX_FILES é atingido). Com o teto
+ * ainda cheio, chave nova recebe 429 (logado). Falha aberta (deixa passar) se o estado não puder ser gravado;
+ * o evento vai para o error_log.
  */
 final class IpRateLimiter
 {
@@ -50,7 +51,9 @@ final class IpRateLimiter
             if (!is_file($file) && self::count() >= self::$maxFiles) {
                 self::purge();
                 if (self::count() >= self::$maxFiles) {
-                    return self::open('teto de arquivos atingido');
+                    // Chave nova com o teto cheio: recusa (429) em vez de criar arquivo; chaves existentes seguem contando.
+                    error_log('ip_rate_limiter: teto de arquivos atingido, chave nova recusada');
+                    return max(1, $windowSeconds);
                 }
             }
             $fh = @fopen($file, 'c+');

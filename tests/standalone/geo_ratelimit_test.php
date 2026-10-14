@@ -32,14 +32,18 @@ t_eq(count($files) - 1, count(glob(IpRateLimiter::$dir . '/*.json')), 'recentes 
 $log = tempnam(sys_get_temp_dir(), 'rlerr');
 ini_set('error_log', $log);
 IpRateLimiter::$maxFiles = count(glob(IpRateLimiter::$dir . '/*.json'));
-t_eq(0, IpRateLimiter::hit('novo', 1, 60, '9.9.9.9', $now), 'teto atingido: falha aberta');
+t_eq(60, IpRateLimiter::hit('novo', 1, 60, '9.9.9.9', $now), 'teto atingido: chave nova recebe 429 (Retry-After 60)');
 t_eq(IpRateLimiter::$maxFiles, count(glob(IpRateLimiter::$dir . '/*.json')), 'teto atingido: nenhum arquivo novo');
-t_ok(str_contains((string) file_get_contents($log), 'ip_rate_limiter: falha aberta (teto de arquivos atingido)'), 'falha aberta registrada no log');
+t_ok(str_contains((string) file_get_contents($log), 'ip_rate_limiter: teto de arquivos atingido, chave nova recusada'), 'recusa registrada no log');
+t_eq(0, IpRateLimiter::hit('v6', 3, 60, '2001:db8:1:3::9', $now + 60), 'teto atingido: chave existente segue dentro do limite');
+t_eq(0, IpRateLimiter::hit('v6', 3, 60, '2001:db8:1:3::9', $now + 60), 'chave existente: 2ª na janela');
+t_eq(0, IpRateLimiter::hit('v6', 3, 60, '2001:db8:1:3::9', $now + 60), 'chave existente: 3ª na janela');
+t_eq(60, IpRateLimiter::hit('v6', 3, 60, '2001:db8:1:3::9', $now + 60), 'chave existente: 4ª bloqueada pelo limite normal');
 t_ok(!str_contains((string) file_get_contents($log), '9.9.9.9'), 'log sem IP');
 foreach (glob(IpRateLimiter::$dir . '/*.json') as $f) {
     touch($f, time() - IpRateLimiter::MAX_AGE - 10);
 }
-t_eq(0, IpRateLimiter::hit('novo', 1, 60, '9.9.9.9', $now), 'teto atingido com arquivos velhos: limpa e conta');
+t_eq(0, IpRateLimiter::hit('novo', 1, 60, '9.9.9.9', $now), 'teto atingido com arquivos velhos: limpa e aceita a chave nova');
 t_eq(1, count(glob(IpRateLimiter::$dir . '/*.json')), 'só o arquivo novo fica');
 IpRateLimiter::$maxFiles = IpRateLimiter::MAX_FILES;
 exec('rm -rf ' . escapeshellarg(IpRateLimiter::$dir));
