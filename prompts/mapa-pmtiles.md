@@ -51,11 +51,13 @@ Com `APP_ENV=dev` (ou `local`), o PHP atende `GET`/`HEAD /tiles/brasil.pmtiles` 
 escolhe o arquivo; `MAP_TILES_FILE` (só ambiente) existe para os testes e só é aceito se o realpath ficar dentro de `storage/tiles/`; caso contrário, 404 e log `map_tiles_file_rejected`.
 Fora de dev/local essa rota responde 404.
 
+O ambiente vence o `.env`: `scripts/start.sh` lê o `.env` como `KEY=VALUE`, sem `source` e sem executar nada, e só preenche as chaves que o ambiente não definiu. `Db::loadEnv` faz o mesmo. Então `APP_ENV=dev scripts/start.sh` liga a rota de tiles mesmo com `APP_ENV=production` no `.env` (o padrão do `setup.sh`). Também vale para `PORT`, `BIND_ADDR` etc.
+
 ```bash
-APP_ENV=dev scripts/start.sh
+APP_ENV=dev scripts/start.sh            # ou PORT=8081 APP_ENV=dev scripts/start.sh
 curl -sI -H 'Range: bytes=0-511' http://127.0.0.1:8080/tiles/brasil.pmtiles   # 206, Content-Range: bytes 0-511/<total>
 # abrir http://127.0.0.1:8080/busca/mapa?localidade=Florianópolis, SC
-php tests/standalone/map_tiles_test.php && php tests/standalone/map_front_test.php
+php tests/standalone/map_tiles_test.php && php tests/standalone/map_front_test.php && php tests/standalone/env_precedence_test.php
 ```
 
 ## Deploy (nginx)

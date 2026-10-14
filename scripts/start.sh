@@ -5,10 +5,11 @@ cd "$ROOT"
 if [[ ! -f storage/db/casalivre.sqlite ]]; then
   "$ROOT/scripts/setup.sh"
 fi
-if [[ -f .env ]]; then
-  # shellcheck disable=SC1091
-  source .env
-fi
+# .env só preenche o que o ambiente não definiu (APP_ENV=dev scripts/start.sh vence APP_ENV=production do
+# .env). Leitura KEY=VALUE segura, sem executar o arquivo.
+# shellcheck source=scripts/env-lib.sh
+source "$ROOT/scripts/env-lib.sh"
+load_env_file "$ROOT/.env"
 PHP_BIN="${PHP_BIN:-php}"
 if ! command -v "$PHP_BIN" >/dev/null 2>&1 && [[ ! -x "$PHP_BIN" ]]; then
   echo "PHP não encontrado. Rode scripts/setup.sh"
