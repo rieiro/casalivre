@@ -136,17 +136,22 @@ function reject_oversize_upload(): void
  * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
  * script, sem 'unsafe-inline' em style, sem data:/blob:, sem host externo. O mapa (MapLibre build CSP + PMTiles)
  * usa só arquivos do próprio site: script e worker em /assets/vendor, estilo/fontes/sprites em /assets/map,
- * tiles em /tiles/brasil.pmtiles (fetch com Range, coberto por default-src 'self').
+ * tiles em /tiles/brasil.pmtiles (fetch com Range, connect-src 'self'). style-src-attr 'none': sem style=
+ * no HTML (o MapLibre usa CSSOM, que a CSP não bloqueia).
  */
 function csp_header(): string
 {
     return implode('; ', [
         "default-src 'self'",
         "script-src 'self'",
+        "style-src 'self'",
+        "style-src-attr 'none'",
         "img-src 'self'",
+        "connect-src 'self'",
+        "worker-src 'self'",
         "object-src 'none'",
         "base-uri 'none'",
-        "frame-ancestors 'self'",
+        "frame-ancestors 'none'",
         "form-action 'self'",
     ]);
 }

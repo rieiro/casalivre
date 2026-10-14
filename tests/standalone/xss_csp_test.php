@@ -7,7 +7,7 @@ $owner = t_seed_owner();
 db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
-$strictExpected = "default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
+$strictExpected = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
 $csp = 'Content-Security-Policy: ' . $strictExpected;
 
 echo "csp_header(): sempre estrita\n";
@@ -25,12 +25,11 @@ $dir = $parse($strict);
 t_eq(["'self'"], $dir['script-src'] ?? null, "script-src só 'self'");
 t_eq(["'self'"], $dir['img-src'] ?? null, "img-src só 'self' (mapa PMTiles local; tiles raster do OSM removidos)");
 t_ok(!str_contains($strict, 'openstreetmap') && !str_contains($strict, 'http'), 'CSP sem host externo (nem tile.openstreetmap.org)');
-foreach (['object-src' => "'none'", 'base-uri' => "'none'", 'frame-ancestors' => "'self'", 'form-action' => "'self'"] as $d => $v) {
+foreach (['object-src' => "'none'", 'base-uri' => "'none'", 'frame-ancestors' => "'none'", 'form-action' => "'self'",
+    'style-src' => "'self'", 'style-src-attr' => "'none'", 'connect-src' => "'self'", 'worker-src' => "'self'"] as $d => $v) {
     t_eq([$v], $dir[$d] ?? null, "$d $v");
 }
-foreach (['style-src', 'connect-src', 'font-src', 'worker-src'] as $d) {
-    t_ok(!isset($dir[$d]), "sem $d próprio (cai em default-src 'self')");
-}
+t_ok(!isset($dir['font-src']), "sem font-src próprio (cai em default-src 'self')");
 foreach (['google', 'gstatic', 'unsafe', 'data:', 'blob:', '*'] as $bad) {
     t_ok(!str_contains($strict, $bad), "CSP sem '$bad'");
 }

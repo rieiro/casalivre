@@ -1,6 +1,6 @@
 STATUS 200 OK
 Cache-Control: no-store, no-cache, must-revalidate
-Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
 Content-type: text/html; charset=UTF-8
 Referrer-Policy: same-origin
 X-Content-Type-Options: nosniff
