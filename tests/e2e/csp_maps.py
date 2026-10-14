@@ -1,5 +1,5 @@
 """E2E do mapa (MapLibre GL + PMTiles) sob a CSP estrita: zero violações de CSP (inclui o worker do MapLibre),
-zero requisições a hosts externos (Google incluído), atribuição "© OpenStreetMap contributors · Protomaps"
+zero requisições a hosts externos (Google incluído), zero erros no console, atribuição "© OpenStreetMap contributors · Protomaps"
 visível com link, e tiles do /tiles/brasil.pmtiles via Range (206) quando o arquivo existe; sem o arquivo, o
 mapa abre só com os pins e mostra o aviso. Cobre CT-MAPA-010..012 (CT-E2E-092/093).
 Uso: csp_maps.py <base_url> [executável do Chrome]"""
@@ -25,13 +25,14 @@ with sync_playwright() as pw:
     browser = pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
     page = browser.new_page()
     console, responses, requests = [], [], []
-    page.on('console', lambda m: console.append(m.text))
+    page.on('console', lambda m: console.append(('console-error: ' if m.type == 'error' else '') + m.text))
     page.on('pageerror', lambda e: console.append('pageerror: ' + str(e)))
     page.on('request', lambda r: requests.append(r.url))
     page.on('response', lambda r: responses.append((r.url, r.status)))
     page.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI));")
     for path in ['/busca?localidade=' + loc, '/busca/mapa?localidade=' + loc]:
         console.clear(); responses.clear(); requests.clear()
+        notice_shown = False
         page.goto(base + path)
         page.wait_for_load_state('networkidle')
         if path.startswith('/busca/mapa'):
@@ -46,7 +47,8 @@ with sync_playwright() as pw:
             if tiles and all(st in (200, 206) for st in tiles):
                 check(206 in tiles, path + ': tiles via Range (206) (%d respostas)' % len(tiles))
             else:
-                check(notice.is_visible() and 'indispon' in notice.inner_text(), path + ': sem brasil.pmtiles -> aviso e mapa só com pins')
+                notice_shown = notice.is_visible() and 'indispon' in notice.inner_text()
+                check(notice_shown, path + ': sem brasil.pmtiles -> aviso e mapa só com pins')
         csp = page.evaluate('window.__csp') + [m for m in console if 'Content Security Policy' in m]
         for m in csp:
             print('  csp  ' + str(m)[:300])
@@ -57,6 +59,9 @@ with sync_playwright() as pw:
         check(not google, path + ': nenhum host Google requisitado')
         errors = [m for m in console if 'pageerror' in m]
         check(not errors, path + ': sem erro de JS (%s)' % errors[:2])
+        # Sem o brasil.pmtiles o HEAD de checagem dá 404 de propósito (aviso na tela); fora isso, console limpo.
+        cerr = [m for m in console if m.startswith('console-error:') and not (notice_shown and '404' in m)]
+        check(not cerr, path + ': zero erros no console (%s)' % cerr[:2])
     browser.close()
 
 print('E2E csp_maps: %s' % ('PASSOU' if not failures else 'FALHOU (%d)' % len(failures)))

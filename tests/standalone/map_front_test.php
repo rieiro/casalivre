@@ -87,6 +87,12 @@ $js = $read('public/assets/pages/map.js');
 t_ok(str_contains($js, '© OpenStreetMap contributors</a> · <a href="https://protomaps.com"') && str_contains($js, 'https://www.openstreetmap.org/copyright'), "atribuição '© OpenStreetMap contributors · Protomaps' com links");
 t_ok(str_contains($js, 'compact: false'), 'atribuição sempre visível (não compacta)');
 
+echo "favicon (sem 404 no console)\n";
+$fav = t_http('GET', $base . '/favicon.ico');
+t_eq(200, $fav['status'], '/favicon.ico -> 200');
+t_ok(str_starts_with($fav['body'], "\x00\x00\x01\x00") && strlen($fav['body']) < 4096, 'favicon.ico é um ICO pequeno');
+t_ok(str_contains($read('views/layout.php'), '<link rel="icon" href="/favicon.ico"'), 'layout com <link rel=icon> local');
+
 echo ".pmtiles fora do git\n";
 t_ok(preg_match('/^\*\.pmtiles$/m', $read('.gitignore')) === 1, '.gitignore tem *.pmtiles');
 $tracked = (string) shell_exec('cd ' . escapeshellarg(CL_ROOT) . ' && git ls-files 2>/dev/null');
