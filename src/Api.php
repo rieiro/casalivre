@@ -487,6 +487,8 @@ function handle_api(string $path, string $method): void
         // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
         $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, Canal::Api);
         $res->registrar();
+        // Textos de recusa próprios da API, diferentes das mensagens da web (Resultado::mensagem): diferença
+        // intencional entre canais (SNAPSHOT, ver char_calendario_test.php); não trocar por $res->mensagem.
         if ($res->tipo === 'limit') {
             api_error(422, 'Limite de feeds atingido.');
         }
