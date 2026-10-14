@@ -4,6 +4,30 @@
 // Uso: APP_URL=http://127.0.0.1:PORT php scripts/extras/retencao-concorrente.php [rodadas] [requisicoes] [paralelo]
 declare(strict_types=1);
 
+/** PR #32: o link de ativação não volta mais na API; roda o worker (APP_ENV=dev) e lê o último link do e-mail no mail-dev.log. */
+if (!function_exists('link_ativacao')) {
+    function link_ativacao(string $email): string
+    {
+        $root = dirname(__DIR__, 2);
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $arq = $root . '/storage/logs/mail-dev.log';
+        for ($i = 0; $i < 5; $i++) {
+            shell_exec($cmd);
+            $link = '';
+            foreach (is_file($arq) ? (file($arq, FILE_IGNORE_NEW_LINES) ?: []) : [] as $l) {
+                if (str_contains($l, $email) && str_contains($l, '/verificar')) {
+                    $link = (string) ((json_decode($l, true) ?: [])['link'] ?? $link);
+                }
+            }
+            if ($link !== '') {
+                return $link;
+            }
+            usleep(300000);
+        }
+        return '';
+    }
+}
+
 $root = dirname(__DIR__, 2);
 $base = getenv('APP_URL') ?: 'http://127.0.0.1:8080';
 $rounds = (int) ($argv[1] ?? 5);
@@ -30,12 +54,22 @@ function csrf(string $jar, string $page): string
     return preg_match('/name="_csrf" value="([^"]+)"/', $h, $m) ? $m[1] : '';
 }
 
+// Limpa sobras do limite por IP deixadas pelo CASOS/standalone (storage/cache/ratelimit), para o login abaixo não cair em 429.
+// Idem para o bloqueio de login por IP (tabela login_rate_limit), que o CASOS deixa preenchido com as senhas erradas dos casos.
+foreach (glob(dirname(__DIR__, 2) . '/storage/cache/ratelimit/*') ?: [] as $f) {
+    @unlink($f);
+}
+$appDb = dirname(__DIR__, 2) . '/storage/db/casalivre.sqlite';
+if (is_file($appDb)) {
+    (new PDO('sqlite:' . $appDb))->exec("DELETE FROM login_rate_limit WHERE ip IN ('127.0.0.1', '::1')");
+}
+
 // Preparação: dono + imóvel ativo (export público gera activity_log a cada GET)
 $jar = tempnam(sys_get_temp_dir(), 'conc');
 $email = 'conc' . bin2hex(random_bytes(3)) . '@casalivre.test';
 [$st, , $j] = http('POST', '/api/users', ['name' => 'Conc Teste', 'cpf' => '12345678901', 'cep' => '88010000', 'address_number' => '1',
     'phone' => '48999990000', 'email' => $email, 'password' => 'Senha-segura1', 'password_confirm' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/cadastro')]);
-$link = (string) ($j['verification_link'] ?? '');
+$link = link_ativacao($email);
 http('GET', parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY), null, $jar);
 http('POST', '/api/sessao', ['email' => $email, 'password' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]);
 [$st, , $j] = http('POST', '/api/casas', ['title' => 'Casa Concorrência', 'description' => str_repeat('Casa ampla com varanda e vista. ', 8),

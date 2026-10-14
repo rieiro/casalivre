@@ -3,8 +3,32 @@
 // Incluído por scripts/run-casos-de-teste.php (CASOS=novos|todos).
 declare(strict_types=1);
 
-// Exige APP_ENV=dev (ou local): os casos leem o link de verificação devolvido pela API,
-// que só é exposto nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
+/** PR #32: o link de ativação não volta mais na API; roda o worker (APP_ENV=dev) e lê o último link do e-mail no mail-dev.log. */
+if (!function_exists('link_ativacao')) {
+    function link_ativacao(string $email): string
+    {
+        $root = dirname(__DIR__, 2);
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $arq = $root . '/storage/logs/mail-dev.log';
+        for ($i = 0; $i < 5; $i++) {
+            shell_exec($cmd);
+            $link = '';
+            foreach (is_file($arq) ? (file($arq, FILE_IGNORE_NEW_LINES) ?: []) : [] as $l) {
+                if (str_contains($l, $email) && str_contains($l, '/verificar')) {
+                    $link = (string) ((json_decode($l, true) ?: [])['link'] ?? $link);
+                }
+            }
+            if ($link !== '') {
+                return $link;
+            }
+            usleep(300000);
+        }
+        return '';
+    }
+}
+
+// Exige APP_ENV=dev (ou local): os casos leem o link de verificação do mail-dev.log (worker da fila),
+// que só é gravado nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
 if (!in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
     fwrite(STDERR, "ERRO: rode com APP_ENV=dev (ex.: APP_ENV=dev CASOS=todos php scripts/run-casos-de-teste.php) e suba o servidor de teste com APP_ENV=dev.\n");
     exit(2);
@@ -61,8 +85,9 @@ function new_user(string $jar, string $tag): array
         'name' => 'Teste ' . strtoupper($tag), 'cpf' => '12345678901', 'cep' => '88010000', 'address_number' => '10',
         'phone' => '48999990000', 'email' => $email, 'password' => $pass, 'password_confirm' => $pass,
     ], $csrf);
-    if ($st === 201 && !empty($j['verification_link'])) {
-        $path = parse_url($j['verification_link'], PHP_URL_PATH) . '?' . parse_url($j['verification_link'], PHP_URL_QUERY);
+    $link = $st === 201 ? link_ativacao($email) : '';
+    if ($link !== '') {
+        $path = parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY);
         api($jar, 'GET', $path);
     }
     $csrf = csrf_of($jar);
