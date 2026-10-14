@@ -20,7 +20,11 @@ final class MapTiles
     public const MIME = 'application/vnd.pmtiles';
     private const CHUNK = 65536;
 
-    /** A rota PHP só existe em dev/local. */
+    /**
+     * A rota PHP /tiles/ só existe em dev/local (em produção o nginx serve o arquivo).
+     * Mantido como nome de domínio: o call site (index.php) diz "a rota de tiles está ligada?",
+     * e a regra pode deixar de ser só o ambiente sem mexer no roteamento.
+     */
     public static function devRouteEnabled(): bool
     {
         return AppEnv::isDev();
