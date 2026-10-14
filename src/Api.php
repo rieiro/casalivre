@@ -423,10 +423,7 @@ function handle_api(string $path, string $method): void
         if ($fotoId < 1) {
             json_out(422, ['error' => 'foto_id obrigatório.']);
         }
-        $changed = PhotoRepository::makePrimary((int) $property['id'], $fotoId);
-        if ($changed !== []) {
-            activity(ActivityLog::PHOTO_COVER, ['imovel_id' => (int) $property['id']], array_column($changed, 'old'), array_column($changed, 'new'));
-        }
+        CoverSet::run((int) $property['id'], $fotoId)->registrar();
         json_out(200, ['ok' => true, 'fotos' => PhotoRepository::list((int) $property['id'])]);
     }
 

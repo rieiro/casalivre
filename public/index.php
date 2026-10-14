@@ -95,6 +95,7 @@ require_once __DIR__ . '/../src/Acoes/AccountUpdate.php';
 require_once __DIR__ . '/../src/Acoes/CalendarSave.php';
 require_once __DIR__ . '/../src/Acoes/ICalImport.php';
 require_once __DIR__ . '/../src/Acoes/ICalFeedRemove.php';
+require_once __DIR__ . '/../src/Acoes/CoverSet.php';
 
 return Seguranca::pipeline(
     [
@@ -657,11 +658,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
     $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
+    // Web: 0 ou 2+ fotos marcadas são ignoradas em silêncio (a API exige foto_id; ver CoverSet).
     if (count($ids) === 1) {
-        $changed = PhotoRepository::makePrimary(house_id($m[1]), $ids[0]);
-        if ($changed !== []) {
-            activity(ActivityLog::PHOTO_COVER, ['imovel_id' => house_id($m[1])], array_column($changed, 'old'), array_column($changed, 'new'));
-        }
+        CoverSet::run(house_id($m[1]), $ids[0])->registrar();
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -670,10 +669,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     $user = require_user();
     csrf_check();
     property_for_user((int) $user['id'], house_id($m[1]));
-    $changed = PhotoRepository::makePrimary(house_id($m[1]), (int) $m[2]);
-    if ($changed !== []) {
-        activity(ActivityLog::PHOTO_COVER, ['imovel_id' => house_id($m[1])], array_column($changed, 'old'), array_column($changed, 'new'));
-    }
+    CoverSet::run(house_id($m[1]), (int) $m[2])->registrar();
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
