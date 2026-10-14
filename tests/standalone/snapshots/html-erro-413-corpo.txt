@@ -1,0 +1,9 @@
+STATUS 413 Request Entity Too Large
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-Type: text/html; charset=utf-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Envio grande demais</h1><p>O conteúdo enviado passa do limite permitido.</p><p><a href="/">Voltar ao início</a></p></body></html>

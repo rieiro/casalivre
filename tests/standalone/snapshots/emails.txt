@@ -1,0 +1,32 @@
+== activation
+mail-dev.log: para=snap-novo@casalivre.test | assunto=CasaLivre: ative sua conta | link=http://APP/verificar?token=<TOKEN>
+assunto: CasaLivre: ative sua conta
+--- corpo ---
+Bem-vindo(a) à CasaLivre!
+
+Abra o link abaixo para ativar sua conta:
+http://APP/verificar?token=<TOKEN>
+
+O link expira em breve. Se você não fez este pedido, ignore este e-mail.
+
+== exists
+mail-dev.log: para=snap-dona@casalivre.test | assunto=CasaLivre: alguém tentou cadastrar seu e-mail | link=http://APP/senha/esqueci
+assunto: CasaLivre: alguém tentou cadastrar seu e-mail
+--- corpo ---
+Alguém tentou cadastrar este e-mail na CasaLivre, mas ele já tem uma conta.
+
+Se foi você, entre com sua senha ou use "Esqueci a senha":
+http://APP/senha/esqueci
+
+Se não foi você, ignore este e-mail; nada foi alterado na sua conta.
+
+== reset
+mail-dev.log: para=snap-dona@casalivre.test | assunto=CasaLivre: redefinição de senha | link=http://APP/senha/redefinir?token=<TOKEN>
+assunto: CasaLivre: redefinição de senha
+--- corpo ---
+Recebemos um pedido para redefinir a senha da sua conta CasaLivre.
+
+Abra o link abaixo para criar uma nova senha:
+http://APP/senha/redefinir?token=<TOKEN>
+
+O link expira em breve. Se você não fez este pedido, ignore este e-mail.

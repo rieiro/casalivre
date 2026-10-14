@@ -1,0 +1,48 @@
+STATUS 200 OK
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-type: text/html; charset=UTF-8
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CasaLivre</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+    <link rel="stylesheet" href="/assets/app.css?v=21">
+    <script type="application/json" id="page-data">{"hash":"<IMOVEL>","csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=4"></script>
+</head>
+<body>
+<header class="top">
+    <a class="brand" href="/">CasaLivre</a>
+    <form class="lang" method="post" action="/idioma">
+        <input type="hidden" name="_csrf" value="<CSRF>">
+        <label>Idioma            <select name="locale" data-autosubmit>
+                                    <option value="pt-BR" selected>Português</option>
+                                    <option value="en" >English</option>
+                                    <option value="es" >Español</option>
+                            </select>
+        </label>
+    </form>
+    <input id="nav-toggle" class="nav-toggle" type="checkbox">
+    <label class="nav-toggle-label" for="nav-toggle">Menu</label>
+    <nav>
+        <a href="/">Buscar</a>
+                    <a href="/cadastro">Anunciar</a>
+            <a href="/entrar">Entrar</a>
+            </nav>
+</header>
+<main>
+    <section class="wrap" id="property-detail">
+            <p class="muted">Carregando…</p>
+    </section>
+<script src="/assets/pages/property.js?v=4"></script>
+</main>
+<footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
+<script src="/assets/app.js?v=18"></script>
+</body>
+</html>

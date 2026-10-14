@@ -1,0 +1,10 @@
+STATUS 429 Too Many Requests
+Cache-Control: no-store, no-cache, must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'
+Content-Type: text/html; charset=utf-8
+Referrer-Policy: same-origin
+Retry-After: 3600
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Muitas tentativas</title><body style="font-family:sans-serif;max-width:36rem;margin:3rem auto"><h1>Muitas tentativas</h1><p>Muitas requisições. Tente novamente em instantes.</p><p><a href="/">Voltar ao início</a></p></body></html>
