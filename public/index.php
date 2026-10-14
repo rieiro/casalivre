@@ -952,11 +952,12 @@ function search_properties(array $filters, ?array &$facets = null): array
     foreach ($source as $property) {
         $cityFold = fold((string) $property['city']);
         if ($center && $filters['raio'] > 0) {
-            $distance = haversine_km((float) $center['lat'], (float) $center['lng'], (float) $property['lat'], (float) $property['lng']);
+            // Raio e distância sobre a coordenada pública (não revela a posição exata).
+            $distance = public_distance_km($center, $property);
             if ($distance > $filters['raio']) {
                 continue;
             }
-            $property['distance_km'] = round($distance, 1);
+            $property['distance_km'] = $distance;
         } elseif ($center && $cityFold !== $centerFold && $cityFold !== $labelFold && $cityFold !== $displayFold) {
             continue;
         } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) $property['address']), fold($localidade))) {

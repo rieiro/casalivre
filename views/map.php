@@ -2,10 +2,11 @@
 $query = search_query($filters);
 $points = [];
 foreach ($results as $item) {
+    $pc = public_coord((int) $item['id'], (float) $item['lat'], (float) $item['lng']);
     $points[] = [
         'title' => (string) $item['title'],
-        'lat' => (float) $item['lat'],
-        'lng' => (float) $item['lng'],
+        'lat' => $pc['lat'],
+        'lng' => $pc['lng'],
         'href' => '/imoveis/' . property_ref($item) . '?' . http_build_query([
             'checkin' => $filters['checkin'] ?? '',
             'checkout' => $filters['checkout'] ?? '',

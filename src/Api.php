@@ -37,15 +37,14 @@ function api_public_user(array $user): array
 }
 
 /**
- * Fotos para respostas públicas: só id, caminho, capa e ordem (sem property_id nem audit_hold).
+ * Fotos para respostas públicas: só caminho, capa e ordem (sem id, property_id nem audit_hold).
  *
  * @param list<array<string, mixed>> $photos
- * @return list<array{id: int, path: string, is_primary: int, sort_order: int}>
+ * @return list<array{path: string, is_primary: int, sort_order: int}>
  */
 function api_public_photos(array $photos): array
 {
     return array_map(static fn (array $p): array => [
-        'id' => (int) $p['id'],
         'path' => (string) $p['path'],
         'is_primary' => (int) ($p['is_primary'] ?? 0),
         'sort_order' => (int) ($p['sort_order'] ?? 0),
@@ -310,7 +309,7 @@ function handle_api(string $path, string $method): void
                 'photo' => $item['photo'] ?? null,
                 'score' => $item['score'] ?? null,
                 'quote' => $item['quote'] ?? null,
-                'distance_km' => $item['distance_km'] ?? null,
+                'distance_km' => isset($item['distance_km']) ? (int) $item['distance_km'] : null,
             ];
         }, $results);
         json_out(200, [

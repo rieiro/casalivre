@@ -287,6 +287,70 @@ function haversine_km(float $lat1, float $lng1, float $lat2, float $lng2): float
     return 2 * $r * asin(min(1, sqrt($a)));
 }
 
+/**
+ * Coordenada pública de um imóvel (mapa, busca e API). Nunca expõe a coordenada exata:
+ * aplica um deslocamento fixo por imóvel de 300 a 500 m (direção e distância derivadas de
+ * HMAC-SHA256('property:'+id, GEO_SALT)) e arredonda para 3 casas; o resultado final fica
+ * sempre entre 300 e 500 m do ponto real. Sem GEO_SALT fora de dev/local: sem deslocamento,
+ * arredonda para 2 casas (~1 km) e registra geo_salt_missing uma vez. Em dev/local usa um
+ * sal fixo. O dono continua vendo a coordenada exata no painel.
+ *
+ * @return array{lat: float, lng: float}
+ */
+function public_coord(int $id, float $lat, float $lng): array
+{
+    $salt = geo_salt();
+    if ($salt === null) {
+        return ['lat' => round($lat, 2), 'lng' => round($lng, 2)];
+    }
+    $candidate = ['lat' => round($lat, 3), 'lng' => round($lng, 3)];
+    for ($i = 0; $i < 64; $i++) {
+        $h = hash_hmac('sha256', 'property:' . $id . ($i === 0 ? '' : ':' . $i), $salt, true);
+        $u1 = unpack('N', substr($h, 0, 4))[1] / 4294967295;
+        $u2 = unpack('N', substr($h, 4, 4))[1] / 4294967295;
+        $bearing = $u1 * 2 * M_PI;
+        $dist = 300.0 + $u2 * 200.0; // metros
+        $dLat = ($dist * cos($bearing)) / 111320.0;
+        $dLng = ($dist * sin($bearing)) / (111320.0 * max(0.01, cos(deg2rad($lat))));
+        $candidate = ['lat' => round($lat + $dLat, 3), 'lng' => round($lng + $dLng, 3)];
+        $real = haversine_km($lat, $lng, $candidate['lat'], $candidate['lng']) * 1000;
+        if ($real >= 300.0 && $real <= 500.0) {
+            return $candidate;
+        }
+    }
+    return $candidate;
+}
+
+/** Sal do deslocamento público; null (e log geo_salt_missing uma vez) fora de dev sem GEO_SALT. */
+function geo_salt(): ?string
+{
+    if (class_exists('Db')) {
+        Db::loadEnv();
+    }
+    $salt = trim((string) getenv('GEO_SALT'));
+    if ($salt !== '') {
+        return $salt;
+    }
+    if (in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
+        return 'casalivre-dev-geo-salt-nao-usar-em-producao';
+    }
+    static $logged = false;
+    if (!$logged) {
+        $logged = true;
+        error_log('geo_salt_missing: GEO_SALT ausente; coordenadas públicas arredondadas para 2 casas, sem deslocamento');
+    }
+    return null;
+}
+
+/**
+ * Distância pública (km inteiro) entre um centro e a coordenada pública do imóvel.
+ */
+function public_distance_km(array $center, array $property): int
+{
+    $pc = public_coord((int) $property['id'], (float) $property['lat'], (float) $property['lng']);
+    return (int) round(haversine_km((float) $center['lat'], (float) $center['lng'], $pc['lat'], $pc['lng']));
+}
+
 function parse_date(string $value): ?string
 {
     $value = trim($value);

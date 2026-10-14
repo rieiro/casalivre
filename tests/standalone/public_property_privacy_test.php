@@ -16,7 +16,7 @@ t_eq(200, $r['status'], '200');
 t_eq([], array_values(array_intersect($hidden, array_keys($j))), 'imóvel sem endereço/ids internos');
 t_eq(['Florianópolis, SC', 'Centro'], [$j['city'] ?? null, $j['neighborhood'] ?? null], 'cidade e bairro presentes');
 t_eq(1, count($j['photos'] ?? []), 'uma foto');
-t_eq(['id', 'path', 'is_primary', 'sort_order'], array_keys($j['photos'][0] ?? []), 'foto pública só com id, path, is_primary, sort_order');
+t_eq(['path', 'is_primary', 'sort_order'], array_keys($j['photos'][0] ?? []), 'foto pública só com path, is_primary, sort_order (sem id)');
 t_ok(!str_contains($r['body'], 'Rua A') && !str_contains($r['body'], 'retido') && !str_contains($r['body'], 'property_id') && !str_contains($r['body'], 'audit_hold'), 'corpo sem rua, audit_hold nem property_id');
 
 echo "público: página HTML\n";
