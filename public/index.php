@@ -663,7 +663,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2], seguirSemFeed: true)->registrar();
     // SNAPSHOT: a web não trata 'nao_encontrado' de propósito. Feed inexistente ainda ressincroniza e
     // redireciona (302), como antes; tratar o desfecho mudaria o comportamento (a API responde 404).
-    ICalFeedRemove::ressincronizar($propertyId);
+    CalendarSync::resyncProperty($propertyId);
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
