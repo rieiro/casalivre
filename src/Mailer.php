@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/MailQueue.php';
+
 /**
  * Envio de e-mail por SMTP, sem dependências.
  *
@@ -14,8 +17,9 @@ declare(strict_types=1);
  *  O certificado é sempre verificado (nome e cadeia). AUTH PLAIN/LOGIN só depois do TLS.
  *
  * Links de conta: sempre remontados sobre APP_URL (o Host da requisição nunca entra no e-mail).
- * Sem SMTP_HOST: em APP_ENV=dev/local grava em storage/logs/mail-dev.log (0600); fora disso,
- * não envia e grava só 'mail_not_configured' no error_log (sem e-mail nem link).
+ * A requisição só enfileira (tipo, e-mail); o worker gera token/link e envia (deliverAccountMail()).
+ * Sem SMTP_HOST: em APP_ENV=dev/local o worker grava em storage/logs/mail-dev.log (0600); fora disso,
+ * nada é enfileirado e só 'mail_not_configured' vai para o error_log (sem e-mail nem link).
  */
 final class Mailer
 {
@@ -42,32 +46,82 @@ final class Mailer
         return in_array(strtolower(self::env('APP_ENV')), ['dev', 'local'], true);
     }
 
-    /** Callback para AccountFlow::$sendLink. Nunca lança: falha de e-mail não derruba o cadastro. */
-    public static function sendAccountLink(string $email, string $link): bool
+    /** Fila usada (testes podem trocar); null = MailQueues::make() (QUEUE_DRIVER). */
+    public static ?MailQueue $queue = null;
+
+    public static function queue(): MailQueue
+    {
+        return self::$queue ??= MailQueues::make();
+    }
+
+    /** Produção (ou APP_ENV ausente) sem SMTP_HOST: registra só mail_not_configured e devolve true. */
+    private static function smtpMissing(): bool
+    {
+        if (self::env('SMTP_HOST') === '' && !self::isDev()) {
+            error_log(self::NOT_CONFIGURED);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Callback para AccountFlow::$enqueue: só enfileira (tipo, e-mail), sem consultar o usuário.
+     * Nunca lança: falha de e-mail não derruba a requisição.
+     */
+    public static function enqueueAccountMail(string $type, string $email): bool
     {
         try {
-            if (self::env('SMTP_HOST') === '' && !self::isDev()) {
-                // Produção (ou APP_ENV ausente) sem SMTP: não envia, não grava o link em lugar
-                // nenhum; só o marcador fixo, sem dados pessoais.
-                error_log(self::NOT_CONFIGURED);
+            if (self::smtpMissing()) {
                 return false;
             }
-            $url = self::linkFromAppUrl($link);
-            $isReset = str_contains((string) parse_url($url, PHP_URL_PATH), '/senha/');
-            $subject = $isReset ? 'CasaLivre: redefinição de senha' : 'CasaLivre: ative sua conta';
-            $body = ($isReset
-                ? "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
-                : "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n")
-                . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n";
-            if (self::env('SMTP_HOST') === '') {
-                return self::writeDevLog($email, $subject, $url);
-            }
-            self::send($email, $subject, $body);
-            return true;
+            return self::queue()->push($type, $email);
         } catch (Throwable $e) {
-            error_log('CasaLivre: falha ao enviar e-mail (' . $e::class . ').');
+            error_log('CasaLivre: falha ao enfileirar e-mail (' . $e::class . ').');
             return false;
         }
+    }
+
+    /**
+     * Worker: procura o usuário, gera token/link (sobre APP_URL) e entrega. Devolve false se não há
+     * conta elegível (nada é enviado). Lança em falha de envio.
+     */
+    public static function deliverAccountMail(string $type, string $email): bool
+    {
+        require_once __DIR__ . '/Settings.php';
+        require_once dirname(__DIR__) . '/conta/Account/AccountFlow.php';
+        $isReset = $type === 'reset';
+        $path = $isReset ? '/senha/redefinir?token=' : '/verificar?token=';
+        $minutes = Settings::int($isReset ? 'password_reset_minutes' : 'email_verify_minutes');
+        $url = AccountFlow::issueLink($type, $email, $minutes, self::linkFromAppUrl('http://localhost' . $path));
+        if ($url === null) {
+            return false;
+        }
+        $subject = $isReset ? 'CasaLivre: redefinição de senha' : 'CasaLivre: ative sua conta';
+        $body = ($isReset
+            ? "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
+            : "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n")
+            . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n";
+        self::deliver($email, $subject, $body);
+        return true;
+    }
+
+    /**
+     * Entrega um e-mail. Sem SMTP_HOST: em dev grava no mail-dev.log; fora de dev registra
+     * mail_not_configured e lança. Com SMTP usa send(). Lança em qualquer falha.
+     */
+    public static function deliver(string $to, string $subject, string $body): void
+    {
+        if (self::smtpMissing()) {
+            throw new RuntimeException(self::NOT_CONFIGURED);
+        }
+        if (self::env('SMTP_HOST') === '') {
+            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? $m[0] : '';
+            if (!self::writeDevLog($to, $subject, $link)) {
+                throw new RuntimeException('Falha ao gravar mail-dev.log.');
+            }
+            return;
+        }
+        self::send($to, $subject, $body);
     }
 
     /**

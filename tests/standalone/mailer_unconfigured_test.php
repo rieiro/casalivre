@@ -73,7 +73,8 @@ foreach (['ausente' => null, 'production' => 'production'] as $label => $env) {
     $st = db()->prepare('SELECT activation_token, reset_token FROM users WHERE email IN (?, ?, ?)');
     $st->execute([$e1, $e2, $owner['email']]);
     $tokens = array_values(array_filter(array_merge(...array_map('array_values', $st->fetchAll(PDO::FETCH_ASSOC)))));
-    t_ok(count($tokens) >= 3, "$label: tokens gerados (" . count($tokens) . ')');
+    t_eq([], $tokens, "$label: nenhum token gerado (fila não recebe nada sem SMTP)");
+    t_eq(0, (int) db()->query('SELECT COUNT(*) FROM mail_queue')->fetchColumn(), "$label: mail_queue vazia");
 
     // nenhum arquivo em storage/ alterado nesta rodada contém token ou link
     $hits = [];

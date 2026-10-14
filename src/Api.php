@@ -97,11 +97,7 @@ function handle_api(string $path, string $method): void
             json_out(403, ['error' => account_text($result['status'])]);
         }
         if ($result['status'] === 'pending') {
-            $pending = ['error' => t('err.pending')];
-            if (expose_account_links()) {
-                $pending['verification_link'] = $result['user']['activation_link'] ?? null;
-            }
-            json_out(403, $pending);
+            json_out(403, ['error' => t('err.pending')]);
         }
         AccountFlow::openSession((int) $result['user']['id']);
         LoginRateLimiter::clear();
@@ -116,7 +112,7 @@ function handle_api(string $path, string $method): void
     }
 
     if ($path === '/api/users' && $method === 'POST') {
-        $result = AccountFlow::register($body, Settings::int('email_verify_minutes'), request_base() . '/verificar?token=');
+        $result = AccountFlow::register($body, Settings::int('email_verify_minutes'));
         if ($result['error']) {
             $status = in_array($result['error'], ['deleted', 'inactive', 'email_taken'], true) ? 409 : 422;
             json_out($status, ['error' => account_text($result['error'])]);
@@ -454,7 +450,7 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/auth/senha/esqueci' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'), request_base() . '/senha/redefinir?token=');
+        $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'));
         if ($sent) {
             activity(ActivityLog::PASSWORD_RESET_ASK, ['email' => $email]);
         }

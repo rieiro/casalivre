@@ -10,8 +10,8 @@ require_once __DIR__ . '/../src/CepRepository.php';
 require_once __DIR__ . '/../src/UserRepository.php';
 PasswordPolicy::$minLength = max(1, Settings::int('password_min_length') ?: 8);
 require_once __DIR__ . '/../src/Mailer.php';
-AccountFlow::$sendLink = static function (string $email, string $link): void {
-    Mailer::sendAccountLink($email, $link);
+AccountFlow::$enqueue = static function (string $type, string $email): void {
+    Mailer::enqueueAccountMail($type, $email);
 };
 require_once __DIR__ . '/../src/HouseRepository.php';
 require_once __DIR__ . '/../src/PhotoRepository.php';
@@ -221,7 +221,7 @@ if ($path === '/senha/esqueci' && $method === 'GET') {
 if ($path === '/senha/esqueci' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
-    $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'), request_base() . '/senha/redefinir?token=');
+    $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'));
     if ($sent) {
         activity(ActivityLog::PASSWORD_RESET_ASK, ['email' => $email]);
     }
@@ -320,13 +320,13 @@ if ($path === '/cadastro' && $method === 'POST') {
         'phone' => trim((string) ($_POST['phone'] ?? '')),
         'email' => trim((string) ($_POST['email'] ?? '')),
     ];
-    $result = AccountFlow::register($_POST, Settings::int('email_verify_minutes'), request_base() . '/verificar?token=');
+    $result = AccountFlow::register($_POST, Settings::int('email_verify_minutes'));
     if ($result['error']) {
         view('register', ['error' => account_text($result['error']), 'old' => $registerOld]);
         return null;
     }
     activity(ActivityLog::REGISTER, ['email' => $result['email']]);
-    view('verify_pending', ['link' => expose_account_links() ? $result['link'] : null, 'expires' => $result['expires']]);
+    view('verify_pending', ['expires' => $result['expires']]);
     return null;
 }
 
@@ -373,8 +373,8 @@ if ($path === '/entrar' && $method === 'POST') {
         return null;
     }
     if ($result['status'] === 'pending') {
-        $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'), request_base() . '/verificar?token=');
-        view('verify_pending', ['link' => expose_account_links() ? $pending['link'] : null, 'expires' => $pending['expires']]);
+        $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
+        view('verify_pending', ['expires' => $pending['expires']]);
         return null;
     }
     AccountFlow::openSession((int) $result['user']['id']);
