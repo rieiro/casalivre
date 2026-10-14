@@ -42,10 +42,12 @@ final class ICalImport
             } else {
                 $body = exported_calendar_body($url) ?? CalendarSync::fetch($url);
                 $ok = is_string($body) && $body !== '';
+                // SNAPSHOT: a web toma o horário do last_synced_at ANTES do import_ics; a API, depois.
+                $now = $web ? date('Y-m-d H:i:s') : null;
                 if ($ok) {
                     $count = import_ics($propertyId, $body);
                 }
-                $now = date('Y-m-d H:i:s');
+                $now ??= date('Y-m-d H:i:s');
                 foreach (HouseRepository::feedsWithUrl($propertyId) as $feed) {
                     if ($feed['url'] === $url) {
                         HouseRepository::markFeed((int) $feed['id'], $ok ? 'OK' : 'NOK', $now);
