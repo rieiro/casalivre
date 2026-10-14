@@ -78,7 +78,14 @@ foreach ($antes as $fn) {
     t_ok(function_exists($fn), $fn . ' continua definida');
 }
 $definidas = [];
-foreach (array_merge([CL_ROOT . '/src/helpers.php'], glob(CL_ROOT . '/src/helpers/*.php')) as $arquivo) {
+$arquivos = [CL_ROOT . '/src/helpers.php'];
+foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(CL_ROOT . '/src/helpers', FilesystemIterator::SKIP_DOTS)) as $info) {
+    if ($info->isFile() && $info->getExtension() === 'php') {
+        $arquivos[] = $info->getPathname();
+    }
+}
+t_ok(count($arquivos) > 1, 'lista de arquivos de helpers não vazia (' . count($arquivos) . ')');
+foreach ($arquivos as $arquivo) {
     preg_match_all('/^function (\w+)/m', (string) file_get_contents($arquivo), $m);
     $definidas = array_merge($definidas, $m[1]);
 }
