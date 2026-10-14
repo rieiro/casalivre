@@ -47,7 +47,7 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 
 ## Decisões de produto em vigor
 - E-mail (cadastro e redefinição de senha): código pronto e desligado, sem provedor. As duas funções ficam fechadas em produção até a escolha do provedor.
-- Mapas: sem Google Maps. Hoje são os tiles do OSM, e o OpenMapTiles está no backlog.
+- Mapas: sem Google Maps. Hoje são os tiles do OSM; o backlog aponta PMTiles do Brasil (Protomaps) com MapLibre GL.
 - `LOG_SALT` próprio em produção.
 
 ## Otimização de recursos (responsabilidade do Gerente)
@@ -61,5 +61,6 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 
 ## Comunicação e reuniões
 - Tudo em português.
+- Os bots **não** fazem perguntas direto ao usuário. Dúvidas, decisões e pedidos de aprovação passam pelo Bot Gerente Geral. Exceção: cartões de aprovação do próprio sistema, que só o usuário pode apertar; nesse caso, o bot avisa o Gerente do que se trata.
 - Reunião diária com o usuário para ver o progresso. Ela pode ser adiantada quando todos tiverem entregado e o relatório estiver pronto.
 - Fim de semana: revisão dos resultados com o usuário e plano da próxima sprint para aprovação.
