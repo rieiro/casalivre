@@ -4,7 +4,7 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 Content-type: text/html; charset=UTF-8
 Referrer-Policy: same-origin
 X-Content-Type-Options: nosniff
-X-Frame-Options: SAMEORIGIN
+X-Frame-Options: DENY
 
 <!DOCTYPE html>
 <html lang="pt-BR">

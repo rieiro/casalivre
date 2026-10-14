@@ -14,7 +14,7 @@ t_eq(413, $r['status'], 'upload acima do post_max_size -> 413');
 t_ok((bool) preg_match('/^Content-Security-Policy:\s*(.+?)\s*$/mi', $r['headers'], $m), '413 com Content-Security-Policy');
 t_eq(csp_header(), $m[1] ?? null, '413: CSP igual à global');
 t_ok((bool) preg_match('/^X-Content-Type-Options:\s*nosniff\s*$/mi', $r['headers']), '413 com nosniff');
-t_ok((bool) preg_match('/^X-Frame-Options:\s*SAMEORIGIN\s*$/mi', $r['headers']), '413 com X-Frame-Options');
+t_ok((bool) preg_match('/^X-Frame-Options:\s*DENY\s*$/mi', $r['headers']), '413 com X-Frame-Options DENY');
 t_ok(stripos($r['body'], 'javascript:') === false, '413 sem href javascript:');
 t_ok(str_contains($r['body'], '<a href="/">'), '413 com link para /');
 t_ok(!preg_match('/<style|style="/i', $r['body']), '413 sem style inline');

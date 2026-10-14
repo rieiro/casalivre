@@ -3,6 +3,6 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 Content-Type: text/html; charset=utf-8
 Referrer-Policy: same-origin
 X-Content-Type-Options: nosniff
-X-Frame-Options: SAMEORIGIN
+X-Frame-Options: DENY
 
 <!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Algo deu errado</title><link rel="stylesheet" href="/assets/app.css?v=2d2fc1621bdc"></head><body class="err-shield"><main><h1>Não foi possível concluir agora</h1><p>O problema foi registrado. Passe estes dados ao suporte:</p><ul><li>Código: <strong>CL-<REF></strong></li><li>Quando: <DATA></li><li>Página: /api/busca</li><li>Método: GET</li></ul><p><a href="/">Voltar ao início</a></p></main></body></html>

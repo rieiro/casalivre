@@ -124,7 +124,7 @@ function reject_oversize_upload(): void
     http_response_code(413);
     // Roda antes dos headers globais do index.php: manda aqui os mesmos headers de segurança.
     header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Frame-Options: DENY');
     header('Referrer-Policy: same-origin');
     header('Content-Security-Policy: ' . csp_header());
     header('Content-Type: text/html; charset=utf-8');
