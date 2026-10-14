@@ -66,7 +66,8 @@ function snap_headers(array $r): string
     $keep = [];
     foreach ($lines as $l) {
         if (preg_match('/^(Content-Type|Content-Security-Policy[^:]*|X-Frame-Options|X-Content-Type-Options|Referrer-Policy|Permissions-Policy|Strict-Transport-Security|Cross-Origin-[^:]+|Cache-Control|Location|Vary|Retry-After):/i', $l)) {
-            $keep[] = $l;
+            // Retry-After varia em 1 s conforme o relógio (3599/3600): placeholder.
+            $keep[] = preg_replace('/^(Retry-After):.*$/i', '$1: <SEGUNDOS>', $l);
         }
     }
     sort($keep);
