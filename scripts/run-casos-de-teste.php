@@ -3,8 +3,32 @@
 
 declare(strict_types=1);
 
-// Exige APP_ENV=dev (ou local): os casos leem o link de verificação devolvido pela API,
-// que só é exposto nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
+/** PR #32: o link de ativação não volta mais na API; roda o worker (APP_ENV=dev) e lê o último link do e-mail no mail-dev.log. */
+if (!function_exists('link_ativacao')) {
+    function link_ativacao(string $email): string
+    {
+        $root = dirname(__DIR__, 1);
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $arq = $root . '/storage/logs/mail-dev.log';
+        for ($i = 0; $i < 5; $i++) {
+            shell_exec($cmd);
+            $link = '';
+            foreach (is_file($arq) ? (file($arq, FILE_IGNORE_NEW_LINES) ?: []) : [] as $l) {
+                if (str_contains($l, $email) && str_contains($l, '/verificar')) {
+                    $link = (string) ((json_decode($l, true) ?: [])['link'] ?? $link);
+                }
+            }
+            if ($link !== '') {
+                return $link;
+            }
+            usleep(300000);
+        }
+        return '';
+    }
+}
+
+// Exige APP_ENV=dev (ou local): os casos leem o link de verificação do mail-dev.log (worker da fila),
+// que só é gravado nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
 if (!in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
     fwrite(STDERR, "ERRO: rode com APP_ENV=dev (ex.: APP_ENV=dev CASOS=todos php scripts/run-casos-de-teste.php) e suba o servidor de teste com APP_ENV=dev.\n");
     exit(2);
@@ -81,7 +105,7 @@ $resp = json_decode($body, true) ?: [];
 assert_true($status === 422 && str_contains((string) ($resp['error'] ?? ''), 'não conferem'), 'senhas diferentes não criam a conta (422)');
 [$status, , $body] = req('POST', $base . '/api/users', $json($cadastro + ['password_confirm' => 'Senha-segura1']));
 $resp = json_decode($body, true) ?: [];
-$link = (string) ($resp['verification_link'] ?? '');
+$link = $status === 201 ? link_ativacao($email) : '';
 assert_true($status === 201 && ($resp['status'] ?? '') === 'pending' && preg_match('#/verificar\?token=([a-f0-9]+)#', $link, $token), 'cadastro grava o link de verificação e fica pendente (201)');
 [$status, , $html] = req('GET', $base . '/verificar?token=' . ($token[1] ?? ''));
 assert_true($status === 200 && str_contains($html, 'Conta ativada'), 'o clique no link ativa a conta dentro do prazo');
