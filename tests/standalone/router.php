@@ -6,4 +6,8 @@ if (($_SERVER['REQUEST_URI'] ?? '') === '/__t_server_nonce') {
     echo (string) getenv('T_SERVER_NONCE');
     return true;
 }
+if (getenv('T_RATELIMIT_DIR')) {
+    require_once __DIR__ . '/../../src/IpRateLimiter.php';
+    IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
+}
 return require __DIR__ . '/../../public/index.php';

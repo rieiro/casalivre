@@ -5,7 +5,7 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
 $base = t_server();
-$reset = static fn () => @exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+$reset = static fn () => t_ratelimit_reset();
 $form = ['Content-Type: application/x-www-form-urlencoded'];
 $web = '/imoveis/' . $owner['hash'] . '/fotos';
 

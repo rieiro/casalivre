@@ -23,7 +23,8 @@ foreach (['ausente' => null, 'production' => 'production'] as $label => $env) {
     $envv['APP_URL'] = 'https://casalivre.example';
     $envv['LOG_SALT'] = 'sal-de-teste-0123456789abcdef0123456789'; // evita o aviso de LOG_SALT no error_log
     $envv['GEO_SALT'] = str_repeat('g', 64); // obrigatório fora de dev/local (GeoSalt::enforce)
-    $proc = proc_open([PHP_BINARY, '-d', 'error_log=' . $errLog, '-d', 'log_errors=1', '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', CL_ROOT . '/public/index.php'],
+    // router.php aplica T_RATELIMIT_DIR (pasta temporária desta execução) antes do front controller.
+    $proc = proc_open([PHP_BINARY, '-d', 'error_log=' . $errLog, '-d', 'log_errors=1', '-S', '127.0.0.1:' . $port, '-t', CL_ROOT . '/public', __DIR__ . '/router.php'],
         [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, CL_ROOT, $envv);
     $base = 'http://127.0.0.1:' . $port;
     for ($i = 0; $i < 50 && !@fsockopen('127.0.0.1', $port); $i++) {

@@ -14,7 +14,7 @@ $dir = sys_get_temp_dir() . '/cl-tok-' . bin2hex(random_bytes(3));
 mkdir($dir, 0700);
 Mailer::$devLogDir = $dir;
 $lock = $dir . '/w.lock';
-@exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+t_ratelimit_reset();
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 $page = t_http('GET', $base . '/entrar', null, [], $jar);
@@ -188,7 +188,7 @@ t_eq(true, $q->push('exists', $e24), 'exists após 24 h: aceito');
 t_eq([86400, 300, 300], [MailQueues::cooldownSeconds('exists'), MailQueues::cooldownSeconds('activation'), MailQueues::cooldownSeconds('reset')], 'intervalos por tipo');
 
 echo "limite por IP nos formulários web\n";
-@exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+t_ratelimit_reset();
 $form = ['Content-Type: application/x-www-form-urlencoded'];
 $codes = [];
 for ($i = 0; $i < 6; $i++) {
@@ -203,7 +203,7 @@ t_ok(!in_array(429, array_slice($codes, 0, 10), true) && $codes[10] === 429, 'PO
 $r = t_http('POST', $base . '/cadastro', http_build_query(['_csrf' => $c(), 'email' => 'z@casalivre.test']), $form, $jar);
 t_ok((bool) preg_match('/^Retry-After:\s*\d+/mi', $r['headers']), '429 web com Retry-After');
 t_eq(200, t_http('GET', $base . '/cadastro', null, [], $jar)['status'], 'GET /cadastro não é limitado');
-@exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+t_ratelimit_reset();
 
 array_map('unlink', glob($dir . '/*') ?: []);
 @rmdir($dir);

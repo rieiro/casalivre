@@ -1,7 +1,7 @@
 <?php
 // Limite por IP (ApiRateLimit/IpRateLimiter): rotas e limites, IPv6 por /64, limpeza, teto de arquivos e log de falha aberta.
 require __DIR__ . '/lib.php';
-require CL_ROOT . '/src/IpRateLimiter.php';
+require_once CL_ROOT . '/src/IpRateLimiter.php';
 
 echo "IpRateLimiter\n";
 IpRateLimiter::$dir = sys_get_temp_dir() . '/rl-geo-' . bin2hex(random_bytes(3));
@@ -56,7 +56,7 @@ exec('rm -rf ' . escapeshellarg(IpRateLimiter::$dir));
 echo "HTTP\n";
 t_temp_db();
 $base = t_server();
-@exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+t_ratelimit_reset();
 $codes = [];
 for ($i = 0; $i < 61; $i++) {
     $codes[] = t_http('GET', $base . '/api/cidades?q=flo')['status'];
@@ -94,5 +94,5 @@ t_eq(404, t_http('GET', $base . '/cidades?q=flo')['status'], '/cidades (legado) 
 t_eq(404, t_http('GET', $base . '/ceps?q=88000000')['status'], '/ceps (legado) -> 404');
 $js = (string) file_get_contents(CL_ROOT . '/public/assets/app.js');
 t_ok(!preg_match("#fetch\\('/(cidades|ceps)#", $js) && str_contains($js, "/api/cidades") && str_contains($js, "/api/ceps"), 'app.js usa só /api/cidades e /api/ceps');
-@exec('rm -rf ' . escapeshellarg(CL_ROOT . '/storage/cache/ratelimit'));
+t_ratelimit_reset();
 t_done();

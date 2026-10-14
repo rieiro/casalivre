@@ -12,16 +12,11 @@ final class GeoSalt
 {
     public const MIN_LENGTH = 32;
 
-    public static function isDev(): bool
-    {
-        return AppEnv::isDev();
-    }
-
     /** Motivo da recusa (sem o valor do sal), ou null se o ambiente está ok. */
     public static function problem(): ?string
     {
         Db::loadEnv();
-        if (self::isDev()) {
+        if (AppEnv::isDev()) {
             return null;
         }
         $salt = trim((string) getenv('GEO_SALT'));
