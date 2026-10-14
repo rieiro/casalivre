@@ -64,7 +64,10 @@ final class Db
             return;
         }
         $loaded = true;
-        $file = dirname(__DIR__) . '/.env';
+        // CASALIVRE_ENV_FILE (opcional): outro arquivo .env; usado pelos testes para não ler o .env real.
+        // Sem ela (produção), o padrão é o .env da raiz, como antes.
+        $custom = getenv('CASALIVRE_ENV_FILE');
+        $file = is_string($custom) && $custom !== '' ? $custom : dirname(__DIR__) . '/.env';
         if (!is_file($file)) {
             return;
         }

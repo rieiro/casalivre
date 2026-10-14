@@ -39,4 +39,17 @@ foreach (['' => 'GEO_SALT ausente', $short => 'menos de 32 caracteres'] as $salt
 }
 putenv('APP_ENV');
 putenv('GEO_SALT');
+
+// .env injetado por caso (CASALIVRE_ENV_FILE): sal válido no arquivo sobe; sal curto no arquivo não.
+echo ".env por caso\n";
+$envFile = tempnam(sys_get_temp_dir(), 'geoenv');
+foreach ([[str_repeat('e', 40), 200, '.env com GEO_SALT de 40'], [$short, 500, '.env com GEO_SALT curto']] as [$salt, $want, $label]) {
+    file_put_contents($envFile, "APP_ENV=production\nGEO_SALT=$salt\n");
+    putenv('CASALIVRE_ENV_FILE=' . $envFile);
+    putenv('APP_ENV');
+    putenv('GEO_SALT');
+    $base = t_server();
+    t_eq($want, t_http('GET', $base . '/')['status'], "$label: GET / -> $want");
+}
+@unlink($envFile);
 t_done();
