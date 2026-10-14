@@ -70,8 +70,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Nenhum cache de resposta com Cookie, Set-Cookie ou Authorization. Chave com `$host` fixo e cache só em /assets/ e /uploads/.
 - [ ] `client_max_body_size` de 1m na API, e no upload igual ao limite do app (alvo: 10m).
 - [ ] Instalar o pacote `libvips`. Depois do PR de fotos, rodar o reprocessamento (WebP 480/960/1600, sem EXIF/GPS) e tirar os originais de public/.
-- [ ] OSM: atribuição "© OpenStreetMap contributors" com link em toda página com mapa (falta em /busca/mapa).
-- [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
+- [ ] Mapa (PMTiles): gerar `storage/tiles/brasil.pmtiles` e configurar o `location = /tiles/brasil.pmtiles` do nginx (MIME `application/vnd.pmtiles`, Range nativo, sem gzip, cache 1 dia); passo a passo em `prompts/mapa-pmtiles.md`. Os tiles raster do OSM saíram e a CSP é `img-src 'self'`. A atribuição "© OpenStreetMap contributors · Protomaps" já aparece no mapa.
 - [ ] CDN (se usada): só /assets/ e /uploads/, num subdomínio sem cookies, com HTML e API na origem. Exige DPA (ela termina o TLS), não pode reescrever CSP nem X-Frame-Options, e precisa de um processo de purge.
 
 ## Banco de dados (SQLite)
