@@ -1,11 +1,11 @@
-/assets/app.css?v=f5565238370c  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
+/assets/app.css?v=2d2fc1621bdc  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/app.js?v=d5f6a95346f6  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/pages/login.js?v=5c871f8bce94  <- entrar
 /assets/pages/map-data.js?v=ea6f3b5784b1  <- mapa
 /assets/pages/map.js?v=3cb6638ba39d  <- mapa
 /assets/pages/property.js?v=4e75d5e2146b  <- imovel
 /assets/pages/search.js?v=774cad36c3fe  <- busca
-/assets/safe-dom.js?v=22fa9ec02338  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
+/assets/safe-dom.js?v=5531df8bf399  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=16786767beab  <- mapa
 /assets/vendor/maplibre-gl/maplibre-gl.css?v=fc37702b85d1  <- mapa
 /assets/vendor/pmtiles/pmtiles.js?v=ca16879182f1  <- mapa

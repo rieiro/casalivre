@@ -90,7 +90,10 @@ foreach ($arquivos as $arquivo) {
     $definidas = array_merge($definidas, $m[1]);
 }
 sort($definidas);
-$esperadas = $antes;
+// Adicionadas depois da divisão, de propósito (a lista $antes continua sendo a do develop bc1afa5):
+// asset_url saiu de src/AssetManifest.php para src/helpers/url.php (Sprint 3, Etapa 1; Revisor do #54).
+$adicionadas = ['asset_url'];
+$esperadas = array_merge($antes, $adicionadas);
 sort($esperadas);
 t_eq($esperadas, $definidas, 'mesmo conjunto de funções, sem duplicatas nem extras');
 t_done();
