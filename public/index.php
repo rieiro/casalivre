@@ -130,7 +130,7 @@ return Seguranca::pipeline(
         } catch (ImovelNaoEncontrado $e) {
             // 404 das rotas web que resolvem imóvel (HouseRepository::*OrFail), com as mesmas respostas de antes.
             http_response_code(404);
-            if ($e->motivo === 'dono') {
+            if ($e->motivo === ImovelNaoEncontrado::DONO) {
                 exit('Imóvel não encontrado.');
             }
             view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este anúncio não existe.']);

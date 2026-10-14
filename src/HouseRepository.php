@@ -594,7 +594,7 @@ final class HouseRepository
         }
         $row = HouseRepository::findByPublicHash($ref);
         if (!$row || ($row['status'] ?? 'active') !== 'active') {
-            throw new ImovelNaoEncontrado('publico');
+            throw ImovelNaoEncontrado::publico();
         }
         $cache[$ref] = (int) $row['id'];
         return $cache[$ref];
@@ -604,7 +604,7 @@ final class HouseRepository
     {
         $row = self::findByUser($userId, $id);
         if (!$row) {
-            throw new ImovelNaoEncontrado('dono');
+            throw ImovelNaoEncontrado::dono();
         }
         return $row;
     }
