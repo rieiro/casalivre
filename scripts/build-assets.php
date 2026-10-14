@@ -7,7 +7,8 @@ declare(strict_types=1);
 //      php scripts/build-assets.php --check  só confere (exit 1 se o manifesto estiver desatualizado)
 require_once dirname(__DIR__) . '/src/AssetManifest.php';
 
-$novo = AssetManifest::encode(AssetManifest::build());
+$manifesto = AssetManifest::build();
+$novo = AssetManifest::encode($manifesto);
 $atual = is_file(AssetManifest::file()) ? (string) file_get_contents(AssetManifest::file()) : '';
 if (in_array('--check', $argv, true)) {
     if ($novo !== $atual) {
@@ -22,4 +23,4 @@ if ($novo !== $atual) {
     file_put_contents($tmp, $novo);
     rename($tmp, AssetManifest::file());
 }
-echo 'manifest.json: ' . count(json_decode($novo, true)) . " arquivos\n";
+echo 'manifest.json: ' . count($manifesto) . " arquivos\n";
