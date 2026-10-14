@@ -26,13 +26,8 @@ if [[ ! -f storage/db/casalivre.sqlite ]]; then
     '
 fi
 
-# GEO_SALT é obrigatório fora de dev/local (o app não sobe sem ele): mantém o do .env anterior
-# (trocar move todos os pinos públicos) ou gera um novo.
-GEO_SALT_VALUE="$(sed -n 's/^GEO_SALT=//p' .env 2>/dev/null | tail -n 1)"
-if [[ ${#GEO_SALT_VALUE} -lt 32 ]]; then
-  GEO_SALT_VALUE="$("$PHP_BIN" -r 'echo bin2hex(random_bytes(32));')"
-fi
-printf 'APP_URL=http://127.0.0.1:8080\nPHP_BIN=%s\nGEO_SALT=%s\nDB_DRIVER=sqlite\nDB_DSN=\nDB_USER=\nDB_PASSWORD=\nLOG_DRIVER=sqlite\nLOG_MONGO_URI=\nLOG_MONGO_DB=\nSTRIPE_SECRET_KEY=\nPAGARME_API_KEY=\nAWS_ACCESS_KEY_ID=\nAWS_SECRET_ACCESS_KEY=\n' "$PHP_BIN" "$GEO_SALT_VALUE" > .env
+# .env: cria (de .env.example ou do zero) ou mantém o existente; garante GEO_SALT (>= 32) e chmod 600.
+"$ROOT/scripts/setup-env.sh" "$PHP_BIN"
 echo "Infraestrutura pronta em $ROOT"
 "$PHP_BIN" "$ROOT/scripts/load-ceps.php"
 echo "Banco: storage/db/casalivre.sqlite"
