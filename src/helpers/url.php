@@ -147,3 +147,21 @@ function csp_header(): string
 }
 
 require_once dirname(__DIR__) . '/AssetManifest.php';
+
+/**
+ * URL de asset com hash do conteúdo: "/assets/app.css" -> "/assets/app.css?v=<12 hex>" (public/assets/manifest.json,
+ * gerado por scripts/build-assets.php). Fora do manifesto (asset novo antes do build) calcula o hash do arquivo;
+ * arquivo inexistente volta sem ?v=.
+ */
+function asset_url(string $path): string
+{
+    $manifest = AssetManifest::load();
+    if (isset($manifest[$path])) {
+        return $path . '?v=' . $manifest[$path];
+    }
+    $abs = AssetManifest::publicDir() . $path;
+    if (!str_contains($path, '..') && is_file($abs)) {
+        return $path . '?v=' . AssetManifest::hashFile($abs);
+    }
+    return $path;
+}
