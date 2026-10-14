@@ -18,6 +18,22 @@ if (getenv('CASALIVRE_ENV_FILE') === false) {
     register_shutdown_function(static fn () => @unlink($__tEnv));
 }
 
+// Estado do limite por IP (IpRateLimiter) numa pasta temporária por execução, herdada por php -S
+// (tests/standalone/router.php aplica): rodadas seguidas não acumulam 429 em storage/cache/ratelimit.
+if (getenv('T_RATELIMIT_DIR') === false) {
+    $__tRl = sys_get_temp_dir() . '/cl-rl-' . bin2hex(random_bytes(6));
+    putenv('T_RATELIMIT_DIR=' . $__tRl);
+    register_shutdown_function(static fn () => @exec('rm -rf ' . escapeshellarg($__tRl)));
+}
+require_once CL_ROOT . '/src/IpRateLimiter.php';
+IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
+
+/** Zera o estado do limite por IP desta execução. */
+function t_ratelimit_reset(): void
+{
+    @exec('rm -rf ' . escapeshellarg((string) getenv('T_RATELIMIT_DIR')));
+}
+
 $GLOBALS['__t_fail'] = 0;
 $GLOBALS['__t_pass'] = 0;
 
