@@ -13,7 +13,7 @@ final class ImovelNaoEncontrado extends RuntimeException
     public const PUBLICO = 'publico';
     public const DONO = 'dono';
 
-    public function __construct(public readonly string $motivo)
+    private function __construct(public readonly string $motivo)
     {
         parent::__construct('Imóvel não encontrado.');
     }
