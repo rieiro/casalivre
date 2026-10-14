@@ -252,7 +252,7 @@ function handle_api(string $path, string $method): void
         if (!$removed['old']) {
             json_out(404, ['error' => 'Foto não encontrada.']);
         }
-        PhotoStorage::deletePublicFile((string) $removed['old']['path']);
+        PhotoStorage::deletePhotoFiles($removed['old']);
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => (int) $house['id'], 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
         if ($removed['capa'] !== []) {
             activity(ActivityLog::PHOTO_COVER, ['imovel_id' => (int) $house['id']], array_column($removed['capa'], 'old'), array_column($removed['capa'], 'new'));
@@ -294,7 +294,7 @@ function handle_api(string $path, string $method): void
         $checkout = (string) ($_GET['checkout'] ?? '');
         $nights = nights_between($checkin, $checkout);
         $quote = $nights ? stay_quote($house, $nights) : null;
-        $photos = PhotoRepository::list($id);
+        $photos = PhotoRepository::listReady($id); // público: só fotos prontas
         $selected = Amenities::selected($house);
         $amenities = array_keys(array_filter($selected));
         activity(ActivityLog::PROPERTY_VIEW, [

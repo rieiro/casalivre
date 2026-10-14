@@ -37,6 +37,21 @@ window.CL = {
         });
         return node;
     },
+    // Foto pronta (/uploads/fotos/<uuid>-<w>.webp): <img> com a variante card e srcset das 3 larguras
+    // (mesma regra de photo_srcset_attr() no PHP). Caminhos antigos: só src.
+    photoImg(path, sizes, alt) {
+        const p = String(path || '');
+        const m = /^(\/uploads\/fotos\/[0-9a-f-]{36})-\d+\.webp$/.exec(p);
+        if (!m) return CL.el('img', { src: p, alt: alt || '', loading: 'lazy' });
+        const widths = [320, 800, 1920];
+        return CL.el('img', {
+            src: m[1] + '-800.webp',
+            srcset: widths.map((w) => m[1] + '-' + w + '.webp ' + w + 'w').join(', '),
+            sizes: sizes,
+            alt: alt || '',
+            loading: 'lazy',
+        });
+    },
     // Fotos: só caminhos relativos em /uploads/ (mesma regra de photo_url() no PHP); o resto vira placeholder.
     photoUrl(path) {
         const p = String(path || '');

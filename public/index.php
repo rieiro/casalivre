@@ -545,7 +545,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
         $_SESSION['upload_notice'] = 'Nenhuma foto chegou. O envio é maior do que o limite do sistema.';
     } elseif ($saved < $sent) {
         $limit = Settings::int('max_photos_per_property') ?: 40;
-        $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png, webp ou gif).";
+        $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png ou webp).";
     }
     activity(ActivityLog::PHOTO_ADD, ['imovel_id' => house_id($m[1]), 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
     redirect('/imoveis/' . $m[1] . '/editar');
@@ -557,7 +557,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
     property_for_user((int) $user['id'], house_id($m[1]));
     $removed = PhotoRepository::deleteIds(house_id($m[1]), array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
-        PhotoStorage::deletePublicFile((string) ($photo['path'] ?? ''));
+        PhotoStorage::deletePhotoFiles($photo);
     }
     if ($removed['old'] !== []) {
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => house_id($m[1]), 'quantidade' => count($removed['old'])], ['fotos' => $removed['old']], ['estado' => 'removida']);
@@ -574,7 +574,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
     property_for_user((int) $user['id'], house_id($m[1]));
     $removed = PhotoRepository::delete(house_id($m[1]), (int) $m[2]);
     if ($removed['old']) {
-        PhotoStorage::deletePublicFile((string) $removed['old']['path']);
+        PhotoStorage::deletePhotoFiles($removed['old']);
         activity(ActivityLog::PHOTO_DELETE, ['imovel_id' => house_id($m[1]), 'foto_id' => (int) $removed['old']['id']], $removed['old'], ['estado' => 'removida']);
     }
     if ($removed['capa'] !== []) {

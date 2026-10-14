@@ -721,6 +721,34 @@ function photo_url(?string $path): string
 }
 
 /**
+ * Variante WebP de uma foto pronta (/uploads/fotos/<uuid>-1920.webp): thumb 320, card 800, full 1920.
+ * Caminhos antigos (sem variantes) voltam como estão.
+ */
+function photo_variant(?string $path, string $size): string
+{
+    $path = (string) $path;
+    $w = ImageWorker::SIZES[$size] ?? null;
+    if ($w === null || preg_match('#^(/uploads/fotos/[0-9a-f-]{36})-\d+\.webp$#', $path, $m) !== 1) {
+        return $path;
+    }
+    return $m[1] . '-' . $w . '.webp';
+}
+
+/** Atributos srcset/sizes (já escapados, com espaço à frente) para fotos com variantes; '' nas antigas. */
+function photo_srcset_attr(?string $path, string $sizes): string
+{
+    $path = (string) $path;
+    if (preg_match('#^/uploads/fotos/[0-9a-f-]{36}-\d+\.webp$#', $path) !== 1) {
+        return '';
+    }
+    $set = [];
+    foreach (ImageWorker::SIZES as $name => $w) {
+        $set[] = photo_variant($path, $name) . ' ' . $w . 'w';
+    }
+    return ' srcset="' . e(implode(', ', $set)) . '" sizes="' . e($sizes) . '"';
+}
+
+/**
  * Único ponto que monta o valor do header Content-Security-Policy. Sempre estrita: sem inline/eval em
  * script, sem 'unsafe-inline' em style, sem data:/blob:; só os tiles do OpenStreetMap como imagem externa.
  */
