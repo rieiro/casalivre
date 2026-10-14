@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../src/AppEnv.php';
+
 /** PR #32: o link de ativação não volta mais na API; roda o worker (APP_ENV=dev) e lê o último link do e-mail no mail-dev.log. */
 if (!function_exists('link_ativacao')) {
     function link_ativacao(string $email): string
@@ -29,7 +31,7 @@ if (!function_exists('link_ativacao')) {
 
 // Exige APP_ENV=dev (ou local): os casos leem o link de verificação do mail-dev.log (worker da fila),
 // que só é gravado nesses ambientes. O servidor de teste também deve subir com APP_ENV=dev.
-if (!in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true)) {
+if (!AppEnv::isDev()) {
     fwrite(STDERR, "ERRO: rode com APP_ENV=dev (ex.: APP_ENV=dev CASOS=todos php scripts/run-casos-de-teste.php) e suba o servidor de teste com APP_ENV=dev.\n");
     exit(2);
 }

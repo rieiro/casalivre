@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/AppEnv.php';
 require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/MailQueue.php';
 
@@ -43,7 +44,11 @@ final class Mailer
 
     public static function isDev(): bool
     {
-        return in_array(strtolower(self::env('APP_ENV')), ['dev', 'local'], true);
+        // self::env() carregava o .env (Db::loadEnv) antes de ler APP_ENV; mantido.
+        if (class_exists('Db')) {
+            Db::loadEnv();
+        }
+        return AppEnv::isDev();
     }
 
     /** Fila usada (testes podem trocar); null = MailQueues::make() (QUEUE_DRIVER). */

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/AppEnv.php';
+
 /**
  * GEO_SALT (sal do deslocamento das coordenadas públicas). Fora de dev/local é obrigatório e com
  * pelo menos MIN_LENGTH caracteres: sem ele o app não sobe (fail closed, ver public/index.php).
@@ -12,7 +14,7 @@ final class GeoSalt
 
     public static function isDev(): bool
     {
-        return in_array(strtolower(trim((string) getenv('APP_ENV'))), ['dev', 'local'], true);
+        return AppEnv::isDev();
     }
 
     /** Motivo da recusa (sem o valor do sal), ou null se o ambiente está ok. */
