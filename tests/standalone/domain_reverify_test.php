@@ -128,7 +128,11 @@ t_eq(1, count($l), 'um log 46');
 t_eq(['imob', 'imob.example.com', 3, 'ausente'], [$l[0]['params']['grupo'] ?? null, $l[0]['params']['dominio'] ?? null, $l[0]['params']['falhas'] ?? null, $l[0]['params']['motivo'] ?? null], 'log 46 com grupo, domínio, falhas e motivo ausente');
 t_eq(46, ActivityLog::GROUP_DOMAIN_UNVERIFIED, 'código 46');
 t_eq([$admin['email'], $admin2['email']], array_column($mails, 0), 'aviso por e-mail a cada admin ativo (não ao inativo)');
+$urlAntes = getenv('APP_URL');
+putenv('APP_URL=https://casalivre.example'); // PR 9: links absolutos do aviso sobre APP_URL (nunca o Host)
 [$subject, $body] = Mailer::domainNotice(GroupRepository::unverifiedCheckedDomains());
+putenv($urlAntes === false ? 'APP_URL' : 'APP_URL=' . $urlAntes);
+t_ok(str_contains($body, 'https://casalivre.example/admin/grupos/imob') && str_contains($body, 'vitrine agora em https://casalivre.example/g/imob/'), 'aviso com link absoluto do admin e da vitrine (APP_URL, domínio desverificado)');
 t_ok(str_contains($subject, 'perdeu a verificação') && str_contains($body, 'imob.example.com') && str_contains($body, '_casalivre.imob.example.com') && str_contains($body, '/admin/grupos/imob'), 'texto do aviso (worker) com domínio, registro TXT e caminho do admin');
 t_ok(!str_contains($body, $token), 'aviso sem o token');
 $mails = [];

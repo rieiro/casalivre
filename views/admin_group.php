@@ -1,6 +1,7 @@
 <section class="panel">
     <p><a href="/admin/grupos">Grupos</a></p>
     <h1><?= e($group['name']) ?> <span class="muted">(<?= e($group['slug']) ?>)</span></h1>
+    <p>Vitrine: <a class="group-storefront" href="<?= e($vitrine_url) ?>"><?= e($vitrine_url) ?></a></p>
     <?php if (!empty($ok)): ?><p class="notice" role="status"><?= e($ok) ?></p><?php endif; ?>
     <?php if (!empty($error)): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?>
     <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>">

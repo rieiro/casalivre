@@ -23,6 +23,7 @@ require_once __DIR__ . '/../src/helpers.php';
 require_once __DIR__ . '/../src/SearchService.php';
 require_once __DIR__ . '/../src/GrupoResolvedor.php';
 require_once __DIR__ . '/../src/Redirect.php';
+require_once __DIR__ . '/../src/GrupoUrl.php';
 require_once __DIR__ . '/../src/CalendarService.php';
 reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
@@ -566,6 +567,7 @@ if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|
             'user' => $user, 'group' => $fresh, 'temas' => Theme::available(), 'error' => $error, 'ok' => $ok,
             'domains' => GroupRepository::domainRows((int) $fresh['id']), 'members' => GroupRepository::members((int) $fresh['id']),
             'properties' => GroupRepository::properties((int) $fresh['id']), 'invites' => GroupRepository::invites((int) $fresh['id']),
+            'vitrine_url' => GrupoUrl::home($fresh),
         ]);
     };
     if ($method === 'POST') {
@@ -607,6 +609,7 @@ if (preg_match('#^/grupos/([a-z0-9-]{1,40})(?:/(convites|convites/cancelar|imove
             'user' => $user, 'group' => $group, 'role' => $role, 'error' => $error, 'ok' => $ok,
             'properties' => GroupRepository::properties((int) $group['id']),
             'invites' => $role === 'gestor' ? GroupRepository::invites((int) $group['id']) : [],
+            'vitrine_url' => GrupoUrl::home($group),
         ]);
     };
     if ($method === 'POST') {
