@@ -6,10 +6,17 @@ declare(strict_types=1);
 // (hash do conteúdo de CSS/JS/JSON em public/assets, mais logo/favicon dos temas) para asset_url().
 // Uso: php scripts/build-assets.php          grava o manifesto
 //      php scripts/build-assets.php --check  só confere (exit 1 se temas ou manifesto estiverem desatualizados)
+// Nos dois modos, exit 1 se algum themes/<nome>/brand.php tiver token CSS, cor ou papel do mapa inválido.
 require_once dirname(__DIR__) . '/src/AssetManifest.php';
 require_once dirname(__DIR__) . '/src/ThemeBuilder.php';
 
 $check = in_array('--check', $argv, true);
+// brand.php com entrada inválida (token CSS, cor ou papel do mapa) falha o build nos dois modos, antes de gravar nada.
+$erros = ThemeBuilder::errors();
+if ($erros !== []) {
+    fwrite(STDERR, "brand.php inválido (corrija e rode de novo):\n  " . implode("\n  ", $erros) . "\n");
+    exit(1);
+}
 if ($check) {
     $velhos = ThemeBuilder::outdated();
     if ($velhos !== []) {

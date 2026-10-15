@@ -137,6 +137,47 @@ final class Theme
         return $out;
     }
 
+    /**
+     * Erros de um brand.php para o build (scripts/build-assets.php falha com eles): entradas de tokens,
+     * tokens_escuro e mapa que readBrand descartaria em silêncio. readBrand continua filtrando em tempo de execução.
+     * @return list<string>
+     */
+    public static function brandErrors(string $file): array
+    {
+        $name = basename(dirname($file));
+        $raw = is_file($file) ? require $file : [];
+        if (!is_array($raw)) {
+            return ["tema $name: brand.php não retorna um array"];
+        }
+        $show = static fn (mixed $v): string => is_string($v) ? "'" . $v . "'" : (string) json_encode($v);
+        $errors = [];
+        foreach (['tokens', 'tokens_escuro'] as $group) {
+            $tokens = $raw[$group] ?? [];
+            if (!is_array($tokens)) {
+                $errors[] = "tema $name: $group deve ser um array";
+                continue;
+            }
+            foreach ($tokens as $k => $v) {
+                if (self::cleanTokens([$k => $v]) === []) {
+                    $errors[] = "tema $name: $group.$k inválido ({$show($v)}), use nome --[a-z0-9-] e valor CSS simples (sem ; { } < > \\ aspas, url(, @import, expression( ou comentário)";
+                }
+            }
+        }
+        $mapa = $raw['mapa'] ?? [];
+        if (!is_array($mapa)) {
+            $errors[] = "tema $name: mapa deve ser um array";
+        } else {
+            foreach ($mapa as $role => $color) {
+                if (!is_string($role) || !isset(MapStyle::ROLES[$role])) {
+                    $errors[] = "tema $name: mapa.$role papel desconhecido, use um de: " . implode(', ', array_keys(MapStyle::ROLES));
+                } elseif (MapStyle::clean([$role => $color]) === []) {
+                    $errors[] = "tema $name: mapa.$role inválido ({$show($color)}), use #rgb ou #rrggbb";
+                }
+            }
+        }
+        return $errors;
+    }
+
     /** CSS gerado de um brand validado. */
     public static function css(array $brand): string
     {

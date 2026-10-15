@@ -16,6 +16,18 @@ final class ThemeBuilder
         return AssetManifest::publicDir() . Theme::assetPath();
     }
 
+    /** Erros de todos os brand.php (vazio = build pode seguir). @return list<string> */
+    public static function errors(): array
+    {
+        $errors = [];
+        foreach (glob(Theme::sourceDir() . '/*/brand.php') ?: [] as $file) {
+            if (Theme::isValidName(basename(dirname($file)))) {
+                array_push($errors, ...Theme::brandErrors($file));
+            }
+        }
+        return $errors;
+    }
+
     /**
      * @return array{names:list<string>,files:array<string,string>} temas e arquivo absoluto => conteúdo
      */
