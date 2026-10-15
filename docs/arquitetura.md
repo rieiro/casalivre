@@ -317,7 +317,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | GET | `/api/casas` | S | 200 |
 | POST | `/api/casas` | S, C | 201; 422 |
 | GET / PUT / DELETE | `/api/casas/<h>` | S, dono | 200; 422 no PUT; DELETE marca `estado: inativo` |
-| POST | `/api/casas/<h>/fotos` | S, C, dono, RL | 201 `{salvas, enviadas, fotos}` |
+| POST | `/api/casas/<h>/fotos` | S, C, dono, RL | 201 `{salvas, enviadas, fotos}` (também no parcial); 422 `{error, erros: {fotos}, salvas: 0, enviadas}` quando nenhuma foto foi salva |
 | DELETE | `/api/casas/<h>/fotos/<id>` | S, C, dono | 200; 404 |
 | POST | `/api/imoveis/<h>/fotos/capa` | S, C, dono | 200; 422 `{error, erros: {foto_id}}` sem `foto_id` ou foto de outro imóvel |
 | GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |

@@ -948,7 +948,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    $res = CoverSet::run($propertyId, [(int) $m[2]]);
+    // Valor bruto da rota (só dígitos pela regex): CoverSet valida (InteiroBruto) e confere o dono.
+    $res = CoverSet::run($propertyId, [$m[2]]);
     $res->registrar();
     if ($res->tipo !== 'ok') {
         $_SESSION['upload_notice'] = $res->mensagem;

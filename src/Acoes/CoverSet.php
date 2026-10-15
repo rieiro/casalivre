@@ -32,8 +32,7 @@ final class CoverSet
             $ids[$id] = $id;
         }
         $ids = array_values($ids);
-        $own = array_map('intval', array_column(PhotoRepository::list($propertyId), 'id'));
-        if (count($ids) !== 1 || !in_array($ids[0], $own, true)) {
+        if (count($ids) !== 1 || !PhotoRepository::belongsTo($propertyId, $ids[0])) {
             return self::invalido();
         }
         $changed = PhotoRepository::makePrimary($propertyId, $ids[0]);

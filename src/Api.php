@@ -261,6 +261,15 @@ function handle_api(string $path, string $method): void
         // Mesma ação da web (PhotoAdd): PHOTO_ADD com enviadas e salvas.
         $res = PhotoAdd::run((int) $user['id'], (int) $house['id'], $_FILES['fotos'] ?? []);
         $res->registrar();
+        if ($res->dados['salvas'] === 0) {
+            // Nenhuma foto salva (nada chegou ou todas recusadas): 422 com o mesmo aviso da web; parcial segue 201.
+            json_out(422, [
+                'error' => $res->mensagem,
+                'erros' => ['fotos' => $res->mensagem],
+                'salvas' => 0,
+                'enviadas' => $res->dados['enviadas'],
+            ]);
+        }
         json_out(201, ['salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'fotos' => PhotoRepository::list((int) $house['id'])]);
     }
 
