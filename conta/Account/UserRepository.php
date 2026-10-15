@@ -135,8 +135,7 @@ final class UserRepository
             'address_number' => $user['address_number'] ?? '',
             'address_complement' => $user['address_complement'] ?? '',
             'phone' => $user['phone'],
-            'email' => $user['email'],
-        ], ['name', 'cpf', 'address', 'cep', 'street', 'address_number', 'address_complement', 'phone', 'email']);
+        ], ['name', 'cpf', 'address', 'cep', 'street', 'address_number', 'address_complement', 'phone']);
     }
 
     public static function deactivate(int $id, string $ip): array

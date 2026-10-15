@@ -200,9 +200,6 @@ function handle_api(string $path, string $method): void
         if ($res->tipo === 'invalido') {
             api_error(422, $res->mensagem);
         }
-        if ($res->tipo === 'email_em_uso') {
-            api_error(409, $res->mensagem);
-        }
         json_out(200, ['user' => api_public_user(UserRepository::find((int) $user['id']))]);
     }
 
@@ -561,20 +558,9 @@ function account_text(?string $code): ?string
         'weak' => password_phrase('err.password_weak'),
         'deleted' => t('err.deleted'),
         'inactive' => t('err.inactive'),
-        'email_taken' => t('err.email_taken'),
         'invalid' => t('auth.verify_bad'),
         default => t('err.required'),
     };
-}
-
-function user_fields(array $input, ?array $current = null): array
-{
-    return AccountFlow::fields($input, $current);
-}
-
-function user_input_error(array $input, bool $requirePassword = true): ?string
-{
-    return account_text(AccountFlow::problem($input, $requirePassword));
 }
 
 function remove_user(int $userId): array

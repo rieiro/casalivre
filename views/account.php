@@ -15,7 +15,7 @@
         </div>
         <p class="muted" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
         <label><?= e(t('auth.phone')) ?> <input name="phone" required placeholder="(00) 90000-0000" value="<?= e($user['phone']) ?>"></label>
-        <label><?= e(t('auth.email')) ?> <input type="email" name="email" required value="<?= e($user['email']) ?>"></label>
+        <p><?= e(t('auth.email')) ?>: <?= e($user['email']) ?></p>
         <p class="muted"><?= e(t('account.created')) ?> <?= e(format_date((string) $user['created_at'])) ?>.</p>
         <button class="primary" type="submit"><?= e(t('account.save')) ?></button>
     </form>
