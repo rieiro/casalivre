@@ -85,6 +85,56 @@ final class GroupRepository
         return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
     }
 
+    /** Domínios com estado da verificação. @return list<array{domain:string,verify_token:string,verified_at:?string}> */
+    public static function domainRows(int $groupId): array
+    {
+        $st = db()->prepare('SELECT domain, verify_token, verified_at FROM group_domains WHERE group_id = ? ORDER BY domain');
+        $st->execute([$groupId]);
+        return $st->fetchAll();
+    }
+
+    /** @return array{domain:string,verify_token:string,verified_at:?string}|null */
+    public static function domainRow(int $groupId, string $domain): ?array
+    {
+        $st = db()->prepare('SELECT domain, verify_token, verified_at FROM group_domains WHERE group_id = ? AND domain = ?');
+        $st->execute([$groupId, $domain]);
+        $row = $st->fetch();
+        return $row ?: null;
+    }
+
+    /** Novo token e verificação zerada; true se gravou uma linha. */
+    public static function resetDomainToken(int $groupId, string $domain, string $token): bool
+    {
+        $st = db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = NULL WHERE group_id = ? AND domain = ?');
+        $st->execute([$token, $groupId, $domain]);
+        return $st->rowCount() === 1;
+    }
+
+    /** Marca verificado se o token ainda for o mesmo e não estiver verificado; true se gravou uma linha. */
+    public static function markDomainVerified(int $groupId, string $domain, string $token): bool
+    {
+        $st = db()->prepare('UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE group_id = ? AND domain = ? AND verify_token = ? AND verified_at IS NULL');
+        $st->execute([$groupId, $domain, $token]);
+        return $st->rowCount() === 1;
+    }
+
+    /** Grupo dono do domínio, só se o domínio estiver verificado (C1). */
+    public static function findByVerifiedDomain(string $domain): ?array
+    {
+        $st = db()->prepare('SELECT g.* FROM group_domains d JOIN groups g ON g.id = d.group_id WHERE d.domain = ? AND d.verified_at IS NOT NULL');
+        $st->execute([$domain]);
+        $row = $st->fetch();
+        return $row ?: null;
+    }
+
+    public static function findById(int $id): ?array
+    {
+        $st = db()->prepare('SELECT * FROM groups WHERE id = ?');
+        $st->execute([$id]);
+        $row = $st->fetch();
+        return $row ?: null;
+    }
+
     /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     public static function properties(int $groupId): array
     {

@@ -42,6 +42,11 @@ function csrf_token(): string
 
 function view(string $template, array $data = []): void
 {
+    // C4 (PR 7): o HTML muda por Host (tema do grupo) e por sessão, então nenhum cache compartilhado guarda a página:
+    // "Cache-Control: private, no-cache". Se já há Cache-Control (ex.: o no-store da sessão PHP), mantém o mais restrito.
+    if (!headers_sent() && !preg_grep('/^cache-control:/i', headers_list())) {
+        header('Cache-Control: private, no-cache');
+    }
     $data['user'] = $data['user'] ?? current_user();
     $data['csrf'] = csrf_token();
     $data['locale'] = current_locale();

@@ -27,21 +27,70 @@ final class GrupoValidacao
         return $name;
     }
 
+    /** Nome de host em minúsculas com TLD alfabético (sem esquema, porta, caminho, curinga ou IDN unicode). */
+    private const HOST_RE = '/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/';
+
     /** Domínio em minúsculas, sem esquema/porta/caminho, com TLD alfabético; nem o host da plataforma nem subdomínio dele. */
     public static function domain(mixed $domain): ?string
     {
         if (!is_string($domain)) {
             return null;
         }
-        $d = strtolower(trim($domain));
-        if ($d === '' || strlen($d) > 253 || preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $d) !== 1) {
+        $d = self::hostname(strtolower(trim($domain)));
+        return $d === null || self::isPlatform($d) ? null : $d;
+    }
+
+    /**
+     * Host da requisição normalizado como domain() (C3): minúsculas, sem porta e sem o ponto final; formato inválido
+     * (IP, IPv6, IDN unicode, curinga, espaço) -> null. Não aplica a regra da plataforma: quem chama decide.
+     */
+    public static function host(mixed $host): ?string
+    {
+        if (!is_string($host) || strlen($host) > 260) {
             return null;
         }
-        $platform = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
-        if ($platform !== '' && ($d === $platform || str_ends_with($d, '.' . $platform))) {
-            return null;
+        $h = strtolower($host);
+        $h = preg_replace('/:[0-9]{1,5}$/', '', $h) ?? '';
+        if (str_ends_with($h, '.')) {
+            $h = substr($h, 0, -1);
         }
-        return $d;
+        return self::hostname($h);
+    }
+
+    /** Formato de host (já em minúsculas), ou null. */
+    public static function hostname(string $d): ?string
+    {
+        return $d !== '' && strlen($d) <= 253 && preg_match(self::HOST_RE, $d) === 1 ? $d : null;
+    }
+
+    /** Host da plataforma ou subdomínio dele (inclui o domínio pai quando APP_URL tem www. e PLATFORM_ROOT_DOMAIN). */
+    public static function isPlatform(string $d): bool
+    {
+        foreach (self::platformRoots() as $root) {
+            if ($d === $root || str_ends_with($d, '.' . $root)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Raízes da plataforma: host do APP_URL sem "www." inicial (www.casalivre.com.br -> casalivre.com.br, que cobre o www e
+     * todo subdomínio) e PLATFORM_ROOT_DOMAIN opcional (.env), só se tiver formato de host.
+     * @return list<string>
+     */
+    public static function platformRoots(): array
+    {
+        $roots = [];
+        $app = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
+        if ($app !== '') {
+            $roots[] = str_starts_with($app, 'www.') && self::hostname(substr($app, 4)) !== null ? substr($app, 4) : $app;
+        }
+        $root = self::hostname(rtrim(strtolower(trim((string) (getenv('PLATFORM_ROOT_DOMAIN') ?: ''))), '.'));
+        if ($root !== null && !in_array($root, $roots, true)) {
+            $roots[] = $root;
+        }
+        return $roots;
     }
 
     public static function theme(mixed $theme): ?string

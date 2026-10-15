@@ -19,13 +19,23 @@
     <h2>Domínios</h2>
     <?php if ($domains === []): ?><p class="muted">Nenhum domínio.</p><?php endif; ?>
     <ul>
-        <?php foreach ($domains as $d): ?>
+        <?php foreach ($domains as $dr): $d = (string) $dr['domain']; ?>
             <li><?= e($d) ?>
-                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/remover">
-                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
-                    <button class="danger" type="submit">Remover</button>
-                </form>
+                <?php if ($dr['verified_at'] !== null): ?>
+                    <span class="notice">verificado em <?= e((string) $dr['verified_at']) ?></span>
+                <?php else: ?>
+                    <span class="muted">não verificado (o domínio só passa a usar o tema do grupo depois da verificação)</span>
+                <?php endif; ?>
+                <?php if ($dr['verify_token'] !== ''): ?>
+                    <p class="muted">Registro DNS TXT: nome <code><?= e(DomainVerification::txtName($d)) ?></code>, valor <code><?= e(DomainVerification::txtValue((string) $dr['verify_token'])) ?></code></p>
+                <?php endif; ?>
+                <?php foreach (['verificar' => ['', 'Verificar agora'], 'token' => ['', 'Gerar novo token'], 'remover' => ['danger', 'Remover']] as $acao => [$classe, $rotulo]): ?>
+                    <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/<?= e($acao) ?>">
+                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                        <input type="hidden" name="dominio" value="<?= e($d) ?>">
+                        <button<?= $classe !== '' ? ' class="' . e($classe) . '"' : '' ?> type="submit"><?= e($rotulo) ?></button>
+                    </form>
+                <?php endforeach; ?>
             </li>
         <?php endforeach; ?>
     </ul>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/Resultado.php';
 require_once __DIR__ . '/GrupoValidacao.php';
 require_once dirname(__DIR__) . '/GroupRepository.php';
+require_once dirname(__DIR__) . '/DomainVerification.php';
 
 /**
  * Grupos pelo admin (users.is_admin = 1, conta ativa): cria, edita nome/tema, inclui/remove domínio e membro.
@@ -85,7 +86,7 @@ final class GrupoAdmin
             return new Resultado('invalido', 'Limite de ' . GrupoValidacao::MAX_DOMAINS . ' domínios por grupo.');
         }
         try {
-            db()->prepare('INSERT INTO group_domains (group_id, domain) VALUES (?, ?)')->execute([(int) $group['id'], $d]);
+            db()->prepare('INSERT INTO group_domains (group_id, domain, verify_token) VALUES (?, ?, ?)')->execute([(int) $group['id'], $d, DomainVerification::newToken()]);
         } catch (PDOException $e) {
             if (!GroupRepository::isUniqueViolation($e)) {
                 throw $e;
@@ -110,6 +111,56 @@ final class GrupoAdmin
             return new Resultado('ok', null, ['mudou' => false]);
         }
         return new Resultado('ok', null, ['mudou' => true], [[ActivityLog::GROUP_DOMAIN_REMOVE, ['grupo' => $group['slug'], 'dominio' => $d], ['dominio' => $d], null]]);
+    }
+
+    /** Novo token de verificação: o domínio volta a "não verificado" e deixa de resolver até a nova checagem. */
+    public static function startDomainVerification(array $admin, array $group, mixed $domain): Resultado
+    {
+        if ($deny = self::guard($admin)) {
+            return $deny;
+        }
+        $d = GrupoValidacao::domain($domain);
+        $row = $d === null ? null : GroupRepository::domainRow((int) $group['id'], $d);
+        if ($row === null) {
+            return new Resultado('invalido', 'Domínio não cadastrado neste grupo.');
+        }
+        if (!GroupRepository::resetDomainToken((int) $group['id'], $d, DomainVerification::newToken())) {
+            return new Resultado('ok', null, ['mudou' => false]);
+        }
+        return new Resultado('ok', 'Novo token gerado: publique o registro TXT e clique em Verificar.', ['mudou' => true], [
+            [ActivityLog::GROUP_DOMAIN_VERIFY_START, ['grupo' => $group['slug'], 'dominio' => $d], ['verificado' => $row['verified_at'] !== null], ['verificado' => false]],
+        ]);
+    }
+
+    /**
+     * Confere o TXT _casalivre.<domínio>. Achou o valor esperado: grava verified_at (loga só na passagem para verificado).
+     * Não achou: 'invalido'; um domínio já verificado continua verificado (falha passageira de DNS não derruba o site).
+     */
+    public static function checkDomainVerification(array $admin, array $group, mixed $domain, ?DomainVerification $verification = null): Resultado
+    {
+        if ($deny = self::guard($admin)) {
+            return $deny;
+        }
+        $d = GrupoValidacao::domain($domain);
+        $row = $d === null ? null : GroupRepository::domainRow((int) $group['id'], $d);
+        if ($row === null) {
+            return new Resultado('invalido', 'Domínio não cadastrado neste grupo.');
+        }
+        $token = (string) $row['verify_token'];
+        if (!($verification ?? new DomainVerification())->matches($d, $token)) {
+            return new Resultado('invalido', $row['verified_at'] !== null
+                ? 'Registro TXT não encontrado agora; o domínio continua verificado.'
+                : 'Registro TXT não encontrado: crie ' . DomainVerification::txtName($d) . ' com o valor ' . ($token === '' ? '(gere um token)' : DomainVerification::txtValue($token)) . ' e tente de novo (o DNS pode levar alguns minutos).');
+        }
+        if ($row['verified_at'] !== null) {
+            return new Resultado('ok', 'Domínio verificado.', ['mudou' => false]);
+        }
+        if (!GroupRepository::markDomainVerified((int) $group['id'], $d, $token)) {
+            return new Resultado('ok', null, ['mudou' => false]);
+        }
+        return new Resultado('ok', 'Domínio verificado.', ['mudou' => true], [
+            [ActivityLog::GROUP_DOMAIN_VERIFIED, ['grupo' => $group['slug'], 'dominio' => $d], ['verificado' => false], ['verificado' => true]],
+        ]);
     }
 
     /** Inclui ou troca o papel. E-mail sem conta ativa: mensagem única (não diz se existe, está inativa ou apagada). */

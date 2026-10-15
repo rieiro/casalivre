@@ -249,6 +249,9 @@ function casa_html_error(int $status, string $title, string $message): never
 {
     http_response_code($status);
     header('Content-Type: text/html; charset=utf-8');
+    if (!headers_sent() && !preg_grep('/^cache-control:/i', headers_list())) {
+        header('Cache-Control: private, no-cache');
+    }
     $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
     echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>' . $e($title) . '</title><link rel="stylesheet" href="' . $e(asset_url('/assets/app.css')) . '"><body class="err-page"><h1>' . $e($title) . '</h1><p>' . $e($message) . '</p><p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
@@ -496,7 +499,7 @@ if ($path === '/admin/grupos' && ($method === 'GET' || $method === 'POST')) {
     return null;
 }
 
-if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|membros|membros/remover))?$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
+if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|dominios/token|dominios/verificar|membros|membros/remover))?$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
     $group = GroupRepository::findBySlug($m[1]);
     $acao = $m[2] ?? '';
@@ -507,7 +510,7 @@ if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|
         $fresh = GroupRepository::findBySlug($group['slug']) ?? $group;
         view('admin_group', [
             'user' => $user, 'group' => $fresh, 'temas' => Theme::available(), 'error' => $error, 'ok' => $ok,
-            'domains' => GroupRepository::domains((int) $fresh['id']), 'members' => GroupRepository::members((int) $fresh['id']),
+            'domains' => GroupRepository::domainRows((int) $fresh['id']), 'members' => GroupRepository::members((int) $fresh['id']),
             'properties' => GroupRepository::properties((int) $fresh['id']), 'invites' => GroupRepository::invites((int) $fresh['id']),
         ]);
     };
@@ -517,6 +520,8 @@ if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|
             '' => GrupoAdmin::update($user, $group, $_POST['nome'] ?? null, $_POST['tema'] ?? null),
             'dominios' => GrupoAdmin::addDomain($user, $group, $_POST['dominio'] ?? null),
             'dominios/remover' => GrupoAdmin::removeDomain($user, $group, $_POST['dominio'] ?? null),
+            'dominios/token' => GrupoAdmin::startDomainVerification($user, $group, $_POST['dominio'] ?? null),
+            'dominios/verificar' => GrupoAdmin::checkDomainVerification($user, $group, $_POST['dominio'] ?? null),
             'membros' => GrupoAdmin::setMember($user, $group, $_POST['email'] ?? null, $_POST['papel'] ?? null),
             'membros/remover' => GrupoAdmin::removeMember($user, $group, $_POST['usuario'] ?? null),
         };
@@ -632,6 +637,7 @@ if ($path === '/imoveis' && $method === 'POST') {
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
     view('property', [
         'hash' => $m[1],
+        'imovel' => GroupRepository::activePropertyByRef($m[1]),
         'use_api' => true,
         'checkin' => (string) ($_GET['checkin'] ?? ''),
         'checkout' => (string) ($_GET['checkout'] ?? ''),
