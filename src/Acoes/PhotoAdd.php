@@ -21,11 +21,11 @@ final class PhotoAdd
         $message = null;
         if ($sent === 0) {
             $tipo = 'vazio';
-            $message = 'Nenhuma foto chegou. O envio é maior do que o limite do sistema.';
+            $message = t('photo.none_arrived');
         } elseif ($saved < $sent) {
             $tipo = 'parcial';
             $limit = Settings::int('max_photos_per_property') ?: 40;
-            $message = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png ou webp).";
+            $message = strtr(t('photo.partial'), ['{salvas}' => (string) $saved, '{enviadas}' => (string) $sent, '{limite}' => (string) $limit]);
         }
         return new Resultado($tipo, $message, ['enviadas' => $sent, 'salvas' => $saved], [
             [ActivityLog::PHOTO_ADD, ['imovel_id' => $propertyId, 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $created]],
