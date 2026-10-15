@@ -43,6 +43,9 @@ final class SearchService
             // No domínio verificado do grupo X, ?grupo=<outro grupo> é tratado como grupo inexistente (itens vazios).
             $group = GrupoResolvedor::grupoDoSlugNoHost($filters['grupo'], $host);
             $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
+        } elseif (($hostGroup = GrupoResolvedor::doDominio($host)) !== null) {
+            // B3 (pr67): no domínio verificado do grupo X, sem ?grupo= a busca é só de X (o grupo resolvido vence).
+            $source = GroupRepository::searchSource((int) $hostGroup['id']);
         } else {
             $source = HouseRepository::all();
         }
