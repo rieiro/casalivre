@@ -12,3 +12,4 @@ require_once __DIR__ . '/Acoes/ICalImport.php';
 require_once __DIR__ . '/Acoes/ICalFeedRemove.php';
 require_once __DIR__ . '/Acoes/CoverSet.php';
 require_once __DIR__ . '/Acoes/ReviewAdd.php';
+require_once __DIR__ . '/Acoes/ThemeSet.php';

@@ -420,30 +420,27 @@ if ($path === '/sair' && $method === 'POST') {
     redirect('/');
 }
 
-// Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF, valor só da lista do manifesto.
+// Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
 if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
+    $nomes = Theme::available();
     $temas = [];
-    foreach (Theme::available() as $nome) {
+    foreach ($nomes as $nome) {
         $temas[$nome] = Theme::brand($nome)['rotulo'];
     }
+    $atual = Theme::current();
     if ($method === 'POST') {
         csrf_check();
-        $novo = $_POST['tema'] ?? '';
-        if (!is_string($novo) || !Theme::isAvailable($novo)) {
+        $res = ThemeSet::run($_POST['tema'] ?? '', $atual, $nomes);
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
             http_response_code(422);
-            view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => Theme::current(), 'error' => 'Tema inválido.', 'ok' => false]);
+            view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => $res->mensagem, 'ok' => false]);
             return null;
-        }
-        $anterior = Theme::current();
-        if ($novo !== $anterior) {
-            db()->prepare('UPDATE settings SET value = ? WHERE skey = ?')->execute([$novo, Theme::SETTING]);
-            Settings::refresh();
-            activity(ActivityLog::THEME_CHANGE, ['tema' => $novo, 'tema_anterior' => $anterior]);
         }
         redirect('/admin/tema?ok=1');
     }
-    view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => Theme::current(), 'error' => null, 'ok' => isset($_GET['ok'])]);
+    view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => null, 'ok' => isset($_GET['ok'])]);
     return null;
 }
 
