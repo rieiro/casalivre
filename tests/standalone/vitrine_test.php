@@ -168,4 +168,19 @@ t_ok(str_contains($get('/g/imob-sul/')['body'], $hE['hash']), "status '': ainda 
 [, $all] = $api('localidade=Florian%C3%B3polis');
 t_ok(!in_array($hE['hash'], $all, true), "status '': fora da busca da plataforma");
 t_ok(!in_array($hA2['hash'], $ids, true), "status 'inactive': fora da busca da vitrine");
+
+echo "API no domínio verificado: ?grupo de outro grupo é vazio\n";
+$apiOn = static function (string $q, string $h) use ($base): array {
+    $r = t_http('GET', $base . '/api/busca?' . $q, null, ['Host: ' . $h]);
+    return [$r['status'], array_column(json_decode($r['body'], true)['items'] ?? [], 'id')];
+};
+$q = 'localidade=Florian%C3%B3polis';
+t_eq([200, []], $apiOn("$q&grupo=outro", 'imob.example.com'), 'domínio de A, grupo=B: 200 vazio');
+t_eq([200, []], $apiOn("$q&grupo=nao-existe", 'imob.example.com'), 'domínio de A, grupo inexistente: 200 vazio (igual)');
+t_eq([200, [$hA['hash']]], $apiOn("$q&grupo=imob-sul", 'IMOB.example.com:8080'), 'domínio de A, grupo=A: só os de A');
+foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
+    t_eq([200, [$hB['hash']]], $apiOn("$q&grupo=outro", $h), "Host $h, grupo=B: inalterado");
+    t_eq([200, [$hA['hash']]], $apiOn("$q&grupo=imob-sul", $h), "Host $h, grupo=A: inalterado");
+}
+t_eq([200, [$hB['hash']]], $api("$q&grupo=outro"), 'plataforma, grupo=B: inalterado');
 t_done();

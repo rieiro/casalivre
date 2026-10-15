@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** Busca pública de imóveis (movido de public/index.php sem alterar os corpos). */
 require_once __DIR__ . '/GroupRepository.php';
+require_once __DIR__ . '/GrupoResolvedor.php';
 
 final class SearchService
 {
@@ -39,6 +40,11 @@ final class SearchService
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
         if (array_key_exists('grupo', $filters)) {
             $group = GroupRepository::findBySlugValid($filters['grupo']);
+            // No domínio verificado do grupo X, ?grupo=<outro grupo> é tratado como grupo inexistente (itens vazios).
+            $hostGroup = GrupoResolvedor::doDominio($_SERVER['HTTP_HOST'] ?? null);
+            if ($group !== null && $hostGroup !== null && (int) $hostGroup['id'] !== (int) $group['id']) {
+                $group = null;
+            }
             $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
         } else {
             $source = HouseRepository::all();
