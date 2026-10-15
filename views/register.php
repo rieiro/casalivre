@@ -2,7 +2,8 @@
     <form class="panel" id="register-form" method="post" action="/cadastro">
         <h1><?= e(t('auth.register_title')) ?></h1>
         <p class="muted"><?= e(t('auth.register_lead')) ?></p>
-        <p class="error" id="register-error" hidden></p>
+        <?php $formError = (string) ($error ?? ''); /* erro do POST re-renderizado no servidor (funciona sem JS) */ ?>
+        <p class="error" id="register-error" role="alert"<?= $formError === '' ? ' hidden' : '' ?>><?= e($formError) ?></p>
         <div id="register-success" hidden>
             <h2><?= e(t('auth.pending_title')) ?></h2>
             <p id="verify-body" hidden><?= e(t('auth.pending_body')) ?></p>
