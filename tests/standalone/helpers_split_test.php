@@ -11,6 +11,7 @@ $antes = [
     'e',
     'redirect',
     'safe_search_return',
+    'safe_local_return', // novo no #72 (/idioma)
     'password_is_weak',
     'password_make',
     'expire_user_session',
