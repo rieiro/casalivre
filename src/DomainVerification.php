@@ -12,15 +12,24 @@ final class DomainVerification
     public const TXT_LABEL = '_casalivre.';
     public const TXT_VALUE = 'casalivre-verificacao=';
 
-    /** @var callable(string): list<string> */
+    /** Resultado de check(): TXT com o token, resposta sem o token (conta como falha), consulta falhou (não conta). */
+    public const OK = 'ok';
+    public const MISSING = 'ausente';
+    public const LOOKUP_FAILED = 'falha_consulta';
+
+    /** @var callable(string): (list<string>|false) */
     private $lookup;
 
-    /** @param (callable(string): list<string>)|null $lookup */
+    /**
+     * Consulta: fn(string $nome): list<string>|false. Lista (vazia em NXDOMAIN/sem TXT) = resposta do DNS;
+     * false ou exceção = consulta falhou (timeout, SERVFAIL). Padrão: dns_get_record, que devolve false nesses casos.
+     * @param (callable(string): (list<string>|false))|null $lookup
+     */
     public function __construct(?callable $lookup = null)
     {
-        $this->lookup = $lookup ?? static function (string $name): array {
+        $this->lookup = $lookup ?? static function (string $name): array|false {
             $records = @dns_get_record($name, DNS_TXT);
-            return is_array($records) ? array_column($records, 'txt') : [];
+            return is_array($records) ? array_column($records, 'txt') : false;
         };
     }
 
@@ -42,22 +51,29 @@ final class DomainVerification
     /** O TXT do domínio tem o valor do token? Token vazio: false sem consultar o DNS. */
     public function matches(string $domain, string $token): bool
     {
-        if ($token === '') {
-            return false;
-        }
-        $expected = self::txtValue($token);
-        foreach ($this->records(self::txtName($domain)) as $txt) {
-            if (hash_equals($expected, $txt)) {
-                return true;
-            }
-        }
-        return false;
+        return $this->check($domain, $token) === self::OK;
     }
 
-    /** @return list<string> */
-    private function records(string $name): array
+    /** OK, MISSING ou LOOKUP_FAILED. Token vazio: MISSING sem consultar o DNS. */
+    public function check(string $domain, string $token): string
     {
-        $out = ($this->lookup)($name);
-        return array_values(array_filter(array_map(static fn ($v) => is_string($v) ? trim($v) : '', is_array($out) ? $out : []), static fn ($v) => $v !== ''));
+        if ($token === '') {
+            return self::MISSING;
+        }
+        try {
+            $out = ($this->lookup)(self::txtName($domain));
+        } catch (Throwable) {
+            return self::LOOKUP_FAILED;
+        }
+        if (!is_array($out)) {
+            return self::LOOKUP_FAILED;
+        }
+        $expected = self::txtValue($token);
+        foreach ($out as $txt) {
+            if (is_string($txt) && hash_equals($expected, trim($txt))) {
+                return self::OK;
+            }
+        }
+        return self::MISSING;
     }
 }
