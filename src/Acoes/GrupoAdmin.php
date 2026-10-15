@@ -79,7 +79,7 @@ final class GrupoAdmin
         }
         $d = GrupoValidacao::domain($domain);
         if ($d === null) {
-            return new Resultado('invalido', 'Domínio inválido: só o nome (ex.: imobiliaria.com.br), sem http://, porta ou caminho, e diferente do domínio da plataforma.');
+            return new Resultado('invalido', 'Domínio inválido: só o nome (ex.: imobiliaria.com.br), sem http://, porta ou caminho, e fora do domínio da plataforma e dos subdomínios dele.');
         }
         if (count(GroupRepository::domains((int) $group['id'])) >= GrupoValidacao::MAX_DOMAINS) {
             return new Resultado('invalido', 'Limite de ' . GrupoValidacao::MAX_DOMAINS . ' domínios por grupo.');

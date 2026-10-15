@@ -27,7 +27,7 @@ final class GrupoValidacao
         return $name;
     }
 
-    /** Domínio em minúsculas, sem esquema/porta/caminho, com TLD alfabético; não pode ser o da plataforma. */
+    /** Domínio em minúsculas, sem esquema/porta/caminho, com TLD alfabético; nem o host da plataforma nem subdomínio dele. */
     public static function domain(mixed $domain): ?string
     {
         if (!is_string($domain)) {
@@ -38,7 +38,7 @@ final class GrupoValidacao
             return null;
         }
         $platform = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
-        if ($platform !== '' && $d === $platform) {
+        if ($platform !== '' && ($d === $platform || str_ends_with($d, '.' . $platform))) {
             return null;
         }
         return $d;

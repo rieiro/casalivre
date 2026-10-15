@@ -179,6 +179,15 @@ t_eq(1, count($l), 'um GROUP_DOMAIN_ADD');
 t_eq('imob.example.com', $l[0]['params']['dominio'] ?? null, 'GROUP_DOMAIN_ADD com o domínio');
 putenv('APP_URL=https://plataforma.casalivre.test');
 t_eq(null, GrupoValidacao::domain('Plataforma.CasaLivre.test'), 'domínio da plataforma (APP_URL) recusado');
+foreach (['www.plataforma.casalivre.test', 'x.plataforma.casalivre.test', 'a.b.Plataforma.casalivre.test'] as $sub) {
+    t_eq(null, GrupoValidacao::domain($sub), 'subdomínio da plataforma recusado: ' . $sub);
+}
+foreach (['outraplataforma.casalivre.test', 'plataforma.casalivre.test.br', 'casalivre.test', 'xplataforma.casalivre.test'] as $vizinho) {
+    t_eq($vizinho, GrupoValidacao::domain($vizinho), 'só o sufixo .host conta, não vizinhos: ' . $vizinho);
+}
+$adminRow = ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'];
+t_eq('invalido', GrupoAdmin::addDomain($adminRow, $g2, 'www.plataforma.casalivre.test')->tipo, 'GrupoAdmin::addDomain recusa subdomínio da plataforma');
+t_eq([], GroupRepository::domains((int) $g2['id']), 'subdomínio da plataforma não grava');
 putenv('APP_URL');
 for ($i = 2; $i <= GrupoValidacao::MAX_DOMAINS; $i++) {
     c_form($base, '/admin/grupos/imob-sul/dominios', ['_csrf' => $cA, 'dominio' => "d$i.example.com"], $jA);
