@@ -19,8 +19,26 @@
     <h2>Domínios</h2>
     <?php if ($domains === []): ?><p class="muted">Nenhum domínio.</p><?php endif; ?>
     <ul>
-        <?php foreach ($domains as $d): ?>
+        <?php foreach ($domains as $dr): $d = (string) $dr['domain']; ?>
             <li><?= e($d) ?>
+                <?php if ($dr['verified_at'] !== null): ?>
+                    <span class="notice">verificado em <?= e((string) $dr['verified_at']) ?></span>
+                <?php else: ?>
+                    <span class="muted">não verificado (o domínio só passa a usar o tema do grupo depois da verificação)</span>
+                <?php endif; ?>
+                <?php if ($dr['verify_token'] !== ''): ?>
+                    <p class="muted">Registro DNS TXT: nome <code><?= e(GrupoAdmin::txtName($d)) ?></code>, valor <code><?= e(GrupoAdmin::txtValue((string) $dr['verify_token'])) ?></code></p>
+                <?php endif; ?>
+                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/verificar">
+                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
+                    <button type="submit">Verificar agora</button>
+                </form>
+                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/token">
+                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
+                    <button type="submit">Gerar novo token</button>
+                </form>
                 <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/remover">
                     <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                     <input type="hidden" name="dominio" value="<?= e($d) ?>">

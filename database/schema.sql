@@ -145,10 +145,13 @@ CREATE TABLE IF NOT EXISTS group_members (
 CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
 
 -- Lista fixa de domínios por grupo (minúsculas, sem porta); um domínio pertence a um só grupo.
+-- Posse provada por DNS TXT (_casalivre.<domínio> = casalivre-verificacao=<verify_token>); o resolvedor só usa verified_at preenchido.
 CREATE TABLE IF NOT EXISTS group_domains (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     domain TEXT NOT NULL UNIQUE,
+    verify_token TEXT NOT NULL DEFAULT '',
+    verified_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_group_domains_group ON group_domains(group_id);

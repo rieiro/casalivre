@@ -189,6 +189,8 @@ final class ActivityLog
     public const GROUP_INVITE_ACCEPT = 41;
     public const GROUP_INVITE_REJECT = 42;
     public const GROUP_PROPERTY_REMOVE = 43;
+    public const GROUP_DOMAIN_VERIFY_START = 44;
+    public const GROUP_DOMAIN_VERIFIED = 45;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -234,6 +236,8 @@ final class ActivityLog
         self::GROUP_INVITE_ACCEPT => 'Aceite do dono: imóvel entra no grupo',
         self::GROUP_INVITE_REJECT => 'Recusa do dono ao convite do grupo',
         self::GROUP_PROPERTY_REMOVE => 'Imóvel sai do grupo',
+        self::GROUP_DOMAIN_VERIFY_START => 'Novo token de verificação DNS do domínio do grupo pelo admin',
+        self::GROUP_DOMAIN_VERIFIED => 'Domínio do grupo verificado por DNS TXT',
     ];
 
     public static function store(): ActivityStore
@@ -314,6 +318,8 @@ final class ActivityLog
         self::GROUP_INVITE_ACCEPT => ['grupo'],
         self::GROUP_INVITE_REJECT => ['grupo'],
         self::GROUP_PROPERTY_REMOVE => ['grupo', 'por'],
+        self::GROUP_DOMAIN_VERIFY_START => ['grupo', 'dominio'],
+        self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

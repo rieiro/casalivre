@@ -98,7 +98,7 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 11; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id)
+    public const SCHEMA_VERSION = 12; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT)
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
@@ -424,6 +424,23 @@ final class Db
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id)');
         $pdo->exec("CREATE TABLE IF NOT EXISTS group_domains (id $ident, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, domain TEXT NOT NULL UNIQUE, created_at $now)");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_group_domains_group ON group_domains(group_id)');
+        // v12: verificação DNS TXT; domínios já cadastrados ficam sem verificar (não resolvem até o admin verificar).
+        $verifiedType = $driver === 'pgsql' ? 'TIMESTAMP' : 'TEXT';
+        if ($driver === 'sqlite') {
+            $haveDomain = [];
+            foreach ($pdo->query('PRAGMA table_info(group_domains)') as $col) {
+                $haveDomain[$col['name']] = true;
+            }
+            if (!isset($haveDomain['verify_token'])) {
+                $pdo->exec("ALTER TABLE group_domains ADD COLUMN verify_token TEXT NOT NULL DEFAULT ''");
+            }
+            if (!isset($haveDomain['verified_at'])) {
+                $pdo->exec("ALTER TABLE group_domains ADD COLUMN verified_at $verifiedType");
+            }
+        } else {
+            $pdo->exec("ALTER TABLE group_domains ADD COLUMN IF NOT EXISTS verify_token TEXT NOT NULL DEFAULT ''");
+            $pdo->exec("ALTER TABLE group_domains ADD COLUMN IF NOT EXISTS verified_at $verifiedType");
+        }
         $pdo->exec("CREATE TABLE IF NOT EXISTS group_property_invites (group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE, invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at $now, PRIMARY KEY (group_id, property_id))");
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_group_invites_property ON group_property_invites(property_id)');
         if ($driver === 'sqlite') {
