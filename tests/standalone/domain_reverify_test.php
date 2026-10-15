@@ -216,4 +216,16 @@ db()->exec("UPDATE group_domains SET verify_token = ''");
 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/verify-domains.php') . ' 2>&1', $o2, $code);
 t_eq(0, $code, 'script roda (sem domínio com token: nenhuma consulta DNS)');
 t_ok(str_contains(implode("\n", $o2), 'conferidos      0'), 'script imprime o resumo');
+$lockFile = CL_ROOT . '/storage/domain-verify.lock';
+t_eq('600', substr(sprintf('%o', fileperms($lockFile)), -3), 'lock com permissão 0600');
+// pr65 C3: com o lock seguro por outra execução, o script sai com 0 sem fazer nada.
+db()->prepare("UPDATE group_domains SET verify_token = ?, verified_at = NULL, last_check_at = NULL, fail_count = 0 WHERE domain = 'imob.example.com'")->execute([$token]);
+$held = fopen($lockFile, 'c');
+t_ok(flock($held, LOCK_EX | LOCK_NB), 'teste segura o lock');
+$o3 = [];
+exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/verify-domains.php') . ' 2>&1', $o3, $code);
+t_eq([0, ['outra verificação de domínios em execução']], [$code, $o3], 'segunda execução concorrente: exit 0 e mensagem curta');
+t_eq([null, null], [$row()['verified_at'], $row()['last_check_at']], 'segunda execução não conferiu nada (pedido segue pendente)');
+flock($held, LOCK_UN);
+fclose($held);
 t_done();
