@@ -42,7 +42,7 @@ $evil = [
 ];
 t_eq(['fundo' => '#abc', 'terra' => '#a1b2c3'], MapStyle::clean($evil), 'só papéis conhecidos e #rgb/#rrggbb (minúsculo)');
 t_eq([], MapStyle::clean('#000'), 'não-array -> vazio');
-$gen = MapStyle::generate($base, $evil);
+$gen = MapStyle::generate($base, MapStyle::clean($evil));
 $json = MapStyle::encode($gen);
 t_ok(json_decode($json, true) !== null, 'JSON gerado válido');
 t_ok(!str_contains($json, '"x"') && !str_contains($json, 'url(') && !str_contains($json, 'red"'), 'valores inválidos não chegam ao JSON');

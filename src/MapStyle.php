@@ -61,18 +61,17 @@ final class MapStyle
         return $style;
     }
 
-    /** Estilo base (não alterado) com as cores do tema; só valores string de paint mudam. */
+    /** Estilo base (não alterado) com as cores do tema (já passadas por clean(), via Theme::readBrand); só valores string de paint mudam. */
     public static function generate(stdClass $base, array $tokens): stdClass
     {
         $style = self::decode(self::encode($base));
-        $tokens = self::clean($tokens);
         foreach (is_array($style->layers ?? null) ? $style->layers : [] as $layer) {
             if (!$layer instanceof stdClass || !($layer->paint ?? null) instanceof stdClass) {
                 continue;
             }
             $id = is_string($layer->id ?? null) ? $layer->id : '';
             foreach ($tokens as $role => $color) {
-                foreach (self::ROLES[$role] as [$re, $prop]) {
+                foreach (self::ROLES[$role] ?? [] as [$re, $prop]) {
                     if (preg_match($re, $id) === 1 && is_string($layer->paint->{$prop} ?? null)) {
                         $layer->paint->{$prop} = $color;
                     }
@@ -90,6 +89,6 @@ final class MapStyle
     /** Caminho público do estilo do tema (dentro de /assets/themes/<nome>/). */
     public static function themePath(string $name): string
     {
-        return '/assets/themes/' . $name . '/' . self::FILE;
+        return Theme::assetPath($name . '/' . self::FILE);
     }
 }
