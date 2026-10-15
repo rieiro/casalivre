@@ -406,7 +406,7 @@ function handle_api(string $path, string $method): void
         if ($res->tipo !== 'ok') {
             api_error($res->tipo === 'conflito' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
         }
-        calendar_flash((string) $res->mensagem, 'ok');
+        CalendarFlash::set((string) $res->mensagem, 'ok');
         json_out(200, [
             'ok' => true,
             'message' => $res->mensagem,
@@ -494,7 +494,7 @@ function handle_api(string $path, string $method): void
             api_error($res->tipo === 'duplicate' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
         }
         // Aviso para a tela do calendário depois do reload do JS (flash na sessão, não ?msg= na URL).
-        calendar_flash((string) $res->mensagem, $res->tipo === 'ok' ? 'ok' : 'error');
+        CalendarFlash::set((string) $res->mensagem, $res->tipo === 'ok' ? 'ok' : 'error');
         if ($res->tipo === 'nok') {
             // Feed salvo, mas o download falhou: erro do servidor de origem (502), com o estado atual dos feeds.
             json_out(502, [
@@ -519,11 +519,11 @@ function handle_api(string $path, string $method): void
         $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2]);
         $res->registrar();
         if ($res->tipo === 'nao_encontrado') {
-            calendar_flash((string) $res->mensagem, 'error');
+            CalendarFlash::set((string) $res->mensagem, 'error');
             api_error(404, $res->mensagem);
         }
         $resync = CalendarSync::resyncProperty((int) $property['id']);
-        calendar_flash(t('cal.feed_removed'), 'ok');
+        CalendarFlash::set(t('cal.feed_removed'), 'ok');
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 

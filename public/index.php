@@ -835,7 +835,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $user = require_user();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Aviso de uma ação anterior (flash na sessão: exclusão de feed na web, ações do calendário pela API/JS).
-    $flash = calendar_flash_take();
+    $flash = CalendarFlash::take();
     // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
     // (CalendarSave), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
@@ -925,11 +925,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $res->registrar();
     if ($res->tipo === 'nao_encontrado') {
         // Feed inexistente: nada muda; a tela do calendário mostra o erro (a API responde 404).
-        calendar_flash((string) $res->mensagem, 'error');
+        CalendarFlash::set((string) $res->mensagem, 'error');
         redirect('/imoveis/' . $m[1] . '/calendario');
     }
     CalendarSync::resyncProperty($propertyId);
-    calendar_flash(t('cal.feed_removed'), 'ok');
+    CalendarFlash::set(t('cal.feed_removed'), 'ok');
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 

@@ -136,25 +136,3 @@ function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = nul
     }
     return $count;
 }
-
-/**
- * Aviso da tela do calendário para o próximo GET (flash na sessão, lido uma vez por calendar_flash_take).
- * Substitui o ?msg= na URL (o texto não fica no histórico, nos logs de acesso nem pode ser forjado por link).
- */
-function calendar_flash(string $message, string $tone = 'ok'): void
-{
-    if (session_status() === PHP_SESSION_ACTIVE && $message !== '') {
-        $_SESSION['calendar_flash'] = ['message' => $message, 'tone' => $tone === 'error' ? 'error' : 'ok'];
-    }
-}
-
-/** @return array{message: string, tone: string}|null o aviso pendente (e o apaga), ou null. */
-function calendar_flash_take(): ?array
-{
-    $flash = $_SESSION['calendar_flash'] ?? null;
-    unset($_SESSION['calendar_flash']);
-    if (!is_array($flash) || (string) ($flash['message'] ?? '') === '') {
-        return null;
-    }
-    return ['message' => (string) $flash['message'], 'tone' => ($flash['tone'] ?? '') === 'error' ? 'error' : 'ok'];
-}
