@@ -39,10 +39,13 @@ final class PasswordPolicy
 
     public static function hash(string $password): string
     {
-        if (defined('PASSWORD_ARGON2ID')) {
-            return password_hash($password, PASSWORD_ARGON2ID);
-        }
-        return password_hash($password, PASSWORD_BCRYPT);
+        return password_hash($password, self::algo());
+    }
+
+    /** Algoritmo dos hashes de senha: Argon2id quando disponível, senão bcrypt (opções padrão do PHP). */
+    public static function algo(): string
+    {
+        return defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
     }
 
     public static function problem(string $password, ?string $confirm = null): ?string
