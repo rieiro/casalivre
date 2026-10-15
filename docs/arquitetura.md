@@ -346,7 +346,7 @@ Contagem por IP (IPv6 agrupado por /64, porque um único cliente costuma ter um 
 | `POST /api/imoveis/*/avaliar` e `POST /imoveis/*/avaliar` | 10 por 3600 s | **compartilhado** |
 | `POST /api/casas/*/fotos` e `POST /imoveis/*/fotos` | 30 por 600 s | **compartilhado** |
 | `POST /entrar`, `POST /api/sessao` | `login_ip_max_failures` (5) erros → bloqueio de `login_ip_lock_minutes` (15) min | `LoginRateLimiter` (tabela `login_rate_limit`) |
-| Reenvio de ativação (login de conta pendente, web e API) | 3 por 3600 s **por conta** (não por IP); só conta o e-mail que entra de fato na fila | `LoginAttempt` (`ativacao-reenvio`) |
+| Reenvio de ativação (login de conta pendente, web e API) | 3 por 3600 s **por conta** (não por IP); só conta o e-mail que entra de fato na fila; conferir, enfileirar e contar sob o mesmo flock do arquivo do balde (`IpRateLimiter::reserve`) | `LoginAttempt` (`ativacao-reenvio`) |
 
 > **Por que baldes compartilhados?** Se web e API tivessem baldes separados, um robô dobraria o limite só alternando as
 > portas de entrada.

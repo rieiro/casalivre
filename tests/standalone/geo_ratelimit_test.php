@@ -21,6 +21,20 @@ t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek não conta (rep
 IpRateLimiter::hit('pk', 2, 60, '1.2.3.4', $now);
 t_eq(60, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek com 2 de 2: bloqueia (Retry-After 60)');
 t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now + 60), 'peek na janela seguinte: libera');
+$vistos = [];
+$acao = static function (bool $feito) use (&$vistos): callable {
+    return static function (bool $cabe) use ($feito, &$vistos): bool {
+        $vistos[] = $cabe;
+        return $feito;
+    };
+};
+t_eq(false, IpRateLimiter::reserve('rs', 2, 60, '1.2.3.4', $acao(false), $now), 'reserve: devolve o retorno da ação');
+t_eq(0, IpRateLimiter::peek('rs', 2, 60, '1.2.3.4', $now), 'reserve: ação não feita não conta');
+IpRateLimiter::reserve('rs', 2, 60, '1.2.3.4', $acao(true), $now);
+IpRateLimiter::reserve('rs', 2, 60, '1.2.3.4', $acao(true), $now);
+IpRateLimiter::reserve('rs', 2, 60, '1.2.3.4', $acao(true), $now);
+t_eq([true, true, true, false], $vistos, 'reserve: só as 2 primeiras ações feitas cabem; a 3ª recebe cabe=false');
+t_eq(60, IpRateLimiter::peek('rs', 2, 60, '1.2.3.4', $now), 'reserve: ação feita sem caber não conta além do limite');
 
 echo "IPv6 agrupado por /64\n";
 IpRateLimiter::$purgeChance = 0;
