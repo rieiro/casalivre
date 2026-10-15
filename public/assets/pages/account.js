@@ -8,7 +8,8 @@
         okEl.hidden = true;
         const data = Object.fromEntries(new FormData(form).entries());
         try {
-            await CL.api('/api/users/eu', { method: 'PUT', body: data, error: 'Erro ao salvar' });
+            const res = await CL.api('/api/users/eu', { method: 'PUT', body: data, error: 'Erro ao salvar' });
+            okEl.textContent = (res && res.aviso) || 'Salvo.';
             okEl.hidden = false;
         } catch (e) {
             errorEl.textContent = e.message;

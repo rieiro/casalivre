@@ -94,7 +94,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 
 return Seguranca::pipeline(
     [
-        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url'],
+        'campos_puros' => ['password', 'password_confirm', 'current_password', '_csrf', 'external_ical_url'],
         'sem_csrf' => [],
         'login' => [
             ['POST', '/entrar'],
@@ -116,6 +116,9 @@ return Seguranca::pipeline(
             // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
             ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
             ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
+            // Confirmação da troca de e-mail (token): web e API no mesmo balde.
+            ['POST', '#^/conta/email/confirmar$#', 10, 900, '/conta/email/confirmar'],
+            ['POST', '#^/api/auth/email/confirmar$#', 10, 900, '/conta/email/confirmar'],
         ],
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
@@ -445,7 +448,7 @@ if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
 }
 
 if ($path === '/conta' && $method === 'GET') {
-    view('account', ['error' => null, 'user' => require_user()]);
+    view('account', ['error' => null, 'user' => require_user(), 'notice' => ($_GET['email'] ?? '') === 'pendente' ? t('account.email_pending') : null]);
     return null;
 }
 
@@ -454,11 +457,41 @@ if ($path === '/conta' && $method === 'POST') {
     csrf_check();
     $res = AccountUpdate::run($user, $_POST);
     $res->registrar();
+    if ($res->tipo === 'limite') {
+        header('Retry-After: ' . (int) $res->dados['retry']);
+        casa_html_error(429, 'Muitas tentativas', (string) $res->mensagem);
+    }
     if ($res->tipo !== 'ok') {
         view('account', ['error' => $res->mensagem, 'user' => $user]);
         return null;
     }
+    if (!empty($res->dados['email_pendente'])) {
+        redirect('/conta?email=pendente');
+    }
     redirect('/painel');
+}
+
+// Troca de e-mail (#47): o GET só mostra o formulário (link aberto por pré-visualização não troca nada);
+// o POST com CSRF confirma (EmailChangeConfirm).
+if ($path === '/conta/email/confirmar' && $method === 'GET') {
+    view('email_confirm', ['token' => (string) ($_GET['token'] ?? ''), 'error' => null]);
+    return null;
+}
+
+if ($path === '/conta/email/confirmar' && $method === 'POST') {
+    csrf_check();
+    $res = EmailChangeConfirm::run($_POST['token'] ?? '');
+    $res->registrar();
+    if ($res->tipo !== 'ok') {
+        http_response_code(422);
+        view('email_confirm', ['token' => '', 'error' => $res->mensagem]);
+        return null;
+    }
+    if ((int) ($_SESSION['user_id'] ?? 0) === (int) $res->dados['id']) {
+        unset($_SESSION['user_id'], $_SESSION['auth_at'], $_SESSION['session_version']);
+    }
+    view('message', ['title' => t('email.confirm_title'), 'message' => (string) $res->mensagem, 'user' => null]);
+    return null;
 }
 
 if ($path === '/conta/excluir' && $method === 'POST') {

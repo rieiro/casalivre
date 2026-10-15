@@ -114,7 +114,7 @@ final class UserRepository
     /** Busca pelo hash do token recebido e confirma com hash_equals(armazenado, sha256(token)). */
     public static function findByToken(string $column, string $token): ?array
     {
-        if (!in_array($column, ['activation_token', 'reset_token'], true) || $token === '') {
+        if (!in_array($column, ['activation_token', 'reset_token', 'email_change_token'], true) || $token === '') {
             return null;
         }
         $given = self::tokenHash($token);
@@ -181,6 +181,49 @@ final class UserRepository
     {
         db()->prepare('UPDATE users SET reset_token = ?, reset_expires_at = ? WHERE id = ?')
             ->execute([self::tokenHash($rawToken), $expires, $id]);
+    }
+
+    /**
+     * Guarda o e-mail novo pendente (a troca só vale depois da confirmação no endereço novo). Pedido para outro
+     * endereço invalida o token anterior; pedido repetido para o mesmo endereço mantém o token (o reenvio
+     * pode estar segurado pelo intervalo da fila).
+     */
+    public static function setPendingEmail(int $id, string $email): void
+    {
+        db()->prepare('UPDATE users SET email_change_token = CASE WHEN pending_email = ? THEN email_change_token ELSE NULL END,
+            email_change_expires_at = CASE WHEN pending_email = ? THEN email_change_expires_at ELSE NULL END,
+            pending_email = ? WHERE id = ?')->execute([$email, $email, $email, $id]);
+    }
+
+    /** Contas ativas com este e-mail pendente. @return list<array> */
+    public static function findByPendingEmail(string $email): array
+    {
+        $stmt = db()->prepare("SELECT * FROM users WHERE pending_email = ? AND status = 'active' ORDER BY id");
+        $stmt->execute([$email]);
+        return $stmt->fetchAll();
+    }
+
+    /** Grava só o hash do token bruto (sha256) da confirmação do e-mail novo. */
+    public static function setEmailChange(int $id, string $rawToken, string $expires): void
+    {
+        db()->prepare('UPDATE users SET email_change_token = ?, email_change_expires_at = ? WHERE id = ? AND pending_email IS NOT NULL')
+            ->execute([self::tokenHash($rawToken), $expires, $id]);
+    }
+
+    /**
+     * Troca atômica (uso único): e-mail = pendente, limpa pendente/token e session_version+1 num só UPDATE
+     * condicionado ao hash, à validade e à conta ativa; sucesso só com rowCount() === 1. E-mail novo tomado
+     * por outra conta nesse meio-tempo (UNIQUE) -> false.
+     */
+    public static function consumeEmailChange(int $id, string $tokenHash, string $now): bool
+    {
+        // Se outro cadastro pegou o endereço entre o pedido e a confirmação, o NOT EXISTS barra (0 linhas).
+        $stmt = db()->prepare("UPDATE users SET email = pending_email, pending_email = NULL, email_change_token = NULL,
+            email_change_expires_at = NULL, session_version = session_version + 1
+            WHERE id = ? AND email_change_token = ? AND email_change_expires_at >= ? AND status = 'active' AND pending_email IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = users.pending_email AND other.id <> users.id)");
+        $stmt->execute([$id, $tokenHash, $now]);
+        return $stmt->rowCount() === 1;
     }
 
     public static function setPassword(int $id, string $hash): void

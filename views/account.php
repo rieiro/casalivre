@@ -3,6 +3,9 @@
         <h1><?= e(t('account.title')) ?></h1>
         <p class="error" id="account-error" hidden></p>
         <p class="ok" id="account-ok" hidden>Salvo.</p>
+        <?php if (!empty($notice)): ?><p class="notice"><?= e($notice) ?></p><?php endif; ?>
+        <?php if (!empty($error)): ?><p class="error"><?= e($error) ?></p><?php endif; ?>
+        <?php if (!empty($user['pending_email'])): ?><p class="muted"><?= e(t('account.email_pending_to')) ?> <?= e((string) $user['pending_email']) ?></p><?php endif; ?>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label><?= e(t('auth.name')) ?> <input name="name" required value="<?= e($user['name']) ?>"></label>
         <label><?= e(t('auth.cpf')) ?> <input name="cpf" required value="<?= e($user['cpf']) ?>"></label>
@@ -16,6 +19,7 @@
         <p class="muted" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
         <label><?= e(t('auth.phone')) ?> <input name="phone" required placeholder="(00) 90000-0000" value="<?= e($user['phone']) ?>"></label>
         <label><?= e(t('auth.email')) ?> <input type="email" name="email" required value="<?= e($user['email']) ?>"></label>
+        <label><?= e(t('account.current_password')) ?> <input type="password" name="current_password" autocomplete="current-password"></label>
         <p class="muted"><?= e(t('account.created')) ?> <?= e(format_date((string) $user['created_at'])) ?>.</p>
         <button class="primary" type="submit"><?= e(t('account.save')) ?></button>
     </form>

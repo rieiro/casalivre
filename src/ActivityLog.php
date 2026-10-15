@@ -178,6 +178,8 @@ final class ActivityLog
     public const INTERNAL_ERROR = 30;
     public const PHOTO_COVER = 31;
     public const THEME_CHANGE = 32;
+    public const EMAIL_CHANGE_ASK = 33;
+    public const EMAIL_CHANGE = 34;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -212,6 +214,8 @@ final class ActivityLog
         self::INTERNAL_ERROR => 'Erro interno do sistema',
         self::PHOTO_COVER => 'Definição da foto de capa',
         self::THEME_CHANGE => 'Troca do tema da plataforma pelo admin',
+        self::EMAIL_CHANGE_ASK => 'Pedido de troca de e-mail (aguarda confirmação no endereço novo)',
+        self::EMAIL_CHANGE => 'E-mail da conta trocado após confirmação',
     ];
 
     public static function store(): ActivityStore
@@ -281,6 +285,8 @@ final class ActivityLog
         self::PHOTO_DELETE => ['foto_id', 'quantidade'],
         self::PHOTO_COVER => ['foto_id'],
         self::THEME_CHANGE => ['tema', 'tema_anterior'],
+        self::EMAIL_CHANGE_ASK => ['email'],
+        self::EMAIL_CHANGE => ['email'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

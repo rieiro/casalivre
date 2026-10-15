@@ -200,10 +200,22 @@ function handle_api(string $path, string $method): void
         if ($res->tipo === 'invalido') {
             api_error(422, $res->mensagem);
         }
+        if ($res->tipo === 'limite') {
+            header('Retry-After: ' . (int) $res->dados['retry']);
+            api_error(429, $res->mensagem);
+        }
+        if ($res->tipo === 'senha_incorreta') {
+            api_error(403, $res->mensagem);
+        }
         if ($res->tipo === 'email_em_uso') {
             api_error(409, $res->mensagem);
         }
-        json_out(200, ['user' => api_public_user(UserRepository::find((int) $user['id']))]);
+        $out = ['user' => api_public_user(UserRepository::find((int) $user['id']))];
+        if (!empty($res->dados['email_pendente'])) {
+            $out['email_pendente'] = true;
+            $out['aviso'] = $res->mensagem;
+        }
+        json_out(200, $out);
     }
 
     if ($path === '/api/users/eu' && $method === 'DELETE') {
@@ -435,6 +447,18 @@ function handle_api(string $path, string $method): void
         $sent = AccountFlow::askReset($email, Settings::int('password_reset_minutes'));
         if ($sent) {
             activity(ActivityLog::PASSWORD_RESET_ASK, ['email' => $email]);
+        }
+        json_out(200, ['ok' => true]);
+    }
+
+    if ($path === '/api/auth/email/confirmar' && $method === 'POST') {
+        $res = EmailChangeConfirm::run($body['token'] ?? '');
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
+            api_error(422, $res->mensagem);
+        }
+        if ((int) ($_SESSION['user_id'] ?? 0) === (int) $res->dados['id']) {
+            unset($_SESSION['user_id'], $_SESSION['auth_at'], $_SESSION['session_version']);
         }
         json_out(200, ['ok' => true]);
     }

@@ -195,6 +195,55 @@ final class AccountFlow
         return ['error' => null, 'email' => (string) $user['email']];
     }
 
+    /**
+     * Pedido de troca de e-mail (senha atual já conferida pela ação): guarda o novo como pendente e enfileira
+     * o link de confirmação para o endereço NOVO e o aviso para o endereço ATUAL. O e-mail da conta não muda.
+     */
+    public static function requestEmailChange(int $id, string $currentEmail, string $newEmail): void
+    {
+        $newEmail = Email::normalize($newEmail);
+        UserRepository::setPendingEmail($id, $newEmail);
+        self::notify('email_change', $newEmail);
+        self::notify('email_change_notice', Email::normalize($currentEmail));
+    }
+
+    /**
+     * Worker: para cada conta ativa com $newEmail pendente, gera o token bruto, grava só o sha256 com validade
+     * e devolve os links ($linkPrefix . token). Lista vazia: nada pendente para esse endereço.
+     * @return list<string>
+     */
+    public static function issueEmailChange(string $newEmail, int $minutes, string $linkPrefix): array
+    {
+        $links = [];
+        foreach (UserRepository::findByPendingEmail(Email::normalize($newEmail)) as $user) {
+            $token = bin2hex(random_bytes(16));
+            UserRepository::setEmailChange((int) $user['id'], $token, self::until($minutes));
+            $links[] = $linkPrefix . $token;
+        }
+        return $links;
+    }
+
+    /** Confirmação (uso único atômico, ver consumeEmailChange). */
+    public static function confirmEmailChange(string $token): array
+    {
+        $user = UserRepository::findByToken('email_change_token', $token);
+        if (!$user || ($user['status'] ?? '') !== 'active' || (string) ($user['pending_email'] ?? '') === ''
+            || (string) ($user['email_change_expires_at'] ?? '') < date('Y-m-d H:i:s')) {
+            return ['ok' => false];
+        }
+        $ok = UserRepository::consumeEmailChange((int) $user['id'], UserRepository::tokenHash($token), date('Y-m-d H:i:s'));
+        return $ok
+            ? ['ok' => true, 'id' => (int) $user['id'], 'old' => (string) $user['email'], 'new' => (string) $user['pending_email']]
+            : ['ok' => false];
+    }
+
+    /** "fu***@dominio" (aviso ao endereço antigo sem expor o novo inteiro). */
+    public static function maskEmail(string $email): string
+    {
+        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
+        return mb_substr($local, 0, min(2, mb_strlen($local))) . '***@' . $domain;
+    }
+
     private static function until(int $minutes): string
     {
         return (new DateTimeImmutable('now'))->modify('+' . max(1, $minutes) . ' minutes')->format('Y-m-d H:i:s');

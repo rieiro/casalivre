@@ -12,7 +12,7 @@ require_once dirname(__DIR__) . '/conta/Account/Email.php';
  */
 interface MailQueue extends JobQueue
 {
-    public const TYPES = ['activation', 'reset', 'exists'];
+    public const TYPES = ['activation', 'reset', 'exists', 'email_change', 'email_change_notice'];
     public const COOLDOWN_SECONDS = 300;
     /** Aviso 'exists' (alguém tentou cadastrar o e-mail / reenvio da ativação): 1 por destinatário a cada 24 h. */
     public const EXISTS_COOLDOWN_SECONDS = 86400;

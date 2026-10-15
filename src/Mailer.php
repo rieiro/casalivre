@@ -105,6 +105,24 @@ final class Mailer
             // pelo intervalo de 24 h do tipo exists).
             $type = 'activation';
         }
+        if ($type === 'email_change') {
+            $minutes = Settings::int('email_verify_minutes');
+            $links = AccountFlow::issueEmailChange($email, $minutes, self::linkFromAppUrl('http://localhost/conta/email/confirmar?token='));
+            foreach ($links as $url) {
+                [$subject, $body] = self::linkMail('email_change', $url);
+                self::deliver($email, $subject, $body);
+            }
+            return $links !== [];
+        }
+        if ($type === 'email_change_notice') {
+            $user = UserRepository::findByEmail($email);
+            if (!$user || ($user['status'] ?? '') !== 'active' || (string) ($user['pending_email'] ?? '') === '') {
+                return false;
+            }
+            [$subject, $body] = self::emailChangeNotice(AccountFlow::maskEmail((string) $user['pending_email']));
+            self::deliver($email, $subject, $body);
+            return true;
+        }
         $isReset = $type === 'reset';
         $path = $isReset ? '/senha/redefinir?token=' : '/verificar?token=';
         $minutes = Settings::int($isReset ? 'password_reset_minutes' : 'email_verify_minutes');
@@ -129,9 +147,27 @@ final class Mailer
         ];
     }
 
+    /** Aviso ao endereço atual: pedido de troca de e-mail (sem token nem link de confirmação). */
+    public static function emailChangeNotice(string $maskedNew): array
+    {
+        return [
+            'CasaLivre: pedido de troca do e-mail da conta',
+            "Recebemos um pedido para trocar o e-mail da sua conta CasaLivre para " . $maskedNew . ".\r\n\r\n"
+                . "A troca só acontece depois da confirmação no endereço novo. Se não foi você, redefina sua senha:\r\n"
+                . self::linkFromAppUrl('http://localhost/senha/esqueci') . "\r\n",
+        ];
+    }
+
     /** E-mail com link de uso único (activation ou reset). @return array{0: string, 1: string} assunto e corpo */
     public static function linkMail(string $type, string $url): array
     {
+        if ($type === 'email_change') {
+            return [
+                'CasaLivre: confirme seu novo e-mail',
+                "Recebemos um pedido para usar este e-mail na sua conta CasaLivre.\r\n\r\nAbra o link abaixo para confirmar a troca:\r\n"
+                    . $url . "\r\n\r\nO link expira em breve e só vale uma vez. Se você não fez este pedido, ignore este e-mail.\r\n",
+            ];
+        }
         if ($type === 'reset') {
             return [
                 'CasaLivre: redefinição de senha',

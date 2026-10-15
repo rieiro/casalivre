@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS users (
     failed_logins INTEGER NOT NULL DEFAULT 0,
     session_version INTEGER NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    pending_email TEXT,
+    email_change_token TEXT,
+    email_change_expires_at TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     audit_hold TEXT
 );
