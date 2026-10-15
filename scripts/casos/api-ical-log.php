@@ -101,6 +101,14 @@ function request_log_lines(): array
 {
     $env = getenv('REQUEST_LOG');
     $files = $env ? [$env] : array_merge(glob(dirname(__DIR__, 2) . '/storage/logs/api/api-*.log*') ?: [], glob(dirname(__DIR__, 2) . '/storage/logs/requests*.log') ?: []);
+    // Ordem cronológica: a rotação por tamanho (RequestLog::$maxBytes) renomeia o arquivo do dia para
+    // api-AAAA-MM-DD.log.HHMMSS.xxxx; na ordem alfabética do glob o arquivo ativo viria ANTES do rotacionado e o
+    // array_slice($all, $logStart) do LOG-1 pegaria linhas erradas (faltando 404/419/429 quando a rotação cai no meio).
+    usort($files, static function (string $a, string $b): int {
+        $k = static fn (string $f): array => preg_match('/api-(\d{4}-\d{2}-\d{2})\.log(?:\.(.+))?$/', $f, $m) === 1
+            ? [$m[1], isset($m[2]) ? '0' . $m[2] : '1'] : ['', $f];
+        return $k($a) <=> $k($b);
+    });
     $all = [];
     foreach ($files as $f) { if (is_readable($f)) { $all = array_merge($all, file($f, FILE_IGNORE_NEW_LINES) ?: []); } }
     return $all;
