@@ -70,10 +70,26 @@ function last_msg(string $out): ?array
     return null;
 }
 
+/** Parte text/plain decodificada (mensagem simples ou multipart/alternative, PR 11). */
 function body_of(array $m): string
 {
-    [, $b] = explode("\r\n\r\n", (string) $m['data'], 2) + [1 => ''];
-    return (string) base64_decode(str_replace(["\r", "\n"], '', $b));
+    return part_of($m, 'text/plain');
+}
+
+/** Parte $type decodificada da mensagem (multipart/alternative) ou o corpo inteiro numa mensagem simples text/plain. */
+function part_of(array $m, string $type): string
+{
+    [$h, $b] = explode("\r\n\r\n", (string) $m['data'], 2) + [1 => ''];
+    if (preg_match('/boundary="([^"]+)"/', $h, $bm) !== 1) {
+        return $type === 'text/plain' ? (string) base64_decode(str_replace(["\r", "\n"], '', $b)) : '';
+    }
+    foreach (explode('--' . $bm[1], $b) as $part) {
+        [$ph, $pb] = explode("\r\n\r\n", ltrim($part, "\r\n"), 2) + [1 => ''];
+        if (stripos($ph, 'Content-Type: ' . $type . ';') !== false) {
+            return (string) base64_decode(str_replace(["\r", "\n"], '', $pb));
+        }
+    }
+    return '';
 }
 
 echo "link sempre sobre APP_URL\n";
@@ -121,6 +137,8 @@ t_eq('ok', $m['auth'] ?? null, 'AUTH aceito');
 t_ok(str_contains($m['from'] ?? '', 'nao-responda@casalivre.example') && str_contains(implode(',', $m['to'] ?? []), 'bia@casalivre.test'), 'MAIL FROM / RCPT TO');
 $body = $m ? body_of($m) : '';
 t_ok(str_contains($body, 'https://casalivre.example/verificar?token=TOK1') && !str_contains($body, 'forjado'), 'corpo com link de APP_URL');
+$htmlPart = $m ? part_of($m, 'text/html') : '';
+t_ok(str_contains((string) $m['data'], 'Content-Type: multipart/alternative;') && str_contains($htmlPart, 'href="https://casalivre.example/verificar?token=TOK1"') && !str_contains($htmlPart, 'forjado'), 'SMTP: multipart com parte HTML e link de APP_URL');
 t_ok(str_contains((string) $m['data'], 'Subject: =?UTF-8?B?'), 'assunto codificado');
 t_ok(!str_contains(implode("\n", Mailer::$lastTranscript), base64_encode("\0usuario\0segredo")), 'transcript sem credenciais');
 putenv('SMTP_PASS=errada');
