@@ -118,6 +118,26 @@ final class GroupRepository
         return $st->rowCount() === 1;
     }
 
+    /** Domínios com token, para o cron de reverificação. @return list<array> */
+    public static function domainsWithToken(): array
+    {
+        return db()->query("SELECT d.id, d.group_id, g.slug, d.domain, d.verify_token, d.verified_at, d.last_check_at, d.fail_count FROM group_domains d JOIN groups g ON g.id = d.group_id WHERE d.verify_token <> '' ORDER BY d.id")->fetchAll();
+    }
+
+    /** Resultado de uma checagem do cron, só se o token não mudou no meio; true se gravou uma linha. */
+    public static function saveDomainCheck(int $id, string $token, ?string $verifiedAt, string $checkedAt, int $failCount): bool
+    {
+        $st = db()->prepare('UPDATE group_domains SET verified_at = ?, last_check_at = ?, fail_count = ? WHERE id = ? AND verify_token = ?');
+        $st->execute([$verifiedAt, $checkedAt, $failCount, $id, $token]);
+        return $st->rowCount() === 1;
+    }
+
+    /** E-mails dos admins ativos da plataforma (quem cuida dos domínios). @return list<string> */
+    public static function adminEmails(): array
+    {
+        return array_map('strval', db()->query("SELECT email FROM users WHERE is_admin = 1 AND status = 'active' ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     /** Grupo dono do domínio, só se o domínio estiver verificado (C1). */
     public static function findByVerifiedDomain(string $domain): ?array
     {

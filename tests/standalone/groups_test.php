@@ -48,7 +48,7 @@ $login = static function (string $email, string $password) use ($base, &$jars): 
 [$jO, $cO] = $login($owner['email'], $owner['password']);
 $groupCount = static fn (): int => (int) db()->query('SELECT COUNT(*) FROM groups')->fetchColumn();
 $codes = static fn (int $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
-$isGroupCode = static fn (int $c): bool => $c >= ActivityLog::GROUP_CREATE && $c <= ActivityLog::GROUP_DOMAIN_VERIFIED;
+$isGroupCode = static fn (int $c): bool => $c >= ActivityLog::GROUP_CREATE && $c <= ActivityLog::GROUP_DOMAIN_UNVERIFIED;
 $noGroupLog = static function (int $mark, string $msg) use ($act, $isGroupCode): void {
     t_eq([], array_values(array_filter(c_codes($act, $mark), $isGroupCode)), $msg . ': sem log de grupo');
 };
