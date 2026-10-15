@@ -127,8 +127,10 @@ $r = c_form($base, '/conta', ['_csrf' => $csrf, 'name' => ''] + $fields, $jar);
 t_eq(200, $r['status'], 'web /conta: inválido re-renderiza (200)');
 t_eq([], c_codes($act, $m), 'web /conta: inválido não grava');
 $m = c_mark($act);
-$r = c_form($base, '/conta', ['_csrf' => $csrf, 'email' => $other['email']] + $fields, $jar);
+$r = c_form($base, '/conta', ['_csrf' => $csrf, 'email' => $other['email'], 'current_password' => $owner['password']] + $fields, $jar);
+// #47: troca de e-mail exige a senha atual; o "em uso" só aparece com a senha certa (email_change_test cobre o resto).
 t_eq(200, $r['status'], 'web /conta: e-mail em uso re-renderiza (200)');
+t_ok(str_contains($r['body'], t('err.email_taken')), 'web /conta: e-mail em uso mostra err.email_taken');
 t_eq([], c_codes($act, $m), 'web /conta: e-mail em uso não grava');
 t_eq($owner['email'], $userRow($owner['user_id'])['email'], 'DB: e-mail não mudou');
 
@@ -145,7 +147,7 @@ t_eq([ActivityLog::ACCOUNT_UPDATE], c_codes($act, $m), 'API: sem mudança AINDA 
 $m = c_mark($act);
 $r = c_api('PUT', $base, '/api/users/eu', ['name' => ''] + $fields, $csrf, $jar);
 t_eq(422, $r['status'], 'API: inválido 422');
-$r = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'email' => $other['email']] + $fields, $csrf, $jar);
+$r = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'email' => $other['email'], 'current_password' => $owner['password']] + $fields, $csrf, $jar);
 t_eq(409, $r['status'], 'API: e-mail em uso 409');
 t_eq([], c_codes($act, $m), 'API: erros não gravam activity_log');
 t_eq('Dono API', $userRow($owner['user_id'])['name'], 'DB: nome final = Dono API');
