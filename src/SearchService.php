@@ -8,8 +8,8 @@ require_once __DIR__ . '/GrupoResolvedor.php';
 
 final class SearchService
 {
-    /** $host: Host da requisição (para ?grupo no domínio verificado de um grupo); null = sem restrição por domínio. */
-    public static function run(bool $log = true, mixed $host = null): array
+    /** $host: Host da requisição (domínio verificado de um grupo); null explícito = sem restrição por domínio. */
+    public static function run(bool $log, mixed $host): array
     {
         $filters = [
             'localidade' => trim((string) ($_GET['localidade'] ?? '')),
@@ -28,14 +28,14 @@ final class SearchService
         }
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         $facets = [];
-        $results = $searched ? SearchService::search($filters, $facets, $host) : [];
+        $results = $searched ? SearchService::search($filters, $host, $facets) : [];
         if ($searched && $log) {
             activity(ActivityLog::SEARCH, $filters + ['resultados' => count($results)]);
         }
         return [$filters, $results, $searched, $facets];
     }
 
-    public static function search(array $filters, ?array &$facets = null, mixed $host = null): array
+    public static function search(array $filters, mixed $host, ?array &$facets = null): array
     {
         $localidade = $filters['localidade'];
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;

@@ -183,4 +183,10 @@ foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
     t_eq([200, [$hA['hash']]], $apiOn("$q&grupo=imob-sul", $h), "Host $h, grupo=A: inalterado");
 }
 t_eq([200, [$hB['hash']]], $api("$q&grupo=outro"), 'plataforma, grupo=B: inalterado');
+
+require_once CL_ROOT . "/src/SearchService.php";
+echo "SearchService: host obrigatório\n";
+$pr = static fn (string $m, string $n): ReflectionParameter => array_values(array_filter((new ReflectionMethod('SearchService', $m))->getParameters(), static fn ($p) => $p->getName() === $n))[0];
+t_ok(!$pr('run', 'host')->isOptional() && !$pr('run', 'log')->isOptional(), 'run(bool $log, mixed $host): sem padrão');
+t_ok(!$pr('search', 'host')->isOptional(), 'search(..., mixed $host, ...): sem padrão');
 t_done();

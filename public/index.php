@@ -369,8 +369,9 @@ if ($path === '/busca' && $method === 'GET') {
 
 // Vitrine do grupo (Sprint 3, PR 8): /g/<slug>/ (home), /g/<slug>/busca, /g/<slug>/busca/mapa e /g/<slug>/imoveis/<ref>.
 // Só imóveis ativos do grupo (a busca vai para /api/busca?grupo=<slug>); os links ficam na vitrine. Grupo por
-// GroupRepository::findBySlugValid; tema pelo GrupoResolvedor (caminho /g/<slug>/). Slug inválido ou inexistente: 404
-// com o tema da plataforma. Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
+// GrupoResolvedor::grupoDoSlugNoHost (no domínio verificado de um grupo, só o slug dele); tema pelo GrupoResolvedor
+// (caminho /g/<slug>/). Slug inválido, inexistente ou de outro grupo no domínio: 404 com o tema da plataforma (ou do
+// domínio). Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
 if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
     // No domínio verificado de um grupo, só a vitrine dele: /g/<slug de outro grupo>/ é 404 (como slug inexistente).
     $vGroup = GrupoResolvedor::grupoDoSlugNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
