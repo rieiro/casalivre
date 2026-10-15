@@ -260,9 +260,9 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | POST | `/imoveis/<h>/fotos` | S, C, dono, RL | 302; acima do `post_max_size` → 413 (o limite de corpo de fato é o `client_max_body_size` do nginx, definido no deploy **[não verificado no código]**) |
 | POST | `/imoveis/<h>/fotos/excluir`, `/imoveis/<h>/fotos/<id>/excluir` | S, C, dono | 302 |
 | POST | `/imoveis/<h>/fotos/capa`, `/imoveis/<h>/fotos/<id>/capa` | S, C, dono | 302 (0 ou 2+ fotos, ou foto de outro imóvel: aviso de erro na tela de edição) |
-| GET/POST | `/imoveis/<h>/calendario` | S, C no POST, dono | 200 (o POST mostra a tela de novo com a mensagem) |
-| POST | `/imoveis/<h>/ical/importar` | S, C, dono | 200 com a tela do calendário e a mensagem |
-| POST | `/imoveis/<h>/ical/<id>/excluir` | S, C, dono | 302 `.../calendario` |
+| GET/POST | `/imoveis/<h>/calendario` | S, C no POST, dono | 200 (o POST mostra a tela de novo com a mensagem; recusa como erro) |
+| POST | `/imoveis/<h>/ical/importar` | S, C, dono | 200 com a tela do calendário e a mensagem (URL vazia, título, limite, duplicado e falha de download como erro) |
+| POST | `/imoveis/<h>/ical/<id>/excluir` | S, C, dono | 302 `.../calendario` (feed inexistente: a tela mostra o erro, nada muda) |
 | POST | `/imoveis/<h>/grupo/aceitar`, `/recusar`, `/sair` | S, C, dono | 302 com aviso; 404 / 409 / 422 conforme o `Resultado` |
 
 ### 5.3 Gestor de grupo
@@ -298,7 +298,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 
 | Método | Caminho | Auth | Respostas |
 |---|---|---|---|
-| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada; 423 conta bloqueada; 429 IP bloqueado; 403 apagada/inativa/pendente |
+| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada; 423 conta bloqueada; 429 IP bloqueado; 403 apagada/inativa/pendente (só com a senha certa; pendente reenvia a ativação como a web) |
 | DELETE | `/api/sessao` | C | 200 |
 | POST | `/api/users` | C, RL | 201 `{status: pending}` (igual para e-mail novo ou existente); 422 |
 | GET | `/api/users/eu` | S | 200 |
@@ -321,9 +321,9 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | DELETE | `/api/casas/<h>/fotos/<id>` | S, C, dono | 200; 404 |
 | POST | `/api/imoveis/<h>/fotos/capa` | S, C, dono | 200; 422 `{error, erros: {foto_id}}` sem `foto_id` ou foto de outro imóvel |
 | GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |
-| POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200 |
+| POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200; 422 inválido / 409 noites travadas pela sincronização (`{error, erros: {campo: mensagem}}`) |
 | GET | `/api/imoveis/<h>/editar` | S, dono | 200 |
-| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | 200; falha ao baixar o feed → também 200 (`ok: true`, `status: NOK`, mensagem); 422 URL/limite/título; 409 feed duplicado |
+| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | campos `external_ical_url` e `feed_title`; 200; 502 falha ao baixar o feed (feed salvo como NOK; `{error, status: NOK, feeds}`); 422 URL/limite/título; 409 feed duplicado (`{error, erros}`) |
 | DELETE | `/api/imoveis/<h>/ical/<id>` | S, C, dono | 200; 404 |
 | GET | `/api/ical/<32hex>` (com ou sem `.ics`) | — | 200; 404 |
 | GET | `/api/imoveis/<h>/calendario.ics` | — | sempre 404 |
@@ -341,16 +341,15 @@ Contagem por IP (IPv6 agrupado por /64, porque um único cliente costuma ter um 
 | Rota(s) | Limite | Balde |
 |---|---|---|
 | `GET /api/cidades`, `GET /api/ceps`, `GET /api/busca` | 60 por 60 s | um por rota |
-| `POST /api/auth/senha/esqueci` | 5 por 900 s | próprio |
-| `POST /senha/esqueci` | 5 por 900 s | próprio |
-| `POST /api/users` | 10 por 3600 s | próprio |
-| `POST /cadastro` | 10 por 3600 s | próprio |
+| `POST /api/auth/senha/esqueci` e `POST /senha/esqueci` | 5 por 900 s | **compartilhado** |
+| `POST /api/users` e `POST /cadastro` | 10 por 3600 s | **compartilhado** |
 | `POST /api/imoveis/*/avaliar` e `POST /imoveis/*/avaliar` | 10 por 3600 s | **compartilhado** |
 | `POST /api/casas/*/fotos` e `POST /imoveis/*/fotos` | 30 por 600 s | **compartilhado** |
 | `POST /entrar`, `POST /api/sessao` | `login_ip_max_failures` (5) erros → bloqueio de `login_ip_lock_minutes` (15) min | `LoginRateLimiter` (tabela `login_rate_limit`) |
+| Reenvio de ativação (login de conta pendente, web e API) | 3 por 3600 s **por conta** (não por IP) | `AccountFlow::ensureActivation` (`ativacao-reenvio`) |
 
 > **Por que baldes compartilhados?** Se web e API tivessem baldes separados, um robô dobraria o limite só alternando as
-> portas de entrada. Já cadastro e esqueci-senha têm baldes próprios por porta: um não pode esgotar o outro.
+> portas de entrada.
 
 Além do IP, a conta tem bloqueio próprio (`login_max_failures`, 5), que vira 423 na API.
 

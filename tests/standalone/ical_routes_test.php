@@ -23,10 +23,10 @@ $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $day = date('Ymd', strtotime('+10 days'));
 $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:$day\r\nDTEND;VALUE=DATE:" . date('Ymd', strtotime('+12 days')) . "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
-    'url' => 'http://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', 'title' => 'Teste', 'ics_body' => $ics,
+    'external_ical_url' => 'http://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', 'feed_title' => 'Teste', 'ics_body' => $ics,
 ]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
-t_eq(200, $r['status'], 'import responde 200 (feed salvo)');
+t_eq(502, $r['status'], 'import com download falho responde 502 (feed salvo como NOK)');
 t_eq('NOK', $json['status'] ?? null, 'falha no download marca status NOK');
 t_eq(0, $json['importadas'] ?? null, 'nenhuma noite importada do ics_body');
 $feed = $json['feeds'][0] ?? [];

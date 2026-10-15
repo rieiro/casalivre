@@ -11,6 +11,8 @@ require_once CL_ROOT . '/conta/Geo/CepRepository.php';
 CepRepository::ensureTable();
 db()->prepare("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')")->execute();
 $act = c_activity_file();
+// SMTP "configurado" só para a fila aceitar e-mails (nenhum worker roda aqui): conta ativações enfileiradas.
+putenv('SMTP_HOST=smtp.invalid');
 $base = t_server();
 
 $userRow = static fn (int $id): array => db()->query('SELECT * FROM users WHERE id = ' . $id)->fetch(PDO::FETCH_ASSOC);
@@ -30,6 +32,7 @@ t_eq(401, $r['status'], 'API: senha errada 401');
 t_ok(is_string($r['json']['error'] ?? null), 'API: senha errada devolve {error}');
 t_eq([ActivityLog::LOGIN_FAIL], c_codes($act, $m), 'API: senha errada grava LOGIN_FAIL');
 t_eq(2, (int) $userRow($u['id'])['failed_logins'], 'DB: failed_logins conta web + API (2)');
+$wrongBody = $r['body'];
 // Referência: senha errada em conta apagada/inativa tem de responder igual a senha errada de conta ativa.
 $ctype = static fn (array $r): string => preg_match('/^Content-Type:\s*(.+?)\s*$/mi', $r['headers'], $mm) ? $mm[1] : '';
 $wrongApi = ['status' => $r['status'], 'body' => $r['body'], 'ctype' => $ctype($r)];
@@ -97,9 +100,51 @@ t_eq(null, c_location($r), 'web: pendente sem redirect');
 t_eq([], c_codes($act, $m), 'web: pendente não grava activity_log');
 $m = c_mark($act);
 $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
-t_eq(403, $r['status'], 'API: pendente 403');
+t_eq([403, t('err.pending')], [$r['status'], $r['json']['error'] ?? null], 'API: pendente 403 err.pending');
 t_eq([], c_codes($act, $m), 'API: pendente não grava activity_log');
-// SNAPSHOT: a web chama AccountFlow::ensureActivation (pode reenfileirar o e-mail de ativação); a API só responde 403.
+
+// Paridade (PR A): web e API reenviam a ativação pela mesma função (AccountFlow::ensureActivation).
+$activations = static function (string $email): int {
+    $st = db()->prepare("SELECT COUNT(*) FROM mail_queue WHERE type = 'activation' AND recipient = ?");
+    $st->execute([$email]);
+    return (int) $st->fetchColumn();
+};
+// O cooldown da fila (5 min por destinatário) é envelhecido entre as tentativas para isolar o limite por conta.
+$ageQueue = static fn () => db()->exec("UPDATE mail_queue SET created_at = '2000-01-01 00:00:00'");
+echo "login: conta pendente pela API reenvia a ativação\n";
+$u = c_user('pending');
+$r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
+t_eq([403, t('err.pending')], [$r['status'], $r['json']['error'] ?? null], 'API: pendente + senha certa: 403 err.pending');
+t_eq(1, $activations($u['email']), 'API: pendente + senha certa enfileira a ativação (como a web)');
+
+echo "login: pendente com senha errada não revela o estado nem reenvia\n";
+// As senhas erradas acima (#83 + este bloco) passariam do limite de IP (5): zera para isolar o caso.
+db()->exec('DELETE FROM login_rate_limit');
+$u = c_user('pending');
+$m = c_mark($act);
+$r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => 'errada'], $csrf, $jar);
+t_eq([401, t('err.bad_login')], [$r['status'], $r['json']['error'] ?? null], 'API: pendente + senha errada: 401 genérico (sem 403)');
+t_eq($wrongBody, $r['body'], 'API: pendente + senha errada: corpo igual a senha errada de conta ativa');
+$w = c_form($base, '/entrar', ['_csrf' => $csrf, 'email' => $u['email'], 'password' => 'errada'], $jar);
+t_ok(str_contains($w['body'], e(t('err.bad_login'))) && !str_contains($w['body'], e(t('err.pending'))), 'web: pendente + senha errada: erro genérico, sem verify_pending');
+t_eq(0, $activations($u['email']), 'pendente + senha errada (web e API): nenhuma ativação enfileirada');
+
+echo "login: reenvio de ativação com limite por conta somando web e API\n";
+$u = c_user('pending');
+$sent = [];
+for ($i = 0; $i < 2 * AccountFlow::RESEND_MAX; $i++) {
+    $ageQueue();
+    if ($i % 2 === 0) {
+        $r = c_form($base, '/entrar', ['_csrf' => $csrf, 'email' => $u['email'], 'password' => $u['password']], $jar);
+        t_eq(200, $r['status'], "web: pendente tentativa $i: 200 (verify_pending)");
+    } else {
+        $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
+        t_eq(403, $r['status'], "API: pendente tentativa $i: 403 (mesma resposta acima do limite)");
+    }
+    $sent[] = $activations($u['email']);
+}
+t_eq(AccountFlow::RESEND_MAX, $activations($u['email']), 'web+API: no máximo RESEND_MAX ativações por conta na janela');
+t_eq([1, 2, 3, 3, 3, 3], $sent, 'web e API contam no mesmo limite (web, API, web, depois bloqueado)');
 
 echo "login: sucesso\n";
 $u = c_user('active');
