@@ -89,6 +89,18 @@ function require_user(): array
     return $user;
 }
 
+/** Só admin (users.is_admin = 1): sem login -> /entrar; logado sem permissão -> 403. */
+function require_admin(): array
+{
+    $user = require_user();
+    if ((int) ($user['is_admin'] ?? 0) !== 1) {
+        http_response_code(403);
+        view('message', ['title' => 'Acesso negado', 'message' => 'Esta página é só para administradores.', 'user' => $user]);
+        exit;
+    }
+    return $user;
+}
+
 /**
  * Links de ativação/redefinição só podem aparecer em respostas (API ou tela) em ambiente de
  * desenvolvimento: APP_ENV=dev ou local. Sem APP_ENV (ou qualquer outro valor) => não expõe.

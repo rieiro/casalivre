@@ -160,7 +160,7 @@ function cors_allowed_origins(): array
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair'], true)) {
+    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema'], true)) {
         return true;
     }
     if ($path === '/imoveis' && $method === 'POST') {
@@ -418,6 +418,33 @@ if ($path === '/sair' && $method === 'POST') {
     activity(ActivityLog::LOGOUT);
     unset($_SESSION['user_id']);
     redirect('/');
+}
+
+// Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF, valor só da lista do manifesto.
+if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    $temas = [];
+    foreach (Theme::available() as $nome) {
+        $temas[$nome] = Theme::brand($nome)['rotulo'];
+    }
+    if ($method === 'POST') {
+        csrf_check();
+        $novo = $_POST['tema'] ?? '';
+        if (!is_string($novo) || !Theme::isAvailable($novo)) {
+            http_response_code(422);
+            view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => Theme::current(), 'error' => 'Tema inválido.', 'ok' => false]);
+            return null;
+        }
+        $anterior = Theme::current();
+        if ($novo !== $anterior) {
+            db()->prepare('UPDATE settings SET value = ? WHERE skey = ?')->execute([$novo, Theme::SETTING]);
+            Settings::refresh();
+            activity(ActivityLog::THEME_CHANGE, ['tema' => $novo, 'tema_anterior' => $anterior]);
+        }
+        redirect('/admin/tema?ok=1');
+    }
+    view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => Theme::current(), 'error' => null, 'ok' => isset($_GET['ok'])]);
+    return null;
 }
 
 if ($path === '/conta' && $method === 'GET') {

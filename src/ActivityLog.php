@@ -177,6 +177,7 @@ final class ActivityLog
     public const CALENDAR_SYNC = 29;
     public const INTERNAL_ERROR = 30;
     public const PHOTO_COVER = 31;
+    public const THEME_CHANGE = 32;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -210,6 +211,7 @@ final class ActivityLog
         self::CALENDAR_SYNC => 'Sincronização de calendário externo',
         self::INTERNAL_ERROR => 'Erro interno do sistema',
         self::PHOTO_COVER => 'Definição da foto de capa',
+        self::THEME_CHANGE => 'Troca do tema da plataforma pelo admin',
     ];
 
     public static function store(): ActivityStore
@@ -278,6 +280,7 @@ final class ActivityLog
         self::PHOTO_ADD => ['enviadas', 'salvas'],
         self::PHOTO_DELETE => ['foto_id', 'quantidade'],
         self::PHOTO_COVER => ['foto_id'],
+        self::THEME_CHANGE => ['tema', 'tema_anterior'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

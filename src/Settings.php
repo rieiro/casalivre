@@ -21,6 +21,7 @@ final class Settings
             'max_photos_per_property' => ['40', 'Número máximo de fotos por imóvel.'],
             'session_minutes' => ['60', 'Minutos até a sessão do proprietário expirar.'],
             'results_per_page' => ['20', 'Número de imóveis mostrados por página nos resultados da busca.'],
+            'theme' => ['padrao', 'Tema visual da plataforma (só temas do manifesto de assets; troca pelo admin em /admin/tema).'],
         ];
     }
 
