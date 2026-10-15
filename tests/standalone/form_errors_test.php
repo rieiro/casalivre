@@ -122,6 +122,22 @@ t_eq(e(t('err.password_mismatch')), $box($r['body'], 'reset-error')['text'] ?? n
 $r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $raw, 'password' => $pass, 'password_confirm' => $pass], $rj);
 t_eq([200, null], [$r['status'], $box($r['body'], 'reset-error')], 'reset ok: página de mensagem, sem caixa de erro');
 
+echo "esqueci a senha\n";
+t_ratelimit_reset();
+$fj = tempnam(sys_get_temp_dir(), 'jar');
+$page = t_http('GET', $base . '/senha/esqueci', null, [], $fj)['body'];
+$b = $box($page, 'forgot-error');
+t_ok($b !== null && $b['text'] === '' && str_contains($b['attrs'], ' hidden') && str_contains($b['attrs'], 'role="alert"'), 'GET /senha/esqueci: #forgot-error vazio, hidden, role=alert');
+t_ok(preg_match('#<p class="ok" id="forgot-ok" role="alert" hidden>#', $page) === 1, 'GET /senha/esqueci: #forgot-ok hidden');
+$okBox = static function (string $html): ?string {
+    return preg_match('#<p class="ok" id="forgot-ok" role="alert">(.*?)</p>#s', $html, $m) === 1 ? $m[1] : null;
+};
+$r1 = c_form($base, '/senha/esqueci', ['_csrf' => c_csrf($base, $fj, '/senha/esqueci'), 'email' => $owner['email']], $fj);
+$r2 = c_form($base, '/senha/esqueci', ['_csrf' => c_csrf($base, $fj, '/senha/esqueci'), 'email' => 'ninguem' . bin2hex(random_bytes(3)) . '@casalivre.test'], $fj);
+t_eq([200, e(t('auth.reset_missing'))], [$r1['status'], $okBox($r1['body'])], 'POST esqueci (conta existe): auth.reset_missing visível');
+t_eq(e(t('auth.reset_missing')), $okBox($r2['body']), 'POST esqueci (não existe): mesmo aviso (sem enumeração)');
+t_eq('', $box($r1['body'], 'forgot-error')['text'] ?? null, 'POST esqueci: sem erro');
+
 echo "escape\n";
 $evil = '<img src=x onerror=alert(1)>"&\'';
 db()->prepare("UPDATE translations SET text = ? WHERE tkey = 'err.cpf'")->execute([$evil]);
@@ -143,5 +159,11 @@ db()->prepare('UPDATE users SET session_version = session_version + 1 WHERE id =
 t_http('GET', $base . '/painel', null, [], $lj2);
 t_eq(e($evil), $box(t_http('GET', $base . '/entrar', null, [], $lj2)['body'], 'login-error')['text'] ?? null, 'login: mensagem escapada');
 
+
+db()->prepare("UPDATE translations SET text = ? WHERE tkey = 'auth.reset_missing'")->execute([$evil]);
+I18n::refresh();
+t_ratelimit_reset();
+$r = c_form($base, '/senha/esqueci', ['_csrf' => c_csrf($base, $fj, '/senha/esqueci'), 'email' => 'x@casalivre.test'], $fj);
+t_eq(e($evil), $okBox($r['body']), 'esqueci: aviso escapado');
 
 t_done();
