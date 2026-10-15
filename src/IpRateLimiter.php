@@ -80,6 +80,24 @@ final class IpRateLimiter
         }
     }
 
+    /**
+     * Consulta sem contar: segundos até liberar (0 = ainda cabe mais um hit na janela). Para quem só conta depois
+     * que a ação aconteceu de fato (ex.: reenvio de ativação só quando o e-mail entra na fila). Falha aberta (0).
+     */
+    public static function peek(string $bucket, int $max, int $windowSeconds, ?string $ip = null, ?int $now = null): int
+    {
+        $ip ??= (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        $now ??= time();
+        $file = self::dir() . '/' . hash('sha256', $bucket . '|' . self::clientKey($ip)) . '.json';
+        $data = is_file($file) ? json_decode((string) @file_get_contents($file), true) : null;
+        $start = (int) ($data['start'] ?? 0);
+        $count = (int) ($data['count'] ?? 0);
+        if ($now - $start >= $windowSeconds) {
+            return 0;
+        }
+        return $count >= $max ? max(1, $start + $windowSeconds - $now) : 0;
+    }
+
     /** Apaga arquivos de estado sem uso há mais de MAX_AGE segundos. Devolve quantos apagou. */
     public static function purge(?int $now = null): int
     {

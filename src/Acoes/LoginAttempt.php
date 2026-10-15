@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once dirname(__DIR__) . '/IpRateLimiter.php';
 
 /**
  * Tentativa de login (web POST /entrar e API POST /api/sessao).
@@ -22,12 +23,17 @@ require_once __DIR__ . '/Resultado.php';
  * Esse desfecho só existe com a senha certa, e AccountFlow::checkLogin já fez o mesmo password_verify de uma senha
  * errada (DUMMY_HASH para conta inexistente), então gravar o log não muda o tempo de resposta.
  *
- * Conta pendente (só com a senha certa; senha errada é 'bad' como qualquer conta): web e API chamam
- * AccountFlow::ensureActivation (reenvio com limite por conta somado web+API); a web mostra verify_pending
- * e a API responde 403 err.pending. Não há mais opção por canal (ver tests/standalone/char_login_conta_test.php).
+ * Conta pendente (só com a senha certa; senha errada é 'bad' como qualquer conta): web e API reenviam a ativação
+ * por AccountFlow::ensureActivation, com o limite por conta somado web+API aplicado aqui (RESEND_MAX em
+ * RESEND_WINDOW s). Só conta o reenvio que entrou de fato na mail_queue (o cooldown de 5 min dela não gasta o
+ * limite). dados['expires'] vai para a web (verify_pending) e para a API (403 err.pending). Não há mais opção por canal (ver tests/standalone/char_login_conta_test.php).
  */
 final class LoginAttempt
 {
+    public const RESEND_MAX = 3;
+    public const RESEND_WINDOW = 3600;
+    private const RESEND_BUCKET = 'ativacao-reenvio';
+
     public static function run(string $email, string $password): Resultado
     {
         $result = AccountFlow::checkLogin($email, $password, Settings::int('login_max_failures'));
@@ -54,7 +60,16 @@ final class LoginAttempt
             return new Resultado($result['status'], account_text($result['status']), [], $events);
         }
         if ($result['status'] === 'pending') {
-            $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
+            // Limite por conta (não por IP), para ninguém usar o login para lotar a caixa da vítima.
+            $key = 'conta:' . hash('sha256', Email::normalize((string) $result['user']['email']));
+            $pending = AccountFlow::ensureActivation(
+                $result['user'],
+                Settings::int('email_verify_minutes'),
+                static fn (): bool => IpRateLimiter::peek(self::RESEND_BUCKET, self::RESEND_MAX, self::RESEND_WINDOW, $key) === 0
+            );
+            if ($pending['enfileirado']) {
+                IpRateLimiter::hit(self::RESEND_BUCKET, self::RESEND_MAX, self::RESEND_WINDOW, $key);
+            }
             return new Resultado('pending', t('err.pending'), ['expires' => $pending['expires']]);
         }
         AccountFlow::openSession((int) $result['user']['id']);

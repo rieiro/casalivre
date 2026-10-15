@@ -13,8 +13,8 @@ require_once __DIR__ . '/../src/CepRepository.php';
 require_once __DIR__ . '/../src/UserRepository.php';
 PasswordPolicy::$minLength = max(1, Settings::int('password_min_length') ?: 8);
 require_once __DIR__ . '/../src/Mailer.php';
-AccountFlow::$enqueue = static function (string $type, string $email): void {
-    Mailer::enqueueAccountMail($type, $email);
+AccountFlow::$enqueue = static function (string $type, string $email): bool {
+    return Mailer::enqueueAccountMail($type, $email);
 };
 require_once __DIR__ . '/../src/HouseRepository.php';
 require_once __DIR__ . '/../src/PhotoRepository.php';
