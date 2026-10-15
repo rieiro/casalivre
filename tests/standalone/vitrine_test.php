@@ -153,4 +153,20 @@ t_eq(404, $get('/g/%2F%2Fevil.com')['status'], '/g/%2F%2Fevil.com: 404');
 $r = t_http('GET', $base . '/g/imob-sul?a=1', null, ['Host: evil.com']);
 t_eq('/g/imob-sul/?a=1', c_location($r), 'Location não usa o Host');
 t_eq(1, preg_match_all('/^Set-Cookie:\s*a=b/mi', $get('/g/imob-sul?x=%0d%0aSet-Cookie:a=b')['headers']) === 0 ? 1 : 0, 'sem header injetado');
+
+echo "status vazio: regra activeProperty() na vitrine\n";
+// status é NOT NULL (DEFAULT 'active'); '' é o único caso fora de 'active'/'inactive'. A vitrine (home, busca, imóvel)
+// usa GroupRepository::activeProperty(), que trata '' como ativo; a busca da plataforma (HouseRepository::all()) não.
+$hE = $house($uid, 'Casa status vazio');
+$link($hE, $gA);
+db()->prepare("UPDATE properties SET status = '' WHERE id = ?")->execute([$hE['id']]);
+[, $ids] = $api('localidade=Florian%C3%B3polis&grupo=imob-sul');
+t_eq([$hA['hash'], $hE['hash']], $ids, "status '': aparece na busca da vitrine (ordem por id)");
+t_ok(str_contains($get('/g/imob-sul/')['body'], $hE['hash']), "status '': aparece na home da vitrine");
+// Documenta a inconsistência atual: activePropertyByRef exige status === 'active', então a página dá 404 (pendente).
+t_eq(404, $get('/g/imob-sul/imoveis/' . $hE['hash'])['status'], "status '': página na vitrine ainda 404 (activePropertyByRef exige 'active')");
+[, $all] = $api('localidade=Florian%C3%B3polis');
+t_ok(!in_array($hE['hash'], $all, true), "status '': fora da busca da plataforma (all() exige 'active')");
+[, $ids] = $api('localidade=Florian%C3%B3polis&grupo=imob-sul');
+t_ok(!in_array($hA2['hash'], $ids, true), "status 'inactive': continua fora da busca da vitrine");
 t_done();

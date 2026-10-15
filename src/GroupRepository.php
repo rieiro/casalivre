@@ -170,18 +170,19 @@ final class GroupRepository
         return $row ?: null;
     }
 
-    /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     /**
-     * Fonte da busca na vitrine: mesmas linhas e ordem de HouseRepository::all() (status = 'active', ORDER BY id),
-     * só do grupo, filtrado no SQL (idx_properties_group) em vez de carregar todos os imóveis.
+     * Fonte da busca na vitrine: imóveis ativos do grupo (regra activeProperty(), a mesma da home e da página da vitrine),
+     * na ordem de HouseRepository::all() (ORDER BY id), filtrado no SQL (idx_properties_group). Diferença para all():
+     * status vazio ('') conta como ativo aqui (status é NOT NULL, então NULL não ocorre).
      */
     public static function searchSource(int $groupId): array
     {
-        $st = db()->prepare("SELECT * FROM properties WHERE group_id = ? AND status = 'active' ORDER BY id ASC");
+        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY id ASC');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
 
+    /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     public static function properties(int $groupId): array
     {
         $st = db()->prepare('SELECT id, public_hash, title, city FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY title, id');
