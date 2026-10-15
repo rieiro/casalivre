@@ -8,7 +8,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] `verification_link` e link de redefinição fora das respostas da API e das telas em produção (PR #15).
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
-- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self' https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
+- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
 - [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
 
@@ -225,5 +225,5 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Amostra do `activity_log` e do `api-*.log` sem nome, endereço, CEP, e-mail, CPF, telefone, IP completo ou user agent.
 - [ ] Editar imóvel com quartos e camas existentes salva sem o erro "pelo menos uma cama" (issue #20), e o resumo por quarto se atualiza.
 - [ ] Título `<img src=x onerror=alert(1)>` não executa na página pública, na busca nem no painel.
-- [ ] As miniaturas do OSM carregam na busca, sem violação de CSP no console; o mapa do OSM funciona.
+- [ ] As miniaturas carregam na busca, sem violação de CSP no console; o mapa de fundo carrega via `/tiles/brasil.pmtiles` com respostas 206, sem requisições externas.
 - [ ] Foto com caminho fora de `/uploads/` vira placeholder.
