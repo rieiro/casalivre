@@ -51,6 +51,17 @@ t_eq(['https://casalivre.example/senha/esqueci', 'https://imob.example.com/g/imo
 foreach (['evil.example/verificar', 'imob.example.com:8443/x', 'pendente.example.com/g/imob/', 'user@casalivre.example', 'javascript:alert(1)', 'casalivre.example.evil.example', 'ftp://casalivre.example'] as $txt) {
     t_ok(str_contains($h2, $txt), "'$txt' fica como texto");
 }
+echo "domínio da plataforma em group_domains não vira link\n";
+db()->prepare('INSERT INTO group_domains (group_id, domain, verify_token, verified_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP), (?, ?, ?, CURRENT_TIMESTAMP)')
+    ->execute([$g['id'], 'app.casalivre.example', 't3', $g['id'], 'casalivre.example', 't4']);
+t_ok(!MailHtml::isAllowedLink('https://app.casalivre.example/g/imob/'), 'subdomínio da plataforma verificado num grupo: não é link');
+t_ok(MailHtml::isAllowedLink('https://casalivre.example/g/imob/'), 'APP_URL continua link');
+putenv('APP_URL=https://www.casalivre.example');
+t_ok(!MailHtml::isAllowedLink('https://casalivre.example/g/imob/'), 'raiz da plataforma (APP_URL www.) verificada num grupo: não é link');
+t_ok(MailHtml::isAllowedLink('https://www.casalivre.example/senha/esqueci'), 'APP_URL www.: link');
+t_ok(MailHtml::isAllowedLink('https://IMOB.example.com./g/imob/'), 'domínio verificado com maiúsculas e ponto final: normalizado, link');
+putenv('APP_URL=https://casalivre.example');
+db()->exec("DELETE FROM group_domains WHERE domain IN ('app.casalivre.example', 'casalivre.example')");
 $_SERVER['HTTP_HOST'] = 'evil.example';
 t_ok(!MailHtml::isAllowedLink('https://evil.example/x'), 'Host da requisição não vira origem permitida');
 unset($_SERVER['HTTP_HOST']);

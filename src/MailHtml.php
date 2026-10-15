@@ -8,7 +8,7 @@ require_once __DIR__ . '/Mailer.php';
  * Parte HTML dos e-mails (Sprint 3 PR 11, Etapa 5): o mesmo texto da parte text/plain, com cabeçalho e rodapé do tema
  * da plataforma (nome e cores do brand.php) e estilo só inline. Sem script, sem imagem nem CSS externos.
  *  - Todo texto passa por esc() (htmlspecialchars ENT_QUOTES | ENT_HTML5, UTF-8).
- *  - Só vira link (<a>) URL http/https sobre APP_URL ou https de domínio verificado de grupo (GrupoUrl); qualquer
+ *  - Só vira link (<a>) URL http/https sobre APP_URL ou https de domínio verificado de grupo (GrupoResolvedor::doDominio); qualquer
  *    outra URL fica como texto. Nada vem do Host da requisição.
  *  - Cores só #rgb/#rrggbb (senão o padrão do app.css).
  */
@@ -72,9 +72,10 @@ final class MailHtml
         if (strtolower((string) $p['scheme']) !== 'https' || isset($p['port'])) {
             return false;
         }
-        require_once __DIR__ . '/GroupRepository.php';
+        require_once __DIR__ . '/GrupoResolvedor.php';
         try {
-            return GroupRepository::findByVerifiedDomain((string) $p['host']) !== null;
+            // Mesma regra do resolvedor: Host normalizado, só domínio verificado, nunca o da plataforma (nem subdomínio).
+            return GrupoResolvedor::doDominio((string) $p['host']) !== null;
         } catch (Throwable) {
             return false;
         }
