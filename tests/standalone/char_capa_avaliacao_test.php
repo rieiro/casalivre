@@ -196,6 +196,31 @@ foreach (['web' => [$h . '/fotos', ['_csrf' => $csrf], []], 'API' => ['/api/casa
     }
 }
 
+echo "fotos: API com nenhuma foto salva responde 422 (opcional 6)\n";
+$bad = "--pcb0\r\nContent-Disposition: form-data; name=\"fotos[0]\"; filename=\"x.jpg\"\r\nContent-Type: image/jpeg\r\n\r\nnao-e-imagem\r\n--pcb0--\r\n";
+$antesFotos = count(PhotoRepository::list($hid));
+$r = t_http('POST', $base . '/api/casas/' . $owner['hash'] . '/fotos', $bad, ['Content-Type: multipart/form-data; boundary=pcb0', 'X-CSRF-Token: ' . $csrf], $jar);
+$j = json_decode($r['body'], true) ?: [];
+t_eq([422, 0, 1], [$r['status'], $j['salvas'] ?? null, $j['enviadas'] ?? null], 'API fotos: 1 enviada, 0 salva -> 422 {salvas: 0, enviadas: 1}');
+t_ok(isset($j['error'], $j['erros']['fotos']) && $j['error'] === $j['erros']['fotos'], 'API fotos: 422 com {error, erros: {fotos}} (mesmo aviso da web)');
+$r = t_http('POST', $base . '/api/casas/' . $owner['hash'] . '/fotos', "--pcb1--\r\n", ['Content-Type: multipart/form-data; boundary=pcb1', 'X-CSRF-Token: ' . $csrf], $jar);
+$j = json_decode($r['body'], true) ?: [];
+t_eq([422, 0, 0, t('photo.none_arrived')], [$r['status'], $j['salvas'] ?? null, $j['enviadas'] ?? null, $j['error'] ?? null], 'API fotos: nada chegou -> 422 photo.none_arrived');
+t_eq($antesFotos, count(PhotoRepository::list($hid)), 'DB: nenhuma foto criada nos 422');
+
+echo "capa: rota /fotos/{id}/capa com valor bruto e dono por consulta pontual (opcionais a e 7)\n";
+$m = c_mark($act);
+$capaAntes = $cover();
+foreach ([$foreign, 999999, '99999999999'] as $id) {
+    $r = c_form($base, $h . '/fotos/' . $id . '/capa', ['_csrf' => $csrf], $jar);
+    t_ok($r['status'] === 302 && str_contains($editNotice(), e(t(CoverSet::ERRO))), "web /fotos/$id/capa: foto alheia/inexistente/enorme -> erro na tela");
+}
+t_eq([], c_codes($act, $m), 'web: nada gravado');
+t_eq($capaAntes, $cover(), 'DB: capa inalterada');
+$src = (string) file_get_contents(CL_ROOT . '/src/Acoes/CoverSet.php');
+t_ok(!str_contains($src, 'PhotoRepository::list(') && str_contains($src, 'PhotoRepository::belongsTo('), 'CoverSet confere o dono sem carregar a lista inteira');
+t_ok(PhotoRepository::belongsTo($hid, $p1) && !PhotoRepository::belongsTo($hid, $foreign) && !PhotoRepository::belongsTo($hid, 999999), 'belongsTo: só fotos deste imóvel');
+
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$hid]);
 // Mudança intencional (fix/avaliacao-rate-limit): web e API dividem o limite de 10 avaliações/h por IP.
 // Este arquivo já fez 10 POSTs de avaliação até aqui; zera o limite para checar o 404 de imóvel não ativo.
