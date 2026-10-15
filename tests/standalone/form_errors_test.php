@@ -128,7 +128,13 @@ $fj = tempnam(sys_get_temp_dir(), 'jar');
 $page = t_http('GET', $base . '/senha/esqueci', null, [], $fj)['body'];
 $b = $box($page, 'forgot-error');
 t_ok($b !== null && $b['text'] === '' && str_contains($b['attrs'], ' hidden') && str_contains($b['attrs'], 'role="alert"'), 'GET /senha/esqueci: #forgot-error vazio, hidden, role=alert');
-t_ok(preg_match('#<p class="ok" id="forgot-ok" role="alert" hidden>#', $page) === 1, 'GET /senha/esqueci: #forgot-ok hidden');
+t_ok(preg_match('#<p class="ok" id="forgot-ok" role="alert" hidden>' . preg_quote(e(t('auth.reset_missing')), '#') . '</p>#', $page) === 1, 'GET /senha/esqueci: #forgot-ok hidden já com auth.reset_missing (o JS só mostra)');
+foreach (['en' => 'If the account', 'es' => ''] as $lang => $_) {
+    $lp = t_http('GET', $base . '/senha/esqueci?lang=' . $lang, null, ['Accept-Language: ' . $lang], tempnam(sys_get_temp_dir(), 'jar'))['body'];
+    t_ok(!str_contains($lp, 'Se o e-mail existir'), "GET /senha/esqueci ($lang): sem texto fixo em português");
+}
+$js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/password-forgot.js');
+t_ok(!str_contains($js, 'textContent') && !str_contains($js, 'innerHTML'), 'password-forgot.js não reescreve o texto de #forgot-ok');
 $okBox = static function (string $html): ?string {
     return preg_match('#<p class="ok" id="forgot-ok" role="alert">(.*?)</p>#s', $html, $m) === 1 ? $m[1] : null;
 };
