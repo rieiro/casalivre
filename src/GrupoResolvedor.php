@@ -29,8 +29,7 @@ final class GrupoResolvedor
         if ($h !== null && !GrupoValidacao::isPlatform($h) && ($g = GroupRepository::findByVerifiedDomain($h)) !== null) {
             return self::com(self::DOMINIO, $g);
         }
-        if (preg_match('#^/g/([^/]+)(?:/|$)#', $path, $m) === 1 && ($slug = GrupoValidacao::slug($m[1])) !== null
-            && ($g = GroupRepository::findBySlug($slug)) !== null) {
+        if (preg_match('#^/g/([^/]+)(?:/|$)#', $path, $m) === 1 && ($g = GroupRepository::findBySlugValid($m[1])) !== null) {
             return self::com(self::SLUG, $g);
         }
         $gid = (int) ($imovel['group_id'] ?? 0);

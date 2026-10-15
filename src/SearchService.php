@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 /** Busca pública de imóveis (movido de public/index.php sem alterar os corpos). */
 require_once __DIR__ . '/GroupRepository.php';
-require_once __DIR__ . '/Acoes/GrupoValidacao.php';
 
 final class SearchService
 {
@@ -40,8 +39,7 @@ final class SearchService
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
         $source = HouseRepository::all();
         if (array_key_exists('grupo', $filters)) {
-            $slug = GrupoValidacao::slug($filters['grupo']);
-            $group = $slug === null ? null : GroupRepository::findBySlug($slug);
+            $group = GroupRepository::findBySlugValid($filters['grupo']);
             $gid = $group === null ? 0 : (int) $group['id'];
             $source = $gid === 0 ? [] : array_values(array_filter($source, static fn (array $p): bool => (int) ($p['group_id'] ?? 0) === $gid));
         }

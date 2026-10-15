@@ -366,11 +366,11 @@ if ($path === '/busca' && $method === 'GET') {
 }
 
 // Vitrine do grupo (Sprint 3, PR 8): /g/<slug>/ (home), /g/<slug>/busca, /g/<slug>/busca/mapa e /g/<slug>/imoveis/<ref>.
-// Só imóveis ativos do grupo (a busca vai para /api/busca?grupo=<slug>); os links ficam na vitrine. Tema pelo
-// GrupoResolvedor (caminho /g/<slug>/). Slug inexistente: 404 com o tema da plataforma. Imóvel de outro grupo: 404.
+// Só imóveis ativos do grupo (a busca vai para /api/busca?grupo=<slug>); os links ficam na vitrine. Grupo por
+// GroupRepository::findBySlugValid; tema pelo GrupoResolvedor (caminho /g/<slug>/). Slug inválido ou inexistente: 404
+// com o tema da plataforma. Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
 if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
-    $slug = GrupoValidacao::slug($m[1]);
-    $vGroup = $slug === null ? null : GroupRepository::findBySlug($slug);
+    $vGroup = GroupRepository::findBySlugValid($m[1]);
     if ($vGroup === null) {
         http_response_code(404);
         view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);

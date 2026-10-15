@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Acoes/GrupoValidacao.php';
+
 /**
  * Leituras do modelo de grupos (Sprint 3, PR 6): groups, group_members, group_domains, group_property_invites e
  * properties.group_id. As ações (src/Acoes/Grupo*.php) gravam; rotas e ações leem por aqui.
@@ -20,6 +22,13 @@ final class GroupRepository
     public static function activeUser(string $alias): string
     {
         return "$alias.status = 'active'";
+    }
+
+    /** Valida o slug (GrupoValidacao::slug) e busca o grupo; slug inválido ou inexistente: null. */
+    public static function findBySlugValid(mixed $slug): ?array
+    {
+        $valid = GrupoValidacao::slug($slug);
+        return $valid === null ? null : self::findBySlug($valid);
     }
 
     public static function findBySlug(string $slug): ?array
