@@ -119,7 +119,7 @@ $r = t_http('POST', $base . '/api/auth/senha/redefinir', json_encode(['token' =>
 t_eq(422, $r['status'], 'reset com token expirado falha');
 db()->prepare('UPDATE users SET reset_expires_at = ? WHERE id = ?')->execute([$o['reset_expires_at'], (int) $o['id']]);
 t_eq($before, json_encode($getUser($owner['email'])), 'token errado/expirado não muda nenhuma linha');
-$r = t_http('POST', $base . '/api/auth/senha/redefinir', json_encode(['token' => 'f' . substr($rr, 1), 'password' => $np, 'password_confirm' => $np]), $json, $jar);
+$r = t_http('POST', $base . '/api/auth/senha/redefinir', json_encode(['token' => ($rr[0] === 'f' ? '0' : 'f') . substr($rr, 1), 'password' => $np, 'password_confirm' => $np]), $json, $jar);
 t_eq(422, $r['status'], 'reset com token errado falha');
 $r = t_http('POST', $base . '/api/auth/senha/redefinir', json_encode(['token' => $rr, 'password' => $np, 'password_confirm' => $np]), $json, $jar);
 t_eq(200, $r['status'], 'reset com token válido');

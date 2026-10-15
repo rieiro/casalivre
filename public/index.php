@@ -84,7 +84,7 @@ if ($origin !== '') {
 }
 
 header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: SAMEORIGIN');
+header('X-Frame-Options: DENY');
 header('Referrer-Policy: same-origin');
 header('Content-Security-Policy: ' . csp_header());
 
