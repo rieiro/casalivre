@@ -54,7 +54,7 @@ foreach (['../../etc/passwd', 'contraste/../../x', 'nao-existe', "padrao\nx"] as
 $setTheme(Theme::DEFAULT);
 
 echo "tokens do brand.php\n";
-$clean = Theme::cleanTokens(['--ok' => '#fff', '--x' => 'red;} body{display:none', '--u' => 'url(//evil)', '--i' => '@import x', 'cor' => '#000', '--q' => '"a"', '--lt' => '</style>']);
+$clean = Theme::cleanTokens(['--ok' => '#fff', '--x' => 'red;} body{display:none', '--u' => 'url(//evil)', '--i' => '@import x', 'cor' => '#000', '--q' => '"a"', '--lt' => '</style>', '--c1' => '#fff /* x', '--c2' => 'red */', '--c3' => '1px/*a*/2px']);
 t_eq(['--ok' => '#fff'], $clean, 'tokens perigosos descartados');
 t_ok(!str_contains(Theme::css(Theme::readBrand(CL_ROOT . '/themes/contraste/brand.php')), 'url('), 'CSS gerado sem url()');
 
@@ -120,6 +120,8 @@ $logs = array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['cod
 t_eq(1, count($logs), 'um THEME_CHANGE gravado');
 t_eq('contraste', $logs[0]['params']['tema'] ?? null, 'log: tema novo');
 t_eq('padrao', $logs[0]['params']['tema_anterior'] ?? null, 'log: tema anterior');
+t_eq(['tema' => 'padrao'], $logs[0]['anterior'], 'log: valor_anterior {tema}');
+t_eq(['tema' => 'contraste'], $logs[0]['atual'], 'log: valor_atual {tema}');
 $home = t_http('GET', $base . '/', null, [], $jar);
 t_ok((bool) preg_match('#<link rel="stylesheet" href="/assets/themes/contraste\.css\?v=[0-9a-f]{12}">#', $home['body']), 'página usa o CSS do tema com ?v=');
 preg_match('/^Content-Security-Policy:\s*(.+?)\s*$/mi', $home['headers'], $m);

@@ -434,7 +434,7 @@ if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
         $res = ThemeSet::run($_POST['tema'] ?? '', $atual, $nomes);
         $res->registrar();
         if ($res->tipo !== 'ok') {
-            http_response_code(422);
+            http_response_code($res->tipo === 'invalido' ? 422 : 409);
             view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => $res->mensagem, 'ok' => false]);
             return null;
         }

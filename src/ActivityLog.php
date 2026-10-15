@@ -311,7 +311,7 @@ final class ActivityLog
         'nightly_price', 'cleaning_fee', 'taxa_limpeza', 'checkin_time', 'checkout_time', 'calendar_months', 'pool', 'bbq',
         'garage', 'amenities', 'comodidades', 'comodidades_incluidas', 'comodidades_removidas', 'path', 'caminho',
         'is_primary', 'sort_order', 'capa', 'fotos', 'feed', 'link', 'url', 'external_ical_url', 'last_status',
-        'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados',
+        'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados', 'tema',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

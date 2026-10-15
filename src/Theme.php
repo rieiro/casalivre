@@ -111,7 +111,7 @@ final class Theme
 
     /**
      * Tokens aceitos: nome "--[a-z0-9-]+" e valor sem caracteres que fechem a regra ou carreguem recurso
-     * (; { } < > \ " ' e url( / @import / expression). Inválidos são descartados.
+     * (; { } < > \ " ', abertura/fechamento de comentário CSS e url( / @import / expression). Inválidos são descartados.
      * @return array<string,string>
      */
     public static function cleanTokens(mixed $tokens): array
@@ -126,7 +126,7 @@ final class Theme
             }
             $v = trim($v);
             if ($v === '' || strlen($v) > 120 || preg_match('/[;{}<>\\\\"\'\r\n]/', $v) === 1
-                || preg_match('/url\s*\(|@import|expression\s*\(/i', $v) === 1) {
+                || preg_match('/url\s*\(|@import|expression\s*\(|\/\*|\*\//i', $v) === 1) {
                 continue;
             }
             $out[$k] = $v;
