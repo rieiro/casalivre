@@ -24,13 +24,13 @@ t_eq(413, $r['status'], 'form acima do limite -> 413');
 t_ok(str_contains($r['body'], 'Envio grande demais'), '413 web em HTML');
 
 echo "411 (unidade)\n";
-$case = static function (array $server, string $method): ?int {
+$case = static function (array $server, string $method, string $path = '/'): ?int {
     $bak = $_SERVER;
     foreach (['CONTENT_TYPE', 'CONTENT_LENGTH', 'HTTP_CONTENT_LENGTH', 'HTTP_TRANSFER_ENCODING'] as $k) {
         unset($_SERVER[$k]);
     }
     $_SERVER = $server + $_SERVER;
-    $r = BodyLimit::status($method);
+    $r = BodyLimit::status($method, $path);
     $_SERVER = $bak;
     return $r;
 };
@@ -39,7 +39,15 @@ t_eq(411, $case(['CONTENT_TYPE' => 'application/json'], 'POST'), 'POST sem Conte
 t_eq(411, $case(['CONTENT_TYPE' => 'application/json'], 'PUT'), 'PUT sem Content-Length -> 411');
 t_eq(null, $case([], 'DELETE'), 'DELETE sem corpo nem Content-Length: aceito');
 t_eq(411, $case(['HTTP_TRANSFER_ENCODING' => 'chunked'], 'DELETE'), 'DELETE chunked -> 411');
-t_eq(null, $case(['CONTENT_TYPE' => 'multipart/form-data; boundary=x', 'HTTP_TRANSFER_ENCODING' => 'chunked'], 'POST'), 'multipart fica com post_max_size');
+$mp = 'multipart/form-data; boundary=x';
+$hx = str_repeat('a', 16);
+t_eq(null, $case(['CONTENT_TYPE' => $mp, 'HTTP_TRANSFER_ENCODING' => 'chunked'], 'POST', "/imoveis/$hx/fotos"), 'multipart na rota web de fotos fica com post_max_size');
+t_eq(null, $case(['CONTENT_TYPE' => $mp, 'CONTENT_LENGTH' => (string) (5 * $max)], 'POST', "/api/casas/$hx/fotos"), 'multipart grande na rota de fotos da API: aceito');
+t_eq(413, $case(['CONTENT_TYPE' => $mp, 'CONTENT_LENGTH' => (string) (2 * $max)], 'POST', '/cadastro'), 'multipart 2 MiB em /cadastro -> 413');
+t_eq(411, $case(['CONTENT_TYPE' => $mp, 'HTTP_TRANSFER_ENCODING' => 'chunked'], 'POST', '/entrar'), 'multipart chunked fora das fotos -> 411');
+foreach (["/imoveis/$hx/fotos/excluir", "/imoveis/$hx/fotosx", "/xx/imoveis/$hx/fotos", "/imoveis/" . strtoupper($hx) . '/fotos', "/api/casas/$hx/fotos/1"] as $p) {
+    t_eq(413, $case(['CONTENT_TYPE' => $mp, 'CONTENT_LENGTH' => (string) (2 * $max)], 'POST', $p), "multipart 2 MiB em $p -> 413");
+}
 t_eq(413, $case(['CONTENT_LENGTH' => (string) ($max + 1)], 'PATCH'), 'PATCH acima -> 413');
 t_eq(null, $case(['CONTENT_LENGTH' => '10'], 'POST'), 'POST pequeno: aceito');
 t_eq(null, $case(['HTTP_TRANSFER_ENCODING' => 'chunked'], 'GET'), 'GET não é afetado');
@@ -68,6 +76,17 @@ $r = t_http('POST', $base . '/entrar', http_build_query(['_csrf' => $mm[1] ?? ''
 t_ok($r['status'] !== 419, 'formulário web com o token passa no CSRF (' . $r['status'] . ')');
 $r = t_http('GET', $base . '/painel');
 t_ok(in_array($r['status'], [302, 303], true), 'rota autenticada sem cookie: redireciona para login');
+
+echo "multipart fora das rotas de fotos (HTTP)\n";
+$bd = 'xB' . bin2hex(random_bytes(6));
+$mpBody = "--$bd\r\nContent-Disposition: form-data; name=\"email\"\r\n\r\na@b.test\r\n--$bd\r\nContent-Disposition: form-data; name=\"pad\"; filename=\"p.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n" . str_repeat('z', 2 * $max) . "\r\n--$bd--\r\n";
+foreach (['/cadastro', '/entrar', '/senha/esqueci', '/api/users', '/api/sessao'] as $p) {
+    $r = t_http('POST', $base . $p, $mpBody, ['Content-Type: multipart/form-data; boundary=' . $bd]);
+    t_eq(413, $r['status'], "multipart 2 MiB em POST $p -> 413");
+    t_ok(!preg_match('/^Set-Cookie:\s*PHPSESSID/mi', $r['headers']), "POST $p 413: sem cookie de sessão");
+}
+$r = t_http('POST', $base . '/imoveis/' . str_repeat('a', 16) . '/fotos', $mpBody, ['Content-Type: multipart/form-data; boundary=' . $bd]);
+t_ok($r['status'] !== 413 && $r['status'] !== 411, 'multipart 2 MiB na rota de fotos passa do BodyLimit (cai na autenticação)');
 
 echo "GET não é afetado\n";
 t_eq(200, t_http('GET', $base . '/api/cidades?q=flo')['status'], 'GET normal');
