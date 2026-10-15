@@ -98,6 +98,30 @@ t_ok(!str_starts_with((string) $loc($req('GET', '/g/imob', $dom)), 'http'), '/g/
 t_eq(419, $req('POST', '/idioma', $dom)['status'], 'POST /idioma passa pela trava (419 sem CSRF)');
 t_eq(419, $req('POST', "/imoveis/$h/avaliar", $dom)['status'], 'POST /imoveis/<h>/avaliar passa pela trava (419 sem CSRF)');
 
+echo "sessão anônima da vitrine: cookie só do host, nunca user_id; avaliar com CSRF válido -> 302\n";
+$vjar = tempnam(sys_get_temp_dir(), 'vjar');
+$r = t_http('GET', $base . '/', null, ['Host: ' . $dom], $vjar);
+t_eq(200, $r['status'], 'GET / no domínio do grupo: 200');
+t_ok(preg_match_all('/^Set-Cookie:[^\r\n]*/mi', $r['headers'], $sc) > 0, 'GET /: abre sessão anônima (Set-Cookie)');
+t_ok(array_filter($sc[0], static fn (string $c): bool => stripos($c, 'domain=') !== false) === [], 'Set-Cookie sem Domain= (cookie só do host do grupo)');
+preg_match('/name="_csrf" value="([^"]+)"/', $r['body'], $tm) || preg_match('/"csrf":"([^"]+)"/', $r['body'], $tm);
+$vcsrf = $tm[1] ?? '';
+t_ok($vcsrf !== '', 'vitrine traz token CSRF');
+$r = t_http('POST', $base . "/imoveis/$h/avaliar", http_build_query(['_csrf' => $vcsrf, 'author' => 'Hóspede V', 'score' => '9', 'comment' => 'Ótimo']), ['Host: ' . $dom, 'Content-Type: application/x-www-form-urlencoded'], $vjar);
+t_eq(302, $r['status'], 'POST /imoveis/<h>/avaliar com CSRF válido no domínio do grupo: 302');
+t_ok(str_starts_with((string) $loc($r), "/imoveis/$h"), 'avaliar: volta para o imóvel no mesmo host (relativo)');
+$n = (int) db()->query("SELECT COUNT(*) FROM reviews WHERE author = 'Hóspede V'")->fetchColumn();
+t_eq(1, $n, 'avaliação gravada');
+foreach (['/entrar', '/cadastro'] as $p) {
+    t_http('POST', $base . $p, http_build_query(['_csrf' => $vcsrf, 'email' => $owner['email'], 'password' => $owner['password']]), ['Host: ' . $dom, 'Content-Type: application/x-www-form-urlencoded'], $vjar);
+}
+t_http('POST', $base . '/api/sessao', json_encode(['email' => $owner['email'], 'password' => $owner['password']]), ['Host: ' . $dom, 'Content-Type: application/json', 'X-CSRF-Token: ' . $vcsrf], $vjar);
+preg_match('/\t(PHPSESSID|[A-Za-z0-9_]+)\t(\S+)$/m', (string) file_get_contents($vjar), $vm);
+$sessFile = CL_ROOT . '/storage/sessions/sess_' . ($vm[2] ?? 'x');
+t_ok(is_file($sessFile), 'sessão do host do grupo existe no disco');
+t_ok(!str_contains((string) @file_get_contents($sessFile), 'user_id'), 'sessão do host do grupo nunca tem user_id (mesmo após tentar login)');
+@unlink($vjar);
+
 echo "plataforma, Host desconhecido e domínio não verificado: nada muda\n";
 foreach (['127.0.0.1', 'desconhecido.example.org', 'pendente.example.com'] as $host) {
     t_eq(200, $req('GET', '/entrar', $host)['status'], "$host: GET /entrar 200");
