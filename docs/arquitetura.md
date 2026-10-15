@@ -232,7 +232,7 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | GET | `/busca`, `/busca/mapa` | — | 200 |
 | GET | `/g/<slug>/`, `/g/<slug>/busca`, `/g/<slug>/busca/mapa`, `/g/<slug>/imoveis/<h>` | — | 200; grupo inexistente ou de outro domínio verificado → 404; `/g/<slug>` sem barra → 302 com a query |
 | GET | `/imoveis/<h>` | — | 200; inativo/inexistente → 404 |
-| POST | `/imoveis/<h>/avaliar` | C, RL | 302; inativo → 404 |
+| POST | `/imoveis/<h>/avaliar` | C, RL | 302; nota fora de 1..10 → 422 com a mensagem na tela; inativo → 404 |
 | GET | `/ical/<32hex>` | — | 200 `text/calendar`; imóvel inativo → 404 |
 | GET | `/imoveis/<h>/calendario.ics` | — | sempre 404 (endereço antigo desativado) |
 | POST | `/idioma` | C | 302 para o Referer do mesmo host, senão `/` |
@@ -259,7 +259,7 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | POST | `/imoveis/<h>/excluir` | S, C, dono | 302 `/painel` |
 | POST | `/imoveis/<h>/fotos` | S, C, dono, RL | 302; acima do `post_max_size` → 413 (o limite de corpo de fato é o `client_max_body_size` do nginx, definido no deploy **[não verificado no código]**) |
 | POST | `/imoveis/<h>/fotos/excluir`, `/imoveis/<h>/fotos/<id>/excluir` | S, C, dono | 302 |
-| POST | `/imoveis/<h>/fotos/capa`, `/imoveis/<h>/fotos/<id>/capa` | S, C, dono | 302 |
+| POST | `/imoveis/<h>/fotos/capa`, `/imoveis/<h>/fotos/<id>/capa` | S, C, dono | 302 (0 ou 2+ fotos, ou foto de outro imóvel: aviso de erro na tela de edição) |
 | GET/POST | `/imoveis/<h>/calendario` | S, C no POST, dono | 200 (o POST mostra a tela de novo com a mensagem; recusa como erro) |
 | POST | `/imoveis/<h>/ical/importar` | S, C, dono | 200 com a tela do calendário e a mensagem (URL vazia, título, limite, duplicado e falha de download como erro) |
 | POST | `/imoveis/<h>/ical/<id>/excluir` | S, C, dono | 302 `.../calendario` (feed inexistente: a tela mostra o erro, nada muda) |
@@ -312,14 +312,14 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | GET | `/api/ceps` | RL | 200; 422 formato; 404 não achado |
 | GET | `/api/busca` | RL | 200 `{items, facets, searched, filters}` (coordenadas públicas deslocadas, nunca as exatas) |
 | GET | `/api/imoveis/<h>` | — | 200; 404 |
-| POST | `/api/imoveis/<h>/avaliar` | C, RL | 201; 422; 404 |
+| POST | `/api/imoveis/<h>/avaliar` | C, RL | 201; 422 `{error, erros: {score}}`; 404 |
 | GET | `/api/painel` | S | 200 |
 | GET | `/api/casas` | S | 200 |
 | POST | `/api/casas` | S, C | 201; 422 |
 | GET / PUT / DELETE | `/api/casas/<h>` | S, dono | 200; 422 no PUT; DELETE marca `estado: inativo` |
-| POST | `/api/casas/<h>/fotos` | S, C, dono, RL | 201 |
+| POST | `/api/casas/<h>/fotos` | S, C, dono, RL | 201 `{salvas, enviadas, fotos}` |
 | DELETE | `/api/casas/<h>/fotos/<id>` | S, C, dono | 200; 404 |
-| POST | `/api/imoveis/<h>/fotos/capa` | S, C, dono | 200; 422 sem `foto_id` |
+| POST | `/api/imoveis/<h>/fotos/capa` | S, C, dono | 200; 422 `{error, erros: {foto_id}}` sem `foto_id` ou foto de outro imóvel |
 | GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |
 | POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200; 422 inválido / 409 noites travadas pela sincronização (`{error, erros: {campo: mensagem}}`) |
 | GET | `/api/imoveis/<h>/editar` | S, dono | 200 |

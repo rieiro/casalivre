@@ -785,16 +785,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    $createdPhotos = [];
-    $saved = save_uploaded_photos((int) $user['id'], $propertyId, $_FILES['fotos'] ?? [], $createdPhotos);
-    $sent = is_array($_FILES['fotos']['name'] ?? null) ? count(array_filter($_FILES['fotos']['name'], static fn ($name) => $name !== '')) : 0;
-    if ($sent === 0) {
-        $_SESSION['upload_notice'] = 'Nenhuma foto chegou. O envio é maior do que o limite do sistema.';
-    } elseif ($saved < $sent) {
-        $limit = Settings::int('max_photos_per_property') ?: 40;
-        $_SESSION['upload_notice'] = "Salvas $saved de $sent fotos. Cada imóvel pode ter até $limit fotos, e cada arquivo até 16 MB (jpg, png ou webp).";
+    $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
+    $res->registrar();
+    if ($res->mensagem !== null) {
+        $_SESSION['upload_notice'] = $res->mensagem;
     }
-    activity(ActivityLog::PHOTO_ADD, ['imovel_id' => $propertyId, 'enviadas' => $sent, 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
@@ -939,10 +934,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
-    // Web: 0 ou 2+ fotos marcadas são ignoradas em silêncio (a API exige foto_id; ver CoverSet).
-    if (count($ids) === 1) {
-        CoverSet::run($propertyId, $ids[0])->registrar();
+    // Validação em CoverSet (exatamente uma foto do imóvel); o erro aparece na tela de edição.
+    $res = CoverSet::run($propertyId, (array) ($_POST['fotos'] ?? []));
+    $res->registrar();
+    if ($res->tipo !== 'ok') {
+        $_SESSION['upload_notice'] = $res->mensagem;
     }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
@@ -952,7 +948,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    CoverSet::run($propertyId, (int) $m[2])->registrar();
+    $res = CoverSet::run($propertyId, [(int) $m[2]]);
+    $res->registrar();
+    if ($res->tipo !== 'ok') {
+        $_SESSION['upload_notice'] = $res->mensagem;
+    }
     redirect('/imoveis/' . $m[1] . '/editar');
 }
 
@@ -971,13 +971,19 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
         http_response_code(404);
         exit('Imóvel não encontrado.');
     }
-    // Web: nota inválida é ignorada em silêncio e segue para o redirect (a API responde 422; ver ReviewAdd).
-    ReviewAdd::run(
+    $res = ReviewAdd::run(
         (int) $property['id'],
-        (int) ($_POST['score'] ?? 0),
+        $_POST['score'] ?? null,
         trim((string) ($_POST['author'] ?? 'Hóspede')),
         trim((string) ($_POST['comment'] ?? ''))
-    )->registrar();
+    );
+    $res->registrar();
+    if ($res->tipo === 'invalido') {
+        // Nota inválida: mostra o erro (como o 422 da API), nada gravado.
+        http_response_code(422);
+        view('message', ['title' => t('review.not_published'), 'message' => (string) $res->mensagem]);
+        return null;
+    }
     $back = safe_search_return((string) ($_POST['volta'] ?? ''));
     redirect('/imoveis/' . $m[1] . ($back !== '/' ? '?' . http_build_query(['volta' => $back]) : ''));
 }
