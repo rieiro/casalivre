@@ -37,11 +37,11 @@ final class SearchService
     {
         $localidade = $filters['localidade'];
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
-        $source = HouseRepository::all();
         if (array_key_exists('grupo', $filters)) {
             $group = GroupRepository::findBySlugValid($filters['grupo']);
-            $gid = $group === null ? 0 : (int) $group['id'];
-            $source = $gid === 0 ? [] : array_values(array_filter($source, static fn (array $p): bool => (int) ($p['group_id'] ?? 0) === $gid));
+            $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
+        } else {
+            $source = HouseRepository::all();
         }
         $nights = nights_between($filters['checkin'], $filters['checkout']);
         $centerFold = $center ? fold((string) $center['name']) : '';
