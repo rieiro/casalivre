@@ -15,6 +15,20 @@ return [
         '--line' => '#5c5c5c',
         '--bg' => '#fff',
     ],
+    // Cores do mapa por papel (ver MapStyle::ROLES); só #rgb/#rrggbb.
+    'mapa' => [
+        'fundo' => '#ffffff',
+        'terra' => '#ffffff',
+        'agua' => '#7fb2ff',
+        'agua_rotulo' => '#0033aa',
+        'parque' => '#8fd19e',
+        'edificio' => '#bdbdbd',
+        'via' => '#ffffff',
+        'via_contorno' => '#333333',
+        'limite' => '#000000',
+        'rotulo' => '#000000',
+        'rotulo_halo' => '#ffffff',
+    ],
     'tokens_escuro' => [
         '--ink' => '#fff',
         '--ink-strong' => '#fff',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/AssetManifest.php';
 require_once __DIR__ . '/Settings.php';
+require_once __DIR__ . '/MapStyle.php';
 
 /**
  * Temas da plataforma (Sprint 3, Etapa 2).
@@ -74,7 +75,7 @@ final class Theme
 
     /**
      * brand.php do tema, validado. Só lê temas da lista (ou o padrão), nunca um caminho vindo de fora.
-     * @return array{nome:string,rotulo:string,logo:?string,favicon:?string,tokens:array<string,string>,tokens_escuro:array<string,string>}
+     * @return array{nome:string,rotulo:string,logo:?string,favicon:?string,tokens:array<string,string>,tokens_escuro:array<string,string>,mapa:array<string,string>}
      */
     public static function brand(?string $name = null): array
     {
@@ -106,6 +107,8 @@ final class Theme
             'favicon' => $asset($raw['favicon'] ?? null),
             'tokens' => self::cleanTokens($raw['tokens'] ?? []),
             'tokens_escuro' => self::cleanTokens($raw['tokens_escuro'] ?? []),
+            // Cores do mapa por papel (Etapa 3); vazio = estilo base.
+            'mapa' => MapStyle::clean($raw['mapa'] ?? []),
         ];
     }
 
@@ -132,6 +135,47 @@ final class Theme
             $out[$k] = $v;
         }
         return $out;
+    }
+
+    /**
+     * Erros de um brand.php para o build (scripts/build-assets.php falha com eles): entradas de tokens,
+     * tokens_escuro e mapa que readBrand descartaria em silêncio. readBrand continua filtrando em tempo de execução.
+     * @return list<string>
+     */
+    public static function brandErrors(string $file): array
+    {
+        $name = basename(dirname($file));
+        $raw = is_file($file) ? require $file : [];
+        if (!is_array($raw)) {
+            return ["tema $name: brand.php não retorna um array"];
+        }
+        $show = static fn (mixed $v): string => is_string($v) ? "'" . $v . "'" : (string) json_encode($v);
+        $errors = [];
+        foreach (['tokens', 'tokens_escuro'] as $group) {
+            $tokens = $raw[$group] ?? [];
+            if (!is_array($tokens)) {
+                $errors[] = "tema $name: $group deve ser um array";
+                continue;
+            }
+            foreach ($tokens as $k => $v) {
+                if (self::cleanTokens([$k => $v]) === []) {
+                    $errors[] = "tema $name: $group.$k inválido ({$show($v)}), use nome --[a-z0-9-] e valor CSS simples (sem ; { } < > \\ aspas, url(, @import, expression( ou comentário)";
+                }
+            }
+        }
+        $mapa = $raw['mapa'] ?? [];
+        if (!is_array($mapa)) {
+            $errors[] = "tema $name: mapa deve ser um array";
+        } else {
+            foreach ($mapa as $role => $color) {
+                if (!is_string($role) || !isset(MapStyle::ROLES[$role])) {
+                    $errors[] = "tema $name: mapa.$role papel desconhecido, use um de: " . implode(', ', array_keys(MapStyle::ROLES));
+                } elseif (MapStyle::clean([$role => $color]) === []) {
+                    $errors[] = "tema $name: mapa.$role inválido ({$show($color)}), use #rgb ou #rrggbb";
+                }
+            }
+        }
+        return $errors;
     }
 
     /** CSS gerado de um brand validado. */
@@ -164,5 +208,20 @@ final class Theme
     public static function logoUrl(array $brand, string $name): ?string
     {
         return $brand['logo'] === null ? null : asset_url(self::assetPath($name . '/' . $brand['logo']));
+    }
+
+    /**
+     * Estilo do mapa do tema: o gerado (/assets/themes/<nome>/map-style.json) se estiver no manifesto; senão o
+     * estilo base. Tema fora da lista vale como o padrão.
+     */
+    public static function mapStylePath(?string $name = null, ?array $manifest = null): string
+    {
+        $manifest ??= AssetManifest::load();
+        $name ??= self::current();
+        if (!self::isValidName($name) || !in_array($name, self::available($manifest), true)) {
+            $name = self::DEFAULT;
+        }
+        $path = MapStyle::themePath($name);
+        return isset($manifest[$path]) ? $path : MapStyle::BASE;
     }
 }

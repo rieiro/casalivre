@@ -18,7 +18,7 @@ $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) 
          data-query="<?= e($query) ?>"
          data-center="<?= e($center) ?>"
          data-tiles="/tiles/brasil.pmtiles"
-         data-style="<?= e(asset_url('/assets/map/style-light.json')) ?>"
+         data-style="<?= e(asset_url(Theme::mapStylePath())) ?>"
          data-worker="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js')) ?>"
          aria-label="Mapa dos imóveis encontrados. A lista de resultados é a alternativa pelo teclado."></div>
     <noscript><p class="muted">O mapa precisa de JavaScript. <a href="/busca?<?= e($query) ?>">Ver a lista de resultados</a>.</p></noscript>

@@ -5,8 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/Theme.php';
 
 /**
- * Build dos temas (scripts/build-assets.php): themes/<nome>/brand.php -> public/assets/themes/<nome>.css e
- * <nome>/<logo|favicon>. expected() calcula uma vez os arquivos esperados; build() grava e remove órfãos,
+ * Build dos temas (scripts/build-assets.php): themes/<nome>/brand.php -> public/assets/themes/<nome>.css,
+ * <nome>/<logo|favicon> e <nome>/map-style.json (só se o tema declarar 'mapa'). expected() calcula uma vez os arquivos esperados; build() grava e remove órfãos,
  * outdated() (--check) compara com o disco sem gravar.
  */
 final class ThemeBuilder
@@ -14,6 +14,18 @@ final class ThemeBuilder
     public static function outDir(): string
     {
         return AssetManifest::publicDir() . Theme::assetPath();
+    }
+
+    /** Erros de todos os brand.php (vazio = build pode seguir). @return list<string> */
+    public static function errors(): array
+    {
+        $errors = [];
+        foreach (glob(Theme::sourceDir() . '/*/brand.php') ?: [] as $file) {
+            if (Theme::isValidName(basename(dirname($file)))) {
+                array_push($errors, ...Theme::brandErrors($file));
+            }
+        }
+        return $errors;
     }
 
     /**
@@ -32,6 +44,9 @@ final class ThemeBuilder
             }
             $brand = Theme::readBrand($file);
             $files["$out/$name.css"] = Theme::css($brand);
+            if ($brand['mapa'] !== []) {
+                $files[AssetManifest::publicDir() . MapStyle::themePath($name)] = MapStyle::encode(MapStyle::generate(self::baseStyle(), $brand['mapa']));
+            }
             foreach (['logo', 'favicon'] as $key) {
                 if ($brand[$key] !== null) {
                     $src = dirname($file) . '/' . $brand[$key];
@@ -48,6 +63,16 @@ final class ThemeBuilder
         }
         sort($names, SORT_STRING);
         return ['names' => $names, 'files' => $files];
+    }
+
+    /** Estilo base do mapa (lido uma vez por build). */
+    private static function baseStyle(): stdClass
+    {
+        static $base = null;
+        if ($base === null) {
+            $base = MapStyle::decode((string) file_get_contents(AssetManifest::publicDir() . MapStyle::BASE));
+        }
+        return $base;
     }
 
     /** Arquivos gerados no disco que não fazem parte do esperado (temas removidos). @return list<string> */
