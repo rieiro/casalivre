@@ -50,8 +50,17 @@ function http(string $method, string $path, ?array $json = null, string $jar = '
 }
 function csrf(string $jar, string $page): string
 {
-    [, $h] = http('GET', $page, null, $jar);
-    return preg_match('/name="_csrf" value="([^"]+)"/', $h, $m) ? $m[1] : '';
+    // O token fica na sessão (cookie no jar); vem do campo oculto _csrf da página (sem seguir redirecionamento).
+    [$st, $h] = http('GET', $page, null, $jar);
+    $t = preg_match('/name="_csrf" value="([^"]+)"/', $h, $m) ? html_entity_decode($m[1]) : '';
+    if ($t === '') { fwrite(STDERR, "sem _csrf em $page (HTTP $st)\n"); }
+    return $t;
+}
+function pdo(string $file): PDO
+{
+    $p = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $p->setAttribute(PDO::ATTR_TIMEOUT, 20);
+    return $p;
 }
 
 // Limpa sobras do limite por IP deixadas pelo CASOS/standalone (storage/cache/ratelimit), para o login abaixo não cair em 429.
@@ -64,40 +73,50 @@ if (is_file($appDb)) {
     (new PDO('sqlite:' . $appDb))->exec("DELETE FROM login_rate_limit WHERE ip IN ('127.0.0.1', '::1')");
 }
 
-// Preparação: dono + imóvel ativo (export público gera activity_log a cada GET)
+// Preparação (sem criar imóvel): usa a massa dos seeds.
+// 1) Sessão + CSRF: conta própria do teste, cadastrada pela API, ativada pelo link do mail-dev.log (mail-worker)
+//    e logada com o mesmo cookie; confere /api/users/eu = 200 (o 419 antigo vinha de token lido de um redirect).
+$appDb = pdo("$root/storage/db/casalivre.sqlite");
 $jar = tempnam(sys_get_temp_dir(), 'conc');
 $email = 'conc' . bin2hex(random_bytes(3)) . '@casalivre.test';
-[$st, , $j] = http('POST', '/api/users', ['name' => 'Conc Teste', 'cpf' => '12345678901', 'cep' => '88010000', 'address_number' => '1',
+$cep = (string) ($appDb->query("SELECT cep FROM ceps WHERE street <> '' AND city LIKE 'Florian%' ORDER BY cep LIMIT 1")->fetchColumn() ?: '88010000');
+[$stCad] = http('POST', '/api/users', ['name' => 'Conc Teste', 'cpf' => '12345678909', 'cep' => $cep, 'address_number' => '1',
     'phone' => '48999990000', 'email' => $email, 'password' => 'Senha-segura1', 'password_confirm' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/cadastro')]);
+ok($stCad === 201, "preparação: cadastro pela API com CSRF da sessão ($stCad)");
 $link = link_ativacao($email);
-http('GET', parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY), null, $jar);
-http('POST', '/api/sessao', ['email' => $email, 'password' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]);
-[$st, , $j] = http('POST', '/api/casas', ['title' => 'Casa Concorrência', 'description' => str_repeat('Casa ampla com varanda e vista. ', 8),
-    'city' => 'Florianópolis', 'cep' => '88010000', 'address_number' => '5', 'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2,
-    'nightly_price' => '200', 'checkin_time' => '15:00', 'checkout_time' => '11:00', 'min_nights' => 1], $jar, ['X-CSRF-Token: ' . csrf($jar, '/imoveis/novo')]);
-$hash = (string) ($j['casa']['id'] ?? '');
-ok($hash !== '', "preparação: imóvel criado ($st)");
-$icsPath = "/api/imoveis/$hash/calendario.ics";
-[$stIcs] = http('GET', $icsPath);
-if ($stIcs !== 200) {
-    // Depois do PR #1 o export por public_hash dá 404: usa o link com token /ical/{hash32} da tela do calendário.
-    [, , , $cal] = http('GET', "/imoveis/$hash/calendario", null, $jar) + [null, null, null, ''];
-    if (!is_string($cal) || !preg_match('#/ical/([a-f0-9]{32})#', $cal, $mm)) {
-        $c = curl_init($base . "/imoveis/$hash/calendario"); curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEFILE => $jar, CURLOPT_COOKIEJAR => $jar]);
-        $cal = (string) curl_exec($c); preg_match('#/ical/([a-f0-9]{32})#', $cal, $mm);
-    }
-    if (!empty($mm[1])) { $icsPath = "/ical/{$mm[1]}"; [$stIcs] = http('GET', $icsPath); }
-    echo "    (info) export público por token: $icsPath -> $stIcs\n";
+ok($link !== '', 'preparação: link de ativação no mail-dev.log após o mail-worker');
+if ($link !== '') { http('GET', parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY), null, $jar); }
+[$stLogin] = http('POST', '/api/sessao', ['email' => $email, 'password' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]);
+[$stEu] = http('GET', '/api/users/eu', null, $jar);
+ok($stLogin === 200 && $stEu === 200, "preparação: login com cookie + CSRF (sessao $stLogin, /api/users/eu $stEu)");
+
+// 2) Export .ics: ids reais da massa (5 imóveis ativos dos seeds, um a cada ~1/5 da tabela).
+//    O ical_hash é criado sob demanda (HouseRepository::ensureIcalHash, o mesmo da tela do calendário do dono);
+//    os seeds não o preenchem, então a preparação o materializa pelo próprio código do app num processo à parte.
+$ids = array_map('intval', $appDb->query("SELECT id FROM properties WHERE status = 'active' ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
+$pick = [];
+for ($k = 0; $k < 5 && $ids !== []; $k++) { $pick[] = $ids[intdiv($k * count($ids), 5)]; }
+$pick = array_values(array_unique($pick));
+$code = 'foreach (["Db", "UserRepository", "HouseRepository", "helpers"] as $f) { require_once ' . var_export("$root/src/", true) . ' . $f . ".php"; } foreach (array_slice($argv, 1) as $id) { echo HouseRepository::ensureIcalHash(HouseRepository::find((int) $id) ?? []), "\n"; }';
+$icsPaths = [];
+if ($pick !== []) {
+    $out = (string) shell_exec('cd ' . escapeshellarg($root) . ' && ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($code) . ' ' . implode(' ', $pick) . ' 2>&1');
+    foreach (preg_split('/\R/', trim($out)) ?: [] as $h) { if (preg_match('/^[a-f0-9]{32}$/', $h)) { $icsPaths[] = "/ical/$h"; } }
 }
+echo '    (info) imóveis da massa usados no export: ids ' . implode(',', $pick) . "\n";
+ok($icsPaths !== [], 'preparação: ' . count($icsPaths) . ' imóveis ativos da massa com link .ics');
+$icsPath = $icsPaths[0] ?? '/ical/' . str_repeat('0', 32);
+$stIcs = 0;
+foreach ($icsPaths as $pp) { [$stIcs, $bIcs] = http('GET', $pp); if ($stIcs !== 200 || !str_starts_with($bIcs, 'BEGIN:VCALENDAR')) { break; } }
+echo "    (info) export .ics (token /ical/{hash32}) de " . count($icsPaths) . " imóveis da massa -> $stIcs\n";
 $icsGeraAtividade = $stIcs === 200;
-echo "    (info) export por public_hash nesta ref: $stIcs — " . ($icsGeraAtividade ? 'usado como gerador de activity_log' : 'activity_log conferido só por consistência') . "\n";
 
 $apiDir = "$root/storage/logs/api";
 $actDb = "$root/storage/logs/activity.sqlite";
 $phpLog = "$root/storage/logs/php.log";
 $errLog = "$root/storage/error.log";
 $countAct = static function () use ($actDb): int {
-    $pdo = new PDO('sqlite:' . $actDb); $pdo->setAttribute(PDO::ATTR_TIMEOUT, 20);
+    $pdo = pdo($actDb);
     // CALENDAR_EXPORT = 15 (src/ActivityLog.php): gravado por /ical/{hash} (public/index.php) e pelo export da API.
     return (int) $pdo->query('SELECT COUNT(*) FROM activity_log WHERE action_code = 15')->fetchColumn();
 };
@@ -125,8 +144,9 @@ for ($r = 1; $r <= $rounds; $r++) {
     // requisições HTTP em paralelo (curl_multi)
     $mh = curl_multi_init();
     $queue = range(0, $nReq - 1); $active = []; $icsSent = 0; $sent = 0; $apiIds = [];
-    $mk = static function (int $i) use ($base, $hash, $icsPath, $tag, &$icsSent, &$apiIds, $icsGeraAtividade) {
-        $paths = ["$icsPath?t=$tag", '/api/cidades?q=flor', '/api/rota-inexistente', '/api/casas'];
+    $mk = static function (int $i) use ($base, $icsPaths, $icsPath, $tag, &$icsSent, &$apiIds, $icsGeraAtividade) {
+        $ics = $icsPaths ? $icsPaths[intdiv($i, 4) % count($icsPaths)] : $icsPath;
+        $paths = ["$ics?t=$tag", '/api/cidades?q=flor', '/api/rota-inexistente', '/api/casas'];
         $so = getenv('SO_ICS') === '1';
         $p = $so ? $paths[0] : $paths[$i % 4];
         if ($so || $i % 4 === 0) { $icsSent++; }
@@ -142,7 +162,7 @@ for ($r = 1; $r <= $rounds; $r++) {
         curl_multi_exec($mh, $running); curl_multi_select($mh, 0.05);
         while ($info = curl_multi_info_read($mh)) {
             $ch = $info['handle']; $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); $codes[$c] = ($codes[$c] ?? 0) + 1;
-            if (str_contains((string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL), '.ics')) {
+            if (str_contains((string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL), '/ical/')) {
                 $bodyX = (string) curl_multi_getcontent($ch);
                 if ($c === 200 && (!str_starts_with($bodyX, 'BEGIN:VCALENDAR') || !str_contains($bodyX, 'END:VCALENDAR'))) { $icsBad++; }
                 if ($c === 500 && str_contains((string) @file_get_contents("$root/storage/error.log"), 'database is locked')) { $locked = true; }
@@ -178,7 +198,7 @@ for ($r = 1; $r <= $rounds; $r++) {
     // Verificação 2: activity_log — nenhuma inserção perdida durante DELETE/VACUUM
     $actAfter = $countAct();
     // Exatamente 1 linha CALENDAR_EXPORT no ActivityLog por requisição .ics (nem perdida, nem duplicada).
-    ok($icsGeraAtividade, "rodada $r: export .ics ($icsPath) responde 200 na preparação");
+    ok($icsGeraAtividade, "rodada $r: export .ics (" . count($icsPaths) . " imóveis da massa) responde 200 na preparação");
     ok($actAfter - $actBefore === $icsSent && ($codes[500] ?? 0) === 0, "rodada $r: ActivityLog com exatamente 1 CALENDAR_EXPORT por requisição .ics (" . ($actAfter - $actBefore) . "/$icsSent; HTTP 500: " . ($codes[500] ?? 0) . ")");
     // Verificação 3: php.log e error.log reescritos pela retenção — nenhuma linha recente perdida/corrompida
     foreach ([[$phpLog, 'PHP'], [$errLog, 'ERR']] as [$file, $kind]) {
