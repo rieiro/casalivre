@@ -115,7 +115,7 @@ flowchart LR
 | Middleware | Recusa com | Detalhe conferido |
 |---|---|---|
 | `ApiRateLimit` | **429** + `Retry-After` | Tabela da seção 7. |
-| `BodyLimit` | **411** / **413** | Só em POST/PUT/PATCH/DELETE. `multipart/form-data` fica de fora (limitado pelo `post_max_size`). `Transfer-Encoding` ou falta de `Content-Length` → 411 (DELETE sem corpo passa). Mais de `MAX_BYTES = 1048576` (1 MiB) → 413. |
+| `BodyLimit` | **411** / **413** | Só em POST/PUT/PATCH/DELETE. `multipart/form-data` fica de fora: o limite real dele é o `client_max_body_size` do nginx **[não verificado no código]**; o `post_max_size` do PHP só é checado depois que o PHP já leu o corpo. `Transfer-Encoding` ou falta de `Content-Length` → 411 (DELETE sem corpo passa). Mais de `MAX_BYTES = 1048576` (1 MiB) → 413. |
 | `Sanitize` | — | Normaliza entradas; algumas rotas ficam "puras" (sem sanitizar). |
 | `Csrf` | **419** | Compara o token da sessão com `_csrf` do corpo ou o cabeçalho `X-CSRF-Token` (`hash_equals`). A API também confere sozinha (419 em `handle_api`). |
 | `RateLimit` | **429** + `Retry-After` | `POST /entrar` e `POST /api/sessao` com IP bloqueado (`LoginRateLimiter`). |
@@ -257,7 +257,7 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | GET | `/imoveis/<h>/editar` | S, dono | 200; alheio → 404 texto "Imóvel não encontrado." |
 | POST | `/imoveis/<h>` | S, C, dono | 302 `.../editar`; erro → 200 com o formulário |
 | POST | `/imoveis/<h>/excluir` | S, C, dono | 302 `/painel` |
-| POST | `/imoveis/<h>/fotos` | S, C, dono, RL | 302; acima do `post_max_size` → 413 |
+| POST | `/imoveis/<h>/fotos` | S, C, dono, RL | 302; acima do `post_max_size` → 413 (o limite de corpo de fato é o `client_max_body_size` do nginx, definido no deploy **[não verificado no código]**) |
 | POST | `/imoveis/<h>/fotos/excluir`, `/imoveis/<h>/fotos/<id>/excluir` | S, C, dono | 302 |
 | POST | `/imoveis/<h>/fotos/capa`, `/imoveis/<h>/fotos/<id>/capa` | S, C, dono | 302 |
 | GET/POST | `/imoveis/<h>/calendario` | S, C no POST, dono | 200 (o POST mostra a tela de novo com a mensagem) |
@@ -294,7 +294,7 @@ Nenhuma rota de admin, grupo ou domínio tem limite de taxa (são autenticadas e
 ## 6. Rotas da API
 
 Respostas em JSON; erro sempre como `{"error": "..."}`. Toda escrita confere o CSRF (419).
-Sem sessão, rotas de usuário/casa devolvem 401.
+Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fotos/capa|ical/*)` vem só de `api_require_user`, chamado na própria rota: essas rotas **não** estão em `casa_privado`, então ali há uma camada só. (`/api/users/eu*` e `/api/casas*` têm também a camada `Auth` do pipeline e a trava geral em `handle_api`.)
 
 | Método | Caminho | Auth | Respostas |
 |---|---|---|---|
@@ -320,9 +320,10 @@ Sem sessão, rotas de usuário/casa devolvem 401.
 | POST | `/api/casas/<h>/fotos` | S, C, dono, RL | 201 |
 | DELETE | `/api/casas/<h>/fotos/<id>` | S, C, dono | 200; 404 |
 | POST | `/api/imoveis/<h>/fotos/capa` | S, C, dono | 200; 422 sem `foto_id` |
-| GET / POST | `/api/imoveis/<h>/calendario` | S, dono | 200 |
+| GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |
+| POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200 |
 | GET | `/api/imoveis/<h>/editar` | S, dono | 200 |
-| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | 200; 422 URL/limite/título; 409 feed duplicado |
+| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | 200; falha ao baixar o feed → também 200 (`ok: true`, `status: NOK`, mensagem); 422 URL/limite/título; 409 feed duplicado |
 | DELETE | `/api/imoveis/<h>/ical/<id>` | S, C, dono | 200; 404 |
 | GET | `/api/ical/<32hex>` (com ou sem `.ics`) | — | 200; 404 |
 | GET | `/api/imoveis/<h>/calendario.ics` | — | sempre 404 |
