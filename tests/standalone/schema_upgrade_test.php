@@ -1,12 +1,12 @@
 <?php
 // Upgrade de schema: banco existente em v2 (antes do #21), v3 (#21) e v4 (#23) sobe para v14 com os seeds
-// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v8), seed sem err.email_taken (v9) e err.profile_required (v10) e as tabelas de grupos + properties.group_id (v11) e group_domains.verify_token/verified_at (v12) e last_check_at/fail_count (v13) e auth.verify_* da ativação por POST (v14) e cal.url_required/cal.feed_missing (v15) e cal.feed_removed/cal.url_https (v17), na mesma lista de chaves.
+// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v8), seed sem err.email_taken (v9) e err.profile_required (v10) e as tabelas de grupos + properties.group_id (v11) e group_domains.verify_token/verified_at (v12) e last_check_at/fail_count (v13) e auth.verify_* da ativação por POST (v14) e cal.url_required/cal.feed_missing (v15) e photo.*/review.* da paridade capa/avaliação/fotos (v16) e cal.feed_removed/cal.url_https (v17), na mesma lista de chaves.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 t_eq(17, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 17');
 $v3 = ['form.beds_add_title', 'form.room_summary_title', 'form.bed_one', 'form.bed_many', 'form.script_error'];
 $v4 = ['err.field_type', 'js.net_error', 'js.request_failed'];
-$v14 = ['auth.verify_title', 'auth.verify_hint', 'auth.verify_button', 'cal.url_required', 'cal.feed_missing', 'cal.feed_removed', 'cal.url_https'];
+$v14 = ['auth.verify_title', 'auth.verify_hint', 'auth.verify_button', 'cal.url_required', 'cal.feed_missing', 'photo.cover_one', 'photo.none_arrived', 'photo.partial', 'review.score_range', 'review.not_published', 'cal.feed_removed', 'cal.url_https'];
 $langs = ['pt-BR', 'en', 'es'];
 
 foreach ([2 => array_merge($v3, $v4, $v14), 3 => array_merge($v4, $v14), 4 => $v14] as $from => $missing) {
