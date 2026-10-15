@@ -126,22 +126,20 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        // API: não reenvia ativação (SNAPSHOT, ver LoginAttempt). Conta apagada/inativa grava LOGIN_FAIL com o motivo
-        // (como a web), mas responde exatamente como senha errada (401 + err.bad_login): a resposta não revela o estado.
+        // API: não reenvia ativação (SNAPSHOT, ver LoginAttempt). Conta apagada/inativa grava LOGIN_FAIL com o motivo,
+        // como a web, e responde 403 com a mensagem específica, que só existe com a senha certa (senha errada: 401).
         $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), ensureActivation: false);
         $res->registrar();
-        if ($res->tipo === 'ok') {
-            json_out(200, ['user' => api_public_user($res->dados['user'])]);
-        }
-        if ($res->tipo === 'deleted' || $res->tipo === 'inactive') {
-            json_out(401, ['error' => t('err.bad_login')]);
-        }
         $status = match ($res->tipo) {
+            'ok' => 200,
             'locked' => 423,
             'rate_limited' => 429,
             'bad' => 401,
-            default => 403, // pending
+            default => 403, // deleted | inactive | pending
         };
+        if ($status === 200) {
+            json_out(200, ['user' => api_public_user($res->dados['user'])]);
+        }
         json_out($status, ['error' => $res->mensagem]);
     }
 

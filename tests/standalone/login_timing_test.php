@@ -1,7 +1,7 @@
 <?php
 // Login sem enumeração por tempo: e-mail inexistente e conta bloqueada fazem um password_verify fictício
 // (mesmo algoritmo/opções dos hashes reais, hash guardado em cache). err.deleted/err.inactive só com a senha
-// certa, e só na web (a API responde genérico, #44). Contagem de falhas (conta e IP) inalterada.
+// certa. Contagem de falhas (conta e IP) inalterada.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Api.php';
@@ -100,8 +100,7 @@ foreach (['apagado' => 'err.deleted', 'inactive' => 'err.inactive'] as $status =
     $r = $api($x['email'], 'errada');
     t_eq([401, t('err.bad_login')], [$r['status'], $r['json']['error'] ?? null], "API $status + senha errada: genérico 401");
     $r = $api($x['email'], $x['password']);
-    // #44: na API, senha certa em conta apagada/inativa responde igual a senha errada (o motivo vai só para o LOGIN_FAIL).
-    t_eq([401, t('err.bad_login')], [$r['status'], $r['json']['error'] ?? null], "API $status + senha certa: genérico 401 (sem $key)");
+    t_eq([403, account_text($status === 'apagado' ? 'deleted' : 'inactive')], [$r['status'], $r['json']['error'] ?? null], "API $status + senha certa: $key");
     $wj = tempnam(sys_get_temp_dir(), 'jar');
     $r = c_form($base, '/entrar', ['_csrf' => c_csrf($base, $wj), 'email' => $x['email'], 'password' => 'errada'], $wj);
     t_ok(str_contains($r['body'], e(t('err.bad_login'))) && !str_contains($r['body'], e(t($key))), "web $status + senha errada: genérico");
