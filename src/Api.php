@@ -374,7 +374,7 @@ function handle_api(string $path, string $method): void
         }
         $res = ReviewAdd::run(
             (int) $house['id'],
-            (int) ($body['score'] ?? 0),
+            $body['score'] ?? null,
             trim((string) ($body['author'] ?? 'Hóspede')),
             trim((string) ($body['comment'] ?? ''))
         );
@@ -418,7 +418,7 @@ function handle_api(string $path, string $method): void
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
         // Validação em CoverSet (a mesma da web): foto_id do próprio imóvel; senão 422 com erros.foto_id.
-        $res = CoverSet::run((int) $property['id'], [(int) ($body['foto_id'] ?? 0)]);
+        $res = CoverSet::run((int) $property['id'], [$body['foto_id'] ?? null]);
         $res->registrar();
         if ($res->tipo !== 'ok') {
             json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros']]);

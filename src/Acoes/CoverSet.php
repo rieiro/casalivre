@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once __DIR__ . '/InteiroBruto.php';
 
 /**
  * Definir a foto de capa (web POST /imoveis/{hash}/fotos/capa e /fotos/{id}/capa; API POST .../fotos/capa).
@@ -12,20 +13,38 @@ require_once __DIR__ . '/Resultado.php';
  */
 final class CoverSet
 {
-    public const ERRO = 'Marque exatamente uma foto deste imóvel para ser a capa.';
+    /** Chave da mensagem de erro (pt-BR/en/es em database/messages.php). */
+    public const ERRO = 'photo.cover_one';
 
-    /** @param list<int> $photoIds ids marcados (web) ou [foto_id] (API) */
+    /**
+     * @param array<mixed> $photoIds valores BRUTOS: ids marcados (web) ou [foto_id] (API). Cada um precisa ser int
+     * ou string só com dígitos (InteiroBruto), validado antes de qualquer cast: 1.5, "5abc", "1e1", " 5", true ou
+     * array recusam (nada gravado), em vez de virar um id truncado.
+     */
     public static function run(int $propertyId, array $photoIds): Resultado
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $photoIds), static fn (int $id) => $id > 0)));
+        $ids = [];
+        foreach ($photoIds as $raw) {
+            $id = InteiroBruto::parse($raw);
+            if ($id === null || $id < 1) {
+                return self::invalido();
+            }
+            $ids[$id] = $id;
+        }
+        $ids = array_values($ids);
         $own = array_map('intval', array_column(PhotoRepository::list($propertyId), 'id'));
         if (count($ids) !== 1 || !in_array($ids[0], $own, true)) {
-            return new Resultado('invalido', self::ERRO, ['erros' => ['foto_id' => self::ERRO]]);
+            return self::invalido();
         }
         $changed = PhotoRepository::makePrimary($propertyId, $ids[0]);
         $events = $changed !== []
             ? [[ActivityLog::PHOTO_COVER, ['imovel_id' => $propertyId], array_column($changed, 'old'), array_column($changed, 'new')]]
             : [];
         return new Resultado('ok', null, [], $events);
+    }
+
+    private static function invalido(): Resultado
+    {
+        return new Resultado('invalido', t(self::ERRO), ['erros' => ['foto_id' => t(self::ERRO)]]);
     }
 }

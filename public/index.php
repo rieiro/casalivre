@@ -973,7 +973,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
     }
     $res = ReviewAdd::run(
         (int) $property['id'],
-        (int) ($_POST['score'] ?? 0),
+        $_POST['score'] ?? null,
         trim((string) ($_POST['author'] ?? 'Hóspede')),
         trim((string) ($_POST['comment'] ?? ''))
     );
@@ -981,7 +981,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
     if ($res->tipo === 'invalido') {
         // Nota inválida: mostra o erro (como o 422 da API), nada gravado.
         http_response_code(422);
-        view('message', ['title' => 'Avaliação não publicada', 'message' => (string) $res->mensagem]);
+        view('message', ['title' => t('review.not_published'), 'message' => (string) $res->mensagem]);
         return null;
     }
     $back = safe_search_return((string) ($_POST['volta'] ?? ''));

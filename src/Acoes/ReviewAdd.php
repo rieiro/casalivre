@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once __DIR__ . '/InteiroBruto.php';
 
 /**
  * Avaliação de imóvel (web POST /imoveis/{hash}/avaliar e API POST /api/imoveis/{hash}/avaliar).
@@ -10,13 +11,18 @@ require_once __DIR__ . '/Resultado.php';
  * Autor vazio vira 'Hóspede'. A existência/status do imóvel é checada no adaptador (404 em cada formato).
  * Nota inválida: dados['erros'] = ['score' => mensagem]; a web mostra o erro (422, tela de mensagem) e a API
  * responde 422 com os mesmos erros.
+ * $score chega BRUTO (POST/JSON) e é validado antes de qualquer cast (InteiroBruto): só int ou string ^\d+$;
+ * 1.5, 10.5, "5abc", "1e1", " 5", true ou array recusam, em vez de virar uma nota truncada.
  */
 final class ReviewAdd
 {
-    public static function run(int $propertyId, int $score, string $author, string $comment): Resultado
+    public const ERRO = 'review.score_range';
+
+    public static function run(int $propertyId, mixed $score, string $author, string $comment): Resultado
     {
-        if ($score < 1 || $score > 10) {
-            return new Resultado('invalido', 'Nota deve ser entre 1 e 10.', ['erros' => ['score' => 'Nota deve ser entre 1 e 10.']]);
+        $score = InteiroBruto::parse($score);
+        if ($score === null || $score < 1 || $score > 10) {
+            return new Resultado('invalido', t(self::ERRO), ['erros' => ['score' => t(self::ERRO)]]);
         }
         $author = $author === '' ? 'Hóspede' : $author;
         HouseRepository::addReview($propertyId, $author, $score, $comment);
