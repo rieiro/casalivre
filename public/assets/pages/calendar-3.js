@@ -27,12 +27,9 @@
         });
     }
 
-    // Recarrega a página com uma mensagem (ok ou erro) mostrada no topo após o reload.
-    function reloadWith(msg, tone) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('msg', msg);
-        if (tone === 'error') url.searchParams.set('tone', 'error'); else url.searchParams.delete('tone');
-        window.location.href = url.toString();
+    // Recarrega a página; o aviso (ok ou erro) vem do flash na sessão gravado pela API (sem ?msg= na URL).
+    function reloadPage() {
+        window.location.reload();
     }
 
     // Formulário principal do calendário
@@ -46,9 +43,9 @@
                 data.acao = btn.value;
             }
             try {
-                const json = await CL.api('/api/imoveis/' + ref + '/calendario', { method: 'POST', body: data, error: 'Erro ao salvar calendário' });
+                await CL.api('/api/imoveis/' + ref + '/calendario', { method: 'POST', body: data, error: 'Erro ao salvar calendário' });
                 // Recarrega para refletir as mudanças no grid
-                reloadWith(json.message || 'Salvo');
+                reloadPage();
             } catch (e) {
                 showError(calForm, e);
             }
@@ -72,7 +69,7 @@
             } catch (e) {
                 if (e.status === 502) {
                     // Feed salvo, mas o download falhou: recarrega para mostrar o feed (NOK) e o erro no topo.
-                    reloadWith(e.message, 'error');
+                    reloadPage();
                     return;
                 }
                 showError(feedForm, e);
@@ -91,21 +88,8 @@
                 await CL.api('/api/imoveis/' + ref + '/ical/' + match[1], { method: 'DELETE', error: 'Erro ao remover' });
                 window.location.reload();
             } catch (e) {
-                reloadWith(e.message, 'error');
+                reloadPage();
             }
         });
     });
-
-    // Mostra mensagem vinda da query string após reload
-    const params = new URLSearchParams(window.location.search);
-    const msg = params.get('msg');
-    if (msg) {
-        const alert = document.createElement('p');
-        alert.className = params.get('tone') === 'error' ? 'alert error' : 'alert ok';
-        alert.textContent = msg;
-        document.querySelector('.wrap').insertBefore(alert, document.querySelector('.cal-board'));
-        params.delete('msg');
-        params.delete('tone');
-        history.replaceState(null, '', window.location.pathname + (params.toString() ? '?' + params : ''));
-    }
 })();
