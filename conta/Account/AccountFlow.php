@@ -7,16 +7,11 @@ require_once __DIR__ . '/UserRepository.php';
 require_once dirname(__DIR__) . '/Auth/Password.php';
 require_once dirname(__DIR__) . '/Auth/Phone.php';
 require_once dirname(__DIR__) . '/Geo/CepRepository.php';
-require_once dirname(__DIR__, 2) . '/src/IpRateLimiter.php';
 
 final class AccountFlow
 {
     /** Enfileira (tipo, e-mail); token e link são gerados pelo worker (issueLink). @var null|callable(string, string): mixed */
     public static $enqueue = null;
-
-    /** Reenvio de ativação pelo login: no máximo RESEND_MAX por conta em RESEND_WINDOW s, somando web e API. */
-    public const RESEND_MAX = 3;
-    public const RESEND_WINDOW = 3600;
 
     /** Cadastro: e-mail, perfil e senha. */
     public static function problem(array $input): ?string
@@ -112,20 +107,22 @@ final class AccountFlow
         return ['ok' => (bool) $ok, 'email' => $ok ? (string) $user['email'] : null];
     }
 
-    public static function ensureActivation(array $user, int $minutes): array
+    /**
+     * Reenvia a ativação se o token venceu (ou não existe). $podeReenviar decide antes de enfileirar (o limite fica
+     * na ação, LoginAttempt); 'enfileirado' diz se o e-mail entrou de fato na fila (false no cooldown dela).
+     *
+     * @param null|callable(): bool $podeReenviar
+     * @return array{expires: string, enfileirado: bool}
+     */
+    public static function ensureActivation(array $user, int $minutes, ?callable $podeReenviar = null): array
     {
         $expires = (string) ($user['activation_expires_at'] ?? '');
         $token = (string) ($user['activation_token'] ?? '');
         if ($expires < date('Y-m-d H:i:s') || $token === '') {
-            // Único ponto de reenvio (login web e API): limite por conta, não por IP, para ninguém usar o login
-            // para lotar a caixa da vítima. Acima do limite não enfileira; a resposta ao cliente é a mesma.
-            $key = 'conta:' . hash('sha256', Email::normalize((string) $user['email']));
-            if (IpRateLimiter::hit('ativacao-reenvio', self::RESEND_MAX, self::RESEND_WINDOW, $key) === 0) {
-                self::notify('activation', (string) $user['email']);
-            }
-            return ['expires' => self::until($minutes)];
+            $queued = ($podeReenviar === null || $podeReenviar()) && self::notify('activation', (string) $user['email']);
+            return ['expires' => self::until($minutes), 'enfileirado' => $queued];
         }
-        return ['expires' => $expires];
+        return ['expires' => $expires, 'enfileirado' => false];
     }
 
     public static function checkLogin(string $email, string $password, int $maxFailures): array
@@ -235,11 +232,10 @@ final class AccountFlow
         return (new DateTimeImmutable('now'))->modify('+' . max(1, $minutes) . ' minutes')->format('Y-m-d H:i:s');
     }
 
-    private static function notify(string $type, string $email): void
+    /** true só se o callback confirmou que enfileirou (MailQueue::push devolve false no cooldown). */
+    private static function notify(string $type, string $email): bool
     {
-        if (self::$enqueue !== null) {
-            (self::$enqueue)($type, $email);
-        }
+        return self::$enqueue !== null && (self::$enqueue)($type, $email) === true;
     }
 
     private static function place(array $input): ?array
