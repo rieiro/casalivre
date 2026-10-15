@@ -232,12 +232,12 @@ foreach ($bad as $u) {
 }
 foreach ([['https://x.test/a.ics'], ['u' => 'https://x.test/a.ics'], 123, true] as $u) {
     $r = c_api('POST', $base, $api, ['external_ical_url' => $u, 'feed_title' => 'Ruim'], $csrf, $jar);
-    t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json']['erros'] ?? null], 'API: external_ical_url ' . json_encode($u) . ' -> 422 (não vira "Array")');
+    t_eq([422, ['external_ical_url' => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], 'API: external_ical_url ' . json_encode($u) . ' -> 422 campo inválido (não vira "Array", não é a mensagem de https)');
 }
 $w = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => ['https://x.test/a.ics'], 'feed_title' => 'Ruim'], $jar);
-t_ok(str_contains($w['body'], e(t('cal.url_https'))), 'web: external_ical_url[] (array) -> erro na tela');
+t_ok(str_contains($w['body'], e(t('err.field_type'))), 'web: external_ical_url[] (array) -> erro de campo inválido na tela');
 $r = c_api('POST', $base, $api, ['external_ical_url' => 'https://x.test/t.ics', 'feed_title' => ['x']], $csrf, $jar);
-t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: feed_title array -> 422 erros.feed_title');
+t_eq([422, ['feed_title' => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], 'API: feed_title array -> 422 erros.feed_title (campo inválido)');
 t_eq([], c_codes($act, $m), 'URLs recusadas (web e API): nada no activity_log');
 t_eq($antes, count($feeds()), 'DB: nenhum feed criado (nem "Array")');
 t_eq(0, $byUrl('Array'), 'DB: nenhum feed com URL "Array"');
@@ -250,5 +250,31 @@ c_form($base, '/imoveis/' . $owner['hash'] . '/ical/999999/excluir', ['_csrf' =>
 t_eq($antesProp, $prop(), 'web: feed inexistente não muda external_ical_url (NULL fica NULL) nem audit_hold');
 c_api('DELETE', $base, '/api/imoveis/' . $owner['hash'] . '/ical/999999', null, $csrf, $jar);
 t_eq($antesProp, $prop(), 'API: idem');
+
+echo "ajustes 2: CalendarSave valida o tipo bruto (b, e)\n";
+$m = c_mark($act);
+$apiCal = '/api' . $cal;
+foreach (['inicio' => [$day(5)], 'fim' => ['x' => 1], 'acao' => ['bloquear'], 'price' => [300], 'min_nights' => [2], 'day' => [$day(5)]] as $campo => $v) {
+    $body = ['acao' => 'bloquear', 'inicio' => $day(5), 'fim' => $day(5)];
+    $body[$campo] = $v;
+    $r = c_api('POST', $base, $apiCal, $body, $csrf, $jar);
+    t_eq([422, [$campo => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], "API calendário: $campo array -> 422 erros.$campo");
+}
+foreach ([true, false] as $v) {
+    $r = c_api('POST', $base, $apiCal, ['acao' => $v, 'inicio' => $day(5), 'fim' => $day(5)], $csrf, $jar);
+    t_eq(422, $r['status'], 'API calendário: acao ' . json_encode($v) . ' -> 422');
+}
+foreach (['inicio', 'fim', 'acao', 'price'] as $campo) {
+    $form = ['_csrf' => $csrf, 'acao' => 'bloquear', 'inicio' => $day(5), 'fim' => $day(5)];
+    $form[$campo] = ['x'];
+    $w = c_form($base, $cal, $form, $jar);
+    t_ok(str_contains($w['body'], 'class="alert error"') && str_contains($w['body'], e(t('err.field_type'))), "web calendário: {$campo}[] -> erro de campo inválido na tela");
+}
+t_eq([], c_codes($act, $m), 'tipo inválido (web e API): nada gravado no activity_log');
+$r = c_api('POST', $base, $apiCal, ['acao' => 'preco', 'inicio' => $day(45), 'fim' => $day(45), 'price' => 300], $csrf, $jar);
+t_eq(200, $r['status'], 'API calendário: price numérico (int) continua aceito');
+
+echo "ajustes 2: setExternalCalendar removido (f)\n";
+t_ok(!method_exists(HouseRepository::class, 'setExternalCalendar'), 'HouseRepository::setExternalCalendar não existe mais');
 
 t_done();
