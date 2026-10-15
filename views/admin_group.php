@@ -29,21 +29,13 @@
                 <?php if ($dr['verify_token'] !== ''): ?>
                     <p class="muted">Registro DNS TXT: nome <code><?= e(DomainVerification::txtName($d)) ?></code>, valor <code><?= e(DomainVerification::txtValue((string) $dr['verify_token'])) ?></code></p>
                 <?php endif; ?>
-                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/verificar">
-                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
-                    <button type="submit">Verificar agora</button>
-                </form>
-                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/token">
-                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
-                    <button type="submit">Gerar novo token</button>
-                </form>
-                <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/remover">
-                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                    <input type="hidden" name="dominio" value="<?= e($d) ?>">
-                    <button class="danger" type="submit">Remover</button>
-                </form>
+                <?php foreach (['verificar' => ['', 'Verificar agora'], 'token' => ['', 'Gerar novo token'], 'remover' => ['danger', 'Remover']] as $acao => [$classe, $rotulo]): ?>
+                    <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/<?= e($acao) ?>">
+                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                        <input type="hidden" name="dominio" value="<?= e($d) ?>">
+                        <button<?= $classe !== '' ? ' class="' . e($classe) . '"' : '' ?> type="submit"><?= e($rotulo) ?></button>
+                    </form>
+                <?php endforeach; ?>
             </li>
         <?php endforeach; ?>
     </ul>
