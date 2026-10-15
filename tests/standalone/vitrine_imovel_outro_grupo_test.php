@@ -77,6 +77,27 @@ foreach (['grupo Y' => $hY, 'sem grupo' => $hN] as $label => $ref) {
     t_eq(0, $reviews($ref), "avaliar imóvel $label: nada gravado");
 }
 
+echo "domínio do grupo X: 404 da avaliação = página do imóvel inexistente\n";
+// Nonce de CSP e CSRF variam por requisição; o resto da página tem de ser idêntico.
+$norm = static fn (string $html): string => preg_replace(['/nonce="[^"]*"/', '/"csrf":"[^"]*"/', '/name="_csrf" value="[^"]*"/', '/<meta name="csrf-token" content="[^"]*"/'], '', $html);
+$ctype = static fn (array $r): string => preg_match('/^Content-Type:\s*([^;\r\n]+)/mi', $r['headers'], $m) ? strtolower(trim($m[1])) : '';
+$inex = 'ffffffffffffffff';
+$gInex = $get("/imoveis/$inex", $dom);
+$pInex = $avaliar($inex, $dom);
+t_eq(404, $gInex['status'], 'GET imóvel inexistente: 404');
+t_eq(404, $pInex['status'], 'avaliar imóvel inexistente: 404');
+foreach (['grupo Y' => $hY, 'sem grupo' => $hN] as $label => $ref) {
+    $n0 = $reviews($ref);
+    $r = $avaliar($ref, $dom);
+    t_eq(404, $r['status'], "avaliar imóvel $label: 404");
+    t_eq('text/html', $ctype($r), "avaliar imóvel $label: HTML");
+    t_ok(str_contains($r['body'], '<html') && $r['body'] !== 'Imóvel não encontrado.', "avaliar imóvel $label: página HTML, não texto puro");
+    t_eq($norm($pInex['body']), $norm($r['body']), "avaliar imóvel $label: mesmo corpo do POST em imóvel inexistente");
+    t_eq($norm($gInex['body']), $norm($r['body']), "avaliar imóvel $label: mesmo corpo do GET de imóvel inexistente");
+    t_ok(!str_contains($r['body'], 'Casa do Y') && !str_contains($r['body'], 'Casa sem grupo'), "avaliar imóvel $label: não expõe o imóvel");
+    t_eq($n0, $reviews($ref), "avaliar imóvel $label: nada gravado");
+}
+
 echo "plataforma: como antes\n";
 foreach (['X' => $hX, 'Y' => $hY, 'sem grupo' => $hN] as $label => $ref) {
     t_eq(200, $get("/imoveis/$ref", $plat)['status'], "plataforma: imóvel $label 200");

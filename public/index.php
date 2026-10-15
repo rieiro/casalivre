@@ -948,10 +948,16 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
     csrf_check();
-    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
-    // No domínio de um grupo, só avalia imóvel dele (mesma regra do GET, GrupoResolvedor::imovelNoHost).
+    // No domínio de um grupo, só avalia imóvel dele (mesma regra do GET, GrupoResolvedor::imovelNoHost). Outro grupo,
+    // sem grupo ou inexistente: o mesmo 404 HTML do GET /imoveis/<h> nesse domínio, sem gravar nada.
     [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
-    if (!$property || ($property['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
+    if ($noGrupo && $noHost === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
+    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
+    if (!$property || ($property['status'] ?? 'active') !== 'active') {
         http_response_code(404);
         exit('Imóvel não encontrado.');
     }
