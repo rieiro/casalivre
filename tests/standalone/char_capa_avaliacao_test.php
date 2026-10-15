@@ -9,6 +9,7 @@ $owner = t_seed_owner();
 $other = t_seed_owner();
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/Acoes/CoverSet.php';
+require_once CL_ROOT . '/src/Acoes/ReviewAdd.php';
 $hid = $owner['house_id'];
 $p1 = (int) PhotoRepository::insert($hid, 'a.jpg', 1, 1)['id'];
 $p2 = (int) PhotoRepository::insert($hid, 'b.jpg', 0, 2)['id'];
@@ -40,9 +41,9 @@ $editNotice = static function () use ($base, $h, $jar): string {
 foreach (['2 fotos' => [$p1, $p3], '0 fotos' => []] as $label => $marked) {
     $r = c_form($base, $h . '/fotos/capa', ['_csrf' => $csrf, 'fotos' => $marked], $jar);
     t_eq([302, $h . '/editar'], [$r['status'], c_location($r)], "web /fotos/capa: $label 302 para /editar");
-    t_ok(str_contains($editNotice(), e(CoverSet::ERRO)), "web /fotos/capa: $label mostra o erro na tela de edição");
+    t_ok(str_contains($editNotice(), e(t(CoverSet::ERRO))), "web /fotos/capa: $label mostra o erro na tela de edição");
 }
-t_ok(!str_contains($editNotice(), e(CoverSet::ERRO)), 'web: o aviso aparece uma vez só');
+t_ok(!str_contains($editNotice(), e(t(CoverSet::ERRO))), 'web: o aviso aparece uma vez só');
 t_eq([], c_codes($act, $m), 'web /fotos/capa: 0/2 fotos não grava');
 t_eq($p2, $cover(), 'DB: capa inalterada');
 $m = c_mark($act);
@@ -54,7 +55,7 @@ t_eq($p3, $cover(), 'DB: capa = foto 3');
 $m = c_mark($act);
 $r = c_form($base, $h . '/fotos/' . $foreign . '/capa', ['_csrf' => $csrf], $jar);
 t_eq(302, $r['status'], 'web: foto de outro imóvel 302');
-t_ok(str_contains($editNotice(), e(CoverSet::ERRO)), 'web: foto de outro imóvel mostra o erro (não ignora)');
+t_ok(str_contains($editNotice(), e(t(CoverSet::ERRO))), 'web: foto de outro imóvel mostra o erro (não ignora)');
 t_eq([], c_codes($act, $m), 'web: foto de outro imóvel não grava');
 t_eq($p3, $cover(), 'DB: capa inalterada (foto alheia)');
 
@@ -68,9 +69,9 @@ t_eq([ActivityLog::PHOTO_COVER], c_codes($act, $m), 'API: grava PHOTO_COVER');
 t_eq($p1, $cover(), 'DB: capa = foto 1');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, [], $csrf, $jar);
-t_eq([422, ['foto_id' => CoverSet::ERRO]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem foto_id 422 com a mesma mensagem da web');
+t_eq([422, ['foto_id' => t(CoverSet::ERRO)]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem foto_id 422 com a mesma mensagem da web');
 $r = c_api('POST', $base, $api, ['foto_id' => $foreign], $csrf, $jar);
-t_eq([422, ['foto_id' => CoverSet::ERRO]], [$r['status'], $r['json']['erros'] ?? null], 'API: foto de outro imóvel 422 (como a web)');
+t_eq([422, ['foto_id' => t(CoverSet::ERRO)]], [$r['status'], $r['json']['erros'] ?? null], 'API: foto de outro imóvel 422 (como a web)');
 t_eq([], c_codes($act, $m), 'API: erros/foto alheia não gravam');
 t_eq($p1, $cover(), 'DB: capa inalterada');
 $r = c_api('POST', $base, '/api/imoveis/' . $other['hash'] . '/fotos/capa', ['foto_id' => $foreign], $csrf, $jar);
@@ -122,6 +123,50 @@ $r = c_api('POST', $base, '/api/imoveis/' . str_repeat('0', 16) . '/avaliar', ['
 t_eq(404, $r['status'], 'API avaliar: imóvel inexistente 404');
 t_eq([], c_codes($act, $m), 'API avaliar: erros não gravam');
 t_eq($before, $count(), 'DB: erros não criam review');
+echo "avaliação: nota bruta validada antes do cast (D1 do Teste #87)\n";
+$before = $count();
+$m = c_mark($act);
+foreach ([1.5, 10.5, '10046.5', '5abc', '1e1', ' 5', '5 ', '+5', '-5', '', true, false, null, [5], ['x' => 5]] as $bad) {
+    $label = json_encode($bad);
+    t_ratelimit_reset(); // limite de avaliações por IP: cada caso isolado
+    $r = c_api('POST', $base, '/api' . $h . '/avaliar', ['score' => $bad], $acsrf, $anon);
+    t_eq([422, ['score' => t(ReviewAdd::ERRO)]], [$r['status'], $r['json']['erros'] ?? null], "API avaliar: score $label -> 422 erros.score");
+}
+foreach (['1.5', '10.5', '10046.5', '5abc', '1e1', ' 5', '5 ', '0x5'] as $bad) {
+    t_ratelimit_reset();
+    $r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => $bad], $anon);
+    t_ok($r['status'] === 422 && str_contains($r['body'], e(t(ReviewAdd::ERRO))), 'web avaliar: score ' . json_encode($bad) . ' -> 422 com o erro na tela');
+}
+t_ratelimit_reset();
+$r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => ['5']], $anon);
+t_eq(422, $r['status'], 'web avaliar: score[] (array) -> 422');
+t_eq([], c_codes($act, $m), 'nota bruta inválida (web e API): nada no activity_log');
+t_eq($before, $count(), 'DB: nota bruta inválida não cria review');
+t_ratelimit_reset();
+$r = c_api('POST', $base, '/api' . $h . '/avaliar', ['score' => '10'], $acsrf, $anon);
+t_eq(201, $r['status'], 'API avaliar: score "10" (string só com dígitos) aceito');
+t_ratelimit_reset();
+$r = c_api('POST', $base, '/api' . $h . '/avaliar', ['score' => 1], $acsrf, $anon);
+t_eq(201, $r['status'], 'API avaliar: score 1 (int) aceito');
+t_eq($before + 2, $count(), 'DB: só as 2 notas válidas gravadas');
+
+echo "capa: foto_id bruto validado antes do cast (D1 do Teste #87)\n";
+$m = c_mark($act);
+$capaAntes = $cover();
+foreach ([$p2 + 0.5, (string) $p2 . '.0', $p2 . 'abc', ' ' . $p2, $p2 . ' ', '1e1', true, [$p2], '-' . $p2, 0, '0'] as $bad) {
+    $r = c_api('POST', $base, $api, ['foto_id' => $bad], $csrf, $jar);
+    t_eq([422, ['foto_id' => t(CoverSet::ERRO)]], [$r['status'], $r['json']['erros'] ?? null], 'API capa: foto_id ' . json_encode($bad) . ' -> 422');
+}
+foreach ([$p2 . 'abc', ' ' . $p2, $p2 . '.5'] as $bad) {
+    $r = c_form($base, $h . '/fotos/capa', ['_csrf' => $csrf, 'fotos' => [$bad]], $jar);
+    t_ok($r['status'] === 302 && str_contains($editNotice(), e(t(CoverSet::ERRO))), 'web capa: fotos[] ' . json_encode($bad) . ' -> erro na tela de edição');
+}
+t_eq([], c_codes($act, $m), 'foto_id bruto inválido (web e API): nada no activity_log');
+t_eq($capaAntes, $cover(), 'DB: capa inalterada');
+$r = c_api('POST', $base, $api, ['foto_id' => (string) $p2], $csrf, $jar);
+t_eq([200, $p2], [$r['status'], $cover()], 'API capa: foto_id como string só com dígitos aceito');
+c_api('POST', $base, $api, ['foto_id' => $p1], $csrf, $jar); // volta a capa para a foto 1 (casos abaixo)
+
 echo "fotos: PHOTO_ADD com enviadas e salvas nos dois canais\n";
 $img = imagecreatetruecolor(8, 8);
 ob_start();
