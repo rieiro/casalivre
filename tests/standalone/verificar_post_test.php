@@ -112,6 +112,21 @@ foreach (['/', '/busca', '/busca/mapa', '/imoveis/' . $owner['hash'], '/entrar',
     $h = t_http('HEAD', $base . $p);
     t_eq([$g['status'], ''], [$h['status'], $h['body']], "HEAD $p: mesmo status do GET, sem corpo");
 }
+echo "HEAD na lista não grava activity_log; GET grava como antes\n";
+$allLogs = static fn (): int => (int) $act()->query('SELECT COUNT(*) FROM activity_log')->fetchColumn();
+$headLista = ['/', '/busca', '/busca/mapa', '/imoveis/' . $owner['hash'], '/entrar', '/cadastro', '/senha/esqueci',
+    '/api/busca?localidade=Florian%C3%B3polis', '/api/busca', '/api/cidades?q=flo', '/api/imoveis/' . $owner['hash']];
+foreach ($headLista as $p) {
+    $a0 = $allLogs();
+    $h = t_http('HEAD', $base . $p);
+    t_eq($a0, $allLogs(), "HEAD $p ({$h['status']}): nada em activity_log");
+}
+foreach (['/api/busca?localidade=Florian%C3%B3polis', '/api/imoveis/' . $owner['hash']] as $p) {
+    $a0 = $allLogs();
+    $g = t_http('GET', $base . $p);
+    t_eq(200, $g['status'], "GET $p: 200");
+    t_eq($a0 + 1, $allLogs(), "GET $p: 1 linha em activity_log");
+}
 $icalLogs = static fn (): int => (int) $act()->query('SELECT COUNT(*) FROM activity_log WHERE action_code = ' . ActivityLog::CALENDAR_EXPORT)->fetchColumn();
 $c0 = $icalLogs();
 foreach (['/verificar', '/senha/redefinir', '/ical/' . $owner['ical_hash'], '/api/ical/' . $owner['ical_hash'], '/conta', '/painel', '/admin/tema',
