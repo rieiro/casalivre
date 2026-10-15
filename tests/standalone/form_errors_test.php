@@ -80,6 +80,48 @@ t_eq(null, $box($r['body'], 'register-error'), 'cadastro ok: página de pendênc
 $r = $reg(['email' => $owner['email']] + $full);
 t_eq(null, $box($r['body'], 'register-error'), 'cadastro com e-mail existente: sem erro (anti-enumeração preservada)');
 
+echo "login\n";
+t_ratelimit_reset();
+$lj = tempnam(sys_get_temp_dir(), 'jar');
+$b = $box(t_http('GET', $base . '/entrar', null, [], $lj)['body'], 'login-error');
+t_ok($b !== null && $b['text'] === '' && str_contains($b['attrs'], ' hidden') && str_contains($b['attrs'], 'role="alert"'), 'GET /entrar: #login-error vazio, hidden, role=alert');
+$u = c_user('active');
+$r1 = c_form($base, '/entrar', ['_csrf' => c_csrf($base, $lj), 'email' => $u['email'], 'password' => 'errada'], $lj);
+$r2 = c_form($base, '/entrar', ['_csrf' => c_csrf($base, $lj), 'email' => 'ninguem' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password' => 'errada'], $lj);
+$b1 = $box($r1['body'], 'login-error');
+$b2 = $box($r2['body'], 'login-error');
+t_eq(200, $r1['status'], 'login inválido: continua 200');
+t_ok(($b1['text'] ?? '') !== '' && !str_contains($b1['attrs'] ?? ' hidden', 'hidden'), 'login inválido: mensagem visível');
+t_eq($b1['text'] ?? null, $b2['text'] ?? null, 'login: conta existente e inexistente com a mesma mensagem genérica (sem enumeração)');
+t_ratelimit_reset();
+$r = c_form($base, '/entrar', ['_csrf' => c_csrf($base, $lj), 'email' => $u['email'], 'password' => $u['password']], $lj);
+t_eq(302, $r['status'], 'login certo: 302, sem página de erro');
+db()->prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?')->execute([$u['id']]);
+t_http('GET', $base . '/painel', null, [], $lj);
+$b = $box(t_http('GET', $base . '/entrar', null, [], $lj)['body'], 'login-error');
+t_eq(e(t('auth.session_expired')), $b['text'] ?? null, 'sessão expirada: auth.session_expired em #login-error');
+$b = $box(t_http('GET', $base . '/entrar', null, [], $lj)['body'], 'login-error');
+t_eq('', $b['text'] ?? null, 'sessão expirada: aviso só uma vez');
+
+echo "redefinir senha\n";
+$rj = tempnam(sys_get_temp_dir(), 'jar');
+$raw = bin2hex(random_bytes(16));
+UserRepository::setReset((int) $u['id'], $raw, date('Y-m-d H:i:s', time() + 600));
+$page = t_http('GET', $base . '/senha/redefinir?token=' . $raw, null, [], $rj)['body'];
+$b = $box($page, 'reset-error');
+t_ok($b !== null && $b['text'] === '' && str_contains($b['attrs'], ' hidden') && str_contains($b['attrs'], 'role="alert"'), 'GET /senha/redefinir: #reset-error vazio, hidden, role=alert');
+preg_match('/name="_csrf" value="([^"]+)"/', $page, $mm);
+$rc = $mm[1] ?? '';
+$bad = ($raw[0] === 'a' ? 'b' : 'a') . substr($raw, 1);
+$r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $bad, 'password' => $pass, 'password_confirm' => $pass], $rj);
+t_eq([200, e(t('auth.verify_bad'))], [$r['status'], $box($r['body'], 'reset-error')['text'] ?? null], 'reset token errado: 200 + auth.verify_bad');
+$r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $raw, 'password' => 'a', 'password_confirm' => 'a'], $rj);
+t_eq(e((string) account_text('short')), $box($r['body'], 'reset-error')['text'] ?? null, 'reset senha curta: mensagem própria');
+$r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $raw, 'password' => $pass, 'password_confirm' => $pass . 'z'], $rj);
+t_eq(e(t('err.password_mismatch')), $box($r['body'], 'reset-error')['text'] ?? null, 'reset senhas diferentes: mensagem própria');
+$r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $raw, 'password' => $pass, 'password_confirm' => $pass], $rj);
+t_eq([200, null], [$r['status'], $box($r['body'], 'reset-error')], 'reset ok: página de mensagem, sem caixa de erro');
+
 echo "escape\n";
 $evil = '<img src=x onerror=alert(1)>"&\'';
 db()->prepare("UPDATE translations SET text = ? WHERE tkey = 'err.cpf'")->execute([$evil]);
@@ -89,5 +131,17 @@ $b1 = $box(c_form($base, '/conta', ['_csrf' => $csrf, 'cpf' => '1'] + $profile, 
 $b2 = $box($reg(['cpf' => '1'] + $full)['body'], 'register-error');
 t_eq([e($evil), e($evil)], [$b1['text'] ?? null, $b2['text'] ?? null], 'mensagem escapada nos dois formulários');
 t_ok(!str_contains(($b1['text'] ?? '') . ($b2['text'] ?? ''), '<img'), 'sem tag crua');
+db()->prepare("UPDATE translations SET text = ? WHERE tkey = 'auth.verify_bad'")->execute([$evil]);
+db()->prepare("UPDATE translations SET text = ? WHERE tkey = 'auth.session_expired'")->execute([$evil]);
+I18n::refresh();
+$r = c_form($base, '/senha/redefinir', ['_csrf' => $rc, 'token' => $bad, 'password' => $pass, 'password_confirm' => $pass], $rj);
+t_eq(e($evil), $box($r['body'], 'reset-error')['text'] ?? null, 'reset: mensagem escapada');
+$lj2 = tempnam(sys_get_temp_dir(), 'jar');
+t_ratelimit_reset();
+c_form($base, '/entrar', ['_csrf' => c_csrf($base, $lj2), 'email' => $u['email'], 'password' => $pass], $lj2);
+db()->prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?')->execute([$u['id']]);
+t_http('GET', $base . '/painel', null, [], $lj2);
+t_eq(e($evil), $box(t_http('GET', $base . '/entrar', null, [], $lj2)['body'], 'login-error')['text'] ?? null, 'login: mensagem escapada');
+
 
 t_done();
