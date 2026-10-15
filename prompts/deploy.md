@@ -105,6 +105,9 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Não dividir em vários arquivos regionais: como fontes separadas, eles se sobrepõem nas divisas (rótulos duplicados e emendas nas ruas); trocar de arquivo por região deixa o mapa sem base fora da região.
 - [ ] O que acelera: cache no nginx (`Cache-Control`, `ETag`), CDN com `Range` na chave de cache, HTTP/2 ligado e `maxzoom` limitado (13 ou 14) na geração, o que reduz o arquivo e o número de tiles.
 - [ ] Regenerar periodicamente a partir do build do Protomaps e trocar com `mv` atômico; um arquivo novo muda o `ETag`.
+  - Integridade antes do `mv`: baixar ou extrair só por `https://` (`https://build.protomaps.com/AAAAMMDD.pmtiles`). O Protomaps publica em `https://build-metadata.protomaps.dev/builds.json`, por build, o `size`, o `md5sum` (base64) e o `b3sum` (BLAKE3) do arquivo planeta inteiro; não publica sha256, e o `ETag` do download é de upload multipart (sufixo `-N`), não um hash do conteúdo. Esses hashes só servem para conferir quem baixa o planeta inteiro (~139 GB).
+  - O `pmtiles extract` lê só partes do planeta e gera um arquivo novo, cujo hash não é publicado. Por isso, gerar num arquivo temporário no mesmo disco e, antes do `mv`: rodar `pmtiles verify <arquivo>` (confere a estrutura do arquivo, não o conteúdo de cada tile; existe no go-pmtiles v1.31.2) e `pmtiles show <arquivo>` (conferir que os limites, o bbox do Brasil, e o zoom máximo são os esperados). Se algo falhar, não trocar.
+  - Guardar o `sha256sum` do arquivo gerado (junto com a data do build de origem) para conferir depois que o arquivo servido é o mesmo que foi validado.
 
 ### Rate limit nos formulários web (#35, #39)
 - [ ] `POST /cadastro` (10/h), `POST /senha/esqueci` (5/15 min) e o envio de fotos pela web (30/10 min, somado com a API) usam `REMOTE_ADDR`: atrás de proxy/CDN, `real_ip` é obrigatório; senão todos os visitantes dividem o mesmo limite.
