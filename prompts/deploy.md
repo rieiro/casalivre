@@ -104,6 +104,9 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Usar um único `brasil.pmtiles`. O navegador lê só os tiles visíveis via HTTP Range, então um arquivo grande não deixa o mapa lento; custa apenas espaço em disco e tempo de geração.
 - [ ] Não dividir em vários arquivos regionais: como fontes separadas, eles se sobrepõem nas divisas (rótulos duplicados e emendas nas ruas); trocar de arquivo por região deixa o mapa sem base fora da região.
 - [ ] O que acelera: cache no nginx (`Cache-Control`, `ETag`), CDN com `Range` na chave de cache, HTTP/2 ligado e `maxzoom` limitado (13 ou 14) na geração, o que reduz o arquivo e o número de tiles.
+  - nginx: o bloco `location = /tiles/brasil.pmtiles` de `prompts/mapa-pmtiles.md` (ver item "Copiar o bloco" em Mapa PMTiles (#40)) já traz `etag on` e `Cache-Control "public, max-age=86400" always`. Sem `immutable`: o nome é fixo e a troca do arquivo muda o `ETag`.
+  - Geração: `pmtiles extract "https://build.protomaps.com/$BUILD" brasil.pmtiles.new --bbox=-74.0,-33.8,-28.6,5.3 --maxzoom=13`. Usar `--maxzoom=14` só se precisar de mais detalhe; o arquivo fica bem maior.
+  - CDN (se houver): `Range` na chave de cache de `/tiles/brasil.pmtiles`, respeitando o `Cache-Control` da origem e sem compressão nesse caminho; sem essa opção, não cachear o caminho na CDN. Purge ao trocar o arquivo.
 - [ ] Regenerar periodicamente a partir do build do Protomaps e trocar com `mv` atômico; um arquivo novo muda o `ETag`.
   - Integridade antes do `mv`: baixar ou extrair só por `https://` (`https://build.protomaps.com/AAAAMMDD.pmtiles`). O Protomaps publica em `https://build-metadata.protomaps.dev/builds.json`, por build, o `size`, o `md5sum` (base64) e o `b3sum` (BLAKE3) do arquivo planeta inteiro; não publica sha256, e o `ETag` do download é de upload multipart (sufixo `-N`), não um hash do conteúdo. Esses hashes só servem para conferir quem baixa o planeta inteiro (~139 GB).
   - O `pmtiles extract` lê só partes do planeta e gera um arquivo novo, cujo hash não é publicado. Por isso, gerar num arquivo temporário no mesmo disco e, antes do `mv`: rodar `pmtiles verify <arquivo>` (confere a estrutura do arquivo, não o conteúdo de cada tile; existe no go-pmtiles v1.31.2) e `pmtiles show <arquivo>` (conferir que os limites, o bbox do Brasil, e o zoom máximo são os esperados). Se algo falhar, não trocar.
@@ -138,7 +141,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] server_name da aplicação: host do APP_URL (+ www/raiz) e só os domínios verificados, via include gerado e `nginx -s reload` após verificar/remover.
 - [ ] `fastcgi_param HTTP_HOST $host;` e não repassar X-Forwarded-Host.
 - [ ] Não sobrescrever o Cache-Control do HTML (sessão no-store; erro private, no-cache). Só /assets/ e /tiles/ têm cache próprio.
-- [ ] CSP já inclui frame-ancestors 'none' e XFO DENY: trocar `X-Frame-Options SAMEORIGIN` por `DENY` em prompts/mapa-pmtiles.md:82.
+- [x] CSP já inclui frame-ancestors 'none' e XFO DENY: trocar `X-Frame-Options SAMEORIGIN` por `DENY` em prompts/mapa-pmtiles.md:82.
 - [ ] TLS (ACME HTTP-01) só depois do verified_at; parar de renovar quando perder a verificação.
 - [ ] Cliente publica `TXT _casalivre.<domínio> = casalivre-verificacao=<token>` e A/AAAA ou CNAME. "Verificar agora" só agenda; o cron confere em até 1 hora.
 - [ ] /etc/resolv.conf: resolvedor confiável (ideal unbound com DNSSEC), sem search/domain, `options timeout:3 attempts:2`.
