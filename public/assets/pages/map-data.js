@@ -33,10 +33,11 @@
 
     /**
      * FeatureCollection de pontos a partir dos itens de /api/busca. Só usa lat/lng que a API devolve
-     * (coordenada pública do #36); itens sem coordenada ficam fora. $query vai no link do imóvel.
+     * (coordenada pública do #36); itens sem coordenada ficam fora. $query vai no link do imóvel; base (vitrine /g/<slug>) prefixa o link.
      */
-    function toGeoJSON(items, query) {
+    function toGeoJSON(items, query, base) {
         const qs = query ? String(query) : '';
+        const prefix = base ? String(base) : '';
         const features = [];
         (items || []).forEach(function (item) {
             const id = String(item && item.id || '');
@@ -54,7 +55,7 @@
                     photo: item.photo ? String(item.photo) : '',
                     price: priceLabel(item),
                     priceText: priceText(item),
-                    href: '/imoveis/' + id + (qs ? '?' + qs : ''),
+                    href: prefix + '/imoveis/' + id + (qs ? '?' + qs : ''),
                 },
             });
         });

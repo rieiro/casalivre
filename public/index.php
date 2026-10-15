@@ -21,6 +21,8 @@ require_once __DIR__ . '/../src/PhotoRepository.php';
 require_once __DIR__ . '/../src/PhotoStorage.php';
 require_once __DIR__ . '/../src/helpers.php';
 require_once __DIR__ . '/../src/SearchService.php';
+require_once __DIR__ . '/../src/GrupoResolvedor.php';
+require_once __DIR__ . '/../src/Redirect.php';
 require_once __DIR__ . '/../src/CalendarService.php';
 reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
@@ -329,7 +331,7 @@ if ($path === '/' && $method === 'GET') {
         || (string) ($_GET['checkin'] ?? '') !== ''
         || (string) ($_GET['checkout'] ?? '') !== '';
     if ($hasSearch) {
-        redirect('/busca' . ((string) ($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . (string) $_SERVER['QUERY_STRING'] : ''));
+        Redirect::withQuery('/busca');
     }
     view('home', ['filters' => [
         'localidade' => '',
@@ -361,6 +363,57 @@ if ($path === '/busca' && $method === 'GET') {
         'searched' => $searched,
         'facets' => [],
         'use_api' => true,
+    ]);
+    return null;
+}
+
+// Vitrine do grupo (Sprint 3, PR 8): /g/<slug>/ (home), /g/<slug>/busca, /g/<slug>/busca/mapa e /g/<slug>/imoveis/<ref>.
+// Só imóveis ativos do grupo (a busca vai para /api/busca?grupo=<slug>); os links ficam na vitrine. Grupo por
+// GroupRepository::findBySlugValid; tema pelo GrupoResolvedor (caminho /g/<slug>/). Slug inválido ou inexistente: 404
+// com o tema da plataforma. Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
+if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
+    // No domínio verificado de um grupo, só a vitrine dele: /g/<slug de outro grupo>/ é 404 (como slug inexistente).
+    $vGroup = GrupoResolvedor::grupoDoSlugNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    // 404 da vitrine: sem grupo, tema da plataforma; com grupo ($vData), o tema dele.
+    $vMissing = static function (array $data = []): void {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $data);
+    };
+    if ($vGroup === null) {
+        $vMissing();
+        return null;
+    }
+    $vBase = '/g/' . $vGroup['slug'];
+    $vSuffix = $m[2] ?? '';
+    if ($vSuffix === '') {
+        // A2: mantém a query; $vBase vem só do slug validado (Redirect::withQuery não usa Host nem a URI inteira).
+        Redirect::withQuery($vBase . '/');
+    }
+    $vApi = '/api/busca?' . http_build_query(array_merge($_GET, ['grupo' => $vGroup['slug']]));
+    $vData = ['vitrine_base' => $vBase, 'vitrine_grupo' => $vGroup, 'title' => (string) $vGroup['name']];
+    if ($vSuffix === '/') {
+        view('home', $vData + [
+            'vitrine_imoveis' => GroupRepository::properties((int) $vGroup['id']),
+            'filters' => ['localidade' => '', 'checkin' => '', 'checkout' => '', 'hospedes' => 0],
+        ]);
+        return null;
+    }
+    if ($vSuffix === '/busca' || $vSuffix === '/busca/mapa') {
+        $filters = search_filters_from_query();
+        $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
+        view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
+            'filters' => $filters, 'searched' => $searched, 'use_api' => true, 'vitrine_api' => $vApi,
+        ]);
+        return null;
+    }
+    $vHouse = GroupRepository::activePropertyInGroup((int) $vGroup['id'], (string) $m[3]);
+    if ($vHouse === null) {
+        $vMissing($vData);
+        return null;
+    }
+    view('property', $vData + [
+        'hash' => (string) $m[3], 'imovel' => $vHouse, 'use_api' => true,
+        'checkin' => (string) ($_GET['checkin'] ?? ''), 'checkout' => (string) ($_GET['checkout'] ?? ''),
     ]);
     return null;
 }

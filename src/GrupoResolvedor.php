@@ -25,12 +25,10 @@ final class GrupoResolvedor
     /** @return array{origem:string,grupo:?array,tema:string} */
     public static function resolver(mixed $host, string $path, ?array $imovel = null): array
     {
-        $h = GrupoValidacao::host($host);
-        if ($h !== null && !GrupoValidacao::isPlatform($h) && ($g = GroupRepository::findByVerifiedDomain($h)) !== null) {
+        if (($g = self::doDominio($host)) !== null) {
             return self::com(self::DOMINIO, $g);
         }
-        if (preg_match('#^/g/([^/]+)(?:/|$)#', $path, $m) === 1 && ($slug = GrupoValidacao::slug($m[1])) !== null
-            && ($g = GroupRepository::findBySlug($slug)) !== null) {
+        if (preg_match('#^/g/([^/]+)(?:/|$)#', $path, $m) === 1 && ($g = GroupRepository::findBySlugValid($m[1])) !== null) {
             return self::com(self::SLUG, $g);
         }
         $gid = (int) ($imovel['group_id'] ?? 0);
@@ -38,6 +36,28 @@ final class GrupoResolvedor
             return self::com(self::IMOVEL, $g);
         }
         return ['origem' => self::PLATAFORMA, 'grupo' => null, 'tema' => Theme::current()];
+    }
+
+    /** Grupo do domínio verificado do Host (normalizado; nunca o da plataforma); senão null. */
+    public static function doDominio(mixed $host): ?array
+    {
+        $h = GrupoValidacao::host($host);
+        return $h !== null && !GrupoValidacao::isPlatform($h) ? GroupRepository::findByVerifiedDomain($h) : null;
+    }
+
+    /**
+     * Grupo do slug (GroupRepository::findBySlugValid) visto pelo Host: null se o slug for inválido/inexistente ou se o
+     * Host for domínio verificado de OUTRO grupo (no domínio de X, só X). Plataforma, Host desconhecido ou não
+     * verificado: o grupo do slug.
+     */
+    public static function grupoDoSlugNoHost(mixed $slug, mixed $host): ?array
+    {
+        $g = GroupRepository::findBySlugValid($slug);
+        if ($g === null) {
+            return null;
+        }
+        $hostGroup = self::doDominio($host);
+        return $hostGroup !== null && (int) $hostGroup['id'] !== (int) $g['id'] ? null : $g;
     }
 
     /** Resolve para a requisição atual (Host e caminho do $_SERVER). @return array{origem:string,grupo:?array,tema:string} */

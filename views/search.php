@@ -1,4 +1,5 @@
 <?php
+$base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma
 $facets = $facets ?? [];
 $query = search_query($filters);
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
@@ -15,7 +16,7 @@ usort($popular, static fn (array $a, array $b): int => $b[1] <=> $a[1]);
 $popular = array_slice($popular, 0, 10);
 ?>
 <section class="wrap search-page">
-    <form class="search search-query" method="get" action="/busca">
+    <form class="search search-query" method="get" action="<?= e($base) ?>/busca">
         <label class="field"><?= e(t('home.place')) ?>
             <input name="localidade" data-city-hints value="<?= e($filters['localidade']) ?>" required autocomplete="off">
         </label>
@@ -39,12 +40,12 @@ $popular = array_slice($popular, 0, 10);
     </form>
     <div class="search-layout">
         <div class="search-side">
-            <a class="map-teaser" href="/busca/mapa?<?= e($query) ?>">
+            <a class="map-teaser" href="<?= e($base) ?>/busca/mapa?<?= e($query) ?>">
                 <span class="map-tiles is-empty"></span>
                 <span class="map-pin" aria-hidden="true"></span>
                 <span class="map-open"><?= e(t('home.show_map')) ?></span>
             </a>
-            <form class="filters-panel" method="get" action="/busca">
+            <form class="filters-panel" method="get" action="<?= e($base) ?>/busca">
                 <h2><?= e(t('home.filter_by')) ?></h2>
                 <input type="hidden" name="localidade" value="<?= e($filters['localidade']) ?>">
                 <input type="hidden" name="checkin" value="<?= e($filters['checkin']) ?>">
@@ -89,7 +90,7 @@ $popular = array_slice($popular, 0, 10);
                 <button class="primary" type="submit"><?= e(t('home.search')) ?></button>
             </form>
         </div>
-        <div id="search-results">
+        <div id="search-results"<?= $base !== '' ? ' data-base="' . e($base) . '"' : '' ?><?= isset($vitrine_api) ? ' data-api="' . e($vitrine_api) . '"' : '' ?>>
             <?php if (!$searched): ?>
                 <p class="muted"><?= e(t('home.empty')) ?></p>
             <?php elseif (!empty($use_api)): ?>
@@ -106,15 +107,15 @@ $popular = array_slice($popular, 0, 10);
                 <?php include __DIR__ . '/result_cards.php'; ?>
                 <?php if ($pageCount > 1): ?>
                     <nav class="pager" aria-label="<?= e(t('home.pages')) ?>">
-                        <?php if ($page > 1): ?><a href="/busca?<?= e($query) ?>&pagina=<?= $page - 1 ?>"><?= e(t('home.prev_page')) ?></a><?php endif; ?>
+                        <?php if ($page > 1): ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $page - 1 ?>"><?= e(t('home.prev_page')) ?></a><?php endif; ?>
                         <?php
                         $from = max(1, $page - 2);
                         $to = min($pageCount, $page + 2);
                         for ($i = $from; $i <= $to; $i++):
                         ?>
-                            <?php if ($i === $page): ?><span class="is-on"><?= $i ?></span><?php else: ?><a href="/busca?<?= e($query) ?>&pagina=<?= $i ?>"><?= $i ?></a><?php endif; ?>
+                            <?php if ($i === $page): ?><span class="is-on"><?= $i ?></span><?php else: ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $i ?>"><?= $i ?></a><?php endif; ?>
                         <?php endfor; ?>
-                        <?php if ($page < $pageCount): ?><a href="/busca?<?= e($query) ?>&pagina=<?= $page + 1 ?>"><?= e(t('home.next_page')) ?></a><?php endif; ?>
+                        <?php if ($page < $pageCount): ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $page + 1 ?>"><?= e(t('home.next_page')) ?></a><?php endif; ?>
                     </nav>
                 <?php endif; ?>
             <?php endif; ?>

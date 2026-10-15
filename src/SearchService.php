@@ -3,9 +3,13 @@
 declare(strict_types=1);
 
 /** Busca pública de imóveis (movido de public/index.php sem alterar os corpos). */
+require_once __DIR__ . '/GroupRepository.php';
+require_once __DIR__ . '/GrupoResolvedor.php';
+
 final class SearchService
 {
-    public static function run(bool $log = true): array
+    /** $host: Host da requisição (para ?grupo no domínio verificado de um grupo); null = sem restrição por domínio. */
+    public static function run(bool $log = true, mixed $host = null): array
     {
         $filters = [
             'localidade' => trim((string) ($_GET['localidade'] ?? '')),
@@ -18,20 +22,30 @@ final class SearchService
             'score_min' => (float) ($_GET['score_min'] ?? 0),
             'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
         ];
+        // Vitrine do grupo (PR 8): ?grupo=<slug> restringe aos imóveis ativos do grupo; slug inválido ou inexistente -> nada.
+        if (isset($_GET['grupo'])) {
+            $filters['grupo'] = is_string($_GET['grupo']) ? $_GET['grupo'] : '';
+        }
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         $facets = [];
-        $results = $searched ? SearchService::search($filters, $facets) : [];
+        $results = $searched ? SearchService::search($filters, $facets, $host) : [];
         if ($searched && $log) {
             activity(ActivityLog::SEARCH, $filters + ['resultados' => count($results)]);
         }
         return [$filters, $results, $searched, $facets];
     }
 
-    public static function search(array $filters, ?array &$facets = null): array
+    public static function search(array $filters, ?array &$facets = null, mixed $host = null): array
     {
         $localidade = $filters['localidade'];
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
-        $source = HouseRepository::all();
+        if (array_key_exists('grupo', $filters)) {
+            // No domínio verificado do grupo X, ?grupo=<outro grupo> é tratado como grupo inexistente (itens vazios).
+            $group = GrupoResolvedor::grupoDoSlugNoHost($filters['grupo'], $host);
+            $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
+        } else {
+            $source = HouseRepository::all();
+        }
         $nights = nights_between($filters['checkin'], $filters['checkout']);
         $centerFold = $center ? fold((string) $center['name']) : '';
         $labelFold = $center ? fold((string) $center['label']) : '';

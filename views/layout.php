@@ -13,7 +13,7 @@
 </head>
 <body>
 <header class="top">
-    <a class="brand" href="/"><?php if ($logo !== null): ?><img class="brand-logo" src="<?= e($logo) ?>" alt="<?= e($brand['nome']) ?>"><?php else: ?><?= e($brand['nome']) ?><?php endif; ?></a>
+    <a class="brand" href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?php if ($logo !== null): ?><img class="brand-logo" src="<?= e($logo) ?>" alt="<?= e($brand['nome']) ?>"><?php else: ?><?= e($brand['nome']) ?><?php endif; ?></a>
     <form class="lang" method="post" action="/idioma">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label><?= e(t('nav.language')) ?>
@@ -27,7 +27,7 @@
     <input id="nav-toggle" class="nav-toggle" type="checkbox">
     <label class="nav-toggle-label" for="nav-toggle"><?= e(t('nav.menu')) ?></label>
     <nav>
-        <a href="/"><?= e(t('nav.search')) ?></a>
+        <a href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?= e(t('nav.search')) ?></a>
         <?php if (!empty($user)): ?>
             <a href="/painel"><?= e(t('nav.properties')) ?></a>
             <a href="/conta"><?= e(t('nav.account')) ?></a>

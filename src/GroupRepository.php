@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Acoes/GrupoValidacao.php';
+
 /**
  * Leituras do modelo de grupos (Sprint 3, PR 6): groups, group_members, group_domains, group_property_invites e
  * properties.group_id. As ações (src/Acoes/Grupo*.php) gravam; rotas e ações leem por aqui.
@@ -16,10 +18,27 @@ final class GroupRepository
         return "COALESCE(NULLIF($col, ''), 'active') = 'active'";
     }
 
+    /**
+     * Imóvel ativo estrito: status = 'active' (mesma regra de HouseRepository::all() e de activePropertyByRef).
+     * Diferente de activeProperty(), status vazio ('') NÃO conta como ativo. Usado na busca/mapa da vitrine, para
+     * concordar com a página do imóvel. Alias opcional da tabela.
+     */
+    public static function activePropertyStrict(string $alias = ''): string
+    {
+        return ($alias === '' ? 'status' : $alias . '.status') . " = 'active'";
+    }
+
     /** Conta ativa, com alias da tabela users. */
     public static function activeUser(string $alias): string
     {
         return "$alias.status = 'active'";
+    }
+
+    /** Valida o slug (GrupoValidacao::slug) e busca o grupo; slug inválido ou inexistente: null. */
+    public static function findBySlugValid(mixed $slug): ?array
+    {
+        $valid = GrupoValidacao::slug($slug);
+        return $valid === null ? null : self::findBySlug($valid);
     }
 
     public static function findBySlug(string $slug): ?array
@@ -161,12 +180,30 @@ final class GroupRepository
         return $row ?: null;
     }
 
+    /**
+     * Fonte da busca e do mapa na vitrine: imóveis do grupo com activePropertyStrict() (status = 'active'), as mesmas
+     * linhas e ordem de HouseRepository::all() (ORDER BY id), filtrado no SQL (idx_properties_group).
+     */
+    public static function searchSource(int $groupId): array
+    {
+        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activePropertyStrict() . ' ORDER BY id ASC');
+        $st->execute([$groupId]);
+        return $st->fetchAll();
+    }
+
     /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     public static function properties(int $groupId): array
     {
         $st = db()->prepare('SELECT id, public_hash, title, city FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY title, id');
         $st->execute([$groupId]);
         return $st->fetchAll();
+    }
+
+    /** Imóvel ativo do grupo pelo hash público (vitrine /g/<slug>/imoveis/<ref>), ou null se for de outro grupo/inativo. */
+    public static function activePropertyInGroup(int $groupId, string $ref): ?array
+    {
+        $row = self::activePropertyByRef($ref);
+        return $row && (int) ($row['group_id'] ?? 0) === $groupId ? $row : null;
     }
 
     /** Convites pendentes do grupo (imóveis ativos). @return list<array> */

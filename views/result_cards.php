@@ -1,7 +1,8 @@
+<?php $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma ?>
 <div class="results">
     <?php foreach ($results as $item): ?>
         <article class="result" data-property-id="<?= (int) $item['id'] ?>">
-            <a href="/imoveis/<?= e(property_ref($item)) ?>?<?= e(http_build_query(['checkin' => $filters['checkin'] ?? '', 'checkout' => $filters['checkout'] ?? '', 'volta' => (string) ($_SERVER['REQUEST_URI'] ?? '/')])) ?>">
+            <a href="<?= e($base) ?>/imoveis/<?= e(property_ref($item)) ?>?<?= e(http_build_query(['checkin' => $filters['checkin'] ?? '', 'checkout' => $filters['checkout'] ?? '', 'volta' => (string) ($_SERVER['REQUEST_URI'] ?? '/')])) ?>">
                 <?php if (!empty($item['photo'])): ?>
                     <img src="<?= e(photo_url(photo_variant($item['photo'], 'card'))) ?>"<?= photo_srcset_attr($item['photo'], '(max-width: 600px) 100vw, 400px') ?> alt="Foto principal de <?= e($item['title']) ?>" loading="lazy">
                 <?php else: ?>

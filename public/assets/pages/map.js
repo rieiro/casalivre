@@ -30,7 +30,7 @@
     }
     function listFallback(text) {
         box.hidden = true;
-        const back = el('a', { href: '/busca?' + (box.dataset.query || '') }, 'Ver a lista de resultados');
+        const back = el('a', { href: (box.dataset.base || '') + '/busca?' + (box.dataset.query || '') }, 'Ver a lista de resultados');
         if (noticeEl) {
             noticeEl.replaceChildren(text + ' ', back);
             noticeEl.hidden = false;
@@ -101,7 +101,7 @@
             notice('Erro ao carregar os resultados do mapa.', function () { noticeEl.hidden = true; start(); });
             return;
         }
-        const fc = D.toGeoJSON(items, box.dataset.query || '');
+        const fc = D.toGeoJSON(items, box.dataset.query || '', box.dataset.base || '');
         let map;
         try {
             const c = center();
