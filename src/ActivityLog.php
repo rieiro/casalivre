@@ -178,6 +178,17 @@ final class ActivityLog
     public const INTERNAL_ERROR = 30;
     public const PHOTO_COVER = 31;
     public const THEME_CHANGE = 32;
+    public const GROUP_CREATE = 33;
+    public const GROUP_UPDATE = 34;
+    public const GROUP_DOMAIN_ADD = 35;
+    public const GROUP_DOMAIN_REMOVE = 36;
+    public const GROUP_MEMBER_SET = 37;
+    public const GROUP_MEMBER_REMOVE = 38;
+    public const GROUP_INVITE = 39;
+    public const GROUP_INVITE_CANCEL = 40;
+    public const GROUP_INVITE_ACCEPT = 41;
+    public const GROUP_INVITE_REJECT = 42;
+    public const GROUP_PROPERTY_REMOVE = 43;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -212,6 +223,17 @@ final class ActivityLog
         self::INTERNAL_ERROR => 'Erro interno do sistema',
         self::PHOTO_COVER => 'Definição da foto de capa',
         self::THEME_CHANGE => 'Troca do tema da plataforma pelo admin',
+        self::GROUP_CREATE => 'Criação de grupo pelo admin',
+        self::GROUP_UPDATE => 'Alteração de nome ou tema do grupo pelo admin',
+        self::GROUP_DOMAIN_ADD => 'Inclusão de domínio do grupo pelo admin',
+        self::GROUP_DOMAIN_REMOVE => 'Remoção de domínio do grupo pelo admin',
+        self::GROUP_MEMBER_SET => 'Inclusão ou troca de papel de membro do grupo pelo admin',
+        self::GROUP_MEMBER_REMOVE => 'Remoção de membro do grupo pelo admin',
+        self::GROUP_INVITE => 'Convite de imóvel para o grupo',
+        self::GROUP_INVITE_CANCEL => 'Cancelamento de convite de imóvel para o grupo',
+        self::GROUP_INVITE_ACCEPT => 'Aceite do dono: imóvel entra no grupo',
+        self::GROUP_INVITE_REJECT => 'Recusa do dono ao convite do grupo',
+        self::GROUP_PROPERTY_REMOVE => 'Imóvel sai do grupo',
     ];
 
     public static function store(): ActivityStore
@@ -281,6 +303,17 @@ final class ActivityLog
         self::PHOTO_DELETE => ['foto_id', 'quantidade'],
         self::PHOTO_COVER => ['foto_id'],
         self::THEME_CHANGE => ['tema', 'tema_anterior'],
+        self::GROUP_CREATE => ['grupo', 'tema'],
+        self::GROUP_UPDATE => ['grupo'],
+        self::GROUP_DOMAIN_ADD => ['grupo', 'dominio'],
+        self::GROUP_DOMAIN_REMOVE => ['grupo', 'dominio'],
+        self::GROUP_MEMBER_SET => ['grupo', 'user_id', 'papel'],
+        self::GROUP_MEMBER_REMOVE => ['grupo', 'user_id'],
+        self::GROUP_INVITE => ['grupo'],
+        self::GROUP_INVITE_CANCEL => ['grupo'],
+        self::GROUP_INVITE_ACCEPT => ['grupo'],
+        self::GROUP_INVITE_REJECT => ['grupo'],
+        self::GROUP_PROPERTY_REMOVE => ['grupo', 'por'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],
@@ -312,6 +345,7 @@ final class ActivityLog
         'garage', 'amenities', 'comodidades', 'comodidades_incluidas', 'comodidades_removidas', 'path', 'caminho',
         'is_primary', 'sort_order', 'capa', 'fotos', 'feed', 'link', 'url', 'external_ical_url', 'last_status',
         'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados', 'tema',
+        'grupo', 'nome', 'papel', 'dominio',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */
