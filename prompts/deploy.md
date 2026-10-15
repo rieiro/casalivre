@@ -25,7 +25,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 
 ## Limites de requisição (PR #34)
 
-- [ ] **nginx `client_max_body_size 1m`** no geral; maior (ex.: `20m`) só no `location` `^/api/casas/[a-f0-9]{16}/fotos$`.
+- [ ] **nginx `client_max_body_size 1m`** no geral; `20m` só nas rotas de fotos, web e API: `location ~ ^/(api/casas|imoveis)/[a-f0-9]{16}/fotos$` (ver Sprint 3).
 - [ ] **`fastcgi_request_buffering on`** (padrão; manter ligado).
 - [ ] **php.ini:** `post_max_size` e `upload_max_filesize` coerentes com o nginx (ex.: `20M` / `16M`); `zend.exception_ignore_args = On`.
 - [ ] **`real_ip`** só atrás de proxy confiável (não aceitar `X-Forwarded-For` de qualquer origem).
@@ -69,7 +69,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] gzip + brotli (`ngx_brotli`, de preferência `gzip_static`/`brotli_static`) só em css, js, json e svg. Não comprimir `text/html` (BREACH). `gzip_vary on;`
 - [ ] Rotas autenticadas com `private, no-store`, sem o nginx sobrescrever.
 - [ ] Nenhum cache de resposta com Cookie, Set-Cookie ou Authorization. Chave com `$host` fixo e cache só em /assets/ e /uploads/.
-- [ ] `client_max_body_size` de 1m na API, e no upload igual ao limite do app (alvo: 10m).
+- [ ] `client_max_body_size` de 1m em todas as rotas; 20m só nas rotas de fotos (`/api/casas/<h>/fotos` e `/imoveis/<h>/fotos`).
 - [ ] Instalar o pacote `libvips`. Depois do PR de fotos, rodar o reprocessamento (WebP 480/960/1600, sem EXIF/GPS) e tirar os originais de public/.
 - [ ] OSM: atribuição "© OpenStreetMap contributors" com link em toda página com mapa (falta em /busca/mapa).
 - [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
@@ -141,6 +141,11 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Cliente publica `TXT _casalivre.<domínio> = casalivre-verificacao=<token>` e A/AAAA ou CNAME. "Verificar agora" só agenda; o cron confere em até 1 hora.
 - [ ] /etc/resolv.conf: resolvedor confiável (ideal unbound com DNSSEC), sem search/domain, `options timeout:3 attempts:2`.
 - [ ] Antes de um domínio ir para produção: rodar verify-domains.php à mão e conferir a saída.
+
+**Limites de requisição e domínios de grupo (Segurança, PR #70)**
+- [ ] nginx `client_max_body_size`: `1m` no `server` (todas as rotas, domínios de grupo incluídos). A única exceção é `location ~ ^/(api/casas|imoveis)/[a-f0-9]{16}/fotos$ { client_max_body_size 20m; }` (web E API). Teste: um multipart de 2 MiB em `POST /cadastro` volta 413 do nginx; um upload de 15 MiB em `/imoveis/<h>/fotos` é aceito.
+- [ ] php.ini: `post_max_size = 20M`, `upload_max_filesize = 16M`, `max_file_uploads = 20` (nunca os 128M do `start.sh` de dev).
+- [ ] Domínios de grupo: cada domínio verificado entra no `server_name` (o `default_server` 444 continua). Login, cadastro, conta, painel, admin e a API autenticada só no host do `APP_URL`; num domínio de grupo, 302/404. Só habilitar em produção o domínio próprio de um grupo depois dessa trava.
 
 **Pacote de produção**
 - [ ] `scripts/casos`, `scripts/extras` e o arquivo comum de apoio aos testes ficam fora do pacote de produção. O arquivo comum se recusa a rodar se `APP_ENV` não for `dev` ou `local`; e-mails de teste sempre em `@casalivre.test`; limpeza direta no banco (ex.: o `DELETE` do limite de login) só nele e com a mesma trava; o `mail-dev.log` é apagado no fim da suíte (reunião 15/10).
