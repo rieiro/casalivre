@@ -13,7 +13,8 @@ final class AccountFlow
     /** Enfileira (tipo, e-mail); token e link são gerados pelo worker (issueLink). @var null|callable(string, string): mixed */
     public static $enqueue = null;
 
-    public static function problem(array $input, bool $requirePassword = true): ?string
+    /** Cadastro: e-mail, perfil e senha. */
+    public static function problem(array $input): ?string
     {
         $email = Email::normalize((string) ($input['email'] ?? ''));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -23,10 +24,7 @@ final class AccountFlow
         if ($problem !== null) {
             return $problem;
         }
-        if ($requirePassword) {
-            return PasswordPolicy::problem((string) ($input['password'] ?? ''), (string) ($input['password_confirm'] ?? ''));
-        }
-        return null;
+        return PasswordPolicy::problem((string) ($input['password'] ?? ''), (string) ($input['password_confirm'] ?? ''));
     }
 
     /** Dados de perfil (nome, endereço, telefone, CPF), sem e-mail nem senha. */
@@ -49,11 +47,12 @@ final class AccountFlow
         return null;
     }
 
-    public static function fields(array $input, ?array $current = null): array
+    /** Cadastro: perfil + e-mail + hash da senha. */
+    public static function fields(array $input): array
     {
         return self::profileFields($input) + [
             'email' => Email::normalize((string) ($input['email'] ?? '')),
-            'password_hash' => $current['password_hash'] ?? PasswordPolicy::hash((string) ($input['password'] ?? '')),
+            'password_hash' => PasswordPolicy::hash((string) ($input['password'] ?? '')),
         ];
     }
 
@@ -81,7 +80,7 @@ final class AccountFlow
 
     public static function register(array $input, int $minutes): array
     {
-        $error = self::problem($input, true);
+        $error = self::problem($input);
         if ($error !== null) {
             return ['error' => $error];
         }

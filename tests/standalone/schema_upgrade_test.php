@@ -1,6 +1,6 @@
 <?php
 // Upgrade de schema: banco existente em v2 (antes do #21), v3 (#21) e v4 (#23) sobe para v10 com os seeds
-// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v9).
+// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v8), seed sem err.email_taken (v9) e err.profile_required (v10).
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 t_eq(10, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 10');
