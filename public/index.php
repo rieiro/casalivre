@@ -786,7 +786,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
     $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
     $res->registrar();
-    if ($res->mensagem !== null) {
+    // Erro (nada salvo: erros.fotos) ou aviso (parcial) na tela de edição, como a capa.
+    if (isset($res->dados['erros'])) {
+        $_SESSION['upload_notice'] = $res->dados['erros']['fotos'];
+    } elseif ($res->mensagem !== null) {
         $_SESSION['upload_notice'] = $res->mensagem;
     }
     redirect('/imoveis/' . $m[1] . '/editar');
