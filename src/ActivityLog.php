@@ -322,7 +322,7 @@ final class ActivityLog
         self::GROUP_PROPERTY_REMOVE => ['grupo', 'por'],
         self::GROUP_DOMAIN_VERIFY_START => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
-        self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas'],
+        self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas', 'motivo'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

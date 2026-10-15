@@ -124,7 +124,7 @@ t_eq([null, 0], [$row()['verified_at'], (int) $row()['fail_count']], 'verified_a
 t_eq(null, GroupRepository::findByVerifiedDomain('imob.example.com'), 'não resolve mais');
 $l = $codes($mark, ActivityLog::GROUP_DOMAIN_UNVERIFIED);
 t_eq(1, count($l), 'um log 46');
-t_eq(['imob', 'imob.example.com', 3], [$l[0]['params']['grupo'] ?? null, $l[0]['params']['dominio'] ?? null, $l[0]['params']['falhas'] ?? null], 'log 46 com grupo, domínio e falhas');
+t_eq(['imob', 'imob.example.com', 3, 'ausente'], [$l[0]['params']['grupo'] ?? null, $l[0]['params']['dominio'] ?? null, $l[0]['params']['falhas'] ?? null, $l[0]['params']['motivo'] ?? null], 'log 46 com grupo, domínio, falhas e motivo ausente');
 t_eq(46, ActivityLog::GROUP_DOMAIN_UNVERIFIED, 'código 46');
 t_eq([$admin['email'], $admin2['email']], array_column($mails, 0), 'aviso por e-mail a cada admin ativo (não ao inativo)');
 t_ok(str_contains($mails[0][1], 'imob.example.com') && str_contains($mails[0][2], '_casalivre.imob.example.com') && str_contains($mails[0][2], '/admin/grupos/imob'), 'aviso com domínio, registro TXT e caminho do admin');
@@ -146,13 +146,45 @@ $rev->run($t1 + 71 * $h);
 t_eq([1, '2027-02-01 00:00:00'], [(int) $row()['fail_count'], $row()['verified_at']], '1ª ausência com 71 h: ainda verificado');
 $answer[$name] = 'timeout';
 $rev->run($t1 + 72 * $h);
-t_ok($row()['verified_at'] !== null, 'timeout em 72 h não derruba');
+t_ok($row()['verified_at'] !== null, '72 h: última checagem há 1 h (não vencida), nem consulta');
 $answer[$name] = [];
 db()->exec("UPDATE group_domains SET last_check_at = '2027-02-01 00:00:00' WHERE domain = 'imob.example.com'");
 $r = $rev->run($t1 + 73 * $h);
 t_eq([1, null], [$r['desverificados'], $row()['verified_at']], 'ausência com 73 h sem sucesso (2ª falha): desverificado pela carência');
 t_eq(2, $codes($mark, ActivityLog::GROUP_DOMAIN_UNVERIFIED)[0]['params']['falhas'] ?? null, 'log 46 com 2 falhas');
 t_eq(2, count($mails), 'aviso enviado');
+
+echo "DNS sem responder por mais de 72 h (pr65 B1)\n";
+db()->prepare('UPDATE group_domains SET verified_at = ?, last_check_at = ?, fail_count = 1 WHERE domain = ?')->execute(['2027-04-01 00:00:00', '2027-04-01 00:00:00', 'imob.example.com']);
+$t2 = gmmktime(0, 0, 0, 4, 1, 2027);
+$mails = [];
+$mark = c_mark($act);
+$before = $row();
+foreach ([23, 24, 40, 47, 48, 60, 71] as $hh) {
+    $answer[$name] = $hh % 2 ? 'timeout' : 'servfail';
+    $r = $rev->run($t2 + $hh * $h);
+    t_eq([1, 0], [$r['falha_consulta'], $r['desverificados']], "falha de consulta com {$hh} h: conta no resumo, não derruba");
+}
+t_eq([$before['verified_at'], $before['last_check_at'], 1], [$row()['verified_at'], $row()['last_check_at'], (int) $row()['fail_count']], 'falha de consulta < 72 h: nada muda');
+t_eq([[], []], [$codes($mark, ActivityLog::GROUP_DOMAIN_UNVERIFIED), $mails], '< 72 h: sem log 46 nem aviso');
+$answer[$name] = 'timeout';
+$r = $rev->run($t2 + 72 * $h);
+t_eq([1, 1], [$r['falha_consulta'], $r['desverificados']], 'timeout com 72 h desde a última confirmação: desverificado');
+t_eq([null, '2027-04-04 00:00:00', 0], [$row()['verified_at'], $row()['last_check_at'], (int) $row()['fail_count']], 'verified_at NULL, checagem gravada, contador zerado');
+t_eq(null, GroupRepository::findByVerifiedDomain('imob.example.com'), 'não resolve mais');
+$l = $codes($mark, ActivityLog::GROUP_DOMAIN_UNVERIFIED);
+t_eq([1, 'falha_consulta', 1], [count($l), $l[0]['params']['motivo'] ?? null, $l[0]['params']['falhas'] ?? null], 'um log 46 com motivo falha_consulta');
+t_eq([$admin['email'], $admin2['email']], array_column($mails, 0), 'aviso aos admins ativos');
+$mails = [];
+$answer[$name] = 'servfail';
+$rev->run($t2 + 100 * $h);
+t_eq([[], 1], [$mails, count($codes($mark, ActivityLog::GROUP_DOMAIN_UNVERIFIED))], 'já desverificado: SERVFAIL depois não repete log nem aviso');
+db()->prepare('UPDATE group_domains SET verified_at = ?, last_check_at = NULL, fail_count = 0 WHERE domain = ?')->execute(['2027-04-10 00:00:00', 'imob.example.com']);
+$answer[$name] = 'servfail';
+$rev->run(gmmktime(0, 0, 0, 4, 13, 2027) - 1);
+t_ok($row()['verified_at'] !== null, 'SERVFAIL 1 s antes de 72 h: continua verificado');
+$rev->run(gmmktime(0, 0, 0, 4, 13, 2027));
+t_eq(null, $row()['verified_at'], 'SERVFAIL com exatamente 72 h: desverificado');
 
 echo "token trocado no meio\n";
 db()->prepare('UPDATE group_domains SET verified_at = ?, last_check_at = NULL, fail_count = 2 WHERE domain = ?')->execute(['2027-03-01 00:00:00', 'imob.example.com']);

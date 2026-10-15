@@ -11,7 +11,9 @@ require_once __DIR__ . '/ActivityLog.php';
  *
  * Em cada execução confere os domínios "vencidos": checagem pedida pelo admin (last_check_at NULL) ou verificado com
  * a última checagem há mais de RECHECK_HOURS. Por domínio:
- * - consulta falhou (timeout, SERVFAIL): não conta e não grava nada; fica vencido e volta na próxima execução;
+ * - consulta falhou (timeout, SERVFAIL): não conta e não grava nada; fica vencido e volta na próxima execução. Mas, se
+ *   verificado e já passaram GRACE_HOURS desde verified_at, perde a verificação (log 46, motivo falha_consulta, aviso):
+ *   quem controla o DNS não segura o domínio respondendo SERVFAIL para sempre (pr65 B1);
  * - TXT certo: verified_at = agora (a última confirmação), fail_count = 0; se não estava verificado, log 45;
  * - TXT ausente num não verificado: só grava last_check_at (o pedido do admin foi atendido, sem sucesso);
  * - TXT ausente num verificado: fail_count + 1; com MAX_FAILS seguidas ou GRACE_HOURS sem sucesso (desde verified_at)
@@ -48,13 +50,18 @@ final class DomainReverification
             $out['conferidos']++;
             $result = $this->verification->check((string) $row['domain'], (string) $row['verify_token']);
             $out[$result]++;
-            if ($result === DomainVerification::LOOKUP_FAILED) {
-                continue;
-            }
             $id = (int) $row['id'];
             $token = (string) $row['verify_token'];
             $verified = $row['verified_at'] !== null;
             $params = ['grupo' => $row['slug'], 'dominio' => $row['domain']];
+            $lastOk = $verified ? strtotime((string) $row['verified_at'] . ' UTC') : false;
+            $graceOver = $lastOk !== false && $now - $lastOk >= self::GRACE_HOURS * 3600;
+            if ($result === DomainVerification::LOOKUP_FAILED) {
+                if ($graceOver && $this->unverify($row, $stamp, (int) $row['fail_count'], DomainVerification::LOOKUP_FAILED)) {
+                    $out['desverificados']++;
+                }
+                continue;
+            }
             if ($result === DomainVerification::OK) {
                 if (GroupRepository::saveDomainCheck($id, $token, $stamp, $stamp, 0) && !$verified) {
                     activity(ActivityLog::GROUP_DOMAIN_VERIFIED, $params, ['verificado' => false], ['verificado' => true]);
@@ -66,19 +73,26 @@ final class DomainReverification
                 continue;
             }
             $fails = (int) $row['fail_count'] + 1;
-            $lastOk = strtotime((string) $row['verified_at'] . ' UTC');
-            $expired = $fails >= self::MAX_FAILS || ($lastOk !== false && $now - $lastOk >= self::GRACE_HOURS * 3600);
-            if (!$expired) {
+            if ($fails < self::MAX_FAILS && !$graceOver) {
                 GroupRepository::saveDomainCheck($id, $token, (string) $row['verified_at'], $stamp, $fails);
                 continue;
             }
-            if (GroupRepository::saveDomainCheck($id, $token, null, $stamp, 0)) {
+            if ($this->unverify($row, $stamp, $fails, DomainVerification::MISSING)) {
                 $out['desverificados']++;
-                activity(ActivityLog::GROUP_DOMAIN_UNVERIFIED, $params + ['falhas' => $fails], ['verificado' => true], ['verificado' => false]);
-                $this->warn((string) $row['slug'], (string) $row['domain'], $fails);
             }
         }
         return $out;
+    }
+
+    /** verified_at NULL + log 46 (com motivo: ausente ou falha_consulta) + aviso; true se gravou. */
+    private function unverify(array $row, string $stamp, int $fails, string $motivo): bool
+    {
+        if (!GroupRepository::saveDomainCheck((int) $row['id'], (string) $row['verify_token'], null, $stamp, 0)) {
+            return false;
+        }
+        activity(ActivityLog::GROUP_DOMAIN_UNVERIFIED, ['grupo' => $row['slug'], 'dominio' => $row['domain'], 'falhas' => $fails, 'motivo' => $motivo], ['verificado' => true], ['verificado' => false]);
+        $this->warn((string) $row['slug'], (string) $row['domain'], $fails);
+        return true;
     }
 
     /** Vencido: checagem pedida (last_check_at NULL) ou verificado com a última checagem há mais de RECHECK_HOURS. */
@@ -95,7 +109,7 @@ final class DomainReverification
     {
         $subject = 'CasaLivre: o domínio ' . $domain . ' do grupo ' . $slug . ' perdeu a verificação';
         $body = 'A reverificação diária não achou o registro DNS TXT ' . DomainVerification::txtName($domain)
-            . ' (' . $fails . ' checagem(ns) seguida(s) sem o token ou ' . self::GRACE_HOURS . " h sem sucesso).\r\n"
+            . ' (' . $fails . ' checagem(ns) seguida(s) sem o token, ou ' . self::GRACE_HOURS . " h sem sucesso, inclusive com o DNS sem responder).\r\n"
             . "O domínio deixou de usar o tema do grupo. Para voltar, publique o TXT de novo e clique em \"Verificar agora\" em /admin/grupos/" . $slug . ".\r\n";
         foreach (GroupRepository::adminEmails() as $email) {
             try {
