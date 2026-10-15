@@ -172,7 +172,12 @@ final class GrupoAdmin
         if ($old === null) {
             return new Resultado('ok', null, ['mudou' => false]);
         }
-        db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([(int) $group['id'], $uid]);
+        $st = db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?');
+        $st->execute([(int) $group['id'], $uid]);
+        // Corrida: outra remoção apagou entre a leitura e o DELETE -> sem efeito e sem log duplicado.
+        if ($st->rowCount() !== 1) {
+            return new Resultado('ok', null, ['mudou' => false]);
+        }
         return new Resultado('ok', null, ['mudou' => true], [
             [ActivityLog::GROUP_MEMBER_REMOVE, ['grupo' => $group['slug'], 'user_id' => $uid], ['papel' => $old], null],
         ]);

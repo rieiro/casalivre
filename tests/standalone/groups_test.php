@@ -356,6 +356,15 @@ echo "membro removido perde acesso\n";
 $mark = c_mark($act);
 t_eq(302, c_form($base, '/admin/grupos/imob-sul/membros/remover', ['_csrf' => $cA, 'usuario' => (string) $gestor['id']], $jA)['status'], 'admin remove gestor');
 t_eq(1, count($codes($mark, ActivityLog::GROUP_MEMBER_REMOVE)), 'um GROUP_MEMBER_REMOVE');
+t_eq(302, c_form($base, '/admin/grupos/imob-sul/membros/remover', ['_csrf' => $cA, 'usuario' => (string) $gestor['id']], $jA)['status'], 'segunda remoção do mesmo membro: 302');
+t_eq(1, count($codes($mark, ActivityLog::GROUP_MEMBER_REMOVE)), 'segunda remoção não gera log');
+// Corrida: a leitura ainda vê o membro, mas o DELETE não apaga nada (outra requisição chegou antes).
+db()->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$g1['id'], $gestor['id'], 'membro']);
+db()->exec('CREATE TEMP TRIGGER outra_remocao BEFORE DELETE ON group_members WHEN OLD.user_id = ' . (int) $gestor['id'] . ' BEGIN SELECT RAISE(IGNORE); END');
+$rr = GrupoAdmin::removeMember(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], $g1, (string) $gestor['id']);
+db()->exec('DROP TRIGGER outra_remocao');
+t_eq(['ok', false, []], [$rr->tipo, $rr->dados['mudou'] ?? null, $rr->eventos], 'removeMember com DELETE sem linha (corrida): sem log');
+db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([$g1['id'], $gestor['id']]);
 t_eq(404, t_http('GET', $base . '/grupos/imob-sul', null, [], $jG)['status'], 'ex-gestor: 404');
 t_eq(404, c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' => $houseA['hash']], $jG)['status'], 'ex-gestor não convida');
 db()->prepare("UPDATE users SET status = 'inactive' WHERE id = ?")->execute([$membro['id']]);
