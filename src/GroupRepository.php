@@ -85,10 +85,10 @@ final class GroupRepository
         return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
     }
 
-    /** Domínios com estado da verificação. @return list<array{domain:string,verify_token:string,verified_at:?string}> */
+    /** Domínios com estado da verificação. @return list<array{domain:string,verify_token:string,verified_at:?string,last_check_at:?string,fail_count:int}> */
     public static function domainRows(int $groupId): array
     {
-        $st = db()->prepare('SELECT domain, verify_token, verified_at FROM group_domains WHERE group_id = ? ORDER BY domain');
+        $st = db()->prepare('SELECT domain, verify_token, verified_at, last_check_at, fail_count FROM group_domains WHERE group_id = ? ORDER BY domain');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
@@ -105,15 +105,15 @@ final class GroupRepository
     /** Novo token e verificação zerada; true se gravou uma linha. */
     public static function resetDomainToken(int $groupId, string $domain, string $token): bool
     {
-        $st = db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = NULL WHERE group_id = ? AND domain = ?');
+        $st = db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = NULL, last_check_at = NULL, fail_count = 0 WHERE group_id = ? AND domain = ?');
         $st->execute([$token, $groupId, $domain]);
         return $st->rowCount() === 1;
     }
 
-    /** Marca verificado se o token ainda for o mesmo e não estiver verificado; true se gravou uma linha. */
-    public static function markDomainVerified(int $groupId, string $domain, string $token): bool
+    /** Pede checagem ao cron (last_check_at NULL), se o token ainda for o mesmo; true se gravou uma linha. */
+    public static function requestDomainCheck(int $groupId, string $domain, string $token): bool
     {
-        $st = db()->prepare('UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE group_id = ? AND domain = ? AND verify_token = ? AND verified_at IS NULL');
+        $st = db()->prepare('UPDATE group_domains SET last_check_at = NULL WHERE group_id = ? AND domain = ? AND verify_token = ?');
         $st->execute([$groupId, $domain, $token]);
         return $st->rowCount() === 1;
     }
