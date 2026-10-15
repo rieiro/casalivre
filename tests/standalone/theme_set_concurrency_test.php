@@ -10,6 +10,9 @@ require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/src/Settings.php';
 require_once CL_ROOT . '/src/ActivityLog.php';
 $act = c_activity_file();
+// Cria o store de atividades (tabelas + journal_mode=WAL) aqui, antes dos workers: se os 12 processos o criam
+// juntos do zero, o PRAGMA journal_mode = WAL de um esbarra no lock de outro (QA #57 D3). Só o teste muda.
+new SqliteActivityStore($act);
 register_shutdown_function(static function (): void {
     $c = JsonCache::read('settings.json');
     if (is_array($c) && isset($c['theme'])) {
