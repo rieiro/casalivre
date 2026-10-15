@@ -85,6 +85,8 @@ bash scripts/seed-users.sh
 
 `php scripts/seed.php` faz o mesmo. E-mail e senha saem no terminal e em `storage/seed-users.txt`. O login é em `/entrar`.
 
+Temas: cada tema é uma pasta `themes/<nome>/` com um `brand.php` (marca, logo, favicon, tokens CSS). `php scripts/build-assets.php` gera `public/assets/themes/` e o manifesto; só os temas do manifesto podem ser escolhidos. A troca é em `/admin/tema`, só para admin. Para tornar uma conta admin, use `php scripts/set-admin.php <email>` (e `--remover` para tirar).
+
 A API, com a sessão autenticada e o token CSRF, expõe o CRUD:
 
 - `POST /api/users`, `GET|PUT|DELETE /api/users/eu`

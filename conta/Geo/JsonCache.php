@@ -30,6 +30,10 @@ final class JsonCache
         if ($pretty) {
             $flags |= JSON_PRETTY_PRINT;
         }
-        file_put_contents($path, json_encode($data, $flags));
+        // Atômico: .tmp no mesmo diretório + rename (leitor nunca vê arquivo pela metade).
+        $tmp = $path . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (file_put_contents($tmp, json_encode($data, $flags)) === false || !rename($tmp, $path)) {
+            @unlink($tmp);
+        }
     }
 }

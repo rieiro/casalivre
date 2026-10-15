@@ -8,6 +8,8 @@ declare(strict_types=1);
  * devolve "/assets/<arquivo>?v=<hash>". O nome do arquivo não muda (CSP 'self', rotas e nginx iguais), e o ?v=
  * muda sozinho quando o conteúdo muda. Gerado por scripts/build-assets.php (rodar no deploy; --check no CI/testes).
  */
+require_once __DIR__ . '/Theme.php';
+
 final class AssetManifest
 {
     public const HASH_LEN = 12;
@@ -36,14 +38,18 @@ final class AssetManifest
         $out = [];
         $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base . '/assets', FilesystemIterator::SKIP_DOTS));
         foreach ($it as $info) {
-            if (!$info->isFile() || !in_array(strtolower($info->getExtension()), self::EXTENSIONS, true)) {
+            $abs = $info->getPathname();
+            $ext = strtolower($info->getExtension());
+            $rel = str_replace(DIRECTORY_SEPARATOR, '/', substr($abs, strlen($base)));
+            // Logo/favicon dos temas (Etapa 2) também ganham ?v=; as demais imagens continuam fora do manifesto.
+            $themeImage = str_starts_with($rel, Theme::assetPath()) && in_array($ext, Theme::IMAGE_EXT, true);
+            if (!$info->isFile() || (!in_array($ext, self::EXTENSIONS, true) && !$themeImage)) {
                 continue;
             }
-            $abs = $info->getPathname();
             if ($abs === self::file()) {
                 continue;
             }
-            $out[str_replace(DIRECTORY_SEPARATOR, '/', substr($abs, strlen($base)))] = self::hashFile($abs);
+            $out[$rel] = self::hashFile($abs);
         }
         ksort($out, SORT_STRING);
         return $out;

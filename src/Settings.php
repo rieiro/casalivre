@@ -21,6 +21,7 @@ final class Settings
             'max_photos_per_property' => ['40', 'Número máximo de fotos por imóvel.'],
             'session_minutes' => ['60', 'Minutos até a sessão do proprietário expirar.'],
             'results_per_page' => ['20', 'Número de imóveis mostrados por página nos resultados da busca.'],
+            'theme' => ['padrao', 'Tema visual da plataforma (só temas do manifesto de assets; troca pelo admin em /admin/tema).'],
         ];
     }
 
@@ -30,7 +31,11 @@ final class Settings
         $exists = $pdo->prepare('SELECT 1 FROM settings WHERE skey = ?');
         foreach (self::defaults() as $key => [$value, $description]) {
             $exists->execute([$key]);
-            if (!$exists->fetchColumn()) {
+            $has = $exists->fetchColumn();
+            // Fecha a leitura antes de escrever: cursor aberto segura o lock de leitura no SQLite e o UPDATE
+            // seguinte recebe BUSY na hora (sem busy_timeout) se outro processo estiver escrevendo.
+            $exists->closeCursor();
+            if (!$has) {
                 $stmt->execute([$key, $value, $description]);
             }
         }

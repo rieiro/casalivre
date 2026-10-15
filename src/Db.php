@@ -98,7 +98,7 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 7; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue)
+    public const SCHEMA_VERSION = 8; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2)
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
@@ -139,8 +139,27 @@ final class Db
      * @param callable(PDO): T $fn
      * @return T
      */
-    public static function transactional(PDO $pdo, callable $fn): mixed
+    public static function transactional(PDO $pdo, callable $fn, bool $immediate = false): mixed
     {
+        // $immediate: no SQLite abre com BEGIN IMMEDIATE (lock de escrita já no início, respeitando o busy_timeout),
+        // para leitura + escrita sem o deadlock do upgrade de lock da transação deferred. No pgsql não muda nada.
+        if ($immediate && !self::inTransaction($pdo) && (string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            $pdo->exec('BEGIN IMMEDIATE');
+            self::$rawTransaction = true;
+            try {
+                $result = $fn($pdo);
+                $pdo->exec('COMMIT');
+                return $result;
+            } catch (Throwable $e) {
+                try {
+                    $pdo->exec('ROLLBACK');
+                } catch (Throwable) {
+                }
+                throw $e;
+            } finally {
+                self::$rawTransaction = false;
+            }
+        }
         $own = false;
         if (!self::inTransaction($pdo)) {
             try {
@@ -240,6 +259,7 @@ final class Db
             'address_number' => "TEXT NOT NULL DEFAULT ''",
             'address_complement' => "TEXT NOT NULL DEFAULT ''",
             'audit_hold' => 'TEXT',
+            'is_admin' => 'INTEGER NOT NULL DEFAULT 0',
         ];
         if ($driver === 'sqlite') {
             $have = [];

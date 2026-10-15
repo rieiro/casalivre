@@ -77,6 +77,7 @@ a { color: var(--link); }
 header.top, footer { display: flex; justify-content: space-between; align-items: center; gap: var(--space-16); padding: var(--space-14) var(--space-24); background: var(--brand); color: var(--surface); }
 header.top a, footer { color: var(--surface); text-decoration: none; }
 .brand { font-weight: 800; font-size: 1.25rem; }
+.brand-logo { display: block; height: 32px; width: auto; }
 header.top nav { display: flex; gap: var(--space-16); align-items: center; }
 button.linkish { background: none; border: 0; color: var(--surface); cursor: pointer; font: inherit; padding: 0; }
 .hero { background: var(--brand); color: var(--surface); padding: var(--space-8) 0 var(--space-28); }

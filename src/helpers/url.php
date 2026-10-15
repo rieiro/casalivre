@@ -157,6 +157,7 @@ function csp_header(): string
 }
 
 require_once dirname(__DIR__) . '/AssetManifest.php';
+require_once dirname(__DIR__) . '/Theme.php';
 
 /**
  * URL de asset com hash do conteúdo: "/assets/app.css" -> "/assets/app.css?v=<12 hex>" (public/assets/manifest.json,

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     deleted_at TIMESTAMP,
     failed_logins INTEGER NOT NULL DEFAULT 0,
     session_version INTEGER NOT NULL DEFAULT 0,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     audit_hold TEXT
 );

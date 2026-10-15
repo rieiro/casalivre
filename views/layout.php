@@ -4,14 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
-    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+<?php $themeName = Theme::current(); $brand = Theme::brand($themeName); $logo = Theme::logoUrl($brand, $themeName); ?>
+    <link rel="icon" href="<?= e(Theme::faviconUrl($brand, $themeName)) ?>" sizes="16x16 32x32">
     <link rel="stylesheet" href="<?= e(asset_url('/assets/app.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset_url(Theme::cssPath($themeName))) ?>">
     <?= page_data_script($csrf) ?>
     <script src="<?= e(asset_url('/assets/safe-dom.js')) ?>"></script>
 </head>
 <body>
 <header class="top">
-    <a class="brand" href="/">CasaLivre</a>
+    <a class="brand" href="/"><?php if ($logo !== null): ?><img class="brand-logo" src="<?= e($logo) ?>" alt="<?= e($brand['nome']) ?>"><?php else: ?><?= e($brand['nome']) ?><?php endif; ?></a>
     <form class="lang" method="post" action="/idioma">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label><?= e(t('nav.language')) ?>

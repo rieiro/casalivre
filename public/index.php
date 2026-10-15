@@ -160,7 +160,7 @@ function cors_allowed_origins(): array
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair'], true)) {
+    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema'], true)) {
         return true;
     }
     if ($path === '/imoveis' && $method === 'POST') {
@@ -418,6 +418,30 @@ if ($path === '/sair' && $method === 'POST') {
     activity(ActivityLog::LOGOUT);
     unset($_SESSION['user_id']);
     redirect('/');
+}
+
+// Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
+if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    $nomes = Theme::available();
+    $temas = [];
+    foreach ($nomes as $nome) {
+        $temas[$nome] = Theme::brand($nome)['rotulo'];
+    }
+    $atual = Theme::current();
+    if ($method === 'POST') {
+        csrf_check();
+        $res = ThemeSet::run($_POST['tema'] ?? '', $atual, $nomes);
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
+            http_response_code($res->tipo === 'invalido' ? 422 : 409);
+            view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => $res->mensagem, 'ok' => false]);
+            return null;
+        }
+        redirect('/admin/tema?ok=1');
+    }
+    view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => null, 'ok' => isset($_GET['ok'])]);
+    return null;
 }
 
 if ($path === '/conta' && $method === 'GET') {
