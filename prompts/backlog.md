@@ -100,6 +100,11 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 - [ ] (baixa, #61) Diferença de poucos ms em `/senha/esqueci` (INSERT na `mail_queue` só se o e-mail existe) e no login de conta pendente com reenvio; abaixo do ruído e coberta por rate limit.
 - [ ] (QA #61, já existia) Conta bloqueada responde "Conta bloqueada" (423 na API), revelando que existe; o primeiro 429 por IP sai sem `Retry-After`.
 - [ ] (Reunião 15/10) Quando a importação de `.ics` externo (Airbnb/Booking) entrar, criar teste próprio: SSRF, arquivo gigante e parser malicioso.
+- [ ] (baixa, #73) Limite de tentativas por IP no `POST /verificar`.
+- [ ] (baixa, #73) `Cache-Control: no-store` na página de confirmação da ativação (hoje `private, no-cache`, com o token no HTML).
+- [ ] (baixa, #73 D3) O RequestLog grava HEAD em `/api` como GET (o método é trocado antes do `RequestLog::start`) e o HEAD com 405 em `/api` não gera linha; passar o método original.
+- [ ] (baixa, #73) `GET /verificar?token[]=x` gera PHP Warning (Array to string).
+- [ ] (baixa, #72) `/idioma` compara o Referer com o Host incluindo a porta; em dev com porta, sempre volta para `/`.
 
 ### Produto / UX
 - [ ] Status ativo/inativo de grupo; avisar o dono sobre convite (painel ou e-mail); link de grupos no menu.
@@ -189,7 +194,7 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 
 ## Redução de dados enviados
 Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca, o detalhe, o painel e a edição baixam cerca de 13,4 MB, e 98% disso são fotos originais.
-- [ ] **PR de fotos (prioridade):** resize no upload com libvips (WebP 480/960/1600, + AVIF), original fora de public/, limite de 50 MP e script de reprocessamento. Ganho medido: 13,4 MB → ~0,3 MB.
+- [x] **PR de fotos (feito no #39, com GD e WebP 320/800/1920; libvips e AVIF não adotados):** resize no upload, original fora de public/, limite de 50 MP e script de reprocessamento. Ganho medido: 13,4 MB → ~0,3 MB.
 - [ ] **No mesmo PR:** remover EXIF/GPS das fotos, inclusive das já gravadas (LGPD, alto).
 - [ ] **No mesmo PR:** `srcset`/`sizes`, `width`/`height` e `decoding=async` nas imagens.
 - [ ] Upload de 16 MB → ~10 MB, com limite de pixels (DoS).
