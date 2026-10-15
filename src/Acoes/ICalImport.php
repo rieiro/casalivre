@@ -8,18 +8,31 @@ require_once __DIR__ . '/Resultado.php';
  * Cadastro + primeira importação de um feed iCal (web POST /imoveis/{hash}/ical/importar e
  * API POST /api/imoveis/{hash}/ical/importar). Mesma regra e mesmos logs nos dois canais.
  *
- * Desfechos (tipo): vazio | title | limit (422) | duplicate (409) | ok | nok. dados: importadas (int) e,
+ * Desfechos (tipo): vazio | url (não-https, não-texto) | title | limit (422) | duplicate (409) | ok | nok.
+ * url e título chegam BRUTOS (POST/JSON): array ou outro não-texto recusa (422), em vez de virar "Array".
+ * Só https:// com host (javascript:, ftp:, file:, http: e afins -> 422 em external_ical_url, nada gravado). dados: importadas (int) e,
  * nas recusas, erros = [campo => mensagem] (campos external_ical_url / feed_title).
  * Logs: recusa não grava nada; com o feed salvo, CALENDAR_FEED_ADD e depois CALENDAR_SYNC (resultado ok/nok).
  * O corpo .ics enviado pelo cliente nunca é usado: só o que o servidor baixa (exported_calendar_body/fetch).
  */
 final class ICalImport
 {
-    public static function run(array $property, int $userId, string $url, string $feedTitle): Resultado
+    public static function run(array $property, int $userId, mixed $url, mixed $feedTitle): Resultado
     {
         $propertyId = (int) $property['id'];
+        if ($url !== null && !is_string($url)) {
+            return self::recusa('url', 'external_ical_url', t('cal.url_https'));
+        }
+        if ($feedTitle !== null && !is_string($feedTitle)) {
+            return self::recusa('title', 'feed_title', t('cal.feed_title_required'));
+        }
+        $url = trim((string) $url);
+        $feedTitle = trim((string) $feedTitle);
         if ($url === '') {
             return self::recusa('vazio', 'external_ical_url', t('cal.url_required'));
+        }
+        if (!self::https($url)) {
+            return self::recusa('url', 'external_ical_url', t('cal.url_https'));
         }
         $error = HouseRepository::addFeed($propertyId, $userId, $url, $feedTitle);
         if ($error === 'limit') {
@@ -61,6 +74,18 @@ final class ICalImport
             ]],
         ];
         return new Resultado($ok ? 'ok' : 'nok', $message, ['importadas' => $count], $events);
+    }
+
+    /** Só https:// com host e sem espaços/controles (o esquema é conferido sem diferenciar maiúsculas). */
+    private static function https(string $url): bool
+    {
+        if (preg_match('/[\s\x00-\x1f\x7f]/', $url)) {
+            return false;
+        }
+        $parts = parse_url($url);
+        return is_array($parts)
+            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && (string) ($parts['host'] ?? '') !== '';
     }
 
     private static function recusa(string $tipo, string $campo, string $message): Resultado

@@ -261,8 +261,8 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | POST | `/imoveis/<h>/fotos/excluir`, `/imoveis/<h>/fotos/<id>/excluir` | S, C, dono | 302 |
 | POST | `/imoveis/<h>/fotos/capa`, `/imoveis/<h>/fotos/<id>/capa` | S, C, dono | 302 (0 ou 2+ fotos, ou foto de outro imóvel: aviso de erro na tela de edição) |
 | GET/POST | `/imoveis/<h>/calendario` | S, C no POST, dono | 200 (o POST mostra a tela de novo com a mensagem; recusa como erro) |
-| POST | `/imoveis/<h>/ical/importar` | S, C, dono | 200 com a tela do calendário e a mensagem (URL vazia, título, limite, duplicado e falha de download como erro) |
-| POST | `/imoveis/<h>/ical/<id>/excluir` | S, C, dono | 302 `.../calendario` (feed inexistente: a tela mostra o erro, nada muda) |
+| POST | `/imoveis/<h>/ical/importar` | S, C, dono | 200 com a tela do calendário e a mensagem (URL vazia ou não-https, título, limite, duplicado e falha de download como erro) |
+| POST | `/imoveis/<h>/ical/<id>/excluir` | S, C, dono | 302 `.../calendario` com aviso por flash na sessão (sucesso; feed inexistente: erro, nada muda, nem `properties`) |
 | POST | `/imoveis/<h>/grupo/aceitar`, `/recusar`, `/sair` | S, C, dono | 302 com aviso; 404 / 409 / 422 conforme o `Resultado` |
 
 ### 5.3 Gestor de grupo
@@ -323,7 +323,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |
 | POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200; 422 inválido / 409 noites travadas pela sincronização (`{error, erros: {campo: mensagem}}`) |
 | GET | `/api/imoveis/<h>/editar` | S, dono | 200 |
-| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | campos `external_ical_url` e `feed_title`; 200; 502 falha ao baixar o feed (feed salvo como NOK; `{error, status: NOK, feeds}`); 422 URL/limite/título; 409 feed duplicado (`{error, erros}`) |
+| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | campos `external_ical_url` (só `https://`, texto) e `feed_title`; 200; 502 falha ao baixar o feed (feed salvo como NOK; `{error, status: NOK, feeds}`); 422 URL/limite/título; 409 feed duplicado (`{error, erros}`) |
 | DELETE | `/api/imoveis/<h>/ical/<id>` | S, C, dono | 200; 404 |
 | GET | `/api/ical/<32hex>` (com ou sem `.ics`) | — | 200; 404 |
 | GET | `/api/imoveis/<h>/calendario.ics` | — | sempre 404 |

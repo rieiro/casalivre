@@ -7,6 +7,7 @@ declare(strict_types=1);
 // com efeitos de inicialização (GeoSalt::enforce, PasswordPolicy, AccountFlow::$enqueue, reject_oversize_upload).
 require_once __DIR__ . '/Acoes/LoginAttempt.php';
 require_once __DIR__ . '/Acoes/AccountUpdate.php';
+require_once __DIR__ . '/CalendarFlash.php';
 require_once __DIR__ . '/Acoes/CalendarSave.php';
 require_once __DIR__ . '/Acoes/ICalImport.php';
 require_once __DIR__ . '/Acoes/ICalFeedRemove.php';

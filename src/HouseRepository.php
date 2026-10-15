@@ -433,6 +433,10 @@ final class HouseRepository
     public static function removeFeed(int $propertyId, int $userId, int $feedId): array
     {
         $deleted = ReturningWrite::remove('calendar_feeds', 'id = ? AND property_id = ?', [$feedId, $propertyId], ['id', 'url', 'title']);
+        if ($deleted === []) {
+            // Feed inexistente: não toca em properties (antes gravava external_ical_url NULL -> '' e audit_hold).
+            return ['feed' => null, 'link' => []];
+        }
         return ['feed' => $deleted[0]['old'] ?? null, 'link' => self::syncExternalUrl($propertyId, $userId)];
     }
 
