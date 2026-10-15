@@ -63,6 +63,17 @@ db()->exec("UPDATE group_domains SET last_check_at = '2026-10-02 00:00:00' WHERE
 t_ok(str_contains($body, 'https://casalivre.example/admin/grupos/imob;'), 'admin: link absoluto em APP_URL');
 t_ok(str_contains($body, 'vitrine agora em https://imob.example.com/g/imob/'), 'vitrine: domínio verificado que sobrou');
 
+echo "mail-dev.log do aviso\n";
+$dir = sys_get_temp_dir() . '/ldlog' . bin2hex(random_bytes(3));
+Mailer::$devLogDir = $dir;
+$envAntes = getenv('APP_ENV');
+putenv('APP_ENV=dev');
+[$subject, $body] = Mailer::domainNotice(GroupRepository::unverifiedCheckedDomains());
+Mailer::deliver('a@casalivre.test', $subject, $body);
+putenv($envAntes === false ? 'APP_ENV' : 'APP_ENV=' . $envAntes);
+$line = json_decode(trim((string) file_get_contents($dir . '/mail-dev.log')), true);
+t_eq('https://casalivre.example/admin/grupos/imob', $line['link'] ?? null, 'link no mail-dev.log sem o ";" final');
+
 echo "páginas do grupo (admin e gestor)\n";
 $base = t_server();
 $login = static function (string $email, string $password) use ($base): string {

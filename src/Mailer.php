@@ -194,7 +194,8 @@ final class Mailer
             throw new RuntimeException(self::NOT_CONFIGURED);
         }
         if (self::env('SMTP_HOST') === '') {
-            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? $m[0] : '';
+            // Primeiro link do corpo, sem pontuação final do texto (ex.: "...; vitrine agora em ..." no domain-notice).
+            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? rtrim($m[0], '.,;:)') : '';
             if (!self::writeDevLog($to, $subject, $link)) {
                 throw new RuntimeException('Falha ao gravar mail-dev.log.');
             }
