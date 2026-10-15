@@ -27,21 +27,30 @@ final class GrupoValidacao
         return $name;
     }
 
+    /** Nome de host em minúsculas com TLD alfabético (sem esquema, porta, caminho, curinga ou IDN unicode). */
+    private const HOST_RE = '/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/';
+
     /** Domínio em minúsculas, sem esquema/porta/caminho, com TLD alfabético; nem o host da plataforma nem subdomínio dele. */
     public static function domain(mixed $domain): ?string
     {
         if (!is_string($domain)) {
             return null;
         }
-        $d = strtolower(trim($domain));
-        if ($d === '' || strlen($d) > 253 || preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $d) !== 1) {
-            return null;
-        }
+        $d = self::hostname(strtolower(trim($domain)));
+        return $d === null || self::isPlatform($d) ? null : $d;
+    }
+
+    /** Formato de host (já em minúsculas), ou null. */
+    public static function hostname(string $d): ?string
+    {
+        return $d !== '' && strlen($d) <= 253 && preg_match(self::HOST_RE, $d) === 1 ? $d : null;
+    }
+
+    /** Host da plataforma ou subdomínio dele. */
+    public static function isPlatform(string $d): bool
+    {
         $platform = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
-        if ($platform !== '' && ($d === $platform || str_ends_with($d, '.' . $platform))) {
-            return null;
-        }
-        return $d;
+        return $platform !== '' && ($d === $platform || str_ends_with($d, '.' . $platform));
     }
 
     public static function theme(mixed $theme): ?string
