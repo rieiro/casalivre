@@ -41,7 +41,7 @@ X-Frame-Options: DENY
     <section class="wrap">
     <form class="panel" id="login-form" method="post" action="/entrar">
         <h1>Entrar</h1>
-        <p class="error" id="login-error" hidden></p>
+                <p class="error" id="login-error" role="alert" hidden></p>
         <input type="hidden" name="_csrf" value="<CSRF>">
         <label>E-mail <input type="email" name="email" required></label>
         <label>Senha <input type="password" name="password" required></label>

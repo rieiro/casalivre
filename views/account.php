@@ -1,7 +1,8 @@
 <section class="wrap">
     <form class="panel" id="account-form" method="post" action="/conta">
         <h1><?= e(t('account.title')) ?></h1>
-        <p class="error" id="account-error" hidden></p>
+        <?php $formError = (string) ($error ?? ''); /* erro do POST re-renderizado no servidor (funciona sem JS) */ ?>
+        <p class="error" id="account-error" role="alert"<?= $formError === '' ? ' hidden' : '' ?>><?= e($formError) ?></p>
         <p class="ok" id="account-ok" hidden>Salvo.</p>
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label><?= e(t('auth.name')) ?> <input name="name" required value="<?= e($user['name']) ?>"></label>
