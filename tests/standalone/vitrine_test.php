@@ -183,4 +183,24 @@ foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
     t_eq([200, [$hA['hash']]], $apiOn("$q&grupo=imob-sul", $h), "Host $h, grupo=A: inalterado");
 }
 t_eq([200, [$hB['hash']]], $api("$q&grupo=outro"), 'plataforma, grupo=B: inalterado');
+
+require_once CL_ROOT . "/src/SearchService.php";
+echo "SearchService: host obrigatório\n";
+$pr = static fn (string $m, string $n): ReflectionParameter => array_values(array_filter((new ReflectionMethod('SearchService', $m))->getParameters(), static fn ($p) => $p->getName() === $n))[0];
+t_ok(!$pr('run', 'host')->isOptional() && !$pr('run', 'log')->isOptional(), 'run(bool $log, mixed $host): sem padrão');
+t_ok(!$pr('search', 'host')->isOptional(), 'search(..., mixed $host, ...): sem padrão');
+
+echo "B3: domínio verificado sem ?grupo= força o grupo do domínio\n";
+$q = 'localidade=Florian%C3%B3polis';
+t_eq([200, [$hA['hash']]], $apiOn($q, 'imob.example.com'), 'domínio de A, sem grupo: só os de A');
+t_eq([200, [$hA['hash']]], $apiOn($q, 'IMOB.example.com:8080'), 'domínio de A (maiúsculas e porta), sem grupo: só os de A');
+foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
+    [$st, $ids] = $apiOn($q, $h);
+    t_ok($st === 200 && in_array($hA['hash'], $ids, true) && in_array($hB['hash'], $ids, true) && in_array($hNone['hash'], $ids, true), "Host $h, sem grupo: catálogo inteiro (inalterado)");
+}
+[$st, $ids] = $api($q);
+t_ok($st === 200 && in_array($hB['hash'], $ids, true) && in_array($hNone['hash'], $ids, true), 'plataforma, sem grupo: catálogo inteiro (inalterado)');
+$r = $onHost('/busca?' . $q, 'imob.example.com');
+t_eq(200, $r['status'], 'domínio de A: /busca 200');
+t_ok(str_contains($r['body'], 'id="search-results"') && !str_contains($r['body'], 'data-api="/api/busca?') , '/busca no domínio usa a mesma /api/busca (filtrada pelo Host)');
 t_done();

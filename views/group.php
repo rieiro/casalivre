@@ -2,6 +2,7 @@
     <p><a href="/grupos">Grupos</a></p>
     <h1><?= e($group['name']) ?></h1>
     <p class="muted">Seu papel: <?= e($role) ?></p>
+    <p>Vitrine: <a class="group-storefront" href="<?= e($vitrine_url) ?>"><?= e($vitrine_url) ?></a></p>
     <?php if (!empty($ok)): ?><p class="notice" role="status"><?= e($ok) ?></p><?php endif; ?>
     <?php if (!empty($error)): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?>
 

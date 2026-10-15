@@ -136,10 +136,15 @@ final class Mailer
     public static function domainNotice(array $domains): array
     {
         require_once __DIR__ . '/DomainVerification.php';
+        require_once __DIR__ . '/GrupoUrl.php';
         $lines = '';
         foreach ($domains as $d) {
+            // Links absolutos: admin sempre em APP_URL (conta/admin só na plataforma); vitrine pela GrupoUrl (domínio
+            // verificado da lista ou APP_URL/g/<slug>). Nunca o Host da requisição.
+            $group = GroupRepository::findBySlug((string) $d['slug']);
             $lines .= '- ' . $d['domain'] . ' (grupo ' . $d['slug'] . '): registro ' . DomainVerification::txtName((string) $d['domain'])
-                . ', /admin/grupos/' . $d['slug'] . "\r\n";
+                . ', ' . self::linkFromAppUrl('http://localhost/admin/grupos/' . $d['slug'])
+                . ($group !== null ? '; vitrine agora em ' . GrupoUrl::home($group) : '') . "\r\n";
         }
         return [
             'CasaLivre: domínio de grupo perdeu a verificação',
@@ -189,7 +194,8 @@ final class Mailer
             throw new RuntimeException(self::NOT_CONFIGURED);
         }
         if (self::env('SMTP_HOST') === '') {
-            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? $m[0] : '';
+            // Primeiro link do corpo, sem pontuação final do texto (ex.: "...; vitrine agora em ..." no domain-notice).
+            $link = preg_match('#https?://\S+#', $body, $m) === 1 ? rtrim($m[0], '.,;:)') : '';
             if (!self::writeDevLog($to, $subject, $link)) {
                 throw new RuntimeException('Falha ao gravar mail-dev.log.');
             }

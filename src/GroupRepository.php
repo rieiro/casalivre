@@ -104,6 +104,14 @@ final class GroupRepository
         return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
     }
 
+    /** Domínios verificados do grupo, do mais antigo (id) ao mais novo. @return list<string> */
+    public static function verifiedDomains(int $groupId): array
+    {
+        $st = db()->prepare('SELECT domain FROM group_domains WHERE group_id = ? AND verified_at IS NOT NULL ORDER BY id');
+        $st->execute([$groupId]);
+        return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     /** Domínios com estado da verificação. @return list<array{domain:string,verify_token:string,verified_at:?string,last_check_at:?string,fail_count:int}> */
     public static function domainRows(int $groupId): array
     {
