@@ -18,7 +18,9 @@ final class AccountUpdate
 {
     public static function run(array $user, array $input): Resultado
     {
-        $error = account_text(AccountFlow::profileProblem($input));
+        // 'required' do perfil tem texto próprio (sem e-mail); err.required continua só no cadastro.
+        $code = AccountFlow::profileProblem($input);
+        $error = $code === 'required' ? t('err.profile_required') : account_text($code);
         if ($error) {
             return new Resultado('invalido', $error);
         }

@@ -125,6 +125,8 @@ t_eq(null, $logs[0]['atual'], 'web /conta: sem mudança -> valor_atual null');
 $m = c_mark($act);
 $r = c_form($base, '/conta', ['_csrf' => $csrf, 'name' => ''] + $fields, $jar);
 t_eq(200, $r['status'], 'web /conta: inválido re-renderiza (200)');
+// A view ainda não mostra a mensagem (#account-error vazio, fica para outro PR); o texto é da ação, coberto pela API.
+t_ok(!str_contains($r['body'], e(t('err.required'))), 'web /conta: não exibe err.required (pede e-mail)');
 t_eq([], c_codes($act, $m), 'web /conta: inválido não grava');
 $m = c_mark($act);
 // Decisão de produto: o e-mail não é editável. Os antigos casos "e-mail em uso" (web 200 / API 409) saíram:
@@ -153,6 +155,8 @@ t_eq([ActivityLog::ACCOUNT_UPDATE], c_codes($act, $m), 'API: sem mudança AINDA 
 $m = c_mark($act);
 $r = c_api('PUT', $base, '/api/users/eu', ['name' => ''] + $fields, $csrf, $jar);
 t_eq(422, $r['status'], 'API: inválido 422');
+t_eq(t('err.profile_required'), $r['json']['error'] ?? null, 'API: perfil sem nome usa err.profile_required');
+t_ok(stripos((string) ($r['json']['error'] ?? ''), 'mail') === false, 'API: mensagem do perfil não fala de e-mail');
 t_eq([], c_codes($act, $m), 'API: erros não gravam activity_log');
 // email no corpo = campo desconhecido: mesmo tratamento de um campo inventado (ignorado, 200).
 $r1 = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'campo_inventado' => 'x'] + $fields, $csrf, $jar);
@@ -165,5 +169,10 @@ t_eq($owner['email'], $userRow($owner['user_id'])['email'], 'DB: e-mail não mud
 t_eq('Dono API', $userRow($owner['user_id'])['name'], 'DB: nome final = Dono API');
 $r = c_api('PUT', $base, '/api/users/eu', $fields, $csrf, tempnam(sys_get_temp_dir(), 'jar'));
 t_eq(419, $r['status'], 'API: sem sessão e com CSRF de outra sessão 419 (CSRF vem antes da auth)');
+
+echo "cadastro continua com err.required\n";
+$jarR = tempnam(sys_get_temp_dir(), 'jar');
+$r = c_api('POST', $base, '/api/users', ['name' => '', 'email' => 'x' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password' => 'Casa#123456xY', 'password_confirm' => 'Casa#123456xY'] + $fields, c_csrf($base, $jarR), $jarR);
+t_eq([422, t('err.required')], [$r['status'], $r['json']['error'] ?? null], 'cadastro: sem nome -> 422 err.required (mensagem com e-mail)');
 
 t_done();
