@@ -1,10 +1,10 @@
 /assets/app.css?v=b510075a90f1  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/app.js?v=d5f6a95346f6  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/pages/login.js?v=5c871f8bce94  <- entrar
-/assets/pages/map-data.js?v=ea6f3b5784b1  <- mapa
-/assets/pages/map.js?v=3cb6638ba39d  <- mapa
+/assets/pages/map-data.js?v=5a1582c13c9c  <- mapa
+/assets/pages/map.js?v=06a1b8a036ef  <- mapa
 /assets/pages/property.js?v=4e75d5e2146b  <- imovel
-/assets/pages/search.js?v=774cad36c3fe  <- busca
+/assets/pages/search.js?v=d69f114903a5  <- busca
 /assets/safe-dom.js?v=5531df8bf399  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/themes/padrao.css?v=e297e5b2640d  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=16786767beab  <- mapa
