@@ -128,15 +128,31 @@ final class GrupoAdmin
         }
         $uid = (int) $user['id'];
         $gid = (int) $group['id'];
-        $old = GroupRepository::activeRole($gid, $uid);
-        if ($old === $role) {
-            return new Resultado('ok', null, ['mudou' => false]);
+        // Leitura do papel e gravação na mesma transação (BEGIN IMMEDIATE no SQLite): dois saves simultâneos não
+        // deixam DELETE sem INSERT; corrida que ainda bata no UNIQUE (pgsql) vira 'conflito', não 500.
+        try {
+            $old = Db::transactional(db(), static function (PDO $pdo) use ($gid, $uid, $role): array {
+                $old = GroupRepository::activeRole($gid, $uid);
+                if ($old === $role) {
+                    return [false, $old];
+                }
+                if ($old === null) {
+                    $pdo->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([$gid, $uid]);
+                    $pdo->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$gid, $uid, $role]);
+                } else {
+                    $pdo->prepare('UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?')->execute([$role, $gid, $uid]);
+                }
+                return [true, $old];
+            }, true);
+        } catch (PDOException $e) {
+            if (!GroupRepository::isUniqueViolation($e)) {
+                throw $e;
+            }
+            return new Resultado('conflito', 'O membro foi alterado ao mesmo tempo. Tente de novo.');
         }
-        if ($old === null) {
-            db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([$gid, $uid]);
-            db()->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$gid, $uid, $role]);
-        } else {
-            db()->prepare('UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?')->execute([$role, $gid, $uid]);
+        [$mudou, $old] = $old;
+        if (!$mudou) {
+            return new Resultado('ok', null, ['mudou' => false]);
         }
         return new Resultado('ok', null, ['mudou' => true], [
             [ActivityLog::GROUP_MEMBER_SET, ['grupo' => $group['slug'], 'user_id' => $uid, 'papel' => $role], $old === null ? null : ['papel' => $old], ['papel' => $role]],

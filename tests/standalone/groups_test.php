@@ -226,6 +226,33 @@ t_ok($uidLog === null || preg_match('/^[a-f0-9]{16}$/', (string) $uidLog) === 1,
 $adminPage = t_http('GET', $base . '/admin/grupos/imob-sul', null, [], $jA)['body'];
 t_ok(str_contains($adminPage, e($gestor['email'])), 'admin vê os membros');
 
+echo "setMember em transação\n";
+// Corrida simulada por gatilho: o INSERT do membro bate num UNIQUE (outro save chegou antes) -> 'conflito', sem 500,
+// sem gravar, sem log e sem transação pendente; outra falha propaga, também sem transação pendente.
+$tx = c_user('active');
+$adminRow = ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'];
+$mark = c_mark($act);
+db()->exec("CREATE TEMP TRIGGER corrida BEFORE INSERT ON group_members WHEN NEW.user_id = " . (int) $tx['id'] . " BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: group_members.group_id, group_members.user_id'); END");
+$r = GrupoAdmin::setMember($adminRow, $g2, $tx['email'], 'gestor');
+t_eq('conflito', $r->tipo, 'setMember: UNIQUE na corrida vira conflito');
+t_eq([], $r->eventos, 'setMember: conflito sem log');
+t_ok(!Db::inTransaction(db()), 'setMember: nenhuma transação pendente após o conflito');
+db()->exec('DROP TRIGGER corrida');
+db()->exec("CREATE TEMP TRIGGER falha BEFORE INSERT ON group_members WHEN NEW.user_id = " . (int) $tx['id'] . " BEGIN SELECT RAISE(ABORT, 'falha simulada'); END");
+$err = null;
+try {
+    GrupoAdmin::setMember($adminRow, $g2, $tx['email'], 'gestor');
+} catch (PDOException $e) {
+    $err = $e;
+}
+db()->exec('DROP TRIGGER falha');
+t_ok($err !== null, 'setMember: outra falha de banco propaga');
+t_ok(!Db::inTransaction(db()), 'setMember: nenhuma transação pendente após a falha');
+t_eq(null, GroupRepository::storedRole((int) $g2['id'], (int) $tx['id']), 'setMember: nada gravado nas falhas');
+t_eq('ok', GrupoAdmin::setMember($adminRow, $g2, $tx['email'], 'gestor')->tipo, 'setMember: sem gatilho grava');
+t_eq('gestor', GroupRepository::activeRole((int) $g2['id'], (int) $tx['id']), 'setMember: papel gravado');
+db()->prepare('DELETE FROM group_members WHERE user_id = ?')->execute([$tx['id']]);
+
 echo "área do grupo: não-membro e grupo inexistente\n";
 $r404 = t_http('GET', $base . '/grupos/nao-existe', null, [], $jX);
 $rOut = t_http('GET', $base . '/grupos/imob-sul', null, [], $jX);
