@@ -106,7 +106,7 @@ echo "conta: web\n";
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $other = c_user('active');
-$fields = ['name' => 'Dono Novo', 'cpf' => '52998224725', 'cep' => '88000000', 'address_number' => '1', 'address_complement' => '', 'phone' => '48999999999', 'email' => $owner['email']];
+$fields = ['name' => 'Dono Novo', 'cpf' => '52998224725', 'cep' => '88000000', 'address_number' => '1', 'address_complement' => '', 'phone' => '48999999999'];
 $m = c_mark($act);
 $r = c_form($base, '/conta', ['_csrf' => $csrf] + $fields, $jar);
 t_eq(302, $r['status'], 'web /conta: sucesso 302');
@@ -125,12 +125,22 @@ t_eq(null, $logs[0]['atual'], 'web /conta: sem mudança -> valor_atual null');
 $m = c_mark($act);
 $r = c_form($base, '/conta', ['_csrf' => $csrf, 'name' => ''] + $fields, $jar);
 t_eq(200, $r['status'], 'web /conta: inválido re-renderiza (200)');
+// A view ainda não mostra a mensagem (#account-error vazio, fica para outro PR); o texto é da ação, coberto pela API.
+t_ok(!str_contains($r['body'], e(t('err.required'))), 'web /conta: não exibe err.required (pede e-mail)');
 t_eq([], c_codes($act, $m), 'web /conta: inválido não grava');
 $m = c_mark($act);
-$r = c_form($base, '/conta', ['_csrf' => $csrf, 'email' => $other['email']] + $fields, $jar);
-t_eq(200, $r['status'], 'web /conta: e-mail em uso re-renderiza (200)');
-t_eq([], c_codes($act, $m), 'web /conta: e-mail em uso não grava');
-t_eq($owner['email'], $userRow($owner['user_id'])['email'], 'DB: e-mail não mudou');
+// Decisão de produto: o e-mail não é editável. Os antigos casos "e-mail em uso" (web 200 / API 409) saíram:
+// não há mais caminho que tente gravar e-mail. No lugar, conferimos que um email no POST é ignorado.
+$page = t_http('GET', $base . '/conta', null, [], $jar);
+t_ok(str_contains($page['body'], e($owner['email'])), 'web /conta: e-mail aparece como texto');
+t_ok(preg_match('/<input[^>]*name="email"/', $page['body']) !== 1, 'web /conta: sem input de e-mail no formulário');
+$m = c_mark($act);
+$r = c_form($base, '/conta', ['_csrf' => $csrf, 'email' => $other['email'], 'name' => 'Dono Web'] + $fields, $jar);
+t_eq(302, $r['status'], 'web /conta: POST com email (campo desconhecido) segue como sucesso 302');
+t_eq([ActivityLog::ACCOUNT_UPDATE], c_codes($act, $m), 'web /conta: grava só o ACCOUNT_UPDATE dos outros campos');
+t_eq([$owner['email'], 'Dono Web'], [$userRow($owner['user_id'])['email'], $userRow($owner['user_id'])['name']], 'DB: e-mail não mudou, nome mudou');
+$r = c_form($base, '/conta', ['_csrf' => $csrf, 'email' => 'novo' . bin2hex(random_bytes(3)) . '@casalivre.test'] + $fields, $jar);
+t_eq($owner['email'], $userRow($owner['user_id'])['email'], 'DB: e-mail livre no POST web também não muda');
 
 echo "conta: API\n";
 $m = c_mark($act);
@@ -145,11 +155,24 @@ t_eq([ActivityLog::ACCOUNT_UPDATE], c_codes($act, $m), 'API: sem mudança AINDA 
 $m = c_mark($act);
 $r = c_api('PUT', $base, '/api/users/eu', ['name' => ''] + $fields, $csrf, $jar);
 t_eq(422, $r['status'], 'API: inválido 422');
-$r = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'email' => $other['email']] + $fields, $csrf, $jar);
-t_eq(409, $r['status'], 'API: e-mail em uso 409');
+t_eq(t('err.profile_required'), $r['json']['error'] ?? null, 'API: perfil sem nome usa err.profile_required');
+t_ok(stripos((string) ($r['json']['error'] ?? ''), 'mail') === false, 'API: mensagem do perfil não fala de e-mail');
 t_eq([], c_codes($act, $m), 'API: erros não gravam activity_log');
+// email no corpo = campo desconhecido: mesmo tratamento de um campo inventado (ignorado, 200).
+$r1 = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'campo_inventado' => 'x'] + $fields, $csrf, $jar);
+$r2 = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'email' => $other['email']] + $fields, $csrf, $jar);
+$r3 = c_api('PUT', $base, '/api/users/eu', ['name' => 'Dono API', 'email' => 'livre' . bin2hex(random_bytes(3)) . '@casalivre.test'] + $fields, $csrf, $jar);
+t_eq([200, 200, 200], [$r1['status'], $r2['status'], $r3['status']], 'API: email no corpo tratado como campo desconhecido (200, igual a campo_inventado)');
+t_eq([$r1['json'], $r1['json']], [$r2['json'], $r3['json']], 'API: mesma resposta com e sem email');
+t_eq($owner['email'], $r2['json']['user']['email'] ?? null, 'API: user devolvido com o e-mail original');
+t_eq($owner['email'], $userRow($owner['user_id'])['email'], 'DB: e-mail não mudou pela API');
 t_eq('Dono API', $userRow($owner['user_id'])['name'], 'DB: nome final = Dono API');
 $r = c_api('PUT', $base, '/api/users/eu', $fields, $csrf, tempnam(sys_get_temp_dir(), 'jar'));
 t_eq(419, $r['status'], 'API: sem sessão e com CSRF de outra sessão 419 (CSRF vem antes da auth)');
+
+echo "cadastro continua com err.required\n";
+$jarR = tempnam(sys_get_temp_dir(), 'jar');
+$r = c_api('POST', $base, '/api/users', ['name' => '', 'email' => 'x' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password' => 'Casa#123456xY', 'password_confirm' => 'Casa#123456xY'] + $fields, c_csrf($base, $jarR), $jarR);
+t_eq([422, t('err.required')], [$r['status'], $r['json']['error'] ?? null], 'cadastro: sem nome -> 422 err.required (mensagem com e-mail)');
 
 t_done();
