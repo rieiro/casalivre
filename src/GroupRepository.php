@@ -169,6 +169,13 @@ final class GroupRepository
         return $st->fetchAll();
     }
 
+    /** Imóvel ativo do grupo pelo hash público (vitrine /g/<slug>/imoveis/<ref>), ou null se for de outro grupo/inativo. */
+    public static function activePropertyInGroup(int $groupId, string $ref): ?array
+    {
+        $row = self::activePropertyByRef($ref);
+        return $row && (int) ($row['group_id'] ?? 0) === $groupId ? $row : null;
+    }
+
     /** Convites pendentes do grupo (imóveis ativos). @return list<array> */
     public static function invites(int $groupId): array
     {

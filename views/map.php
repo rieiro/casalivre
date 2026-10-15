@@ -15,7 +15,7 @@ $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) 
     <p class="muted" id="map-status" role="status" aria-live="polite" data-map-count><?= $searched ? 'Carregando mapa…' : e(t('home.empty')) ?></p>
     <p class="map-notice" id="map-notice" role="alert" hidden></p>
     <div id="result-map" class="result-map"
-         data-api="<?= $searched ? e('/api/busca?' . $query) : '' ?>"
+         data-api="<?= $searched ? e($vitrine_api ?? '/api/busca?' . $query) : '' ?>"
          data-query="<?= e($query) ?>"
 <?php if ($base !== ''): ?>
          data-base="<?= e($base) ?>"

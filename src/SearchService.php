@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 /** Busca pública de imóveis (movido de public/index.php sem alterar os corpos). */
+require_once __DIR__ . '/GroupRepository.php';
+require_once __DIR__ . '/Acoes/GrupoValidacao.php';
+
 final class SearchService
 {
     public static function run(bool $log = true): array
@@ -18,6 +21,10 @@ final class SearchService
             'score_min' => (float) ($_GET['score_min'] ?? 0),
             'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
         ];
+        // Vitrine do grupo (PR 8): ?grupo=<slug> restringe aos imóveis ativos do grupo; slug inválido ou inexistente -> nada.
+        if (isset($_GET['grupo'])) {
+            $filters['grupo'] = is_string($_GET['grupo']) ? $_GET['grupo'] : '';
+        }
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         $facets = [];
         $results = $searched ? SearchService::search($filters, $facets) : [];
@@ -32,6 +39,12 @@ final class SearchService
         $localidade = $filters['localidade'];
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
         $source = HouseRepository::all();
+        if (array_key_exists('grupo', $filters)) {
+            $slug = GrupoValidacao::slug($filters['grupo']);
+            $group = $slug === null ? null : GroupRepository::findBySlug($slug);
+            $gid = $group === null ? 0 : (int) $group['id'];
+            $source = $gid === 0 ? [] : array_values(array_filter($source, static fn (array $p): bool => (int) ($p['group_id'] ?? 0) === $gid));
+        }
         $nights = nights_between($filters['checkin'], $filters['checkout']);
         $centerFold = $center ? fold((string) $center['name']) : '';
         $labelFold = $center ? fold((string) $center['label']) : '';

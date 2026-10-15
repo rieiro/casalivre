@@ -365,6 +365,52 @@ if ($path === '/busca' && $method === 'GET') {
     return null;
 }
 
+// Vitrine do grupo (Sprint 3, PR 8): /g/<slug>/ (home), /g/<slug>/busca, /g/<slug>/busca/mapa e /g/<slug>/imoveis/<ref>.
+// Só imóveis ativos do grupo (a busca vai para /api/busca?grupo=<slug>); os links ficam na vitrine. Tema pelo
+// GrupoResolvedor (caminho /g/<slug>/). Slug inexistente: 404 com o tema da plataforma. Imóvel de outro grupo: 404.
+if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
+    $slug = GrupoValidacao::slug($m[1]);
+    $vGroup = $slug === null ? null : GroupRepository::findBySlug($slug);
+    if ($vGroup === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
+    $vBase = '/g/' . $vGroup['slug'];
+    $vSuffix = $m[2] ?? '';
+    if ($vSuffix === '') {
+        redirect($vBase . '/');
+    }
+    $vApi = '/api/busca?' . http_build_query(array_merge($_GET, ['grupo' => $vGroup['slug']]));
+    $vData = ['vitrine_base' => $vBase, 'vitrine_grupo' => $vGroup, 'title' => (string) $vGroup['name']];
+    if ($vSuffix === '/') {
+        view('home', $vData + [
+            'vitrine_imoveis' => GroupRepository::properties((int) $vGroup['id']),
+            'filters' => ['localidade' => '', 'checkin' => '', 'checkout' => '', 'hospedes' => 0],
+        ]);
+        return null;
+    }
+    if ($vSuffix === '/busca' || $vSuffix === '/busca/mapa') {
+        $filters = search_filters_from_query();
+        $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
+        view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
+            'filters' => $filters, 'results' => [], 'searched' => $searched, 'facets' => [], 'use_api' => true, 'vitrine_api' => $vApi,
+        ]);
+        return null;
+    }
+    $vHouse = GroupRepository::activePropertyInGroup((int) $vGroup['id'], (string) $m[3]);
+    if ($vHouse === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $vData);
+        return null;
+    }
+    view('property', $vData + [
+        'hash' => (string) $m[3], 'imovel' => $vHouse, 'use_api' => true,
+        'checkin' => (string) ($_GET['checkin'] ?? ''), 'checkout' => (string) ($_GET['checkout'] ?? ''),
+    ]);
+    return null;
+}
+
 if ($path === '/cadastro' && $method === 'GET') {
     view('register', ['error' => null]);
     return null;

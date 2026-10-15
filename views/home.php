@@ -1,6 +1,9 @@
 <?php $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma ?>
 <section class="hero">
     <div class="wrap wrap-flush">
+<?php if (isset($vitrine_grupo)): ?>
+        <p class="muted"><?= e((string) $vitrine_grupo['name']) ?></p>
+<?php endif; ?>
         <h1><?= e(t('home.title')) ?></h1>
         <p><?= e(t('home.lead')) ?></p>
         <form class="search" method="get" action="<?= e($base) ?>/busca">
@@ -20,3 +23,14 @@
         </form>
     </div>
 </section>
+<?php if (isset($vitrine_grupo)): ?>
+<section class="wrap">
+    <h2><?= e((string) $vitrine_grupo['name']) ?></h2>
+    <?php if (($vitrine_imoveis ?? []) === []): ?><p class="muted">Nenhum imóvel.</p><?php endif; ?>
+    <ul class="group-properties">
+        <?php foreach ($vitrine_imoveis ?? [] as $p): ?>
+            <li><a href="<?= e($base) ?>/imoveis/<?= e(property_ref($p)) ?>"><?= e((string) $p['title']) ?></a> <span class="muted"><?= e((string) $p['city']) ?></span></li>
+        <?php endforeach; ?>
+    </ul>
+</section>
+<?php endif; ?>
