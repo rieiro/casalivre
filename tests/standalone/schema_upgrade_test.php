@@ -1,12 +1,12 @@
 <?php
 // Upgrade de schema: banco existente em v2 (antes do #21), v3 (#21) e v4 (#23) sobe para v14 com os seeds
-// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v8), seed sem err.email_taken (v9) e err.profile_required (v10) e as tabelas de grupos + properties.group_id (v11) e group_domains.verify_token/verified_at (v12) e last_check_at/fail_count (v13) e auth.verify_* da ativação por POST (v14) e cal.url_required/cal.feed_missing (v15) e photo.*/review.* da paridade capa/avaliação/fotos (v16), na mesma lista de chaves.
+// (v3: form.* do resumo de camas; v4: err.field_type e js.* do fix/xss-views) a tabela mail_queue (v5) e tokens sha256 (v6) e fotos assíncronas (v7) e users.is_admin + settings.theme (v8), seed sem err.email_taken (v9) e err.profile_required (v10) e as tabelas de grupos + properties.group_id (v11) e group_domains.verify_token/verified_at (v12) e last_check_at/fail_count (v13) e auth.verify_* da ativação por POST (v14) e cal.url_required/cal.feed_missing (v15) e photo.*/review.* da paridade capa/avaliação/fotos (v16) e cal.feed_removed/cal.url_https (v17), na mesma lista de chaves.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
-t_eq(16, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 16');
+t_eq(17, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 17');
 $v3 = ['form.beds_add_title', 'form.room_summary_title', 'form.bed_one', 'form.bed_many', 'form.script_error'];
 $v4 = ['err.field_type', 'js.net_error', 'js.request_failed'];
-$v14 = ['auth.verify_title', 'auth.verify_hint', 'auth.verify_button', 'cal.url_required', 'cal.feed_missing', 'photo.cover_one', 'photo.none_arrived', 'photo.partial', 'review.score_range', 'review.not_published'];
+$v14 = ['auth.verify_title', 'auth.verify_hint', 'auth.verify_button', 'cal.url_required', 'cal.feed_missing', 'photo.cover_one', 'photo.none_arrived', 'photo.partial', 'review.score_range', 'review.not_published', 'cal.feed_removed', 'cal.url_https'];
 $langs = ['pt-BR', 'en', 'es'];
 
 foreach ([2 => array_merge($v3, $v4, $v14), 3 => array_merge($v4, $v14), 4 => $v14] as $from => $missing) {
@@ -37,7 +37,7 @@ foreach ([2 => array_merge($v3, $v4, $v14), 3 => array_merge($v4, $v14), 4 => $v
     $out = [];
     t_eq(0, $code, "v$from -> v13: migrate.php sai com 0 ($text)");
     $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    t_eq(16, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), "v$from -> v13: user_version = 11");
+    t_eq(17, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), "v$from -> v13: user_version = 11");
     t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'mail_queue'")->fetchColumn(), "v$from -> v13: tabela mail_queue criada");
     $cols = array_column($pdo->query('PRAGMA table_info(users)')->fetchAll(PDO::FETCH_ASSOC), 'dflt_value', 'name');
     t_eq('0', $cols['is_admin'] ?? null, "v$from -> v13: users.is_admin criada com padrão 0");
@@ -76,7 +76,7 @@ $pdo = null;
 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out, $code);
 t_eq(0, $code, 'v11 -> v13: migrate.php sai com 0 (' . implode("\n", $out) . ')');
 $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-t_eq(16, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'v11 -> v13: user_version = 12');
+t_eq(17, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'v11 -> v13: user_version = 12');
 $row = $pdo->query("SELECT domain, verify_token, verified_at, last_check_at, fail_count FROM group_domains")->fetch(PDO::FETCH_ASSOC);
 t_eq(['domain' => 'antigo.example.com', 'verify_token' => '', 'verified_at' => null, 'last_check_at' => null, 'fail_count' => 0], $row, 'v11 -> v13: domínio antigo mantido, sem token e sem verificar (não resolve)');
 t_eq(3, (int) $pdo->query("SELECT COUNT(*) FROM activity_actions WHERE code IN (44, 45, 46)")->fetchColumn(), 'v11 -> v13: catálogo com os códigos de verificação');
@@ -95,7 +95,7 @@ $pdo = null;
 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out, $code);
 t_eq(0, $code, 'v12 -> v13: migrate.php sai com 0 (' . implode("\n", $out) . ')');
 $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-t_eq(16, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'v12 -> v13: user_version = 13');
+t_eq(17, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'v12 -> v13: user_version = 13');
 $row = $pdo->query("SELECT verify_token, verified_at, last_check_at, fail_count FROM group_domains")->fetch(PDO::FETCH_ASSOC);
 t_eq(['verify_token' => 'abc', 'verified_at' => '2026-10-01 00:00:00', 'last_check_at' => null, 'fail_count' => 0], $row, 'v12 -> v13: verificado mantido, sem checagem (o cron confere na próxima execução)');
 

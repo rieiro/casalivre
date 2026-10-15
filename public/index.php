@@ -24,7 +24,6 @@ require_once __DIR__ . '/../src/SearchService.php';
 require_once __DIR__ . '/../src/GrupoResolvedor.php';
 require_once __DIR__ . '/../src/Redirect.php';
 require_once __DIR__ . '/../src/GrupoUrl.php';
-require_once __DIR__ . '/../src/CalendarService.php';
 reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
@@ -830,16 +829,17 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
     $user = require_user();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    $calendarError = $_SESSION['calendar_error'] ?? null;
-    unset($_SESSION['calendar_error']);
+    // Aviso de uma ação anterior (flash na sessão: exclusão de feed na web, ações do calendário pela API/JS).
+    $flash = CalendarFlash::take();
     // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
-    // (CalendarService::save), no import_ics e no cron scripts/sync-calendars.php.
+    // (CalendarSave), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
         'feeds' => HouseRepository::feeds((int) $property['id']),
-        'message' => $calendarError,
-        'message_tone' => 'error',
+        'message' => $flash['message'] ?? null,
+        // Tom só quando há mensagem (sem aviso não há tom de erro).
+        'message_tone' => $flash !== null ? $flash['tone'] : null,
     ]);
     return null;
 }
@@ -896,10 +896,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $user = require_user();
     csrf_check();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
-    $url = trim((string) ($_POST['external_ical_url'] ?? ''));
-    $feedTitle = trim((string) ($_POST['feed_title'] ?? ''));
-    // Regra e logs em ICalImport (iguais aos da API); aqui só a tela.
-    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle);
+    // Regra, validação (valor bruto, só https) e logs em ICalImport (iguais aos da API); aqui só a tela.
+    $res = ICalImport::run($property, (int) $user['id'], $_POST['external_ical_url'] ?? null, $_POST['feed_title'] ?? null);
     $res->registrar();
     $message = $res->mensagem;
     $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
@@ -922,10 +920,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $res->registrar();
     if ($res->tipo === 'nao_encontrado') {
         // Feed inexistente: nada muda; a tela do calendário mostra o erro (a API responde 404).
-        $_SESSION['calendar_error'] = $res->mensagem;
+        CalendarFlash::set((string) $res->mensagem, 'error');
         redirect('/imoveis/' . $m[1] . '/calendario');
     }
     CalendarSync::resyncProperty($propertyId);
+    CalendarFlash::set(t('cal.feed_removed'), 'ok');
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 

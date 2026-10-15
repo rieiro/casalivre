@@ -3,7 +3,7 @@
 // Paridade (PR B): mesma regra, mesmos logs e mesmas mensagens nos dois canais; a web mostra o erro na tela e a
 // API responde 422/409 (502 na falha de download) com {error, erros: {campo: mensagem}}.
 // Sem rede externa: o import "OK" usa a URL do próprio site (/ical/{ical_hash}, lida em processo por
-// exported_calendar_body) e o "NOK" usa http://127.0.0.1:9 (recusado pelo fetch).
+// exported_calendar_body) e o "NOK" usa https://127.0.0.1:9 (recusado pelo fetch).
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 t_temp_db();
@@ -72,8 +72,8 @@ echo "iCal import: web\n";
 HouseRepository::upsertDay($srcWeb['house_id'], $day(20), 1, null);
 HouseRepository::upsertDay($srcWeb['house_id'], $day(21), 1, null);
 HouseRepository::upsertDay($srcApi['house_id'], $day(30), 1, null);
-$urlWeb = $base . '/ical/' . $srcWeb['ical_hash'];
-$urlApi = $base . '/ical/' . $srcApi['ical_hash'];
+$urlWeb = 'https://casalivre.test/ical/' . $srcWeb['ical_hash'];
+$urlApi = 'https://casalivre.test/ical/' . $srcApi['ical_hash'];
 $imp = '/imoveis/' . $owner['hash'] . '/ical/importar';
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
@@ -92,7 +92,7 @@ t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'],
 // Paridade (PR B): recusa não grava CALENDAR_FEED_ADD (o feed não foi salvo), nos dois canais.
 t_eq([], c_codes($act, $m), 'web: duplicado não grava');
 $m = c_mark($act);
-$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'http://127.0.0.1:9/x.ics', 'feed_title' => ''], $jar);
+$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'https://127.0.0.1:9/x.ics', 'feed_title' => ''], $jar);
 t_eq(200, $r['status'], 'web: sem título 200 (mensagem)');
 t_ok(str_contains($r['body'], e(t('cal.feed_title_required'))), 'web: sem título mostra o erro');
 t_eq([], c_codes($act, $m), 'web: sem título não grava');
@@ -103,13 +103,13 @@ t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'],
 t_eq([], c_codes($act, $m), 'web: URL vazia não grava');
 t_eq(1, count($feeds()), 'DB: recusas não criam feed');
 $m = c_mark($act);
-$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'http://127.0.0.1:9/web.ics', 'feed_title' => 'NokWeb'], $jar);
+$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'https://127.0.0.1:9/web.ics', 'feed_title' => 'NokWeb'], $jar);
 t_eq(200, $r['status'], 'web: download falho 200 (mensagem de erro)');
 t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'], e(t('cal.import_fail'))), 'web: download falho mostra o erro');
 $logs = c_logs($act, $m);
 t_eq([ActivityLog::CALENDAR_FEED_ADD, ActivityLog::CALENDAR_SYNC], array_column($logs, 'code'), 'web: NOK grava CALENDAR_FEED_ADD (feed salvo) + CALENDAR_SYNC');
 t_eq('nok', $logs[1]['params']['resultado'] ?? null, 'web: CALENDAR_SYNC resultado=nok');
-$nokWeb = array_values(array_filter($feeds(), static fn ($f) => $f['url'] === 'http://127.0.0.1:9/web.ics'))[0] ?? [];
+$nokWeb = array_values(array_filter($feeds(), static fn ($f) => $f['url'] === 'https://127.0.0.1:9/web.ics'))[0] ?? [];
 t_eq('NOK', $nokWeb['last_status'] ?? null, 'DB: feed web NOK gravado com last_status=NOK');
 
 echo "iCal import: API\n";
@@ -128,13 +128,13 @@ t_ok(isset($blocked($hid)[$day(30)]), 'DB: noite importada pela API bloqueada');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);
 t_eq([409, ['external_ical_url' => t('cal.feed_duplicate')]], [$r['status'], $r['json']['erros'] ?? null], 'API: duplicado 409 com a mensagem da web');
-$r = c_api('POST', $base, $api, ['external_ical_url' => 'http://127.0.0.1:9/y.ics', 'feed_title' => ''], $csrf, $jar);
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/y.ics', 'feed_title' => ''], $csrf, $jar);
 t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem título 422 erros.feed_title');
 $r = c_api('POST', $base, $api, ['external_ical_url' => '', 'feed_title' => 'Vazio'], $csrf, $jar);
 t_eq([422, ['external_ical_url' => t('cal.url_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: URL vazia 422 erros.external_ical_url');
 t_eq([], c_codes($act, $m), 'API: recusas não gravam activity_log');
 $m = c_mark($act);
-$r = c_api('POST', $base, $api, ['external_ical_url' => 'http://127.0.0.1:9/api.ics', 'feed_title' => 'NokApi'], $csrf, $jar);
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/api.ics', 'feed_title' => 'NokApi'], $csrf, $jar);
 t_eq(502, $r['status'], 'API: download falho 502 (não 200)');
 t_eq(['NOK', 0, null, t('cal.import_fail')], [$r['json']['status'] ?? null, $r['json']['importadas'] ?? null, $r['json']['ok'] ?? null, $r['json']['error'] ?? null], 'API: NOK -> {error, status:NOK, importadas:0}, sem ok:true');
 $logs = c_logs($act, $m);
@@ -196,5 +196,59 @@ t_ok(!preg_match('/\\balert\\(/', $js), 'JS: erros na tela, sem alert()');
 t_ok(str_contains($js, 'e.data.erros') && str_contains($js, 'e.status === 502'), 'JS: mostra erros por campo (422/409) e trata o 502 (feed NOK)');
 $r = c_api('POST', $base, $api, ['url' => 'https://x.test/a.ics', 'title' => 'Velho'], $csrf, $jar);
 t_eq(422, $r['status'], 'API: corpo antigo {url, title} continua recusado (422)');
+
+echo "ajustes: GET sem aviso não tem tom de erro; exclusão com aviso de sucesso; flash em vez de ?msg= (itens 1, 2, 13)\n";
+$g = t_http('GET', $base . $cal, null, [], $jar); // consome o flash do DELETE da API acima
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(!str_contains($g['body'], 'class="alert error"') && !str_contains($g['body'], 'class="alert ok"'), 'web GET sem flash: nenhum aviso (nem tom de erro vazio)');
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/flash.ics', 'feed_title' => 'Flash'], $csrf, $jar);
+t_eq(502, $r['status'], 'API: feed NOK 502 (para excluir em seguida)');
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(str_contains($g['body'], 'class="alert error"') && str_contains($g['body'], e(t('cal.import_fail'))), 'flash: o 502 da API aparece como erro no GET seguinte (sem ?msg=)');
+$r = c_form($base, '/imoveis/' . $owner['hash'] . '/ical/' . $byUrl('https://127.0.0.1:9/flash.ics') . '/excluir', ['_csrf' => $csrf], $jar);
+t_eq([302, $cal], [$r['status'], c_location($r)], 'web: excluir 302 para o calendário, sem ?msg= na URL');
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(str_contains($g['body'], 'class="alert ok"') && str_contains($g['body'], e(t('cal.feed_removed'))), 'web: depois de excluir, aviso de sucesso (tom ok)');
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(!str_contains($g['body'], e(t('cal.feed_removed'))), 'flash: o aviso aparece uma vez só');
+$r = c_api('POST', $base, '/api' . $cal, ['acao' => 'bloquear', 'inicio' => $day(40), 'fim' => $day(40)], $csrf, $jar);
+t_eq(200, $r['status'], 'API: calendário salvo 200');
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(str_contains($g['body'], 'class="alert ok"') && str_contains($g['body'], e((string) ($r['json']['message'] ?? '-'))), 'flash: a mensagem do POST pela API aparece no GET seguinte');
+$g = t_http('GET', $base . $cal . '?msg=' . rawurlencode('Mensagem forjada'), null, [], $jar);
+t_ok(!str_contains($g['body'], 'Mensagem forjada'), 'web: ?msg= na URL não vira aviso');
+$js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/calendar-3.js');
+t_ok(!str_contains($js, "searchParams.set('msg'") && !str_contains($js, "params.get('msg')"), 'JS: não usa mais ?msg= (recarrega e o aviso vem do flash)');
+
+echo "ajustes: URL do feed só https; array recusado (itens 9, 10)\n";
+$antes = count($feeds());
+$m = c_mark($act);
+$bad = ['javascript:alert(1)', 'ftp://x.test/a.ics', 'file:///etc/passwd', 'http://x.test/a.ics', 'https:///a.ics', 'https://x.test/a b.ics', 'data:text/calendar,BEGIN', '//x.test/a.ics'];
+foreach ($bad as $u) {
+    $r = c_api('POST', $base, $api, ['external_ical_url' => $u, 'feed_title' => 'Ruim'], $csrf, $jar);
+    t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json']['erros'] ?? null], 'API: ' . $u . ' -> 422 erros.external_ical_url');
+    $w = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $u, 'feed_title' => 'Ruim'], $jar);
+    t_ok(str_contains($w['body'], 'class="alert error"') && str_contains($w['body'], e(t('cal.url_https'))), 'web: ' . $u . ' -> erro na tela');
+}
+foreach ([['https://x.test/a.ics'], ['u' => 'https://x.test/a.ics'], 123, true] as $u) {
+    $r = c_api('POST', $base, $api, ['external_ical_url' => $u, 'feed_title' => 'Ruim'], $csrf, $jar);
+    t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json']['erros'] ?? null], 'API: external_ical_url ' . json_encode($u) . ' -> 422 (não vira "Array")');
+}
+$w = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => ['https://x.test/a.ics'], 'feed_title' => 'Ruim'], $jar);
+t_ok(str_contains($w['body'], e(t('cal.url_https'))), 'web: external_ical_url[] (array) -> erro na tela');
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://x.test/t.ics', 'feed_title' => ['x']], $csrf, $jar);
+t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: feed_title array -> 422 erros.feed_title');
+t_eq([], c_codes($act, $m), 'URLs recusadas (web e API): nada no activity_log');
+t_eq($antes, count($feeds()), 'DB: nenhum feed criado (nem "Array")');
+t_eq(0, $byUrl('Array'), 'DB: nenhum feed com URL "Array"');
+
+echo "ajustes: excluir feed inexistente não grava em properties (item 11)\n";
+$prop = static fn (): array => db()->query('SELECT external_ical_url, audit_hold FROM properties WHERE id = ' . $hid)->fetch(PDO::FETCH_ASSOC);
+db()->prepare('UPDATE properties SET external_ical_url = NULL, audit_hold = NULL WHERE id = ?')->execute([$hid]);
+$antesProp = $prop();
+c_form($base, '/imoveis/' . $owner['hash'] . '/ical/999999/excluir', ['_csrf' => $csrf], $jar);
+t_eq($antesProp, $prop(), 'web: feed inexistente não muda external_ical_url (NULL fica NULL) nem audit_hold');
+c_api('DELETE', $base, '/api/imoveis/' . $owner['hash'] . '/ical/999999', null, $csrf, $jar);
+t_eq($antesProp, $prop(), 'API: idem');
 
 t_done();

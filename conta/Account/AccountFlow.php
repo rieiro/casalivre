@@ -110,16 +110,17 @@ final class AccountFlow
     /**
      * Reenvia a ativação se o token venceu (ou não existe). $podeReenviar decide antes de enfileirar (o limite fica
      * na ação, LoginAttempt); 'enfileirado' diz se o e-mail entrou de fato na fila (false no cooldown dela).
+     * $podeReenviar é obrigatório: não existe reenvio sem quem decida o limite (sem padrão "pode sempre").
      *
-     * @param null|callable(): bool $podeReenviar
+     * @param callable(): bool $podeReenviar
      * @return array{expires: string, enfileirado: bool}
      */
-    public static function ensureActivation(array $user, int $minutes, ?callable $podeReenviar = null): array
+    public static function ensureActivation(array $user, int $minutes, callable $podeReenviar): array
     {
         $expires = (string) ($user['activation_expires_at'] ?? '');
         $token = (string) ($user['activation_token'] ?? '');
         if ($expires < date('Y-m-d H:i:s') || $token === '') {
-            $queued = ($podeReenviar === null || $podeReenviar()) && self::notify('activation', (string) $user['email']);
+            $queued = $podeReenviar() === true && self::notify('activation', (string) $user['email']);
             return ['expires' => self::until($minutes), 'enfileirado' => $queued];
         }
         return ['expires' => $expires, 'enfileirado' => false];

@@ -263,4 +263,15 @@ $jarR = tempnam(sys_get_temp_dir(), 'jar');
 $r = c_api('POST', $base, '/api/users', ['name' => '', 'email' => 'x' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password' => 'Casa#123456xY', 'password_confirm' => 'Casa#123456xY'] + $fields, c_csrf($base, $jarR), $jarR);
 t_eq([422, t('err.required')], [$r['status'], $r['json']['error'] ?? null], 'cadastro: sem nome -> 422 err.required (mensagem com e-mail)');
 
+echo "ensureActivation: \$podeReenviar obrigatório (item 12)\n";
+$param = (new ReflectionMethod(AccountFlow::class, 'ensureActivation'))->getParameters()[2] ?? null;
+t_ok($param !== null && !$param->isOptional() && !$param->allowsNull() && (string) $param->getType() === 'callable', 'ensureActivation: 3º parâmetro callable obrigatório, sem null');
+$erro = null;
+try {
+    AccountFlow::ensureActivation(['email' => 'x@casalivre.test', 'activation_token' => '', 'activation_expires_at' => ''], 10);
+} catch (ArgumentCountError $e) {
+    $erro = ArgumentCountError::class;
+}
+t_eq(ArgumentCountError::class, $erro, 'ensureActivation sem o callable: ArgumentCountError (nada enfileirado)');
+
 t_done();

@@ -419,6 +419,7 @@ function handle_api(string $path, string $method): void
         if ($res->tipo !== 'ok') {
             api_error($res->tipo === 'conflito' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
         }
+        CalendarFlash::set((string) $res->mensagem, 'ok');
         json_out(200, [
             'ok' => true,
             'message' => $res->mensagem,
@@ -499,15 +500,15 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
-        // Só os nomes canônicos (os mesmos do formulário web).
-        $url = trim((string) ($body['external_ical_url'] ?? ''));
-        $feedTitle = trim((string) ($body['feed_title'] ?? ''));
+        // Só os nomes canônicos (os mesmos do formulário web), passados brutos.
         // Regra, mensagens e logs em ICalImport (iguais aos da web); aqui só o status HTTP.
-        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle);
+        $res = ICalImport::run($property, (int) $user['id'], $body['external_ical_url'] ?? null, $body['feed_title'] ?? null);
         $res->registrar();
         if (isset($res->dados['erros'])) {
             api_error($res->tipo === 'duplicate' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
         }
+        // Aviso para a tela do calendário depois do reload do JS (flash na sessão, não ?msg= na URL).
+        CalendarFlash::set((string) $res->mensagem, $res->tipo === 'ok' ? 'ok' : 'error');
         if ($res->tipo === 'nok') {
             // Feed salvo, mas o download falhou: erro do servidor de origem (502), com o estado atual dos feeds.
             json_out(502, [
@@ -532,9 +533,11 @@ function handle_api(string $path, string $method): void
         $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2]);
         $res->registrar();
         if ($res->tipo === 'nao_encontrado') {
+            CalendarFlash::set((string) $res->mensagem, 'error');
             api_error(404, $res->mensagem);
         }
         $resync = CalendarSync::resyncProperty((int) $property['id']);
+        CalendarFlash::set(t('cal.feed_removed'), 'ok');
         json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
