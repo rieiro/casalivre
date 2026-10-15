@@ -54,11 +54,11 @@ final class ThemeBuilder
     }
 
     /** Estilo base do mapa (lido uma vez por build). */
-    private static function baseStyle(): array
+    private static function baseStyle(): stdClass
     {
         static $base = null;
         if ($base === null) {
-            $base = json_decode((string) file_get_contents(AssetManifest::publicDir() . MapStyle::BASE), true, 512, JSON_THROW_ON_ERROR);
+            $base = MapStyle::decode((string) file_get_contents(AssetManifest::publicDir() . MapStyle::BASE));
         }
         return $base;
     }

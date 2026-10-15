@@ -20,7 +20,10 @@ $setTheme = static function (string $v): void {
     Settings::refresh();
 };
 $baseFile = AssetManifest::publicDir() . MapStyle::BASE;
-$base = json_decode((string) file_get_contents($baseFile), true);
+$baseJson = (string) file_get_contents($baseFile);
+$base = MapStyle::decode($baseJson);
+$arr = static fn (stdClass $s): array => json_decode(MapStyle::encode($s), true);
+$baseArr = $arr($base);
 $manifest = AssetManifest::load();
 
 echo "validação das cores\n";
@@ -43,13 +46,14 @@ $gen = MapStyle::generate($base, $evil);
 $json = MapStyle::encode($gen);
 t_ok(json_decode($json, true) !== null, 'JSON gerado válido');
 t_ok(!str_contains($json, '"x"') && !str_contains($json, 'url(') && !str_contains($json, 'red"'), 'valores inválidos não chegam ao JSON');
-t_eq(array_keys($base), array_keys($gen), 'mesmas chaves de topo (sprite, glyphs, sources intactos)');
-t_eq([$base['sprite'], $base['glyphs'], $base['sources']], [$gen['sprite'], $gen['glyphs'], $gen['sources']], 'sprite/glyphs/sources iguais');
+$genArr = $arr($gen);
+t_eq(array_keys($baseArr), array_keys($genArr), 'mesmas chaves de topo (sprite, glyphs, sources intactos)');
+t_eq([$baseArr['sprite'], $baseArr['glyphs'], $baseArr['sources']], [$genArr['sprite'], $genArr['glyphs'], $genArr['sources']], 'sprite/glyphs/sources iguais');
 
 echo "geração\n";
 $byId = static fn (array $s): array => array_column($s['layers'], null, 'id');
-$g = $byId(MapStyle::generate($base, ['fundo' => '#111111', 'via' => '#222222', 'rotulo' => '#333333']));
-$b = $byId($base);
+$g = $byId($arr(MapStyle::generate($base, ['fundo' => '#111111', 'via' => '#222222', 'rotulo' => '#333333'])));
+$b = $byId($baseArr);
 t_eq('#111111', $g['background']['paint']['background-color'], 'fundo -> background');
 t_eq('#222222', $g['roads_major']['paint']['line-color'], 'via -> roads_major');
 t_eq($b['roads_major_casing_early']['paint']['line-color'], $g['roads_major_casing_early']['paint']['line-color'], 'via não mexe no contorno');
@@ -57,7 +61,11 @@ t_eq($b['roads_minor']['paint']['line-color'], $g['roads_minor']['paint']['line-
 t_eq($b['roads_rail']['paint']['line-color'], $g['roads_rail']['paint']['line-color'], 'ferrovia fora de via');
 t_eq('#333333', $g['places_locality']['paint']['text-color'], 'rotulo -> places_locality');
 t_eq($b['pois']['paint']['text-color'], $g['pois']['paint']['text-color'], 'pois (expressão) intacto');
-t_eq($base, MapStyle::generate($base, []), 'sem tokens: estilo igual ao base');
+t_eq(json_encode(json_decode($baseJson)), json_encode(MapStyle::generate($base, [])), 'sem tokens: estilo igual ao base (objetos {} preservados)');
+$genJson = MapStyle::encode(MapStyle::generate($base, ['rotulo' => '#000000']));
+t_eq(substr_count($baseJson, '{}') > 0 ? substr_count(json_encode(json_decode($baseJson)), '{}') : 0, substr_count($genJson, '{}'), 'format com {} continua objeto (sem virar [])');
+t_ok(!str_contains($genJson, '[]'), 'nenhum [] no estilo gerado');
+t_eq(json_encode(json_decode($baseJson)), json_encode(json_decode(MapStyle::encode($base))), 'base não é alterado por generate');
 
 echo "seleção e fallback\n";
 t_eq([], Theme::brand(Theme::DEFAULT)['mapa'], 'padrão sem mapa');

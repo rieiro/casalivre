@@ -48,24 +48,41 @@ final class MapStyle
         return $out;
     }
 
-    /** Estilo base com as cores do tema. @param array<string,string> $tokens já limpos */
-    public static function generate(array $base, array $tokens): array
+    /**
+     * Decodifica o estilo como objetos: com arrays associativos o "{}" vazio das expressões "format" viraria "[]"
+     * no json_encode e o MapLibre recusaria o estilo inteiro.
+     */
+    public static function decode(string $json): stdClass
     {
+        $style = json_decode($json, false, 512, JSON_THROW_ON_ERROR);
+        if (!$style instanceof stdClass) {
+            throw new RuntimeException('estilo do mapa: JSON não é um objeto');
+        }
+        return $style;
+    }
+
+    /** Estilo base (não alterado) com as cores do tema; só valores string de paint mudam. */
+    public static function generate(stdClass $base, array $tokens): stdClass
+    {
+        $style = self::decode(self::encode($base));
         $tokens = self::clean($tokens);
-        foreach ($base['layers'] ?? [] as $i => $layer) {
-            $id = (string) ($layer['id'] ?? '');
+        foreach (is_array($style->layers ?? null) ? $style->layers : [] as $layer) {
+            if (!$layer instanceof stdClass || !($layer->paint ?? null) instanceof stdClass) {
+                continue;
+            }
+            $id = is_string($layer->id ?? null) ? $layer->id : '';
             foreach ($tokens as $role => $color) {
                 foreach (self::ROLES[$role] as [$re, $prop]) {
-                    if (preg_match($re, $id) === 1 && isset($layer['paint'][$prop]) && is_string($layer['paint'][$prop])) {
-                        $base['layers'][$i]['paint'][$prop] = $color;
+                    if (preg_match($re, $id) === 1 && is_string($layer->paint->{$prop} ?? null)) {
+                        $layer->paint->{$prop} = $color;
                     }
                 }
             }
         }
-        return $base;
+        return $style;
     }
 
-    public static function encode(array $style): string
+    public static function encode(stdClass $style): string
     {
         return json_encode($style, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
     }
