@@ -873,7 +873,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
 
 if (preg_match('#^/ical/([a-f0-9]{32})$#', $path, $m) && $method === 'GET') {
     $property = HouseRepository::findByIcalHash($m[1]);
-    if (!$property || ($property['status'] ?? 'active') !== 'active') {
+    // No domínio de um grupo, só o calendário de imóvel dele (GrupoResolvedor::imovelNoHost, como a página do imóvel).
+    $noHost = $property ? GrupoResolvedor::imovelNoHost(property_ref($property), $_SERVER['HTTP_HOST'] ?? null) : [false, null];
+    if (!$property || ($property['status'] ?? 'active') !== 'active' || ($noHost[0] && $noHost[1] === null)) {
         http_response_code(404);
         exit('Não encontrado');
     }

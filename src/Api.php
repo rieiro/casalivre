@@ -532,7 +532,9 @@ function handle_api(string $path, string $method): void
     // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.
     if (preg_match('#^/api/ical/([a-f0-9]{32})(\.ics)?$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByIcalHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só o calendário de imóvel dele (GrupoResolvedor::imovelNoHost).
+        $noHost = $house ? GrupoResolvedor::imovelNoHost(property_ref($house), $_SERVER['HTTP_HOST'] ?? null) : [false, null];
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noHost[0] && $noHost[1] === null)) {
             api_error(404, 'Não encontrado.');
         }
         activity(ActivityLog::CALENDAR_EXPORT, ['imovel_id' => (int) $house['id']]);

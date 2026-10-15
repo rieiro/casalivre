@@ -89,7 +89,25 @@ $r = $avaliar($hN, 'desconhecido.example.org');
 t_eq([302, 1], [$r['status'], $reviews($hN)], 'Host desconhecido: avaliar imóvel sem grupo 302 e gravado');
 t_eq(200, $get("/imoveis/$hY", 'pendente.example.net')['status'], 'Host não verificado: como a plataforma');
 
-echo "HEAD como GET\n";
+echo "iCal no domínio do grupo X (mesma regra, GrupoResolvedor::imovelNoHost)\n";
+$ical = static fn (string $ref): string => HouseRepository::ensureIcalHash(HouseRepository::findByPublicHash($ref));
+$iX = $ical($hX);
+$iY = $ical($hY);
+$iN = $ical($hN);
+foreach (['/ical/', '/api/ical/'] as $pre) {
+    $r = $get($pre . $iX, $dom);
+    t_ok($r['status'] === 200 && str_contains($r['body'], 'BEGIN:VCALENDAR'), "$pre<X> no domínio do X: 200 .ics");
+    t_eq(404, $get($pre . $iY, $dom)['status'], "$pre<Y> no domínio do X: 404");
+    t_eq(404, $get($pre . $iN, $dom)['status'], "$pre<sem grupo> no domínio do X: 404");
+    t_ok(!str_contains($get($pre . $iY, $dom)['body'], 'BEGIN:VCALENDAR'), "$pre<Y> no domínio do X: sem calendário no corpo");
+    foreach (['X' => $iX, 'Y' => $iY, 'sem grupo' => $iN] as $label => $ih) {
+        t_eq(200, $get($pre . $ih, $plat)['status'], "plataforma: $pre<$label> 200");
+    }
+}
+t_eq(200, $get('/api/ical/' . $iY . '.ics', 'y.example.com')['status'], 'no domínio do Y, o .ics do Y: 200');
+t_eq(404, $get('/api/ical/' . $iY . '.ics', $dom)['status'], '/api/ical/<Y>.ics no domínio do X: 404');
+
+echo "HEAD como GET (lista explícita)\n";
 $hdr = static fn (array $r, string $n): ?string => preg_match('/^' . preg_quote($n, '/') . ':\s*(.*?)\r?$/mi', $r['headers'], $m) === 1 ? $m[1] : null;
 foreach ([[$dom, '/'], [$plat, '/'], [$dom, "/imoveis/$hX"], [$dom, "/imoveis/$hY"], [$dom, '/busca'], [$plat, '/entrar']] as [$host, $p]) {
     $g = $get($p, $host);
