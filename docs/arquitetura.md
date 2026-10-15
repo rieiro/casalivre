@@ -349,7 +349,7 @@ Contagem por IP (IPv6 agrupado por /64, porque um único cliente costuma ter um 
 | Reenvio de ativação (login de conta pendente, web e API) | 3 por 3600 s **por conta** (não por IP) | `AccountFlow::ensureActivation` (`ativacao-reenvio`) |
 
 > **Por que baldes compartilhados?** Se web e API tivessem baldes separados, um robô dobraria o limite só alternando as
-> portas de entrada. Já cadastro e esqueci-senha têm baldes próprios por porta: um não pode esgotar o outro.
+> portas de entrada.
 
 Além do IP, a conta tem bloqueio próprio (`login_max_failures`, 5), que vira 423 na API.
 

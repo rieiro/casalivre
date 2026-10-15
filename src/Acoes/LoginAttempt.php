@@ -18,15 +18,17 @@ require_once __DIR__ . '/Resultado.php';
  *
  * Desfechos (tipo): locked | rate_limited | bad | deleted | inactive | pending | ok.
  *
- * Diferenças web/API preservadas de propósito (SNAPSHOT, ver tests/standalone/char_login_conta_test.php):
- * - $logInactive: a web grava LOGIN_FAIL (motivo apagado/inactive) para conta apagada/inativa; a API não grava.
- * - Conta pendente (só com a senha certa; senha errada é 'bad' como qualquer conta): web e API chamam
- *   AccountFlow::ensureActivation (reenvio com limite por conta somado web+API); a web mostra verify_pending
- *   e a API responde 403 err.pending.
+ * Conta apagada/inativa: web e API gravam LOGIN_FAIL com motivo apagado/inactive (antes só a web; Segurança, #44).
+ * Esse desfecho só existe com a senha certa, e AccountFlow::checkLogin já fez o mesmo password_verify de uma senha
+ * errada (DUMMY_HASH para conta inexistente), então gravar o log não muda o tempo de resposta.
+ *
+ * Conta pendente (só com a senha certa; senha errada é 'bad' como qualquer conta): web e API chamam
+ * AccountFlow::ensureActivation (reenvio com limite por conta somado web+API); a web mostra verify_pending
+ * e a API responde 403 err.pending. Não há mais opção por canal (ver tests/standalone/char_login_conta_test.php).
  */
 final class LoginAttempt
 {
-    public static function run(string $email, string $password, bool $logInactive): Resultado
+    public static function run(string $email, string $password): Resultado
     {
         $result = AccountFlow::checkLogin($email, $password, Settings::int('login_max_failures'));
         if ($result['status'] === 'locked') {
@@ -48,9 +50,7 @@ final class LoginAttempt
             return new Resultado('bad', t('err.bad_login'), [], $events);
         }
         if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-            $events = $logInactive
-                ? [[ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']]]
-                : [];
+            $events = [[ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']]];
             return new Resultado($result['status'], account_text($result['status']), [], $events);
         }
         if ($result['status'] === 'pending') {
