@@ -33,12 +33,22 @@ $median = static function (array $xs): float {
 echo "hash fictício\n";
 $u = c_user('active');
 $reset();
-$api('ninguem' . bin2hex(random_bytes(3)) . '@casalivre.test', 'x'); // aquece: gera o hash fictício
-$cached = JsonCache::read('login_dummy_hash.json');
-$dummy = is_array($cached) ? (string) ($cached['hash'] ?? '') : '';
-t_ok($dummy !== '', 'hash fictício guardado em cache');
+$api('ninguem' . bin2hex(random_bytes(3)) . '@casalivre.test', 'x'); // aquece o servidor
+// Sem depender de storage/cache: cache temporário vazio, e lemos o hash que dummyVerify de fato usou.
+$tmpCache = sys_get_temp_dir() . '/cl-dummy-' . bin2hex(random_bytes(3));
+mkdir($tmpCache, 0700);
+PasswordPolicy::$dummyCachePath = $tmpCache . '/login_dummy_hash.json';
+PasswordPolicy::$dummyGenerated = 0;
+PasswordPolicy::resetDummy();
+PasswordPolicy::dummyVerify('x');
+$dummy = (string) (new ReflectionProperty(PasswordPolicy::class, 'dummyHash'))->getValue();
+t_eq(PasswordPolicy::DUMMY_HASH, $dummy, 'cache vazio + opções atuais: usa DUMMY_HASH');
+t_eq(0, PasswordPolicy::$dummyGenerated, 'sem password_hash');
 t_eq(password_get_info($userRow($u['id'])['password_hash'])['algo'], password_get_info($dummy)['algo'], 'mesmo algoritmo dos hashes reais');
 t_eq(false, password_needs_rehash($dummy, PasswordPolicy::algo()), 'mesmas opções (password_needs_rehash = false)');
+PasswordPolicy::$dummyCachePath = null;
+PasswordPolicy::resetDummy();
+@exec('rm -rf ' . escapeshellarg($tmpCache));
 
 echo "tempo: inexistente x existente x bloqueada\n";
 $locked = c_user('active');
