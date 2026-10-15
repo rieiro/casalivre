@@ -77,7 +77,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Sprint 2: tokens, API pública, fotos e mapas (PRs #35, #36, #39 e #40)
 
 ### Variáveis
-- [ ] **`GEO_SALT` (obrigatório)**: valor aleatório com pelo menos 32 caracteres (`php -r "echo bin2hex(random_bytes(32));"`), próprio de cada ambiente e fora do repositório. Sem ele, ou com menos de 32 caracteres, o app se recusa a subir em produção (500 genérico em todas as rotas e `geo_salt_invalid` no log, sem o valor). O `scripts/setup.sh` mantém um `GEO_SALT` existente ou gera um. Trocar o valor muda a posição de todos os pinos públicos.
+- [ ] **`GEO_SALT` (obrigatório)**: valor aleatório com pelo menos 32 caracteres (`php -r "echo bin2hex(random_bytes(32));"`), próprio de cada ambiente e fora do repositório. Sem ele, ou com menos de 32 caracteres, o app se recusa a subir em produção (500 genérico em todas as rotas e `geo_salt_invalid` no log, sem o valor). O `scripts/setup.sh` mantém um `GEO_SALT` existente ou gera um. Trocar o valor muda a posição de todos os pinos públicos. **Nunca trocar o `GEO_SALT` em produção, exceto se ele vazar:** quem guardou a posição antiga e vê a nova passa a ter dois pontos sorteados em volta da casa e, cruzando os dois, chega mais perto do endereço real. Se for preciso trocar por vazamento, saiba que as posições antigas continuam valendo para quem as guardou.
 - [ ] **`APP_ENV`** nunca `dev`/`local` em produção (em dev o `GEO_SALT` tem valor fixo e público e a rota PHP de tiles fica aberta).
 - [ ] **`MAP_TILES_FILE`** não definido em produção.
 
