@@ -99,6 +99,8 @@ foreach (['ftp://x.com', 'casalivre.example', 'https://x.com/?a=1', 'https://u:p
 unset($_SERVER['HTTP_HOST']);
 
 echo "link montado com APP_URL mesmo com Host forjado (HTTP)\n";
+// Os cadastros acima (web + API) já somam o balde compartilhado de /cadastro e /api/users (10/h por IP).
+t_ratelimit_reset();
 putenv('APP_ENV=dev');
 putenv('APP_URL=https://casalivre.example');
 $base = t_server();
