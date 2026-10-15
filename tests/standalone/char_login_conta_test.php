@@ -30,6 +30,9 @@ t_eq(401, $r['status'], 'API: senha errada 401');
 t_ok(is_string($r['json']['error'] ?? null), 'API: senha errada devolve {error}');
 t_eq([ActivityLog::LOGIN_FAIL], c_codes($act, $m), 'API: senha errada grava LOGIN_FAIL');
 t_eq(2, (int) $userRow($u['id'])['failed_logins'], 'DB: failed_logins conta web + API (2)');
+// Referência para conta apagada/inativa: a resposta da API tem de ser idêntica à de senha errada.
+$ctype = static fn (array $r): string => preg_match('/^Content-Type:\s*(.+?)\s*$/mi', $r['headers'], $mm) ? $mm[1] : '';
+$wrongApi = ['status' => $r['status'], 'body' => $r['body'], 'ctype' => $ctype($r)];
 
 echo "login: conta bloqueada\n";
 $u = c_user('active');
@@ -53,9 +56,12 @@ t_eq([ActivityLog::LOGIN_FAIL], array_column($logs, 'code'), 'web: inativa grava
 t_eq('inactive', $logs[0]['params']['motivo'] ?? null, 'web: LOGIN_FAIL com motivo=inactive');
 $m = c_mark($act);
 $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
-t_eq(403, $r['status'], 'API: inativa 403');
-// SNAPSHOT: a API não grava nada no activity_log para conta inativa/apagada; a web grava LOGIN_FAIL.
-t_eq([], c_codes($act, $m), 'API: inativa NÃO grava activity_log (diferença intencionalmente registrada)');
+// #44 (Segurança): a API grava LOGIN_FAIL com o motivo, como a web, e responde igual a senha errada.
+$logs = c_logs($act, $m);
+t_eq([ActivityLog::LOGIN_FAIL], array_column($logs, 'code'), 'API: inativa grava LOGIN_FAIL');
+t_eq('inactive', $logs[0]['params']['motivo'] ?? null, 'API: LOGIN_FAIL com motivo=inactive');
+t_eq($wrongApi, ['status' => $r['status'], 'body' => $r['body'], 'ctype' => $ctype($r)], 'API: inativa responde igual a senha errada (status, corpo, Content-Type)');
+t_eq(null, $r['json']['user'] ?? null, 'API: inativa não abre sessão');
 
 echo "login: conta apagada\n";
 $u = c_user('apagado');
@@ -66,8 +72,11 @@ $logs = c_logs($act, $m);
 t_eq('apagado', $logs[0]['params']['motivo'] ?? null, 'web: LOGIN_FAIL com motivo=apagado');
 $m = c_mark($act);
 $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
-t_eq(403, $r['status'], 'API: apagada 403');
-t_eq([], c_codes($act, $m), 'API: apagada NÃO grava activity_log (SNAPSHOT)');
+$logs = c_logs($act, $m);
+t_eq([ActivityLog::LOGIN_FAIL], array_column($logs, 'code'), 'API: apagada grava LOGIN_FAIL');
+t_eq('apagado', $logs[0]['params']['motivo'] ?? null, 'API: LOGIN_FAIL com motivo=apagado');
+t_eq($wrongApi, ['status' => $r['status'], 'body' => $r['body'], 'ctype' => $ctype($r)], 'API: apagada responde igual a senha errada (status, corpo, Content-Type)');
+t_eq(null, $r['json']['user'] ?? null, 'API: apagada não abre sessão');
 
 echo "login: conta pendente\n";
 $u = c_user('pending');

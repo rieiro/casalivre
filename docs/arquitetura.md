@@ -298,7 +298,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 
 | Método | Caminho | Auth | Respostas |
 |---|---|---|---|
-| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada; 423 conta bloqueada; 429 IP bloqueado; 403 apagada/inativa/pendente |
+| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada ou conta apagada/inativa (mesma resposta; o motivo vai só para o LOGIN_FAIL); 423 conta bloqueada; 429 IP bloqueado; 403 pendente |
 | DELETE | `/api/sessao` | C | 200 |
 | POST | `/api/users` | C, RL | 201 `{status: pending}` (igual para e-mail novo ou existente); 422 |
 | GET | `/api/users/eu` | S | 200 |
