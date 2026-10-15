@@ -56,9 +56,15 @@ if ($path === '/tiles/brasil.pmtiles') {
     }
 }
 
-// HEAD responde como GET (mesmo status e cabeçalhos; o SAPI descarta o corpo). Depois da SomenteVitrine e dos tiles,
-// que já tratam HEAD; antes da sessão, do pipeline e do roteamento, que só conhecem GET.
+// HEAD: só reaproveita o GET de páginas públicas somente leitura (lista explícita, sem efeito colateral: nada de
+// token, log de auditoria ou escrita). Qualquer outra rota: 405 sem chamar o handler. A SomenteVitrine e os tiles
+// já trataram HEAD antes deste ponto.
 if ($method === 'HEAD') {
+    if (!head_permitido($path)) {
+        http_response_code(405);
+        header('Allow: GET');
+        exit;
+    }
     $method = 'GET';
 }
 // Sessão só com cookie de sessão ou rota autenticada; páginas com formulário abrem a sessão
@@ -168,6 +174,12 @@ function cors_allowed_origins(): array
         $list[] = $item;
     }
     return $list;
+}
+
+/** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
+function head_permitido(string $path): bool
+{
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
