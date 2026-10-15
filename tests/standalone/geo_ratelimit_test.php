@@ -14,6 +14,13 @@ t_eq(0, IpRateLimiter::hit('b', 3, 60, '5.6.7.8', $now), 'outro IP não é afeta
 t_eq(0, IpRateLimiter::hit('outro', 3, 60, '1.2.3.4', $now), 'outro endpoint não é afetado');
 t_eq(0, IpRateLimiter::hit('b', 3, 60, '1.2.3.4', $now + 60), 'janela seguinte libera');
 t_eq('700', substr(sprintf('%o', fileperms(IpRateLimiter::$dir)), -3), 'diretório 0700');
+t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek sem estado: libera');
+IpRateLimiter::hit('pk', 2, 60, '1.2.3.4', $now);
+t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek com 1 de 2: libera');
+t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek não conta (repetido continua liberando)');
+IpRateLimiter::hit('pk', 2, 60, '1.2.3.4', $now);
+t_eq(60, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now), 'peek com 2 de 2: bloqueia (Retry-After 60)');
+t_eq(0, IpRateLimiter::peek('pk', 2, 60, '1.2.3.4', $now + 60), 'peek na janela seguinte: libera');
 
 echo "IPv6 agrupado por /64\n";
 IpRateLimiter::$purgeChance = 0;
