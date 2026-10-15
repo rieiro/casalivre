@@ -9,8 +9,11 @@
     CL.api('/api/imoveis/' + encodeURIComponent(hash) + '?' + params.toString())
         .then((data) => {
             const quote = data.quote ? (data.quote.nightly + ' / noite (' + data.quote.nights + ' noites)') : (data.nightly_price + ' / noite');
-            const form = el('form', { className: 'panel', id: 'review-form' },
+            // Formulário web nativo (POST /imoveis/<h>/avaliar, mesmo balde de limite da API): funciona também no
+            // domínio do grupo, onde a API de escrita responde 404 (SomenteVitrine).
+            const form = el('form', { className: 'panel', id: 'review-form', method: 'post', action: '/imoveis/' + encodeURIComponent(hash) + '/avaliar' },
                 el('h2', {}, 'Avaliar estadia'),
+                el('input', { type: 'hidden', name: '_csrf', value: String(page.csrf || '') }),
                 el('label', {}, 'Nome ', el('input', { name: 'author', required: true })),
                 el('label', {}, 'Nota (1 a 10) ', el('input', { type: 'number', name: 'score', min: '1', max: '10', required: true })),
                 el('label', {}, 'Comentário ', el('textarea', { name: 'comment', rows: '3' })),
@@ -25,17 +28,6 @@
                 el('p', { className: 'price' }, quote),
                 form,
             ].filter(Boolean));
-            form.addEventListener('submit', async (ev) => {
-                ev.preventDefault();
-                const formData = Object.fromEntries(new FormData(form).entries());
-                try {
-                    await CL.api('/api/imoveis/' + encodeURIComponent(hash) + '/avaliar', { method: 'POST', body: formData, error: 'Erro ao enviar avaliação' });
-                    alert('Avaliação enviada');
-                    window.location.reload();
-                } catch (e) {
-                    alert(e.message);
-                }
-            });
         })
         .catch(() => {
             box.replaceChildren(el('p', {}, 'Imóvel não encontrado.'));

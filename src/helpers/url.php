@@ -50,6 +50,22 @@ function redirect(string $path): never
     exit;
 }
 
+/**
+ * Caminho local seguro para redirect (mesma regra do safe_search_return, sem restringir o caminho): precisa começar
+ * com uma "/" só; "//", "\\" e CR/LF (crus ou codificados em %) caem em "/" (evita Location: //evil.com).
+ */
+function safe_local_return(?string $value): string
+{
+    $value = (string) $value;
+    $decoded = rawurldecode($value);
+    foreach ([$value, $decoded] as $v) {
+        if ($v === '' || $v[0] !== '/' || str_starts_with($v, '//') || str_contains($v, '\\') || preg_match('/[\x00-\x1f\x7f]/', $v) === 1) {
+            return '/';
+        }
+    }
+    return $value;
+}
+
 function safe_search_return(?string $value): string
 {
     $value = str_replace(["\r", "\n"], '', (string) $value);

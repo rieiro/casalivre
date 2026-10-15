@@ -92,7 +92,8 @@ foreach ($arquivos as $arquivo) {
 sort($definidas);
 // Adicionadas depois da divisão, de propósito (a lista $antes continua sendo a do develop bc1afa5):
 // asset_url saiu de src/AssetManifest.php para src/helpers/url.php (Sprint 3, Etapa 1; Revisor do #54).
-$adicionadas = ['asset_url', 'require_admin'];
+// safe_local_return: redirect seguro do /idioma (#72).
+$adicionadas = ['asset_url', 'require_admin', 'safe_local_return'];
 $esperadas = array_merge($antes, $adicionadas);
 sort($esperadas);
 t_eq($esperadas, $definidas, 'mesmo conjunto de funções, sem duplicatas nem extras');

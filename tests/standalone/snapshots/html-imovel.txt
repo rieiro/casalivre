@@ -41,7 +41,7 @@ X-Frame-Options: DENY
     <section class="wrap" id="property-detail">
             <p class="muted">Carregando…</p>
     </section>
-<script src="/assets/pages/property.js?v=4e75d5e2146b"></script>
+<script src="/assets/pages/property.js?v=c2f87042faa9"></script>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
 <script src="/assets/app.js?v=d5f6a95346f6"></script>
