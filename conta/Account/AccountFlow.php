@@ -15,10 +15,26 @@ final class AccountFlow
 
     public static function problem(array $input, bool $requirePassword = true): ?string
     {
+        $email = Email::normalize((string) ($input['email'] ?? ''));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return 'required';
+        }
+        $problem = self::profileProblem($input);
+        if ($problem !== null) {
+            return $problem;
+        }
+        if ($requirePassword) {
+            return PasswordPolicy::problem((string) ($input['password'] ?? ''), (string) ($input['password_confirm'] ?? ''));
+        }
+        return null;
+    }
+
+    /** Dados de perfil (nome, endereço, telefone, CPF), sem e-mail nem senha. */
+    public static function profileProblem(array $input): ?string
+    {
         $name = trim((string) ($input['name'] ?? ''));
         $cpf = preg_replace('/\D/', '', (string) ($input['cpf'] ?? ''));
-        $email = Email::normalize((string) ($input['email'] ?? ''));
-        if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if ($name === '') {
             return 'required';
         }
         if (self::place($input) === null) {
@@ -30,13 +46,19 @@ final class AccountFlow
         if (strlen($cpf) !== 11) {
             return 'cpf';
         }
-        if ($requirePassword) {
-            return PasswordPolicy::problem((string) ($input['password'] ?? ''), (string) ($input['password_confirm'] ?? ''));
-        }
         return null;
     }
 
     public static function fields(array $input, ?array $current = null): array
+    {
+        return self::profileFields($input) + [
+            'email' => Email::normalize((string) ($input['email'] ?? '')),
+            'password_hash' => $current['password_hash'] ?? PasswordPolicy::hash((string) ($input['password'] ?? '')),
+        ];
+    }
+
+    /** Campos de perfil normalizados (sem e-mail nem senha). */
+    public static function profileFields(array $input): array
     {
         $place = self::place($input) ?? [
             'address' => '',
@@ -54,8 +76,6 @@ final class AccountFlow
             'address_number' => $place['address_number'],
             'address_complement' => $place['address_complement'],
             'phone' => PhoneNumber::digits((string) ($input['phone'] ?? '')),
-            'email' => Email::normalize((string) ($input['email'] ?? '')),
-            'password_hash' => $current['password_hash'] ?? PasswordPolicy::hash((string) ($input['password'] ?? '')),
         ];
     }
 
