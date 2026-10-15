@@ -348,16 +348,21 @@ final class Mailer
         }
         try {
             require_once __DIR__ . '/MailHtml.php';
-            require_once __DIR__ . '/Theme.php';
-            try {
-                $brand = Theme::brand();
-            } catch (Throwable) {
-                $brand = ['nome' => 'CasaLivre', 'tokens' => []];
-            }
-            return MailHtml::render($subject, $body, $brand);
+            return MailHtml::render($subject, $body, self::mailBrand());
         } catch (Throwable $e) {
             error_log('CasaLivre: parte HTML do e-mail não montada (' . $e::class . ').');
             return null;
+        }
+    }
+
+    /** brand.php do tema da plataforma; se não der para ler (ex.: banco/Settings fora), a marca padrão. */
+    private static function mailBrand(): array
+    {
+        require_once __DIR__ . '/Theme.php';
+        try {
+            return Theme::brand();
+        } catch (Throwable) {
+            return ['nome' => 'CasaLivre', 'tokens' => []];
         }
     }
 
