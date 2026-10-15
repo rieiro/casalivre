@@ -12,8 +12,21 @@ require_once __DIR__ . '/Resultado.php';
  */
 final class CalendarSave
 {
+    /** Campos de texto (só string) e numéricos (string, int ou float); outro tipo (array, bool...) -> 422. */
+    private const TEXTO = ['inicio', 'fim', 'acao', 'day', 'cal_view'];
+    private const NUMERO = ['price', 'min_nights'];
+
     public static function run(array $property, array $input): Resultado
     {
+        // Valor bruto conferido antes de qualquer (string)/(int): array em inicio/fim/acao/price etc. vira 422 com o
+        // erro no campo (web e API iguais), sem "Array to string conversion" e sem gravar nada.
+        foreach (array_merge(self::TEXTO, self::NUMERO) as $campo) {
+            $v = $input[$campo] ?? null;
+            $ok = $v === null || is_string($v) || (in_array($campo, self::NUMERO, true) && (is_int($v) || is_float($v)));
+            if (!$ok) {
+                return new Resultado('invalido', t('err.field_type'), ['erros' => [$campo => t('err.field_type')]]);
+            }
+        }
         $saved = self::aplicar($property, $input);
         $params = [
             'imovel_id' => (int) $property['id'],

@@ -323,7 +323,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | GET | `/api/imoveis/<h>/calendario` | S, dono | 200 |
 | POST | `/api/imoveis/<h>/calendario` | S, C, dono | 200; 422 inválido / 409 noites travadas pela sincronização (`{error, erros: {campo: mensagem}}`) |
 | GET | `/api/imoveis/<h>/editar` | S, dono | 200 |
-| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | campos `external_ical_url` (só `https://`, texto) e `feed_title`; 200; 502 falha ao baixar o feed (feed salvo como NOK; `{error, status: NOK, feeds}`); 422 URL/limite/título; 409 feed duplicado (`{error, erros}`) |
+| POST | `/api/imoveis/<h>/ical/importar` | S, C, dono | campos `external_ical_url` (só `https://`; não-texto → `err.field_type`) e `feed_title`; 200; 502 falha ao baixar o feed (feed salvo como NOK; `{error, status: NOK, feeds}`); 422 URL/limite/título; 409 feed duplicado (`{error, erros}`) |
 | DELETE | `/api/imoveis/<h>/ical/<id>` | S, C, dono | 200; 404 |
 | GET | `/api/ical/<32hex>` (com ou sem `.ics`) | — | 200; 404 |
 | GET | `/api/imoveis/<h>/calendario.ics` | — | sempre 404 |
