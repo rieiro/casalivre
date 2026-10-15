@@ -7,11 +7,16 @@ require_once __DIR__ . '/UserRepository.php';
 require_once dirname(__DIR__) . '/Auth/Password.php';
 require_once dirname(__DIR__) . '/Auth/Phone.php';
 require_once dirname(__DIR__) . '/Geo/CepRepository.php';
+require_once dirname(__DIR__, 2) . '/src/IpRateLimiter.php';
 
 final class AccountFlow
 {
     /** Enfileira (tipo, e-mail); token e link são gerados pelo worker (issueLink). @var null|callable(string, string): mixed */
     public static $enqueue = null;
+
+    /** Reenvio de ativação pelo login: no máximo RESEND_MAX por conta em RESEND_WINDOW s, somando web e API. */
+    public const RESEND_MAX = 3;
+    public const RESEND_WINDOW = 3600;
 
     /** Cadastro: e-mail, perfil e senha. */
     public static function problem(array $input): ?string
@@ -112,7 +117,12 @@ final class AccountFlow
         $expires = (string) ($user['activation_expires_at'] ?? '');
         $token = (string) ($user['activation_token'] ?? '');
         if ($expires < date('Y-m-d H:i:s') || $token === '') {
-            self::notify('activation', (string) $user['email']);
+            // Único ponto de reenvio (login web e API): limite por conta, não por IP, para ninguém usar o login
+            // para lotar a caixa da vítima. Acima do limite não enfileira; a resposta ao cliente é a mesma.
+            $key = 'conta:' . hash('sha256', Email::normalize((string) $user['email']));
+            if (IpRateLimiter::hit('ativacao-reenvio', self::RESEND_MAX, self::RESEND_WINDOW, $key) === 0) {
+                self::notify('activation', (string) $user['email']);
+            }
             return ['expires' => self::until($minutes)];
         }
         return ['expires' => $expires];

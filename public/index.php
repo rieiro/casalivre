@@ -123,15 +123,16 @@ return Seguranca::pipeline(
             ['GET', '#^/api/cidades$#', 60, 60, '/api/cidades'],
             ['GET', '#^/api/ceps$#', 60, 60, '/api/ceps'],
             ['GET', '#^/api/busca$#', 60, 60, '/api/busca'],
-            ['POST', '#^/api/auth/senha/esqueci$#', 5, 900, '/api/auth/senha/esqueci'],
-            ['POST', '#^/api/users$#', 10, 3600, '/api/users'],
+            // Esqueci a senha e cadastro: um balde por IP somando web e API (como fotos e avaliação).
+            ['POST', '#^/api/auth/senha/esqueci$#', 5, 900, '/senha/esqueci'],
+            ['POST', '#^/api/users$#', 10, 3600, '/cadastro'],
             ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
             ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
             // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
             ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
             // Avaliação pelo formulário web: mesmo balde da API (10 por hora por IP, somando os dois).
             ['POST', '#^/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
-            // Formulários web (mesma camada). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
+            // Formulários web (mesma camada e mesmos baldes da API). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
             ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
             ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
         ],
@@ -488,7 +489,7 @@ if ($path === '/entrar' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     // Web: grava LOGIN_FAIL para conta apagada/inativa e reenvia a ativação de conta pendente (ver LoginAttempt).
-    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), ensureActivation: true);
+    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''));
     $res->registrar();
     if ($res->tipo === 'ok') {
         redirect('/painel');

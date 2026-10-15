@@ -126,9 +126,10 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        // API: não reenvia ativação (SNAPSHOT, ver LoginAttempt). Conta apagada/inativa grava LOGIN_FAIL com o motivo,
-        // como a web, e responde 403 com a mensagem específica, que só existe com a senha certa (senha errada: 401).
-        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), ensureActivation: false);
+        // API: conta apagada/inativa grava LOGIN_FAIL com o motivo, como a web, e responde 403 com a mensagem
+        // específica; pendente reenvia a ativação como a web (limite por conta) e responde 403 err.pending. Esses 403
+        // só existem com a senha certa (senha errada: 401 para qualquer conta).
+        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''));
         $res->registrar();
         $status = match ($res->tipo) {
             'ok' => 200,
