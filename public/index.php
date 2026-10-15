@@ -22,6 +22,7 @@ require_once __DIR__ . '/../src/PhotoStorage.php';
 require_once __DIR__ . '/../src/helpers.php';
 require_once __DIR__ . '/../src/SearchService.php';
 require_once __DIR__ . '/../src/GrupoResolvedor.php';
+require_once __DIR__ . '/../src/Redirect.php';
 require_once __DIR__ . '/../src/CalendarService.php';
 reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
@@ -330,7 +331,7 @@ if ($path === '/' && $method === 'GET') {
         || (string) ($_GET['checkin'] ?? '') !== ''
         || (string) ($_GET['checkout'] ?? '') !== '';
     if ($hasSearch) {
-        redirect('/busca' . ((string) ($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . (string) $_SERVER['QUERY_STRING'] : ''));
+        Redirect::withQuery('/busca');
     }
     view('home', ['filters' => [
         'localidade' => '',
@@ -385,10 +386,8 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
     $vBase = '/g/' . $vGroup['slug'];
     $vSuffix = $m[2] ?? '';
     if ($vSuffix === '') {
-        // A2: mantém a query. Location relativa, montada só do slug validado + '?' + query original (nunca do Host
-        // nem da URI inteira): não vira redirect aberto.
-        $vQuery = (string) ($_SERVER['QUERY_STRING'] ?? '');
-        redirect($vBase . '/' . ($vQuery !== '' ? '?' . $vQuery : ''));
+        // A2: mantém a query; $vBase vem só do slug validado (Redirect::withQuery não usa Host nem a URI inteira).
+        Redirect::withQuery($vBase . '/');
     }
     $vApi = '/api/busca?' . http_build_query(array_merge($_GET, ['grupo' => $vGroup['slug']]));
     $vData = ['vitrine_base' => $vBase, 'vitrine_grupo' => $vGroup, 'title' => (string) $vGroup['name']];
