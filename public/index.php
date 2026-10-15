@@ -634,7 +634,7 @@ if ($path === '/imoveis' && $method === 'POST') {
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
     view('property', [
         'hash' => $m[1],
-        'imovel_tema' => GroupRepository::activePropertyByRef($m[1]),
+        'imovel' => GroupRepository::activePropertyByRef($m[1]),
         'use_api' => true,
         'checkin' => (string) ($_GET['checkin'] ?? ''),
         'checkout' => (string) ($_GET['checkout'] ?? ''),

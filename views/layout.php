@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? 'CasaLivre') ?></title>
-<?php require_once dirname(__DIR__) . '/src/GrupoResolvedor.php'; $themeName = GrupoResolvedor::daRequisicao(isset($imovel_tema) && is_array($imovel_tema) ? $imovel_tema : null)['tema']; $brand = Theme::brand($themeName); $logo = Theme::logoUrl($brand, $themeName); ?>
+<?php require_once dirname(__DIR__) . '/src/GrupoResolvedor.php'; $themeName = GrupoResolvedor::daRequisicao(isset($imovel) && is_array($imovel) ? $imovel : null)['tema']; $brand = Theme::brand($themeName); $logo = Theme::logoUrl($brand, $themeName); ?>
     <link rel="icon" href="<?= e(Theme::faviconUrl($brand, $themeName)) ?>" sizes="16x16 32x32">
     <link rel="stylesheet" href="<?= e(asset_url('/assets/app.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url(Theme::cssPath($themeName))) ?>">
