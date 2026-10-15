@@ -60,6 +60,20 @@ final class GrupoResolvedor
         return $hostGroup !== null && (int) $hostGroup['id'] !== (int) $g['id'] ? null : $g;
     }
 
+    /**
+     * Imóvel visto pelo Host (mesma regra do A1 do #67 na vitrine /g/<slug>/imoveis/<h>): no domínio verificado de um
+     * grupo, só imóvel ativo DESSE grupo (outro grupo ou sem grupo -> null); fora dele (plataforma, Host desconhecido
+     * ou não verificado), o imóvel ativo pelo código. Retorna [noDominioDeGrupo, imovel|null].
+     * @return array{0: bool, 1: ?array}
+     */
+    public static function imovelNoHost(string $ref, mixed $host): array
+    {
+        $g = self::doDominio($host);
+        return $g !== null
+            ? [true, GroupRepository::activePropertyInGroup((int) $g['id'], $ref)]
+            : [false, GroupRepository::activePropertyByRef($ref)];
+    }
+
     /** Resolve para a requisição atual (Host e caminho do $_SERVER). @return array{origem:string,grupo:?array,tema:string} */
     public static function daRequisicao(?array $imovel = null): array
     {

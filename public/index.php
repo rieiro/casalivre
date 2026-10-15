@@ -696,9 +696,16 @@ if ($path === '/imoveis' && $method === 'POST') {
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+    // No domínio de um grupo, só imóvel dele (outro grupo ou sem grupo: 404); na plataforma, como antes.
+    [$noGrupo, $imovel] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    if ($noGrupo && $imovel === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
     view('property', [
         'hash' => $m[1],
-        'imovel' => GroupRepository::activePropertyByRef($m[1]),
+        'imovel' => $imovel,
         'use_api' => true,
         'checkin' => (string) ($_GET['checkin'] ?? ''),
         'checkout' => (string) ($_GET['checkout'] ?? ''),
@@ -915,7 +922,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
 if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
     csrf_check();
     $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
-    if (!$property || ($property['status'] ?? 'active') !== 'active') {
+    // No domínio de um grupo, só avalia imóvel dele (mesma regra do GET, GrupoResolvedor::imovelNoHost).
+    [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    if (!$property || ($property['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
         http_response_code(404);
         exit('Imóvel não encontrado.');
     }

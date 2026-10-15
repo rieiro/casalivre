@@ -304,7 +304,9 @@ function handle_api(string $path, string $method): void
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByPublicHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só imóvel dele (mesma regra da página, GrupoResolvedor::imovelNoHost).
+        [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
             api_error(404, 'Imóvel não encontrado.');
         }
         $id = (int) $house['id'];
@@ -363,7 +365,9 @@ function handle_api(string $path, string $method): void
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
         $house = HouseRepository::findByPublicHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só imóvel dele (mesma regra da página, GrupoResolvedor::imovelNoHost).
+        [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
             api_error(404, 'Imóvel não encontrado.');
         }
         $res = ReviewAdd::run(
