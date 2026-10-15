@@ -7,17 +7,17 @@ declare(strict_types=1);
 // Uso: php scripts/build-assets.php          grava o manifesto
 //      php scripts/build-assets.php --check  só confere (exit 1 se temas ou manifesto estiverem desatualizados)
 require_once dirname(__DIR__) . '/src/AssetManifest.php';
-require_once dirname(__DIR__) . '/src/Theme.php';
+require_once dirname(__DIR__) . '/src/ThemeBuilder.php';
 
 $check = in_array('--check', $argv, true);
 if ($check) {
-    $velhos = Theme::outdated();
+    $velhos = ThemeBuilder::outdated();
     if ($velhos !== []) {
         fwrite(STDERR, "temas desatualizados (rode php scripts/build-assets.php):\n  " . implode("\n  ", $velhos) . "\n");
         exit(1);
     }
 } else {
-    echo 'temas: ' . implode(', ', Theme::build()) . "\n";
+    echo 'temas: ' . implode(', ', ThemeBuilder::build()) . "\n";
 }
 $manifesto = AssetManifest::build();
 $novo = AssetManifest::encode($manifesto);

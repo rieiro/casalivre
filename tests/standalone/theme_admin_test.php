@@ -4,6 +4,7 @@
 // (tema só por <link> a arquivo do próprio site, sem style inline).
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
+require_once CL_ROOT . '/src/ThemeBuilder.php';
 t_temp_db();
 $owner = t_seed_owner();
 $act = c_activity_file();
@@ -25,7 +26,22 @@ Settings::refresh();
 echo "lista de temas (manifesto)\n";
 t_eq(['contraste', 'padrao'], Theme::available(), 'temas do manifesto');
 t_eq(['contraste', 'padrao'], Theme::available(AssetManifest::build()), 'manifesto em dia com public/assets/themes');
-t_eq([], Theme::outdated(), 'CSS dos temas em dia com themes/*/brand.php');
+t_eq([], ThemeBuilder::outdated(), 'CSS dos temas em dia com themes/*/brand.php');
+$orfao = ThemeBuilder::outDir() . 'orfao-teste.css';
+file_put_contents($orfao, '');
+t_eq([$orfao], ThemeBuilder::outdated(), '--check aponta CSS órfão (tema removido)');
+unlink($orfao);
+$exp = ThemeBuilder::expected();
+t_eq(['contraste', 'padrao'], $exp['names'], 'expected(): temas de themes/');
+t_eq(Theme::css(Theme::readBrand(CL_ROOT . '/themes/padrao/brand.php')), $exp['files'][ThemeBuilder::outDir() . 'padrao.css'] ?? null, 'expected(): CSS do padrão');
+$tmpBrand = sys_get_temp_dir() . '/tb' . bin2hex(random_bytes(3)) . '/brand.php';
+mkdir(dirname($tmpBrand));
+file_put_contents($tmpBrand, "<?php return ['rotulo' => 'X', 'logo' => 'a.gif'];");
+$b = Theme::readBrand($tmpBrand);
+t_eq(Theme::brand(Theme::DEFAULT)['nome'], $b['nome'], 'sem nome: vale o nome do tema padrão');
+t_eq(null, $b['logo'], 'logo com extensão fora de Theme::IMAGE_EXT descartado');
+unlink($tmpBrand);
+rmdir(dirname($tmpBrand));
 foreach (['../padrao', '..', 'padrao/../contraste', '/etc/passwd', 'Padrao', 'padrao.css', 'padrao ', "padrao\0", 'x', '', 'inexistente', '-padrao', 'padrao-'] as $bad) {
     t_ok(!Theme::isAvailable($bad), 'fora da lista: ' . json_encode($bad));
 }

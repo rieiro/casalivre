@@ -8,13 +8,13 @@ declare(strict_types=1);
  * devolve "/assets/<arquivo>?v=<hash>". O nome do arquivo não muda (CSP 'self', rotas e nginx iguais), e o ?v=
  * muda sozinho quando o conteúdo muda. Gerado por scripts/build-assets.php (rodar no deploy; --check no CI/testes).
  */
+require_once __DIR__ . '/Theme.php';
+
 final class AssetManifest
 {
     public const HASH_LEN = 12;
     /** Extensões versionadas: as que as páginas referenciam por URL (CSS, JS, estilo do mapa). */
     public const EXTENSIONS = ['css', 'js', 'json'];
-    /** Imagens versionadas só dentro de /assets/themes/ (logo e favicon gerados pelo build dos temas). */
-    public const THEME_IMAGE_EXT = ['svg', 'png', 'ico'];
 
     public static function publicDir(): string
     {
@@ -42,7 +42,7 @@ final class AssetManifest
             $ext = strtolower($info->getExtension());
             $rel = str_replace(DIRECTORY_SEPARATOR, '/', substr($abs, strlen($base)));
             // Logo/favicon dos temas (Etapa 2) também ganham ?v=; as demais imagens continuam fora do manifesto.
-            $themeImage = str_starts_with($rel, '/assets/themes/') && in_array($ext, self::THEME_IMAGE_EXT, true);
+            $themeImage = str_starts_with($rel, Theme::assetPath()) && in_array($ext, Theme::IMAGE_EXT, true);
             if (!$info->isFile() || (!in_array($ext, self::EXTENSIONS, true) && !$themeImage)) {
                 continue;
             }
