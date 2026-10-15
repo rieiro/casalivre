@@ -177,8 +177,14 @@ assert_true($status === 422 && str_contains((string) ($resp['error'] ?? ''), 'n�
 $resp = json_decode($body, true) ?: [];
 $link = $status === 201 ? link_ativacao($email) : '';
 assert_true($status === 201 && ($resp['status'] ?? '') === 'pending' && preg_match('#/verificar\?token=([a-f0-9]+)#', $link, $token), 'cadastro grava o link de verificação e fica pendente (201)');
+// O link do e-mail (GET) só mostra o botão "Ativar conta"; a ativação é o POST com CSRF (scanners não ativam).
 [$status, , $html] = req('GET', $base . '/verificar?token=' . ($token[1] ?? ''));
-assert_true($status === 200 && str_contains($html, 'Conta ativada'), 'o clique no link ativa a conta dentro do prazo');
+assert_true($status === 200 && str_contains($html, 'action="/verificar"') && !str_contains($html, 'Conta ativada'), 'o link abre a tela de confirmação sem ativar a conta');
+[$status, , $html] = req('POST', $base . '/verificar', [
+    CURLOPT_POSTFIELDS => http_build_query(['_csrf' => csrf_from($html), 'token' => $token[1] ?? '']),
+    CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+]);
+assert_true($status === 200 && str_contains($html, 'Conta ativada'), 'o botão "Ativar conta" ativa a conta dentro do prazo');
 
 echo "Caso 2: depois da ativação o login abre o painel\n";
 [$status, , $html] = req('GET', $base . '/entrar');

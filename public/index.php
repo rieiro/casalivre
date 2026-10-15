@@ -285,8 +285,16 @@ if ($path === '/idioma' && $method === 'POST') {
     redirect(safe_local_return($target));
 }
 
+// Ativação em dois passos: o GET (link do e-mail) só mostra o botão "Ativar conta"; o POST com CSRF consome o token.
+// Scanners de e-mail e pré-visualização de links fazem GET/HEAD e não podem ativar a conta nem queimar o token.
 if ($path === '/verificar' && $method === 'GET') {
-    $result = AccountFlow::activate((string) ($_GET['token'] ?? ''));
+    view('verify_confirm', ['token' => (string) ($_GET['token'] ?? '')]);
+    return null;
+}
+
+if ($path === '/verificar' && $method === 'POST') {
+    csrf_check();
+    $result = AccountFlow::activate((string) ($_POST['token'] ?? ''));
     if ($result['ok']) {
         activity(ActivityLog::EMAIL_VERIFY, ['email' => $result['email'], 'resultado' => 'ok']);
         view('message', ['title' => t('auth.verify_ok'), 'message' => t('auth.back_login')]);

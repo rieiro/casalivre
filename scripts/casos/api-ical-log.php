@@ -89,8 +89,9 @@ function new_user(string $jar, string $tag): array
     ], $csrf);
     $link = $st === 201 ? link_ativacao($email) : '';
     if ($link !== '') {
-        $path = parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY);
-        api($jar, 'GET', $path);
+        // Ativação por POST com CSRF (o GET do link só mostra o botão).
+        parse_str((string) parse_url($link, PHP_URL_QUERY), $q);
+        api($jar, 'POST', '/api/auth/verificar', ['token' => (string) ($q['token'] ?? '')], csrf_of($jar));
     }
     $csrf = csrf_of($jar);
     [$st2] = api($jar, 'POST', '/api/sessao', ['email' => $email, 'password' => $pass], $csrf);
