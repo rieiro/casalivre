@@ -40,6 +40,23 @@ final class GrupoValidacao
         return $d === null || self::isPlatform($d) ? null : $d;
     }
 
+    /**
+     * Host da requisição normalizado como domain() (C3): minúsculas, sem porta e sem o ponto final; formato inválido
+     * (IP, IPv6, IDN unicode, curinga, espaço) -> null. Não aplica a regra da plataforma: quem chama decide.
+     */
+    public static function host(mixed $host): ?string
+    {
+        if (!is_string($host) || strlen($host) > 260) {
+            return null;
+        }
+        $h = strtolower($host);
+        $h = preg_replace('/:[0-9]{1,5}$/', '', $h) ?? '';
+        if (str_ends_with($h, '.')) {
+            $h = substr($h, 0, -1);
+        }
+        return self::hostname($h);
+    }
+
     /** Formato de host (já em minúsculas), ou null. */
     public static function hostname(string $d): ?string
     {
