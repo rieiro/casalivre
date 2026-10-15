@@ -13,9 +13,9 @@ function json_out(int $status, array $data): never
 }
 
 /** Resposta de erro da API: {"error": mensagem} com o status dado, e encerra. */
-function api_error(int $status, string $message): never
+function api_error(int $status, string $message, ?array $erros = null): never
 {
-    json_out($status, ['error' => $message]);
+    json_out($status, $erros ? ['error' => $message, 'erros' => $erros] : ['error' => $message]);
 }
 
 /** Exige sessão: devolve o usuário já carregado ou responde 401 'Autenticação necessária.'. */
@@ -403,6 +403,9 @@ function handle_api(string $path, string $method): void
         $property = api_owned_property($user, $m[1]);
         $res = CalendarSave::run($property, $body);
         $res->registrar();
+        if ($res->tipo !== 'ok') {
+            api_error($res->tipo === 'conflito' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
+        }
         json_out(200, [
             'ok' => true,
             'message' => $res->mensagem,
@@ -482,31 +485,21 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
-        $url = trim((string) ($body['url'] ?? $body['external_ical_url'] ?? ''));
-        $feedTitle = trim((string) ($body['title'] ?? $body['feed_title'] ?? ''));
-        if ($url === '') {
-            api_error(422, 'URL obrigatória.');
-        }
-        // API: sem CALENDAR_FEED_ADD; CALENDAR_SYNC também na falha (ver ICalImport).
-        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, Canal::Api);
+        // Só os nomes canônicos (os mesmos do formulário web).
+        $url = trim((string) ($body['external_ical_url'] ?? ''));
+        $feedTitle = trim((string) ($body['feed_title'] ?? ''));
+        // Regra, mensagens e logs em ICalImport (iguais aos da web); aqui só o status HTTP.
+        $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle);
         $res->registrar();
-        // Textos de recusa próprios da API, diferentes das mensagens da web (Resultado::mensagem): diferença
-        // intencional entre canais (SNAPSHOT, ver char_calendario_test.php); não trocar por $res->mensagem.
-        if ($res->tipo === 'limit') {
-            api_error(422, 'Limite de feeds atingido.');
-        }
-        if ($res->tipo === 'duplicate') {
-            api_error(409, 'Feed já cadastrado.');
-        }
-        if ($res->tipo === 'title') {
-            api_error(422, 'Título obrigatório.');
+        if (isset($res->dados['erros'])) {
+            api_error($res->tipo === 'duplicate' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
         }
         if ($res->tipo === 'nok') {
-            json_out(200, [
-                'ok' => true,
+            // Feed salvo, mas o download falhou: erro do servidor de origem (502), com o estado atual dos feeds.
+            json_out(502, [
+                'error' => $res->mensagem,
                 'status' => 'NOK',
                 'importadas' => 0,
-                'message' => t('cal.import_fail'),
                 'feeds' => HouseRepository::feeds((int) $property['id']),
             ]);
         }
@@ -521,8 +514,8 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)$#', $path, $m) && $method === 'DELETE') {
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
-        // API: feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
-        $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2], seguirSemFeed: false);
+        // Feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
+        $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2]);
         $res->registrar();
         if ($res->tipo === 'nao_encontrado') {
             api_error(404, $res->mensagem);

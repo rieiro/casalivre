@@ -7,8 +7,8 @@ require_once __DIR__ . '/Resultado.php';
 /**
  * Gravação do calendário (web POST /imoveis/{hash}/calendario e API POST /api/imoveis/{hash}/calendario).
  * Regra em CalendarService::save; aqui só se montam os eventos com os params comuns (imovel_id, inicio, fim,
- * resultado). O desfecho é sempre 'ok' com a mensagem do save, inclusive em erro de validação (SNAPSHOT: a API
- * responde 200 {ok:true} e a web re-renderiza a tela; só a mensagem indica o erro).
+ * resultado). Desfechos (tipo): ok | invalido | conflito; dados['erros'] = [campo => mensagem] nas recusas.
+ * A web mostra a mensagem como erro; a API responde 422 (invalido) ou 409 (conflito) com os mesmos erros.
  */
 final class CalendarSave
 {
@@ -25,6 +25,6 @@ final class CalendarSave
         foreach ($saved['logs'] as $log) {
             $events[] = [$log['code'], $params + $log['extra'], $log['anterior'], $log['atual']];
         }
-        return new Resultado('ok', $saved['message'], [], $events);
+        return new Resultado($saved['tipo'], $saved['message'], ['erros' => $saved['erros']], $events);
     }
 }
