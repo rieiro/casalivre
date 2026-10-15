@@ -22,9 +22,15 @@
         <?php foreach ($domains as $dr): $d = (string) $dr['domain']; ?>
             <li><?= e($d) ?>
                 <?php if ($dr['verified_at'] !== null): ?>
-                    <span class="notice">verificado em <?= e((string) $dr['verified_at']) ?></span>
+                    <span class="notice">verificado (última confirmação em <?= e((string) $dr['verified_at']) ?> UTC)</span>
+                    <?php if ((int) $dr['fail_count'] > 0): ?><span class="error"><?= (int) $dr['fail_count'] ?> checagem(ns) seguida(s) sem o TXT; com <?= DomainReverification::MAX_FAILS ?> ou <?= DomainReverification::GRACE_HOURS ?> h sem sucesso o domínio perde a verificação</span><?php endif; ?>
                 <?php else: ?>
                     <span class="muted">não verificado (o domínio só passa a usar o tema do grupo depois da verificação)</span>
+                <?php endif; ?>
+                <?php if ($dr['verify_token'] !== '' && $dr['last_check_at'] === null): ?>
+                    <span class="muted">checagem pendente: o servidor confere <?= e(DomainReverification::checkDeadline()) ?></span>
+                <?php elseif ($dr['verify_token'] !== '' && $dr['verified_at'] === null): ?>
+                    <span class="muted">última checagem em <?= e((string) $dr['last_check_at']) ?> UTC: TXT não encontrado</span>
                 <?php endif; ?>
                 <?php if ($dr['verify_token'] !== ''): ?>
                     <p class="muted">Registro DNS TXT: nome <code><?= e(DomainVerification::txtName($d)) ?></code>, valor <code><?= e(DomainVerification::txtValue((string) $dr['verify_token'])) ?></code></p>

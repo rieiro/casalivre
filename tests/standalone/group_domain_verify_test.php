@@ -5,6 +5,7 @@
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
+require_once CL_ROOT . '/src/DomainReverification.php';
 t_temp_db();
 t_seed_owner();
 $act = c_activity_file();
@@ -19,6 +20,18 @@ $fakeDns = new DomainVerification(static function (string $name) use (&$dns, &$d
     $dnsCalls[] = $name;
     return $dns[$name] ?? [];
 });
+// pr64 C2: "Verificar agora" só agenda; o cron (DomainReverification) consulta o DNS. $check = pedido + execução do cron.
+$cron = new DomainReverification($fakeDns, static function (): void {
+});
+$check = static function (array $ator, array $grupo, mixed $dominio) use ($cron): Resultado {
+    $r = GrupoAdmin::requestDomainCheck($ator, $grupo, $dominio);
+    $r->registrar();
+    if ($r->tipo === 'ok') {
+        $cron->run();
+    }
+    return $r;
+};
+$verified = static fn (array $grupo, string $d): bool => GroupRepository::domainRow((int) $grupo['id'], $d)['verified_at'] !== null;
 
 echo "token no cadastro\n";
 t_eq('ok', GrupoAdmin::create($adminRow, 'imob', 'Imob', 'padrao')->tipo, 'grupo criado');
@@ -35,38 +48,43 @@ t_ok(GroupRepository::domainRow((int) $g['id'], 'outro.example.com')['verify_tok
 
 echo "checagem sem o TXT\n";
 $mark = c_mark($act);
-$r = GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns);
-$r->registrar();
-t_eq('invalido', $r->tipo, 'sem TXT: invalido');
+$dnsCalls = [];
+$r = GrupoAdmin::requestDomainCheck($adminRow, $g, 'imob.example.com');
+t_eq(['ok', []], [$r->tipo, $dnsCalls], 'Verificar agora: ok, sem consulta DNS na requisição');
 t_ok(str_contains((string) $r->mensagem, '_casalivre.imob.example.com') && str_contains((string) $r->mensagem, 'casalivre-verificacao=' . $token), 'mensagem com nome e valor do registro');
-t_eq(['_casalivre.imob.example.com'], $dnsCalls, 'consulta só o TXT _casalivre.<domínio> (pelo resolvedor injetado)');
+t_eq(null, $q = db()->query("SELECT last_check_at FROM group_domains WHERE domain = 'imob.example.com'")->fetchColumn() ?: null, 'pedido marca a checagem como pendente');
+$cron->run();
+t_ok(in_array('_casalivre.imob.example.com', $dnsCalls, true) && array_filter($dnsCalls, static fn ($n) => !str_starts_with($n, '_casalivre.')) === [], 'o cron consulta só TXT _casalivre.<domínio> (pelo resolvedor injetado)');
+t_eq(false, $verified($g, 'imob.example.com'), 'sem TXT: não verificado');
 $dns['_casalivre.imob.example.com'] = ['casalivre-verificacao=' . str_repeat('0', 32), 'v=spf1 -all', 'casalivre-verificacao=' . $token . 'x'];
-t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns)->tipo, 'token errado, outro TXT ou com sufixo: invalido');
+$check($adminRow, $g, 'imob.example.com');
+t_eq(false, $verified($g, 'imob.example.com'), 'token errado, outro TXT ou com sufixo: não verifica');
 $dns['imob.example.com'] = ['casalivre-verificacao=' . $token];
-t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns)->tipo, 'TXT no próprio domínio (sem _casalivre.) não vale');
+$check($adminRow, $g, 'imob.example.com');
+t_eq(false, $verified($g, 'imob.example.com'), 'TXT no próprio domínio (sem _casalivre.) não vale');
 $dns['_casalivre.outro.example.com'] = ['casalivre-verificacao=' . $token];
-t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g, 'outro.example.com', $fakeDns)->tipo, 'token de outro domínio não vale');
+$check($adminRow, $g, 'outro.example.com');
+t_eq(false, $verified($g, 'outro.example.com'), 'token de outro domínio não vale');
 t_eq(null, GroupRepository::domainRow((int) $g['id'], 'imob.example.com')['verified_at'], 'continua não verificado');
 t_eq([], $codes($mark, ActivityLog::GROUP_DOMAIN_VERIFIED), 'falha não loga');
 
 echo "checagem com o TXT\n";
 $dns['_casalivre.imob.example.com'][] = '  casalivre-verificacao=' . $token . ' ';
 $mark = c_mark($act);
-$r = GrupoAdmin::checkDomainVerification($adminRow, $g, 'IMOB.example.com', $fakeDns);
-$r->registrar();
-t_eq(['ok', true], [$r->tipo, $r->dados['mudou'] ?? null], 'TXT certo (entre outros): verificado');
+$r = $check($adminRow, $g, 'IMOB.example.com');
+t_eq(['ok', true], [$r->tipo, $verified($g, 'imob.example.com')], 'TXT certo (entre outros): verificado pelo cron');
 t_ok(GroupRepository::domainRow((int) $g['id'], 'imob.example.com')['verified_at'] !== null, 'verified_at gravado');
 t_eq('imob', GroupRepository::findByVerifiedDomain('imob.example.com')['slug'] ?? null, 'verificado: resolve para o grupo');
 $l = $codes($mark, ActivityLog::GROUP_DOMAIN_VERIFIED);
 t_eq(1, count($l), 'um GROUP_DOMAIN_VERIFIED');
 t_eq('imob.example.com', $l[0]['params']['dominio'] ?? null, 'log com o domínio');
 $mark = c_mark($act);
-$r = GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns);
-t_eq(['ok', false, []], [$r->tipo, $r->dados['mudou'] ?? null, $r->eventos], 'nova checagem de verificado: sem mudança e sem log');
+$r = $check($adminRow, $g, 'imob.example.com');
+t_eq(['ok', []], [$r->tipo, $r->eventos], 'novo pedido de verificado: ok e sem log no pedido');
+t_eq([], $codes($mark, ActivityLog::GROUP_DOMAIN_VERIFIED), 'reconfirmação pelo cron: sem log');
 unset($dns['_casalivre.imob.example.com']);
-$r = GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns);
-t_eq('invalido', $r->tipo, 'verificado e TXT sumiu: invalido (aviso)');
-t_ok(GroupRepository::findByVerifiedDomain('imob.example.com') !== null, 'falha passageira não derruba o domínio verificado');
+$check($adminRow, $g, 'imob.example.com');
+t_ok(GroupRepository::findByVerifiedDomain('imob.example.com') !== null, 'falha passageira (1 ausência) não derruba o domínio verificado');
 
 echo "novo token\n";
 $mark = c_mark($act);
@@ -76,22 +94,24 @@ t_eq(['ok', true], [$r->tipo, $r->dados['mudou'] ?? null], 'novo token: ok');
 $row = GroupRepository::domainRow((int) $g['id'], 'imob.example.com');
 t_ok($row['verify_token'] !== $token && preg_match('/^[a-f0-9]{32}$/', (string) $row['verify_token']) === 1, 'token trocado');
 t_eq(null, $row['verified_at'], 'novo token zera a verificação');
+t_eq([null, 0], [$row['last_check_at'], (int) $row['fail_count']], 'novo token: checagem pendente e contador zerado');
 t_eq(null, GroupRepository::findByVerifiedDomain('imob.example.com'), 'sem verificação: não resolve');
 t_eq(1, count($codes($mark, ActivityLog::GROUP_DOMAIN_VERIFY_START)), 'um GROUP_DOMAIN_VERIFY_START');
 $dns['_casalivre.imob.example.com'] = ['casalivre-verificacao=' . $token];
-t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g, 'imob.example.com', $fakeDns)->tipo, 'token antigo não vale mais');
+$check($adminRow, $g, 'imob.example.com');
+t_eq(false, $verified($g, 'imob.example.com'), 'token antigo não vale mais');
 
 echo "entradas e permissão\n";
 foreach (['nao.cadastrado.com', 'http://imob.example.com', '', null, ['x']] as $bad) {
-    t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g, $bad, $fakeDns)->tipo, 'checagem recusa: ' . json_encode($bad));
+    t_eq('invalido', GrupoAdmin::requestDomainCheck($adminRow, $g, $bad)->tipo, 'checagem recusa: ' . json_encode($bad));
     t_eq('invalido', GrupoAdmin::startDomainVerification($adminRow, $g, $bad)->tipo, 'novo token recusa: ' . json_encode($bad));
 }
 GrupoAdmin::create($adminRow, 'outro', 'Outro', 'padrao');
 $g2 = GroupRepository::findBySlug('outro');
-t_eq('invalido', GrupoAdmin::checkDomainVerification($adminRow, $g2, 'imob.example.com', $fakeDns)->tipo, 'domínio de outro grupo: invalido');
+t_eq('invalido', GrupoAdmin::requestDomainCheck($adminRow, $g2, 'imob.example.com')->tipo, 'domínio de outro grupo: invalido');
 $dnsCalls = [];
 foreach ([['id' => $comum['id'], 'is_admin' => 0, 'status' => 'active'], ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'inactive']] as $ator) {
-    t_eq('nao_encontrado', GrupoAdmin::checkDomainVerification($ator, $g, 'imob.example.com', $fakeDns)->tipo, 'sem admin ativo: nao_encontrado (checagem)');
+    t_eq('nao_encontrado', GrupoAdmin::requestDomainCheck($ator, $g, 'imob.example.com')->tipo, 'sem admin ativo: nao_encontrado (checagem)');
     t_eq('nao_encontrado', GrupoAdmin::startDomainVerification($ator, $g, 'imob.example.com')->tipo, 'sem admin ativo: nao_encontrado (token)');
 }
 t_eq([], $dnsCalls, 'sem permissão: nem consulta o DNS');
@@ -120,6 +140,11 @@ t_eq(302, c_form($base, '/admin/grupos/imob/dominios/token', ['_csrf' => $cA, 'd
 t_ok(GroupRepository::domainRow((int) $g['id'], 'imob.example.com')['verify_token'] !== $row['verify_token'], 'token trocado pela rota');
 t_eq(1, count($codes($mark, ActivityLog::GROUP_DOMAIN_VERIFY_START)), 'rota: um GROUP_DOMAIN_VERIFY_START');
 t_eq(422, c_form($base, '/admin/grupos/imob/dominios/token', ['_csrf' => $cA, 'dominio' => 'nao.cadastrado.com'], $jA)['status'], 'domínio fora do grupo: 422');
+db()->exec("UPDATE group_domains SET last_check_at = '2026-01-01 00:00:00' WHERE domain = 'imob.example.com'");
+$r = c_form($base, '/admin/grupos/imob/dominios/verificar', ['_csrf' => $cA, 'dominio' => 'imob.example.com'], $jA);
+t_eq(302, $r['status'], 'Verificar agora pela rota: 302 (agenda, sem DNS na requisição)');
+t_eq(null, GroupRepository::domainRow((int) $g['id'], 'imob.example.com')['last_check_at'], 'rota marca a checagem pendente');
+t_ok(str_contains(t_http('GET', $base . '/admin/grupos/imob', null, [], $jA)['body'], 'checagem pendente'), 'tela mostra checagem pendente');
 // Sem token gravado a checagem nem consulta o DNS: exercita a rota sem tocar a rede.
 GrupoAdmin::addDomain($adminRow, $g, 'semtoken.example.com');
 db()->exec("UPDATE group_domains SET verify_token = '' WHERE domain = 'semtoken.example.com'");

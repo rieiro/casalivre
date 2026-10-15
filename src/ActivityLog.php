@@ -191,6 +191,7 @@ final class ActivityLog
     public const GROUP_PROPERTY_REMOVE = 43;
     public const GROUP_DOMAIN_VERIFY_START = 44;
     public const GROUP_DOMAIN_VERIFIED = 45;
+    public const GROUP_DOMAIN_UNVERIFIED = 46;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -238,6 +239,7 @@ final class ActivityLog
         self::GROUP_PROPERTY_REMOVE => 'Imóvel sai do grupo',
         self::GROUP_DOMAIN_VERIFY_START => 'Novo token de verificação DNS do domínio do grupo pelo admin',
         self::GROUP_DOMAIN_VERIFIED => 'Domínio do grupo verificado por DNS TXT',
+        self::GROUP_DOMAIN_UNVERIFIED => 'Domínio do grupo perdeu a verificação (reverificação DNS TXT)',
     ];
 
     public static function store(): ActivityStore
@@ -320,6 +322,7 @@ final class ActivityLog
         self::GROUP_PROPERTY_REMOVE => ['grupo', 'por'],
         self::GROUP_DOMAIN_VERIFY_START => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
+        self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas', 'motivo'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

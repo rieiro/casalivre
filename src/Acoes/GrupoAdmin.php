@@ -6,6 +6,7 @@ require_once __DIR__ . '/Resultado.php';
 require_once __DIR__ . '/GrupoValidacao.php';
 require_once dirname(__DIR__) . '/GroupRepository.php';
 require_once dirname(__DIR__) . '/DomainVerification.php';
+require_once dirname(__DIR__) . '/DomainReverification.php';
 
 /**
  * Grupos pelo admin (users.is_admin = 1, conta ativa): cria, edita nome/tema, inclui/remove domínio e membro.
@@ -133,10 +134,11 @@ final class GrupoAdmin
     }
 
     /**
-     * Confere o TXT _casalivre.<domínio>. Achou o valor esperado: grava verified_at (loga só na passagem para verificado).
-     * Não achou: 'invalido'; um domínio já verificado continua verificado (falha passageira de DNS não derruba o site).
+     * "Verificar agora" (pr64 C2): não consulta o DNS na requisição; só marca a checagem como pedida (last_check_at NULL)
+     * e o cron (scripts/verify-domains.php, a cada hora) confere. Sem token: pede para gerar um. Sem log (o cron loga
+     * a mudança de estado: 45 ao verificar, 46 ao perder a verificação).
      */
-    public static function checkDomainVerification(array $admin, array $group, mixed $domain, ?DomainVerification $verification = null): Resultado
+    public static function requestDomainCheck(array $admin, array $group, mixed $domain): Resultado
     {
         if ($deny = self::guard($admin)) {
             return $deny;
@@ -147,20 +149,12 @@ final class GrupoAdmin
             return new Resultado('invalido', 'Domínio não cadastrado neste grupo.');
         }
         $token = (string) $row['verify_token'];
-        if (!($verification ?? new DomainVerification())->matches($d, $token)) {
-            return new Resultado('invalido', $row['verified_at'] !== null
-                ? 'Registro TXT não encontrado agora; o domínio continua verificado.'
-                : 'Registro TXT não encontrado: crie ' . DomainVerification::txtName($d) . ' com o valor ' . ($token === '' ? '(gere um token)' : DomainVerification::txtValue($token)) . ' e tente de novo (o DNS pode levar alguns minutos).');
+        if ($token === '') {
+            return new Resultado('invalido', 'Registro TXT não encontrado: este domínio ainda não tem token; clique em "Gerar novo token", publique o registro e verifique de novo.');
         }
-        if ($row['verified_at'] !== null) {
-            return new Resultado('ok', 'Domínio verificado.', ['mudou' => false]);
-        }
-        if (!GroupRepository::markDomainVerified((int) $group['id'], $d, $token)) {
-            return new Resultado('ok', null, ['mudou' => false]);
-        }
-        return new Resultado('ok', 'Domínio verificado.', ['mudou' => true], [
-            [ActivityLog::GROUP_DOMAIN_VERIFIED, ['grupo' => $group['slug'], 'dominio' => $d], ['verificado' => false], ['verificado' => true]],
-        ]);
+        $mudou = GroupRepository::requestDomainCheck((int) $group['id'], $d, $token);
+        return new Resultado('ok', 'Verificação agendada: o servidor confere o registro TXT ' . DomainVerification::txtName($d) . ' = '
+            . DomainVerification::txtValue($token) . ' ' . DomainReverification::checkDeadline() . ' (o DNS pode levar alguns minutos para propagar).', ['mudou' => $mudou]);
     }
 
     /** Inclui ou troca o papel. E-mail sem conta ativa: mensagem única (não diz se existe, está inativa ou apagada). */

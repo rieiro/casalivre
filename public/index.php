@@ -521,7 +521,7 @@ if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|
             'dominios' => GrupoAdmin::addDomain($user, $group, $_POST['dominio'] ?? null),
             'dominios/remover' => GrupoAdmin::removeDomain($user, $group, $_POST['dominio'] ?? null),
             'dominios/token' => GrupoAdmin::startDomainVerification($user, $group, $_POST['dominio'] ?? null),
-            'dominios/verificar' => GrupoAdmin::checkDomainVerification($user, $group, $_POST['dominio'] ?? null),
+            'dominios/verificar' => GrupoAdmin::requestDomainCheck($user, $group, $_POST['dominio'] ?? null),
             'membros' => GrupoAdmin::setMember($user, $group, $_POST['email'] ?? null, $_POST['papel'] ?? null),
             'membros/remover' => GrupoAdmin::removeMember($user, $group, $_POST['usuario'] ?? null),
         };
