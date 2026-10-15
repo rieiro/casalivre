@@ -42,6 +42,10 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if (PHP_SAPI === 'cli-server' && $path !== '/' && is_file(__DIR__ . $path)) {
     return false;
 }
+// Domínio de grupo é só vitrine: conta, login, painel, admin e API autenticada só no host do APP_URL (302/404).
+// Antes da sessão, para não abrir sessão nem mandar cookie no domínio do grupo. Plataforma: nada muda.
+require_once __DIR__ . '/../seguranca/SomenteVitrine.php';
+SomenteVitrine::aplicar($_SERVER['HTTP_HOST'] ?? null, $path, $method, (string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_QUERY) ?? ''));
 // Tiles do mapa (PMTiles): em produção o nginx serve o arquivo; em dev/local (php -S) esta rota, com Range.
 // URL exata (sem parâmetro de caminho); fora de dev/local cai no 404 normal.
 if ($path === '/tiles/brasil.pmtiles') {
