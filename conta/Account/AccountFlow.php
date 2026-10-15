@@ -122,8 +122,14 @@ final class AccountFlow
     {
         $email = Email::normalize($email);
         $user = UserRepository::findByEmail($email);
+        // Todo caminho faz exatamente um password_verify (real ou fictício): conta inexistente ou bloqueada
+        // não responde mais rápido que senha errada. Contagem de falhas e bloqueio seguem iguais.
         if ($user && (int) $user['failed_logins'] >= $maxFailures && ($user['status'] ?? '') === 'active') {
+            PasswordPolicy::dummyVerify($password);
             return ['status' => 'locked', 'email' => $email];
+        }
+        if (!$user) {
+            PasswordPolicy::dummyVerify($password);
         }
         if (!$user || !password_verify($password, (string) $user['password_hash'])) {
             if ($user && ($user['status'] ?? '') === 'active') {

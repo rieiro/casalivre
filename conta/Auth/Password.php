@@ -42,6 +42,33 @@ final class PasswordPolicy
         return password_hash($password, self::algo());
     }
 
+    /**
+     * Anti-enumeração por tempo: um password_verify contra um hash fictício, com o mesmo algoritmo e as mesmas
+     * opções dos hashes reais (gerado por hash()), para os caminhos de login que não chegam a verificar a senha.
+     * O hash é gerado uma vez e guardado em storage/cache (gerar a cada requisição custaria um password_hash
+     * a mais, deixando o caminho "e-mail inexistente" mais LENTO que o real); é refeito se o algoritmo ou as
+     * opções mudarem (password_needs_rehash). O resultado é descartado.
+     */
+    public static function dummyVerify(string $password): void
+    {
+        static $hash = null;
+        if ($hash === null) {
+            require_once dirname(__DIR__) . '/Geo/JsonCache.php';
+            $cached = JsonCache::read('login_dummy_hash.json');
+            $candidate = is_array($cached) ? (string) ($cached['hash'] ?? '') : '';
+            if ($candidate === '' || password_get_info($candidate)['algo'] === null || password_needs_rehash($candidate, self::algo())) {
+                $candidate = self::hash(bin2hex(random_bytes(16)));
+                try {
+                    JsonCache::write('login_dummy_hash.json', ['hash' => $candidate], false);
+                } catch (Throwable) {
+                    // Sem cache gravável: segue com o hash desta requisição.
+                }
+            }
+            $hash = $candidate;
+        }
+        password_verify($password, $hash);
+    }
+
     /** Algoritmo dos hashes de senha: Argon2id quando disponível, senão bcrypt (opções padrão do PHP). */
     public static function algo(): string
     {
