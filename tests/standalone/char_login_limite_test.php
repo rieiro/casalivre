@@ -80,4 +80,26 @@ foreach (['web' => $web, 'api' => $api] as $canal => $call) {
     t_eq(0, $ipRows(), "$canal: bloqueio de conta já atingido não conta no IP");
 }
 
+// Paridade (PR A): cadastro e esqueci a senha usam um balde por IP somando web e API (como fotos e avaliação).
+// O ApiRateLimit roda antes do CSRF, então o corpo não importa para a contagem.
+echo "limite somado web+API: esqueci a senha (5/15 min) e cadastro (10/h)\n";
+$post = static fn (string $path): int => str_starts_with($path, '/api/')
+    ? t_http('POST', $base . $path, '{}', ['Content-Type: application/json'])['status']
+    : t_http('POST', $base . $path, '', ['Content-Type: application/x-www-form-urlencoded'])['status'];
+foreach ([
+    'esqueci a senha' => ['/senha/esqueci', '/api/auth/senha/esqueci', 5],
+    'cadastro' => ['/cadastro', '/api/users', 10],
+] as $nome => [$webPath, $apiPath, $max]) {
+    foreach (['web primeiro' => [$webPath, $apiPath], 'API primeiro' => [$apiPath, $webPath]] as $ordem => [$a, $b]) {
+        $reset();
+        $codes = [];
+        for ($i = 0; $i < $max; $i++) {
+            $codes[] = $post($i % 2 === 0 ? $a : $b);
+        }
+        t_ok(!in_array(429, $codes, true), "$nome ($ordem): $max pedidos alternando web/API passam (" . implode(',', $codes) . ')');
+        t_eq(429, $post($a), "$nome ($ordem): o seguinte em $a dá 429 (balde somado)");
+        t_eq(429, $post($b), "$nome ($ordem): e em $b também");
+    }
+}
+
 t_done();

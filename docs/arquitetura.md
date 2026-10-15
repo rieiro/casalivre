@@ -298,7 +298,7 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 
 | Método | Caminho | Auth | Respostas |
 |---|---|---|---|
-| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada; 423 conta bloqueada; 429 IP bloqueado; 403 apagada/inativa/pendente |
+| POST | `/api/sessao` | C, RL login | 200 `{user}`; 401 senha errada; 423 conta bloqueada; 429 IP bloqueado; 403 apagada/inativa/pendente (só com a senha certa; pendente reenvia a ativação como a web) |
 | DELETE | `/api/sessao` | C | 200 |
 | POST | `/api/users` | C, RL | 201 `{status: pending}` (igual para e-mail novo ou existente); 422 |
 | GET | `/api/users/eu` | S | 200 |
@@ -341,13 +341,12 @@ Contagem por IP (IPv6 agrupado por /64, porque um único cliente costuma ter um 
 | Rota(s) | Limite | Balde |
 |---|---|---|
 | `GET /api/cidades`, `GET /api/ceps`, `GET /api/busca` | 60 por 60 s | um por rota |
-| `POST /api/auth/senha/esqueci` | 5 por 900 s | próprio |
-| `POST /senha/esqueci` | 5 por 900 s | próprio |
-| `POST /api/users` | 10 por 3600 s | próprio |
-| `POST /cadastro` | 10 por 3600 s | próprio |
+| `POST /api/auth/senha/esqueci` e `POST /senha/esqueci` | 5 por 900 s | **compartilhado** |
+| `POST /api/users` e `POST /cadastro` | 10 por 3600 s | **compartilhado** |
 | `POST /api/imoveis/*/avaliar` e `POST /imoveis/*/avaliar` | 10 por 3600 s | **compartilhado** |
 | `POST /api/casas/*/fotos` e `POST /imoveis/*/fotos` | 30 por 600 s | **compartilhado** |
 | `POST /entrar`, `POST /api/sessao` | `login_ip_max_failures` (5) erros → bloqueio de `login_ip_lock_minutes` (15) min | `LoginRateLimiter` (tabela `login_rate_limit`) |
+| Reenvio de ativação (login de conta pendente, web e API) | 3 por 3600 s **por conta** (não por IP) | `AccountFlow::ensureActivation` (`ativacao-reenvio`) |
 
 > **Por que baldes compartilhados?** Se web e API tivessem baldes separados, um robô dobraria o limite só alternando as
 > portas de entrada. Já cadastro e esqueci-senha têm baldes próprios por porta: um não pode esgotar o outro.
