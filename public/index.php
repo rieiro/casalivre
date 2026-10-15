@@ -277,7 +277,7 @@ if ($path === '/idioma' && $method === 'POST') {
     $parts = parse_url($back);
     $sameHost = isset($parts['host']) && $parts['host'] === ($_SERVER['HTTP_HOST'] ?? '');
     $target = $sameHost ? (($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '')) : '/';
-    redirect($target);
+    redirect(safe_local_return($target));
 }
 
 if ($path === '/verificar' && $method === 'GET') {
