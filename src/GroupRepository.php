@@ -102,6 +102,22 @@ final class GroupRepository
         return $row ?: null;
     }
 
+    /** Novo token e verificação zerada; true se gravou uma linha. */
+    public static function resetDomainToken(int $groupId, string $domain, string $token): bool
+    {
+        $st = db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = NULL WHERE group_id = ? AND domain = ?');
+        $st->execute([$token, $groupId, $domain]);
+        return $st->rowCount() === 1;
+    }
+
+    /** Marca verificado se o token ainda for o mesmo e não estiver verificado; true se gravou uma linha. */
+    public static function markDomainVerified(int $groupId, string $domain, string $token): bool
+    {
+        $st = db()->prepare('UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE group_id = ? AND domain = ? AND verify_token = ? AND verified_at IS NULL');
+        $st->execute([$groupId, $domain, $token]);
+        return $st->rowCount() === 1;
+    }
+
     /** Grupo dono do domínio, só se o domínio estiver verificado (C1). */
     public static function findByVerifiedDomain(string $domain): ?array
     {

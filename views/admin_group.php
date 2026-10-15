@@ -27,7 +27,7 @@
                     <span class="muted">não verificado (o domínio só passa a usar o tema do grupo depois da verificação)</span>
                 <?php endif; ?>
                 <?php if ($dr['verify_token'] !== ''): ?>
-                    <p class="muted">Registro DNS TXT: nome <code><?= e(GrupoAdmin::txtName($d)) ?></code>, valor <code><?= e(GrupoAdmin::txtValue((string) $dr['verify_token'])) ?></code></p>
+                    <p class="muted">Registro DNS TXT: nome <code><?= e(DomainVerification::txtName($d)) ?></code>, valor <code><?= e(DomainVerification::txtValue((string) $dr['verify_token'])) ?></code></p>
                 <?php endif; ?>
                 <form method="post" action="/admin/grupos/<?= e($group['slug']) ?>/dominios/verificar">
                     <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">

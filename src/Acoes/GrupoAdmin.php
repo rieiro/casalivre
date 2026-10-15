@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/Resultado.php';
 require_once __DIR__ . '/GrupoValidacao.php';
 require_once dirname(__DIR__) . '/GroupRepository.php';
+require_once dirname(__DIR__) . '/DomainVerification.php';
 
 /**
  * Grupos pelo admin (users.is_admin = 1, conta ativa): cria, edita nome/tema, inclui/remove domínio e membro.
@@ -12,43 +13,6 @@ require_once dirname(__DIR__) . '/GroupRepository.php';
  */
 final class GrupoAdmin
 {
-    /** Registro TXT em _casalivre.<domínio> com o valor casalivre-verificacao=<token> prova a posse (C1). */
-    public const TXT_LABEL = '_casalivre.';
-    public const TXT_VALUE = 'casalivre-verificacao=';
-
-    /**
-     * Consulta DNS TXT injetável: fn(string $nome): list<string>. Null = dns_get_record (testes trocam e não tocam a rede).
-     * @var (callable(string): list<string>)|null
-     */
-    public static $txtResolver = null;
-
-    public static function txtName(string $domain): string
-    {
-        return self::TXT_LABEL . $domain;
-    }
-
-    public static function txtValue(string $token): string
-    {
-        return self::TXT_VALUE . $token;
-    }
-
-    private static function newToken(): string
-    {
-        return bin2hex(random_bytes(16));
-    }
-
-    /** @return list<string> */
-    private static function lookupTxt(string $name): array
-    {
-        if (self::$txtResolver !== null) {
-            $out = (self::$txtResolver)($name);
-        } else {
-            $records = @dns_get_record($name, DNS_TXT);
-            $out = is_array($records) ? array_column($records, 'txt') : [];
-        }
-        return array_values(array_filter(array_map(static fn ($v) => is_string($v) ? trim($v) : '', is_array($out) ? $out : []), static fn ($v) => $v !== ''));
-    }
-
     /** Guarda do ator: admin ativo, ou a resposta de recusa. */
     private static function guard(array $admin): ?Resultado
     {
@@ -122,7 +86,7 @@ final class GrupoAdmin
             return new Resultado('invalido', 'Limite de ' . GrupoValidacao::MAX_DOMAINS . ' domínios por grupo.');
         }
         try {
-            db()->prepare('INSERT INTO group_domains (group_id, domain, verify_token) VALUES (?, ?, ?)')->execute([(int) $group['id'], $d, self::newToken()]);
+            db()->prepare('INSERT INTO group_domains (group_id, domain, verify_token) VALUES (?, ?, ?)')->execute([(int) $group['id'], $d, DomainVerification::newToken()]);
         } catch (PDOException $e) {
             if (!GroupRepository::isUniqueViolation($e)) {
                 throw $e;
@@ -160,9 +124,7 @@ final class GrupoAdmin
         if ($row === null) {
             return new Resultado('invalido', 'Domínio não cadastrado neste grupo.');
         }
-        $st = db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = NULL WHERE group_id = ? AND domain = ?');
-        $st->execute([self::newToken(), (int) $group['id'], $d]);
-        if ($st->rowCount() !== 1) {
+        if (!GroupRepository::resetDomainToken((int) $group['id'], $d, DomainVerification::newToken())) {
             return new Resultado('ok', null, ['mudou' => false]);
         }
         return new Resultado('ok', 'Novo token gerado: publique o registro TXT e clique em Verificar.', ['mudou' => true], [
@@ -174,7 +136,7 @@ final class GrupoAdmin
      * Confere o TXT _casalivre.<domínio>. Achou o valor esperado: grava verified_at (loga só na passagem para verificado).
      * Não achou: 'invalido'; um domínio já verificado continua verificado (falha passageira de DNS não derruba o site).
      */
-    public static function checkDomainVerification(array $admin, array $group, mixed $domain): Resultado
+    public static function checkDomainVerification(array $admin, array $group, mixed $domain, ?DomainVerification $verification = null): Resultado
     {
         if ($deny = self::guard($admin)) {
             return $deny;
@@ -185,22 +147,15 @@ final class GrupoAdmin
             return new Resultado('invalido', 'Domínio não cadastrado neste grupo.');
         }
         $token = (string) $row['verify_token'];
-        $expected = self::txtValue($token);
-        $found = false;
-        foreach ($token === '' ? [] : self::lookupTxt(self::txtName($d)) as $txt) {
-            $found = $found || hash_equals($expected, $txt);
-        }
-        if (!$found) {
+        if (!($verification ?? new DomainVerification())->matches($d, $token)) {
             return new Resultado('invalido', $row['verified_at'] !== null
                 ? 'Registro TXT não encontrado agora; o domínio continua verificado.'
-                : 'Registro TXT não encontrado: crie ' . self::txtName($d) . ' com o valor ' . ($token === '' ? '(gere um token)' : $expected) . ' e tente de novo (o DNS pode levar alguns minutos).');
+                : 'Registro TXT não encontrado: crie ' . DomainVerification::txtName($d) . ' com o valor ' . ($token === '' ? '(gere um token)' : DomainVerification::txtValue($token)) . ' e tente de novo (o DNS pode levar alguns minutos).');
         }
         if ($row['verified_at'] !== null) {
             return new Resultado('ok', 'Domínio verificado.', ['mudou' => false]);
         }
-        $st = db()->prepare('UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE group_id = ? AND domain = ? AND verify_token = ? AND verified_at IS NULL');
-        $st->execute([(int) $group['id'], $d, $token]);
-        if ($st->rowCount() !== 1) {
+        if (!GroupRepository::markDomainVerified((int) $group['id'], $d, $token)) {
             return new Resultado('ok', null, ['mudou' => false]);
         }
         return new Resultado('ok', 'Domínio verificado.', ['mudou' => true], [
