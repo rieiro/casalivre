@@ -320,19 +320,32 @@ final class Mailer
 
     public static function message(string $from, string $to, string $subject, string $body): string
     {
+        $headers = array_merge(self::envelopeHeaders($from, $to, $subject), [
+            'Content-Type: text/plain; charset=UTF-8',
+            'Content-Transfer-Encoding: base64',
+        ]);
+        return implode("\r\n", $headers) . "\r\n\r\n" . self::base64Body($body);
+    }
+
+    /** Cabeçalhos comuns (Date, From, To, Subject codificado, Message-ID, MIME-Version). @return list<string> */
+    private static function envelopeHeaders(string $from, string $to, string $subject): array
+    {
         $domain = substr($from, strrpos($from, '@') + 1);
-        $headers = [
+        return [
             'Date: ' . date(DATE_RFC2822),
             'From: CasaLivre <' . $from . '>',
             'To: <' . $to . '>',
             'Subject: =?UTF-8?B?' . base64_encode($subject) . '?=',
             'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . $domain . '>',
             'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=UTF-8',
-            'Content-Transfer-Encoding: base64',
         ];
+    }
+
+    /** Corpo com quebras CRLF, em base64 com linhas de 76. */
+    private static function base64Body(string $body): string
+    {
         $body = preg_replace("/\r?\n/", "\r\n", $body) ?? $body;
-        return implode("\r\n", $headers) . "\r\n\r\n" . rtrim(chunk_split(base64_encode($body), 76, "\r\n"));
+        return rtrim(chunk_split(base64_encode($body), 76, "\r\n"));
     }
 
     private static function ehloName(): string
