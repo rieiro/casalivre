@@ -119,4 +119,24 @@ t_eq('padrao', $css($r['body']), 'home da plataforma com o tema da plataforma');
 t_ok(str_contains($r['body'], 'class="brand" href="/"') && str_contains($r['body'], 'action="/busca"') && !str_contains($r['body'], '/g/'), 'home da plataforma sem links de vitrine');
 t_ok(!str_contains($get('/busca?localidade=x')['body'], 'data-base='), 'busca da plataforma sem data-base');
 t_ok(t_http('POST', $base . '/g/imob-sul/', '', ['Content-Type: application/x-www-form-urlencoded'])['status'] >= 400, 'POST na vitrine não é aceito');
+
+echo "A1: domínio verificado de um grupo só serve a vitrine dele\n";
+db()->exec("INSERT INTO group_domains (group_id, domain, verify_token, verified_at) VALUES ({$gA['id']}, 'imob.example.com', 't1', CURRENT_TIMESTAMP), ({$gB['id']}, 'pendente.example.com', 't2', NULL)");
+$onHost = static fn (string $p, string $h): array => t_http('GET', $base . $p, null, ['Host: ' . $h]);
+foreach (['/g/outro/', '/g/outro/busca?localidade=Florian%C3%B3polis', '/g/outro/busca/mapa?localidade=Florian%C3%B3polis', '/g/outro/imoveis/' . $hB['hash'], '/g/outro'] as $p) {
+    $r = $onHost($p, 'imob.example.com');
+    t_eq(404, $r['status'], "domínio de A, $p: 404");
+    t_ok(!str_contains($r['body'], $hB['hash']) && !str_contains($r['body'], 'Outro Grupo'), "domínio de A, $p: nada de B");
+}
+foreach (['/g/imob-sul/', '/g/imob-sul/busca?localidade=Florian%C3%B3polis', '/g/imob-sul/busca/mapa?localidade=Florian%C3%B3polis', '/g/imob-sul/imoveis/' . $hA['hash']] as $p) {
+    t_eq(200, $onHost($p, 'IMOB.example.com:8080')['status'], "domínio de A, $p: 200");
+}
+t_eq(404, $onHost('/g/nao-existe/', 'imob.example.com')['status'], 'domínio de A, slug inexistente: 404');
+foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
+    foreach (['/g/outro/' => 200, '/g/imob-sul/' => 200, '/g/outro/imoveis/' . $hB['hash'] => 200, '/g/nao-existe/' => 404] as $p => $st) {
+        t_eq($st, $onHost($p, $h)['status'], "Host $h (plataforma/não verificado), $p: $st");
+    }
+}
+t_eq(200, $get('/g/outro/')['status'], 'Host da plataforma, /g/outro/: 200');
+
 t_done();

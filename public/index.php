@@ -21,6 +21,7 @@ require_once __DIR__ . '/../src/PhotoRepository.php';
 require_once __DIR__ . '/../src/PhotoStorage.php';
 require_once __DIR__ . '/../src/helpers.php';
 require_once __DIR__ . '/../src/SearchService.php';
+require_once __DIR__ . '/../src/GrupoResolvedor.php';
 require_once __DIR__ . '/../src/CalendarService.php';
 reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
@@ -376,7 +377,9 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
         http_response_code(404);
         view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $data);
     };
-    if ($vGroup === null) {
+    // No domínio verificado de um grupo, só a vitrine dele: /g/<slug de outro grupo>/ é 404 (como slug inexistente).
+    $vHostGroup = GrupoResolvedor::doDominio($_SERVER['HTTP_HOST'] ?? null);
+    if ($vGroup === null || ($vHostGroup !== null && (int) $vHostGroup['id'] !== (int) $vGroup['id'])) {
         $vMissing();
         return null;
     }

@@ -25,8 +25,7 @@ final class GrupoResolvedor
     /** @return array{origem:string,grupo:?array,tema:string} */
     public static function resolver(mixed $host, string $path, ?array $imovel = null): array
     {
-        $h = GrupoValidacao::host($host);
-        if ($h !== null && !GrupoValidacao::isPlatform($h) && ($g = GroupRepository::findByVerifiedDomain($h)) !== null) {
+        if (($g = self::doDominio($host)) !== null) {
             return self::com(self::DOMINIO, $g);
         }
         if (preg_match('#^/g/([^/]+)(?:/|$)#', $path, $m) === 1 && ($g = GroupRepository::findBySlugValid($m[1])) !== null) {
@@ -37,6 +36,13 @@ final class GrupoResolvedor
             return self::com(self::IMOVEL, $g);
         }
         return ['origem' => self::PLATAFORMA, 'grupo' => null, 'tema' => Theme::current()];
+    }
+
+    /** Grupo do domínio verificado do Host (normalizado; nunca o da plataforma); senão null. */
+    public static function doDominio(mixed $host): ?array
+    {
+        $h = GrupoValidacao::host($host);
+        return $h !== null && !GrupoValidacao::isPlatform($h) ? GroupRepository::findByVerifiedDomain($h) : null;
     }
 
     /** Resolve para a requisição atual (Host e caminho do $_SERVER). @return array{origem:string,grupo:?array,tema:string} */
