@@ -488,7 +488,7 @@ if ($path === '/entrar' && $method === 'POST') {
     csrf_check();
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     // Web: grava LOGIN_FAIL para conta apagada/inativa e reenvia a ativação de conta pendente (ver LoginAttempt).
-    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), logInactive: true, ensureActivation: true);
+    $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''), logInactive: true);
     $res->registrar();
     if ($res->tipo === 'ok') {
         redirect('/painel');

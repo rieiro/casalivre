@@ -20,12 +20,13 @@ require_once __DIR__ . '/Resultado.php';
  *
  * Diferenças web/API preservadas de propósito (SNAPSHOT, ver tests/standalone/char_login_conta_test.php):
  * - $logInactive: a web grava LOGIN_FAIL (motivo apagado/inactive) para conta apagada/inativa; a API não grava.
- * - $ensureActivation: a web chama AccountFlow::ensureActivation em conta pendente (dados['expires']);
- *   a API só responde 403.
+ * - Conta pendente (só com a senha certa; senha errada é 'bad' como qualquer conta): web e API chamam
+ *   AccountFlow::ensureActivation (reenvio com limite por conta somado web+API); a web mostra verify_pending
+ *   e a API responde 403 err.pending.
  */
 final class LoginAttempt
 {
-    public static function run(string $email, string $password, bool $logInactive, bool $ensureActivation): Resultado
+    public static function run(string $email, string $password, bool $logInactive): Resultado
     {
         $result = AccountFlow::checkLogin($email, $password, Settings::int('login_max_failures'));
         if ($result['status'] === 'locked') {
@@ -53,12 +54,8 @@ final class LoginAttempt
             return new Resultado($result['status'], account_text($result['status']), [], $events);
         }
         if ($result['status'] === 'pending') {
-            $data = [];
-            if ($ensureActivation) {
-                $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
-                $data['expires'] = $pending['expires'];
-            }
-            return new Resultado('pending', t('err.pending'), $data);
+            $pending = AccountFlow::ensureActivation($result['user'], Settings::int('email_verify_minutes'));
+            return new Resultado('pending', t('err.pending'), ['expires' => $pending['expires']]);
         }
         AccountFlow::openSession((int) $result['user']['id']);
         LoginRateLimiter::clear();
