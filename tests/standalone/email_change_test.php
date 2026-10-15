@@ -108,6 +108,9 @@ t_ok(!str_contains(json_encode($u), $tok), 'DB: token bruto não aparece na linh
 t_ok((string) $u['email_change_expires_at'] > date('Y-m-d H:i:s'), 'DB: token com validade futura');
 $sv = (int) $u['session_version'];
 
+require_once CL_ROOT . '/src/RequestLog.php';
+t_ok(str_contains(Mailer::emailChangeNotice(RequestLog::maskEmail('novo@casalivre.test'))[1], ' n***@casalivre.test.'), 'aviso: e-mail novo mascarado no formato do RequestLog (1º caractere + ***@domínio)');
+
 echo "API: confirmação\n";
 $jarC = tempnam(sys_get_temp_dir(), 'jar');
 $csrfC = c_csrf($base, $jarC);

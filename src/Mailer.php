@@ -147,7 +147,8 @@ final class Mailer
                 if (!$user || ($user['status'] ?? '') !== 'active' || (string) ($user['pending_email'] ?? '') === '') {
                     return false;
                 }
-                self::deliver($email, ...self::emailChangeNotice(AccountFlow::maskEmail((string) $user['pending_email'])));
+                require_once __DIR__ . '/RequestLog.php';
+                self::deliver($email, ...self::emailChangeNotice(RequestLog::maskEmail((string) $user['pending_email'])));
                 return true;
             },
         ];

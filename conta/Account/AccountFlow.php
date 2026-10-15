@@ -163,15 +163,8 @@ final class AccountFlow
         if (!$user || ($user['status'] ?? '') !== $need) {
             return null;
         }
-        $token = bin2hex(random_bytes(16));
-        $link = $linkPrefix . $token;
-        $expires = self::until($minutes);
-        if ($type === 'reset') {
-            UserRepository::setReset((int) $user['id'], $token, $expires);
-        } else {
-            UserRepository::setActivation((int) $user['id'], $token, $expires);
-        }
-        return $link;
+        $set = $type === 'reset' ? UserRepository::setReset(...) : UserRepository::setActivation(...);
+        return $linkPrefix . self::newToken((int) $user['id'], $minutes, $set);
     }
 
     /**
@@ -216,9 +209,7 @@ final class AccountFlow
     {
         $links = [];
         foreach (UserRepository::findByPendingEmail(Email::normalize($newEmail)) as $user) {
-            $token = bin2hex(random_bytes(16));
-            UserRepository::setEmailChange((int) $user['id'], $token, self::until($minutes));
-            $links[] = $linkPrefix . $token;
+            $links[] = $linkPrefix . self::newToken((int) $user['id'], $minutes, UserRepository::setEmailChange(...));
         }
         return $links;
     }
@@ -237,11 +228,15 @@ final class AccountFlow
             : ['ok' => false];
     }
 
-    /** "fu***@dominio" (aviso ao endereço antigo sem expor o novo inteiro). */
-    public static function maskEmail(string $email): string
+    /**
+     * Token bruto de 128 bits com validade: $set(id, bruto, expira) grava só o sha256; devolve o bruto (vai no link).
+     * @param callable(int, string, string): void $set
+     */
+    private static function newToken(int $id, int $minutes, callable $set): string
     {
-        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
-        return mb_substr($local, 0, min(2, mb_strlen($local))) . '***@' . $domain;
+        $token = bin2hex(random_bytes(16));
+        $set($id, $token, self::until($minutes));
+        return $token;
     }
 
     private static function until(int $minutes): string
