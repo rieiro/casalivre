@@ -139,4 +139,18 @@ foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
 }
 t_eq(200, $get('/g/outro/')['status'], 'Host da plataforma, /g/outro/: 200');
 
+echo "A2: redirect sem barra mantém a query, sempre relativo\n";
+$loc = static fn (string $p): array => [($r = $get($p))['status'], c_location($r)];
+t_eq([302, '/g/imob-sul/?a=1&b=2'], $loc('/g/imob-sul?a=1&b=2'), 'query mantida');
+t_eq([302, '/g/imob-sul/'], $loc('/g/imob-sul'), 'sem query: sem ?');
+t_eq([302, '/g/imob-sul/'], $loc('/g/imob-sul?'), 'query vazia: sem ?');
+t_eq([302, '/g/imob-sul/?next=//evil.com'], $loc('/g/imob-sul?next=//evil.com'), 'next=//evil fica na query');
+t_eq([302, '/g/imob-sul/?//evil.com'], $loc('/g/imob-sul?//evil.com'), '?//evil.com fica na query');
+t_eq([302, '/g/imob-sul/?x=%2F%2Fevil.com%0d%0aSet-Cookie:a=b'], $loc('/g/imob-sul?x=%2F%2Fevil.com%0d%0aSet-Cookie:a=b'), 'valores codificados ficam como vieram, sem quebra de header');
+t_eq([302, '/g/imob-sul/?a=1'], $loc('//evil.com/g/imob-sul?a=1'), '//evil.com/g/...: Location relativa da vitrine, nunca para evil.com');
+t_eq(404, $get('/g/evil.com')['status'], '/g/evil.com: slug inválido, 404');
+t_eq(404, $get('/g/%2F%2Fevil.com')['status'], '/g/%2F%2Fevil.com: 404');
+$r = t_http('GET', $base . '/g/imob-sul?a=1', null, ['Host: evil.com']);
+t_eq('/g/imob-sul/?a=1', c_location($r), 'Location não usa o Host');
+t_eq(1, preg_match_all('/^Set-Cookie:\s*a=b/mi', $get('/g/imob-sul?x=%0d%0aSet-Cookie:a=b')['headers']) === 0 ? 1 : 0, 'sem header injetado');
 t_done();
