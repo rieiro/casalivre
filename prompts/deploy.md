@@ -45,7 +45,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 
 - [ ] **nginx `client_max_body_size`:** ver seção Limites de requisição (PR #34).
 - [ ] **php.ini:** `max_input_vars=1000` e `max_input_nesting_level=64` (os padrões; não aumentar).
-- [ ] **Cache de assets:** com o #23, os assets vão em `app.css?v=19`, `app.js?v=18`, `safe-dom.js?v=3`, `property-form.js?v=3`, `map.js?v=2` e `form-data.js?v=1` (este só no formulário de imóvel); limpar o cache ou a CDN no deploy.
+- [ ] **Cache de assets:** os assets saem com hash gerado pelo `scripts/build-assets.php` (Sprint 3, Etapa 0). Não existe mais `?v=` manual; ver a seção Sprint 3.
 
 - [ ] **Fotos** servidas só de `/uploads/` (nginx: `location /uploads/` sem execução de PHP e com `add_header X-Content-Type-Options nosniff`). Depois do deploy, revisar as fotos já gravadas: `SELECT id, path FROM photos WHERE path NOT LIKE '/uploads/%' OR path LIKE '%..%'`.
 
@@ -56,7 +56,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` (`SMTP_CA_FILE` só com CA privada).
 - [ ] Saída liberada na porta 587 ou 465; SPF, DKIM e DMARC no domínio do `SMTP_FROM`. Nunca `SMTP_SECURE=none` com servidor remoto, e nunca desligar a verificação do certificado. `SMTP_USER`/`SMTP_PASS` só no `.env` (0600, dono do php-fpm). Opcional: `SMTP_TIMEOUT`.
 - [ ] Sem SMTP configurado, o app não grava o link e registra só `mail_not_configured` em `storage/logs/php.log` (via `error_log()`; o `storage/error.log` só recebe exceções): criar um alerta para essa linha nesse arquivo.
-- [ ] `storage/logs/mail-dev.log` nunca pode existir em produção.
+- [ ] `storage/logs/mail-dev.log` nunca pode existir em produção (é gerado só pelo mail-worker em modo dev, usado pelos scripts de teste).
 
 ### Feeds iCal (Airbnb, Booking, Google)
 - [ ] Saída HTTP 80/443 e DNS liberados (ver Servidor e PHP); export só pelo `ical_hash` secreto.
@@ -64,7 +64,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 ## Transferência de dados e cache (nginx)
 Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] `http2 on;` (TLS 1.2+).
-- [ ] /assets/: `Cache-Control "public, max-age=31536000, immutable"` e etag on. Sempre subir o `?v=` ao mudar JS/CSS.
+- [ ] /assets/: `Cache-Control "public, max-age=31536000, immutable"` e etag on. As versões vêm do manifesto gerado pelo build (ver Sprint 3), sem `?v=` manual.
 - [ ] /uploads/: sem PHP (`location ~ \.php$ { return 404; }`), cache immutable de 1 ano, nosniff e etag on. Ao remover uma foto, apagar o arquivo e fazer purge.
 - [ ] gzip + brotli (`ngx_brotli`, de preferência `gzip_static`/`brotli_static`) só em css, js, json e svg. Não comprimir `text/html` (BREACH). `gzip_vary on;`
 - [ ] Rotas autenticadas com `private, no-store`, sem o nginx sobrescrever.
@@ -109,6 +109,55 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 ### Rate limit nos formulários web (#35, #39)
 - [ ] `POST /cadastro` (10/h), `POST /senha/esqueci` (5/15 min) e o envio de fotos pela web (30/10 min, somado com a API) usam `REMOTE_ADDR`: atrás de proxy/CDN, `real_ip` é obrigatório; senão todos os visitantes dividem o mesmo limite.
+
+## Sprint 3 — temas, grupos, domínios e e-mail HTML (SCHEMA_VERSION 13)
+
+**Ordem do deploy**
+- [ ] Código → `php scripts/build-assets.php && php scripts/build-assets.php --check` (manifesto, `public/assets/themes/<tema>.css`, `map-style.json`; sai com 1 se algum `brand.php` for inválido) → pré-compressão (brotli/gzip, sem o .pmtiles) → `systemctl reload php8.4-fpm`.
+- [ ] Banco em SCHEMA 13 (11: grupos; 12: verify_token/verified_at; 13: last_check_at/fail_count). Recriar com seeds, como nas versões anteriores, ou `php scripts/migrate.php`. Backup do SQLite antes.
+- [ ] `php scripts/refresh-settings-cache.php` e, para o primeiro admin, `php scripts/set-admin.php <email>`. Tema da plataforma em /admin/tema.
+
+**.env**
+- [ ] `APP_URL` obrigatório em produção e **https://** (links de e-mail, links de grupo e raiz da plataforma). Sem ele válido o mail-worker não inicia: escreve `mail-worker: APP_URL não configurada.` / `APP_URL inválida.` no stderr, sai com código 2 e não toca na fila. Conferir o .env lido pelo cron e monitorar o código de saída.
+- [ ] `PLATFORM_ROOT_DOMAIN` (opcional): domínio raiz quando o APP_URL é subdomínio diferente de www. (ex.: app.casalivre.com.br → casalivre.com.br). Ele e seus subdomínios nunca viram domínio de grupo.
+- [ ] `MAIL_HTML`: padrão ligado (texto + HTML); `MAIL_HTML=0` força só texto.
+- [ ] `SESSION_SAMESITE` (opcional, padrão Lax; None só com HTTPS).
+
+**Crons (usuário da aplicação, storage/ gravável)**
+- [ ] `* * * * *  php /srv/casalivre/scripts/mail-worker.php`
+- [ ] `* * * * *  php /srv/casalivre/scripts/image-worker.php` (memory_limit ≥ 256M no CLI)
+- [ ] `0 * * * *  php /srv/casalivre/scripts/sync-calendars.php`
+- [ ] `17 * * * *  php /srv/casalivre/scripts/verify-domains.php >> /var/log/casalivre/verify-domains.log 2>&1`
+- [ ] `15 3 * * *  php /srv/casalivre/scripts/log-retention.php` (ou runit deploy/runit/casalivre-log-retention)
+- [ ] Avisos de domínio (log 46) exigem admin ativo, mail-worker rodando e SMTP configurado.
+
+**nginx / DNS / TLS (domínios de grupo)**
+- [ ] `server { listen 80 default_server; listen 443 ssl default_server; ssl_reject_handshake on; return 444; }`
+- [ ] server_name da aplicação: host do APP_URL (+ www/raiz) e só os domínios verificados, via include gerado e `nginx -s reload` após verificar/remover.
+- [ ] `fastcgi_param HTTP_HOST $host;` e não repassar X-Forwarded-Host.
+- [ ] Não sobrescrever o Cache-Control do HTML (sessão no-store; erro private, no-cache). Só /assets/ e /tiles/ têm cache próprio.
+- [ ] CSP já inclui frame-ancestors 'none' e XFO DENY: trocar `X-Frame-Options SAMEORIGIN` por `DENY` em prompts/mapa-pmtiles.md:82.
+- [ ] TLS (ACME HTTP-01) só depois do verified_at; parar de renovar quando perder a verificação.
+- [ ] Cliente publica `TXT _casalivre.<domínio> = casalivre-verificacao=<token>` e A/AAAA ou CNAME. "Verificar agora" só agenda; o cron confere em até 1 hora.
+- [ ] /etc/resolv.conf: resolvedor confiável (ideal unbound com DNSSEC), sem search/domain, `options timeout:3 attempts:2`.
+- [ ] Antes de um domínio ir para produção: rodar verify-domains.php à mão e conferir a saída.
+
+**Pacote de produção**
+- [ ] `scripts/casos`, `scripts/extras` e o arquivo comum de apoio aos testes ficam fora do pacote de produção. O arquivo comum se recusa a rodar se `APP_ENV` não for `dev` ou `local`; e-mails de teste sempre em `@casalivre.test`; limpeza direta no banco (ex.: o `DELETE` do limite de login) só nele e com a mesma trava; o `mail-dev.log` é apagado no fim da suíte (reunião 15/10).
+
+**Assets com hash, OPcache e compressão (Etapa 0, #54)**
+- [ ] O manifesto é versionado, mas é regerado no deploy para bater com os arquivos publicados.
+- [ ] nginx: `location /assets/ { add_header Cache-Control "public, max-age=31536000, immutable" always; etag on; brotli_static on; gzip_static on; }`. O `brotli_static` precisa do módulo ngx_brotli; sem ele, só `gzip_static`.
+- [ ] `/assets/manifest.json` sem cache longo: `Cache-Control: no-cache` ou `location = /assets/manifest.json { deny all; }`. Fontes `.pbf` e sprites do mapa ainda sem `?v=`: manter o cache atual deles, sem immutable.
+- [ ] Pré-compressão: `find public/assets -type f \( -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.pbf' \) -exec brotli -f -k -q 11 {} \; -exec gzip -f -k -9 {} \;`. Não comprimir o `.pmtiles`.
+- [ ] OPcache no FPM de produção: `opcache.enable=1`, `memory_consumption=128`, `interned_strings_buffer=16`, `max_accelerated_files=10000`, `validate_timestamps=0` (reload do FPM obrigatório a cada deploy) e `jit=off`. Sem reload possível: `validate_timestamps=1` com `revalidate_freq=60`. Em dev/local: `validate_timestamps=1` e `revalidate_freq=0`.
+- [ ] Conferir: `curl -I https://<host>/assets/app.css?v=<hash>` volta com immutable e `content-encoding: br`.
+
+**Outros pontos da sprint (#56–#65)**
+- [ ] CSP (#56): `style-src 'self'`, `style-src-attr 'none'`, `connect-src 'self'`, `worker-src 'self'`, `frame-ancestors 'none'` e XFO DENY. O site não pode ser exibido em iframe, nem pelo próprio domínio.
+- [ ] nginx (#58/#59): sem query string no access_log em `/verificar` e `/senha/redefinir` (`log_format` com `$uri` ou `access_log off`); `real_ip` confirmado.
+- [ ] `storage/cache` gravável pelo PHP (#61): o login guarda ali o `login_dummy_hash.json`. Sem ele, o login de e-mail inexistente fica mais lento que o real.
+- [ ] `storage/` gravável pelo usuário do cron (lock do verify-domains, #65). Servidor com DNS de saída (`dns_get_record`). Domínios verificados são reverificados na primeira execução depois do SCHEMA 13.
 
 ## Banco de dados (SQLite)
 

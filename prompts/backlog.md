@@ -13,7 +13,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 5. ~~**#43** — script `run-casos-de-teste`~~ (mesclado)
 6. ~~**#44–#47, #49, #50** — Refatoração DRY (PRs 0 a 5)~~ (mesclado)
 7. ~~**#48** — limite de avaliação pela web igual ao da API~~ (mesclado)
-8. **Próximo passo:** sprint 3 (tema visual)
+8. ~~**Próximo passo:** sprint 3 (tema visual)~~ (sprint 3 concluída até o #69)
 
 | PR | Assunto | Situação |
 |----|---------|----------|
@@ -67,15 +67,15 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 
 ### Tema visual (em etapas)
 Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
-- [ ] Etapa 0: `asset_url` com hash, OPcache e brotli.
-- [ ] Etapa 1: tokens CSS e páginas de erro sem estilo inline.
-- [ ] Etapa 2: `brand.php`, logo e pasta do tema.
-- [ ] Etapa 3: estilo do mapa gerado.
-- [ ] Etapa 4: fonte do mapa, se mudar.
-- [ ] Etapa 5 (opcional): e-mail HTML.
+- [x] Etapa 0: `asset_url` com hash, OPcache e brotli.
+- [x] Etapa 1: tokens CSS e páginas de erro sem estilo inline.
+- [x] Etapa 2: `brand.php`, logo e pasta do tema.
+- [x] Etapa 3: estilo do mapa gerado.
+- [x] Etapa 4: fonte do mapa, se mudar. Pulada: a fonte não mudou (NotoSans, glyphs PBF desde o #40).
+- [x] Etapa 5 (opcional): e-mail HTML.
 
 ### Tema escolhido pelo banco
-- [ ] Tema padrão da plataforma (usado quando a requisição não tem grupo) em `settings.theme`, com cache num arquivo mantido pelo OPcache e CSS e estilo do mapa com hash por tema. Aceitar só nomes da lista do manifesto; troca só pelo admin, com CSRF e log. Entra junto com o PR do `brand.php`. Modo claro e escuro, se houver, por `prefers-color-scheme`.
+- [x] (#57) Tema padrão da plataforma (usado quando a requisição não tem grupo) em `settings.theme`, com cache num arquivo mantido pelo OPcache e CSS e estilo do mapa com hash por tema. Aceitar só nomes da lista do manifesto; troca só pelo admin, com CSRF e log. Entra junto com o PR do `brand.php`. Modo claro e escuro, se houver, por `prefers-color-scheme`.
 
 ### Temas por grupo de imóveis (decisão do usuário, 14/10)
 - [ ] Temas por grupo de imóveis (imobiliária ou rede). Cada tema é uma identidade visual completa (logo, favicon, imagens, cores, fontes, ícones e sprite, estilo do mapa, cabeçalho e rodapé de e-mail) numa pasta `themes/<nome>/` preparada pelo time e versionada no repositório. Não há upload de imagens pelo grupo. O layout e as funcionalidades não mudam: o código só aponta para os arquivos do tema. Um build gera os arquivos com hash e um manifesto.
@@ -85,9 +85,52 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 - [ ] Modelo de dados: `groups` (slug, nome, tema), `group_members` (papéis), `properties.group_id` e a lista de domínios por grupo. Vincular um imóvel a um grupo exige o aceite do dono do imóvel. Toda mudança vai para a auditoria. O tema é aceito só da lista do manifesto. O selo da plataforma fica sempre visível.
 - [ ] Ficam para depois: a configuração do nginx, os certificados por domínio e a sessão ou login separados por domínio.
 
+## Sprint 3: pendências (#56–#69)
+
+### Segurança
+- [ ] (baixa, #63 C5) Convites de grupo sem expiração, limite ou rate limit.
+- [ ] (decisão, #63 C6) Gestor remove imóvel do grupo sem aval do dono (registrado no log 43).
+- [ ] (#64) Rate limit em `/admin/grupos/.../dominios/verificar` e `/dominios/token`, junto com `/admin/tema` (hoje sem limite em `/admin/*` e `/grupos/*`).
+- [ ] (baixa, #65) UPDATE de reverificação condicionado a `fail_count`/`verified_at`; ponto final no nome TXT.
+- [ ] (baixa, #67 B2) Grupos privados ou desativados devem dar a mesma 404 de slug inexistente (depende do status de grupo).
+- [ ] (#68) N+1 no Mailer (`findBySlug` no laço, `Mailer.php:144`); domínio principal explícito por grupo (hoje o GrupoUrl usa o primeiro verificado por id).
+- [ ] (baixa, #69) N+1 em `MailHtml.php:76-80`. (info) A regex de cor aceita `#rgb`.
+- [ ] (#56, risco aceito) `img-src 'self'` bloqueia o `blob:` do MapLibre em navegadores sem `createImageBitmap` (Safari antigo). Avaliar `img-src blob:` se aparecer reclamação.
+- [ ] (baixa, #60) Conferir no LoginAttempt se `err.deleted`/`err.inactive` aparecem antes da checagem da senha (revelaria o estado da conta).
+- [ ] (baixa, #61) Diferença de poucos ms em `/senha/esqueci` (INSERT na `mail_queue` só se o e-mail existe) e no login de conta pendente com reenvio; abaixo do ruído e coberta por rate limit.
+- [ ] (QA #61, já existia) Conta bloqueada responde "Conta bloqueada" (423 na API), revelando que existe; o primeiro 429 por IP sai sem `Retry-After`.
+- [ ] (Reunião 15/10) Quando a importação de `.ics` externo (Airbnb/Booking) entrar, criar teste próprio: SSRF, arquivo gigante e parser malicioso.
+
+### Produto / UX
+- [ ] Status ativo/inativo de grupo; avisar o dono sobre convite (painel ou e-mail); link de grupos no menu.
+- [ ] A raiz do domínio de grupo mostra a home da plataforma com o tema do grupo; avaliar redirecionar `/` para `/g/<slug>/`.
+- [ ] Vitrine: busca sem exigir local; avaliação postada pela própria vitrine.
+- [ ] Textos do `/admin` e das páginas de grupo sem `t()` (i18n); páginas de erro não seguem o tema; modo escuro do tema `padrao` (o build já suporta).
+- [ ] Mapa: `?v=` nos sprites e nos glyphs (`/assets/map/` é immutable); o mapa de reserva (sem tiles) não segue o tema; cores por expressão (landcover, pois, roads_minor) não são trocadas pelo tema.
+- [ ] Sistema de avisos (ou fila) para os e-mails do admin (hoje `Mailer::deliver` direto); link de admin montado à mão no e-mail (#68).
+- [ ] (Divergência 6, docs sprint 3) Temas sem checagem de contraste AA: o código só exige que o tema esteja em `Theme::available()` (manifesto + `NAME_RE`). Decidir se o build passa a checar o contraste ou se a regra fica só no processo de preparo do tema.
+- [ ] (Divergência de validação web, docs sprint 3) Códigos de erro inconsistentes entre telas web: `POST /conta`, `POST /imoveis` e `POST /imoveis/<h>` respondem 200 com o formulário, enquanto as telas de grupo e `/admin/tema` respondem 422/409. Padronizar.
+
+### Qualidade / dívida técnica
+- [ ] Unificar as regras de "ativo" (`activeProperty` vs `activePropertyStrict`, `status='active'` literais em HouseRepository/activeUser); a home mostra imóveis com status `''`.
+- [ ] Rotas do dono: 404 em texto para imóvel de outro e página HTML para código inexistente (padronizar).
+- [ ] Bug pré-existente: `POST /conta` inválido na web não mostra mensagem (`#account-error` vazio).
+- [ ] Dependências circulares GrupoUrl↔Mailer e MailHtml↔Mailer (`linkFromAppUrl` num helper de URL, hoje calculado 2×); `'/g/'.slug` em 2 lugares; regra de domínio repetida em GrupoUrl e `doDominio`; DEFAULTS do MailHtml duplicam o `:root` do `app.css` (usar Theme); `?callable $allowed` em `render` só para teste; `dotStuff` "por garantia".
+- [ ] Revisor #65: `matches()` só usado em teste; "em até 1 hora" duplicado; `saveDomainCheck` com 5 parâmetros posicionais. QA #65: aviso lista domínios nunca verificados; logs da CLI com canal "web"; log 46 sem valores antes/depois.
+- [ ] `SearchService` lê `$_GET` direto.
+- [ ] Testes: schema pgsql (sem Postgres no ambiente) e caminho com DNS real; 4 testes E2E desatualizados; flake de tempo do `account_tokens_test` ("tempo semelhante": usar mediana de N ou mais tolerância); `storage/cache/settings.json` compartilhado entre execuções de teste; `/assets/../index.php` no servidor de desenvolvimento dá 500 vazio (Cannot redeclare).
+- [ ] (Reunião 15/10) Arquivo comum de apoio aos testes (cadastro, ativação via `mail-dev.log`, login) usado por `run-casos-de-teste`, `api-ical-log` e `retencao-concorrente`; remove a `link_ativacao` duplicada. Regras da Segurança: recusar rodar se `APP_ENV` não for dev/local; ficar fora do pacote de produção; limpeza direta no banco (ex.: `DELETE` do limite de login em `retencao-concorrente.php:64`) só nele e com a mesma trava; e-mails de teste sempre `@casalivre.test`; apagar o `mail-dev.log` no fim da suíte. Tarefa do Bot Teste, depois do fechamento da sprint 3.
+- [ ] (Reunião 15/10) Separar `scripts/casos/api-ical-log.php` por assunto (api, ical, log), reaproveitando o arquivo comum de testes. Tarefa do Bot Teste.
+- [ ] Opcionais do Revisor não feitos:
+  - #58/#59: parâmetros mortos `$requirePassword`/`$current` em `AccountFlow.php:16/:52`; comentário v9→v8 em `schema_upgrade_test.php:3`; logout duplicado web/API; AccountUpdate com muitas responsabilidades; truque `$fields['email']`.
+  - #62: `themePath` sem `assetPath`; validação repetida no `mapStylePath`; `clean()` duplo; cópia profunda; regex frágil de camadas.
+  - #63: comentário com constantes inexistentes; `isUniqueViolation` no Db; `propertyRef` validado 2×; `activeUser` com um uso; 2 cópias do filtro de ativo.
+  - #66 (`retencao-concorrente.php`): `$appDb` muda de string para PDO (:71/:79); PDO aberto à mão em :73 em vez de `pdo()`; código do filho num `-r` de uma linha (:98-103); fallback `/ical/000…` (:108) e ramo `$icsPaths ? … : $icsPath` só servem ao caso sem imóveis. Resolver junto com o arquivo comum de testes.
+- [ ] Tentar de novo o WAL ao criar activity log novo (deploy novo com pedidos simultâneos).
+
 ## Segurança e LGPD
 
-- [ ] (Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.
+- [x] ~~(Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.~~ Descartada: sem troca de e-mail (decisão do usuário, #59).
 - [ ] (Baixa, #47, já existia) O catch genérico de `PDOException` no `AccountUpdate` vira "e-mail em uso"; deveria tratar só a violação de unicidade.
 - [ ] (Baixa, #47, já existia) `PhotoRepository::makePrimary` aceita foto que não está com status `ready`.
 - [ ] `CL.el`: passar `action`, `formaction` e `xlink:href` pelo safeHref (vai no #23).
@@ -107,7 +150,7 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 - [ ] `BODY_VALUE_ALLOWLIST` limitado a valores escalares.
 - [ ] **Em andamento (#35):** tokens de ativação e redefinição só como hash sha256; remover as colunas `*_link`.
 - [ ] **Em andamento (#35):** cadastro com resposta genérica (sem `409 email_taken`); aviso por e-mail ao dono, no máximo 1×/dia.
-- [ ] Troca de e-mail estando logado: confirmar o e-mail novo por link (hoje ainda devolve `email_taken`).
+- [x] ~~Troca de e-mail estando logado: confirmar o e-mail novo por link.~~ Descartada por decisão do usuário (#58/#59).
 - [ ] Criptografar `calendar_feeds.url`, `properties.external_ical_url` e `audit_hold`, com coluna HMAC para duplicados.
 - [ ] LGPD: política de retenção, hash de IP e e-mail; separar auditoria de BI.
 - [ ] Prefixos IPv6/TEST-NET restantes em `CalendarSync::isPublicIp` (2001:10::/28, 2001:20::/28, 3fff::/20, 5f00::/16, fec0::/10); `logRef` via `LogPrivacy::url()`; `redactPath` cobrindo segmentos opacos de 20+ caracteres.
@@ -161,6 +204,8 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca
 
 ## Concluído
 
+- [x] Sprint 3 (#54–#69): assets com hash, temas, grupos, domínios verificados por DNS TXT, reverificação e e-mail HTML (SCHEMA 13); #66 (E2E e script de carga `.ics`) mesclado na develop (b605dc7).
+- [x] Fechados na sprint 3: troca de e-mail descartada (decisão do usuário, #58/#59); #67 B1 (filtro de grupo no SQL) e B3 (forçar o grupo resolvido em `/api/busca` no domínio do grupo), feitos no #67/#68; comentário do `findBySlugValid` (o método existe em `GroupRepository`); host do SearchService obrigatório (#68); `Vary: Host` não é necessário (Segurança #64); C1 (verified_at + DNS TXT) e C3 (normalizar Host), feitos no #64/#65; script de carga `.ics` chamando a exportação com id vazio (#66).
 - [x] Sprint 2: refatoração (#44 testes de caracterização, #45 app-env, #46 index-servicos, #47 ações compartilhadas, #49 api-guardas, #50 helpers por tema), #43 (script `run-casos-de-teste`) e #48 (avaliação pela web com limite de 10/h por IP, igual à API) mesclados na develop (b13328b).
 - [x] Sprint 2: PRs #35, #36, #38, #39 e #40 mesclados na develop (fca4832).
 
