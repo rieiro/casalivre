@@ -45,6 +45,21 @@ final class GrupoResolvedor
         return $h !== null && !GrupoValidacao::isPlatform($h) ? GroupRepository::findByVerifiedDomain($h) : null;
     }
 
+    /**
+     * Grupo do slug (GroupRepository::findBySlugValid) visto pelo Host: null se o slug for inválido/inexistente ou se o
+     * Host for domínio verificado de OUTRO grupo (no domínio de X, só X). Plataforma, Host desconhecido ou não
+     * verificado: o grupo do slug.
+     */
+    public static function grupoDoSlugNoHost(mixed $slug, mixed $host): ?array
+    {
+        $g = GroupRepository::findBySlugValid($slug);
+        if ($g === null) {
+            return null;
+        }
+        $hostGroup = self::doDominio($host);
+        return $hostGroup !== null && (int) $hostGroup['id'] !== (int) $g['id'] ? null : $g;
+    }
+
     /** Resolve para a requisição atual (Host e caminho do $_SERVER). @return array{origem:string,grupo:?array,tema:string} */
     public static function daRequisicao(?array $imovel = null): array
     {

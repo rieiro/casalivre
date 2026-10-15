@@ -8,7 +8,8 @@ require_once __DIR__ . '/GrupoResolvedor.php';
 
 final class SearchService
 {
-    public static function run(bool $log = true): array
+    /** $host: Host da requisição (para ?grupo no domínio verificado de um grupo); null = sem restrição por domínio. */
+    public static function run(bool $log = true, mixed $host = null): array
     {
         $filters = [
             'localidade' => trim((string) ($_GET['localidade'] ?? '')),
@@ -27,24 +28,20 @@ final class SearchService
         }
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         $facets = [];
-        $results = $searched ? SearchService::search($filters, $facets) : [];
+        $results = $searched ? SearchService::search($filters, $facets, $host) : [];
         if ($searched && $log) {
             activity(ActivityLog::SEARCH, $filters + ['resultados' => count($results)]);
         }
         return [$filters, $results, $searched, $facets];
     }
 
-    public static function search(array $filters, ?array &$facets = null): array
+    public static function search(array $filters, ?array &$facets = null, mixed $host = null): array
     {
         $localidade = $filters['localidade'];
         $center = $localidade !== '' ? CityRepository::match($localidade) : null;
         if (array_key_exists('grupo', $filters)) {
-            $group = GroupRepository::findBySlugValid($filters['grupo']);
             // No domínio verificado do grupo X, ?grupo=<outro grupo> é tratado como grupo inexistente (itens vazios).
-            $hostGroup = GrupoResolvedor::doDominio($_SERVER['HTTP_HOST'] ?? null);
-            if ($group !== null && $hostGroup !== null && (int) $hostGroup['id'] !== (int) $group['id']) {
-                $group = null;
-            }
+            $group = GrupoResolvedor::grupoDoSlugNoHost($filters['grupo'], $host);
             $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
         } else {
             $source = HouseRepository::all();

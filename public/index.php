@@ -371,15 +371,14 @@ if ($path === '/busca' && $method === 'GET') {
 // GroupRepository::findBySlugValid; tema pelo GrupoResolvedor (caminho /g/<slug>/). Slug inválido ou inexistente: 404
 // com o tema da plataforma. Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
 if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
-    $vGroup = GroupRepository::findBySlugValid($m[1]);
+    // No domínio verificado de um grupo, só a vitrine dele: /g/<slug de outro grupo>/ é 404 (como slug inexistente).
+    $vGroup = GrupoResolvedor::grupoDoSlugNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
     // 404 da vitrine: sem grupo, tema da plataforma; com grupo ($vData), o tema dele.
     $vMissing = static function (array $data = []): void {
         http_response_code(404);
         view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $data);
     };
-    // No domínio verificado de um grupo, só a vitrine dele: /g/<slug de outro grupo>/ é 404 (como slug inexistente).
-    $vHostGroup = GrupoResolvedor::doDominio($_SERVER['HTTP_HOST'] ?? null);
-    if ($vGroup === null || ($vHostGroup !== null && (int) $vHostGroup['id'] !== (int) $vGroup['id'])) {
+    if ($vGroup === null) {
         $vMissing();
         return null;
     }
