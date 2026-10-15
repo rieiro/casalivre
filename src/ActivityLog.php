@@ -260,7 +260,7 @@ final class ActivityLog
     }
 
     /** Chaves de identidade: nunca gravadas em claro (HMAC com LOG_SALT ou IP truncado). */
-    public const IDENTITY_KEYS = ['email', 'ip', 'cpf', 'phone', 'telefone', 'user_id', 'autor'];
+    public const IDENTITY_KEYS = ['email', 'email_anterior', 'ip', 'cpf', 'phone', 'telefone', 'user_id', 'autor'];
 
     /** Parâmetros aceitos em qualquer ação. */
     public const COMMON_PARAMS = ['imovel_id', 'canal', 'resultado', 'motivo'];
@@ -286,7 +286,7 @@ final class ActivityLog
         self::PHOTO_COVER => ['foto_id'],
         self::THEME_CHANGE => ['tema', 'tema_anterior'],
         self::EMAIL_CHANGE_ASK => ['email'],
-        self::EMAIL_CHANGE => ['email'],
+        self::EMAIL_CHANGE => ['email', 'email_anterior'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],
@@ -352,7 +352,7 @@ final class ActivityLog
                 return self::DROP;
             }
             return match ($lk) {
-                'email' => LogPrivacy::email((string) $value),
+                'email', 'email_anterior' => LogPrivacy::email((string) $value),
                 'ip' => LogPrivacy::ip((string) $value),
                 'user_id' => LogPrivacy::user((int) $value),
                 default => LogPrivacy::hmac((string) $value, $lk),

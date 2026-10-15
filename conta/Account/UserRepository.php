@@ -72,10 +72,11 @@ final class UserRepository
     }
 
     /** Redefinição atômica (uso único) + session_version+1 (encerra as outras sessões). */
+    /** Redefinição: também anula a troca de e-mail pendente (link de quem tinha a senha antiga para de valer). */
     public static function consumeReset(int $id, string $tokenHash, string $now, string $passwordHash): bool
     {
         $stmt = db()->prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0,
-            session_version = session_version + 1
+            pending_email = NULL, email_change_token = NULL, email_change_expires_at = NULL, session_version = session_version + 1
             WHERE id = ? AND reset_token = ? AND reset_expires_at >= ? AND status = 'active'");
         $stmt->execute([$passwordHash, $id, $tokenHash, $now]);
         return $stmt->rowCount() === 1;
@@ -218,17 +219,28 @@ final class UserRepository
     public static function consumeEmailChange(int $id, string $tokenHash, string $now): bool
     {
         // Se outro cadastro pegou o endereço entre o pedido e a confirmação, o NOT EXISTS barra (0 linhas).
+        // Corrida que passe do NOT EXISTS (outra conta grava o endereço antes do commit): a UNIQUE(email) lança;
+        // só essa violação vira false (422 genérico na ação), o resto sobe.
         $stmt = db()->prepare("UPDATE users SET email = pending_email, pending_email = NULL, email_change_token = NULL,
             email_change_expires_at = NULL, session_version = session_version + 1
             WHERE id = ? AND email_change_token = ? AND email_change_expires_at >= ? AND status = 'active' AND pending_email IS NOT NULL
             AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = users.pending_email AND other.id <> users.id)");
-        $stmt->execute([$id, $tokenHash, $now]);
+        try {
+            $stmt->execute([$id, $tokenHash, $now]);
+        } catch (PDOException $e) {
+            if (in_array((string) $e->getCode(), ['23000', '23505'], true)) {
+                return false;
+            }
+            throw $e;
+        }
         return $stmt->rowCount() === 1;
     }
 
+    /** Troca de senha: anula reset e troca de e-mail pendentes e encerra as outras sessões. */
     public static function setPassword(int $id, string $hash): void
     {
-        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0, session_version = session_version + 1 WHERE id = ?')
+        db()->prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, failed_logins = 0,'
+            . ' pending_email = NULL, email_change_token = NULL, email_change_expires_at = NULL, session_version = session_version + 1 WHERE id = ?')
             ->execute([$hash, $id]);
     }
 

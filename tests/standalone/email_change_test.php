@@ -14,6 +14,7 @@ $owner = t_seed_owner();
 putenv('APP_ENV=dev');
 putenv('APP_URL=http://127.0.0.1:8080');
 putenv('SMTP_HOST');
+putenv('LOG_SALT=teste-troca-email'); // e-mails pseudonimizados (não null) no activity_log
 $dir = sys_get_temp_dir() . '/cl-mail-' . bin2hex(random_bytes(3));
 mkdir($dir, 0700);
 Mailer::$devLogDir = $dir;
@@ -198,6 +199,62 @@ db()->prepare('UPDATE users SET email = ? WHERE id = ?')->execute([$new3, (int) 
 $r = c_api('POST', $base, '/api/auth/email/confirmar', ['token' => $tok3], c_csrf($base, $j = tempnam(sys_get_temp_dir(), 'jar')), $j);
 t_eq(422, $r['status'], 'confirmação recusada se o endereço foi tomado');
 t_eq($new2, $row($uid)['email'], 'DB: e-mail não muda');
+
+echo "log 34 com email_anterior pseudonimizado\n";
+$lg = c_logs($act, 0);
+$l34 = array_values(array_filter($lg, static fn ($l) => $l['code'] === ActivityLog::EMAIL_CHANGE));
+t_eq(2, count($l34), 'dois EMAIL_CHANGE (API e web)');
+t_ok(array_key_exists('email_anterior', $l34[0]['params']) && array_key_exists('email', $l34[0]['params']), 'EMAIL_CHANGE com email e email_anterior');
+$rawLog = json_encode($l34);
+t_ok(!str_contains($rawLog, $old) && !str_contains($rawLog, $new1) && !str_contains($rawLog, $new2), 'endereços não aparecem em claro no log');
+t_ok(is_string($l34[0]['params']['email_anterior']) && $l34[0]['params']['email_anterior'] !== '', 'email_anterior presente (não omitido)');
+t_eq([LogPrivacy::email($old), LogPrivacy::email($new1)], [$l34[0]['params']['email_anterior'], $l34[0]['params']['email']], 'email_anterior = antigo e email = novo, pseudonimizados pela mesma regra');
+
+echo "redefinir senha anula a troca pendente\n";
+t_ratelimit_reset();
+$cur = $row($uid)['email'];
+$jar = tempnam(sys_get_temp_dir(), 'jar');
+$csrf = t_login($base, $jar, $cur, $owner['password']);
+$new4 = 'novo4' . bin2hex(random_bytes(3)) . '@casalivre.test';
+c_api('PUT', $base, '/api/users/eu', $fields($new4) + ['current_password' => $owner['password']], $csrf, $jar);
+$tok4 = $tokenFor($mails(), $new4);
+t_ok($tok4 !== '' && $row($uid)['pending_email'] === $new4, 'troca pendente com token');
+$jr = tempnam(sys_get_temp_dir(), 'jar');
+$cr = c_csrf($base, $jr);
+c_api('POST', $base, '/api/auth/senha/esqueci', ['email' => $cur], $cr, $jr);
+$dev = (string) file_get_contents($dir . '/mail-dev.log');
+$mails();
+$dev = (string) file_get_contents($dir . '/mail-dev.log');
+$rt = preg_match_all('#/senha/redefinir\?token=([0-9a-f]{32})#', $dev, $all) ? end($all[1]) : '';
+$np = 'Casa#' . random_int(100000, 999999) . 'zW';
+$r = c_api('POST', $base, '/api/auth/senha/redefinir', ['token' => $rt, 'password' => $np, 'password_confirm' => $np], $cr, $jr);
+t_eq(200, $r['status'], 'redefinição de senha 200');
+$u = $row($uid);
+t_eq([null, null, null], [$u['pending_email'], $u['email_change_token'], $u['email_change_expires_at']], 'redefinição limpa pending_email/token/validade');
+$r = c_api('POST', $base, '/api/auth/email/confirmar', ['token' => $tok4], $cr, $jr);
+t_eq(422, $r['status'], 'link de troca anterior à redefinição não vale mais');
+t_eq($cur, $row($uid)['email'], 'DB: e-mail mantido');
+
+echo "troca de senha (setPassword) anula a troca pendente\n";
+UserRepository::setPendingEmail($uid, 'novo5@casalivre.test');
+UserRepository::setEmailChange($uid, str_repeat('ab', 16), date('Y-m-d H:i:s', time() + 600));
+UserRepository::setPassword($uid, password_hash($np, PASSWORD_DEFAULT));
+$u = $row($uid);
+t_eq([null, null, null], [$u['pending_email'], $u['email_change_token'], $u['email_change_expires_at']], 'setPassword limpa pending_email/token/validade');
+
+echo "UNIQUE na confirmação vira false/422 (corrida após o NOT EXISTS)\n";
+$tokR = str_repeat('cd', 16);
+$raceTo = 'corrida' . bin2hex(random_bytes(3)) . '@casalivre.test';
+UserRepository::setPendingEmail($uid, $raceTo);
+UserRepository::setEmailChange($uid, $tokR, date('Y-m-d H:i:s', time() + 600));
+// Gatilho simula a outra conta gravando o endereço depois do NOT EXISTS e antes da escrita da linha.
+db()->exec("CREATE TRIGGER t_corrida BEFORE UPDATE OF email ON users WHEN NEW.email = '" . $raceTo . "' AND OLD.id = " . $uid
+    . " BEGIN UPDATE users SET email = '" . $raceTo . "' WHERE id = " . (int) $other['id'] . "; END");
+t_eq(false, UserRepository::consumeEmailChange($uid, UserRepository::tokenHash($tokR), date('Y-m-d H:i:s')), 'consumeEmailChange: UNIQUE -> false (sem exceção)');
+$r = c_api('POST', $base, '/api/auth/email/confirmar', ['token' => $tokR], $cr, $jr);
+t_eq(422, $r['status'], 'HTTP: UNIQUE na confirmação -> 422 genérico (não 500)');
+t_eq($cur, $row($uid)['email'], 'DB: e-mail mantido');
+db()->exec('DROP TRIGGER t_corrida');
 
 array_map('unlink', glob($dir . '/*') ?: []);
 @rmdir($dir);

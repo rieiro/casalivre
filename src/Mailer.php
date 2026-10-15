@@ -83,56 +83,88 @@ final class Mailer
     }
 
     /**
-     * Worker: procura o usuário, gera token/link (sobre APP_URL) e entrega. Devolve false se não há
-     * conta elegível (nada é enviado). Lança em falha de envio.
+     * E-mails com link de uso único, por tipo: caminho do link, configuração da validade, assunto, texto de
+     * abertura e aviso final. Tipo novo = entrada nova aqui (e um handler em handlers()), sem mexer no despacho.
+     */
+    private const LINK_MAILS = [
+        'activation' => [
+            'path' => '/verificar?token=', 'minutes' => 'email_verify_minutes',
+            'subject' => 'CasaLivre: ative sua conta',
+            'intro' => "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n",
+            'outro' => "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
+        ],
+        'reset' => [
+            'path' => '/senha/redefinir?token=', 'minutes' => 'password_reset_minutes',
+            'subject' => 'CasaLivre: redefinição de senha',
+            'intro' => "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n",
+            'outro' => "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
+        ],
+        'email_change' => [
+            'path' => '/conta/email/confirmar?token=', 'minutes' => 'email_verify_minutes',
+            'subject' => 'CasaLivre: confirme seu novo e-mail',
+            'intro' => "Recebemos um pedido para usar este e-mail na sua conta CasaLivre.\r\n\r\nAbra o link abaixo para confirmar a troca:\r\n",
+            'outro' => "\r\n\r\nO link expira em breve e só vale uma vez. Se você não fez este pedido, ignore este e-mail.\r\n",
+        ],
+    ];
+
+    /**
+     * Worker: despacha para o handler do tipo, que procura a conta, gera token/link (sobre APP_URL) e entrega.
+     * Devolve false se não há conta elegível (nada é enviado). Lança em falha de envio.
      */
     public static function deliverAccountMail(string $type, string $email): bool
     {
         require_once __DIR__ . '/Settings.php';
         require_once dirname(__DIR__) . '/conta/Account/AccountFlow.php';
-        $email = Email::normalize($email);
-        if ($type === 'exists') {
-            $user = UserRepository::findByEmail($email);
-            if (!$user) {
-                return false;
-            }
-            if (($user['status'] ?? '') !== 'pending') {
-                [$subject, $body] = self::existsNotice();
-                self::deliver($email, $subject, $body);
+        $handler = self::handlers()[$type] ?? self::handlers()['activation'];
+        return $handler(Email::normalize($email));
+    }
+
+    /** @return array<string, callable(string): bool> handler por tipo de e-mail de conta */
+    private static function handlers(): array
+    {
+        return [
+            'exists' => static function (string $email): bool {
+                $user = UserRepository::findByEmail($email);
+                if (!$user) {
+                    return false;
+                }
+                // Conta ainda não ativada: reenvia a ativação no lugar do aviso (continua limitado
+                // pelo intervalo de 24 h do tipo exists).
+                if (($user['status'] ?? '') === 'pending') {
+                    return self::handlers()['activation']($email);
+                }
+                self::deliver($email, ...self::existsNotice());
                 return true;
-            }
-            // Conta ainda não ativada: reenvia a ativação no lugar do aviso (continua limitado
-            // pelo intervalo de 24 h do tipo exists).
-            $type = 'activation';
+            },
+            'activation' => static fn (string $email): bool => self::deliverIssued('activation', $email,
+                static fn (string $prefix, int $minutes): array => array_filter([AccountFlow::issueLink('activation', $email, $minutes, $prefix)])),
+            'reset' => static fn (string $email): bool => self::deliverIssued('reset', $email,
+                static fn (string $prefix, int $minutes): array => array_filter([AccountFlow::issueLink('reset', $email, $minutes, $prefix)])),
+            'email_change' => static fn (string $email): bool => self::deliverIssued('email_change', $email,
+                static fn (string $prefix, int $minutes): array => AccountFlow::issueEmailChange($email, $minutes, $prefix)),
+            'email_change_notice' => static function (string $email): bool {
+                $user = UserRepository::findByEmail($email);
+                if (!$user || ($user['status'] ?? '') !== 'active' || (string) ($user['pending_email'] ?? '') === '') {
+                    return false;
+                }
+                self::deliver($email, ...self::emailChangeNotice(AccountFlow::maskEmail((string) $user['pending_email'])));
+                return true;
+            },
+        ];
+    }
+
+    /**
+     * Gera os links do tipo (LINK_MAILS: prefixo sobre APP_URL e validade) com $issue e entrega um e-mail por link.
+     * @param callable(string, int): array<string> $issue
+     */
+    private static function deliverIssued(string $type, string $email, callable $issue): bool
+    {
+        $spec = self::LINK_MAILS[$type];
+        $links = $issue(self::linkFromAppUrl('http://localhost' . $spec['path']), Settings::int($spec['minutes']));
+        foreach ($links as $url) {
+            self::deliver($email, ...self::linkMail($type, $url));
         }
-        if ($type === 'email_change') {
-            $minutes = Settings::int('email_verify_minutes');
-            $links = AccountFlow::issueEmailChange($email, $minutes, self::linkFromAppUrl('http://localhost/conta/email/confirmar?token='));
-            foreach ($links as $url) {
-                [$subject, $body] = self::linkMail('email_change', $url);
-                self::deliver($email, $subject, $body);
-            }
-            return $links !== [];
-        }
-        if ($type === 'email_change_notice') {
-            $user = UserRepository::findByEmail($email);
-            if (!$user || ($user['status'] ?? '') !== 'active' || (string) ($user['pending_email'] ?? '') === '') {
-                return false;
-            }
-            [$subject, $body] = self::emailChangeNotice(AccountFlow::maskEmail((string) $user['pending_email']));
-            self::deliver($email, $subject, $body);
-            return true;
-        }
-        $isReset = $type === 'reset';
-        $path = $isReset ? '/senha/redefinir?token=' : '/verificar?token=';
-        $minutes = Settings::int($isReset ? 'password_reset_minutes' : 'email_verify_minutes');
-        $url = AccountFlow::issueLink($type, $email, $minutes, self::linkFromAppUrl('http://localhost' . $path));
-        if ($url === null) {
-            return false;
-        }
-        [$subject, $body] = self::linkMail($type, $url);
-        self::deliver($email, $subject, $body);
-        return true;
+        return $links !== [];
     }
 
     /** Aviso "alguém tentou cadastrar seu e-mail" (sem token). @return array{0: string, 1: string} assunto e corpo */
@@ -158,28 +190,11 @@ final class Mailer
         ];
     }
 
-    /** E-mail com link de uso único (activation ou reset). @return array{0: string, 1: string} assunto e corpo */
+    /** E-mail com link de uso único (LINK_MAILS; tipo desconhecido = activation). @return array{0: string, 1: string} assunto e corpo */
     public static function linkMail(string $type, string $url): array
     {
-        if ($type === 'email_change') {
-            return [
-                'CasaLivre: confirme seu novo e-mail',
-                "Recebemos um pedido para usar este e-mail na sua conta CasaLivre.\r\n\r\nAbra o link abaixo para confirmar a troca:\r\n"
-                    . $url . "\r\n\r\nO link expira em breve e só vale uma vez. Se você não fez este pedido, ignore este e-mail.\r\n",
-            ];
-        }
-        if ($type === 'reset') {
-            return [
-                'CasaLivre: redefinição de senha',
-                "Recebemos um pedido para redefinir a senha da sua conta CasaLivre.\r\n\r\nAbra o link abaixo para criar uma nova senha:\r\n"
-                    . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
-            ];
-        }
-        return [
-            'CasaLivre: ative sua conta',
-            "Bem-vindo(a) à CasaLivre!\r\n\r\nAbra o link abaixo para ativar sua conta:\r\n"
-                . $url . "\r\n\r\nO link expira em breve. Se você não fez este pedido, ignore este e-mail.\r\n",
-        ];
+        $spec = self::LINK_MAILS[$type] ?? self::LINK_MAILS['activation'];
+        return [$spec['subject'], $spec['intro'] . $url . $spec['outro']];
     }
 
     /**

@@ -23,7 +23,7 @@ final class EmailChangeConfirm
             return new Resultado('invalido', t('auth.verify_bad'));
         }
         return new Resultado('ok', t('email.confirm_ok'), ['id' => $r['id']], [
-            [ActivityLog::EMAIL_CHANGE, ['email' => $r['new']], ['campos_alterados' => ['email']], null],
+            [ActivityLog::EMAIL_CHANGE, ['email' => $r['new'], 'email_anterior' => $r['old']], ['campos_alterados' => ['email']], null],
         ]);
     }
 }

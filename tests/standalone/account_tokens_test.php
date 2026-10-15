@@ -154,7 +154,8 @@ t_ok(Db::SCHEMA_VERSION >= 6, 'SCHEMA_VERSION >= 6 (tokens sha256 do #35)');
 $f = ['name' => 'X', 'cpf' => '52998224725', 'address' => 'Rua', 'phone' => '48999990000', 'email' => 'conf' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password_hash' => 'h', 'status' => 'pending'];
 t_eq([true, false], [UserRepository::insertIfAbsent($f), UserRepository::insertIfAbsent($f)], 'ON CONFLICT(email) DO NOTHING: 1ª cria, 2ª não (rowCount)');
 $src = (string) file_get_contents(CL_ROOT . '/conta/Account/AccountFlow.php') . file_get_contents(CL_ROOT . '/conta/Account/UserRepository.php');
-t_ok(!str_contains($src, 'catch (PDOException') && str_contains($src, 'ON CONFLICT(email) DO NOTHING'), 'sem catch genérico de PDOException no cadastro');
+// #58: a única captura permitida é a da UNIQUE na confirmação da troca de e-mail (consumeEmailChange).
+t_ok(substr_count($src, 'catch (PDOException') === 1 && preg_match('/function consumeEmailChange[^}]+?try \\{[^}]+\\} catch \\(PDOException/s', $src) === 1 && str_contains($src, 'ON CONFLICT(email) DO NOTHING'), 'sem catch genérico de PDOException no cadastro');
 
 echo "conta pendente: reenvia a ativação no lugar do aviso\n";
 $pend = 'pend' . bin2hex(random_bytes(3)) . '@casalivre.test';
