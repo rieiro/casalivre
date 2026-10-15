@@ -15,7 +15,7 @@
     <form method="post" action="/admin/grupos">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label>Endereço (letras minúsculas, números e hífen)
-            <input name="slug" required maxlength="40" pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?" value="<?= e(is_string($posted['slug'] ?? null) ? $posted['slug'] : '') ?>">
+            <input name="slug" required maxlength="40" pattern="[a-z0-9](?:[a-z0-9\-]{0,38}[a-z0-9])?" value="<?= e(is_string($posted['slug'] ?? null) ? $posted['slug'] : '') ?>">
         </label>
         <label>Nome
             <input name="nome" required maxlength="80" value="<?= e(is_string($posted['nome'] ?? null) ? $posted['nome'] : '') ?>">

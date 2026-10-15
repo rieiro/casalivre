@@ -117,6 +117,10 @@ t_ok(!str_contains($page['body'], '<b>Sul</b>'), 'nome do grupo escapado no HTML
 t_eq('nao_encontrado', GrupoAdmin::update(['id' => $gestor['id'], 'is_admin' => 0, 'status' => 'active'], $g1, 'X', 'padrao')->tipo, 'GrupoAdmin::update recusa não-admin');
 t_eq('ok', GrupoAdmin::create(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], 'direto', '<script>x</script>', 'padrao')->tipo, 'criação direta (sem Sanitize) aceita nome com <');
 $dir = t_http('GET', $base . '/admin/grupos', null, [], $jA)['body'];
+// pattern do HTML vale com a flag v (Chrome): hífen escapado dentro da classe, nenhum [..-] solto.
+t_ok(str_contains($dir, 'pattern="[a-z0-9](?:[a-z0-9\\-]{0,38}[a-z0-9])?"'), 'pattern do slug com hífen escapado (válido com a flag v)');
+preg_match_all('/pattern="([^"]*)"/', $dir, $pats);
+t_eq([], array_values(array_filter($pats[1], static fn ($p) => preg_match('/(?<!\\\\)-\]/', $p) === 1)), 'nenhum pattern com hífen solto no fim da classe');
 t_ok(str_contains($dir, '&lt;script&gt;x&lt;/script&gt;') && !str_contains($dir, '<script>x</script>'), 'nome cru escapado na saída (e())');
 db()->exec("DELETE FROM groups WHERE slug = 'direto'");
 t_eq(404, t_http('GET', $base . '/admin/grupos/nao-existe', null, [], $jA)['status'], 'admin: grupo inexistente 404');
