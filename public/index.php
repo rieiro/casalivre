@@ -371,9 +371,13 @@ if ($path === '/busca' && $method === 'GET') {
 // com o tema da plataforma. Imóvel inativo, de outro grupo ou inexistente: 404 com o tema do grupo.
 if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', $path, $m) && $method === 'GET') {
     $vGroup = GroupRepository::findBySlugValid($m[1]);
-    if ($vGroup === null) {
+    // 404 da vitrine: sem grupo, tema da plataforma; com grupo ($vData), o tema dele.
+    $vMissing = static function (array $data = []): void {
         http_response_code(404);
-        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $data);
+    };
+    if ($vGroup === null) {
+        $vMissing();
         return null;
     }
     $vBase = '/g/' . $vGroup['slug'];
@@ -394,14 +398,13 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
         $filters = search_filters_from_query();
         $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
         view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
-            'filters' => $filters, 'results' => [], 'searched' => $searched, 'facets' => [], 'use_api' => true, 'vitrine_api' => $vApi,
+            'filters' => $filters, 'searched' => $searched, 'use_api' => true, 'vitrine_api' => $vApi,
         ]);
         return null;
     }
     $vHouse = GroupRepository::activePropertyInGroup((int) $vGroup['id'], (string) $m[3]);
     if ($vHouse === null) {
-        http_response_code(404);
-        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')] + $vData);
+        $vMissing($vData);
         return null;
     }
     view('property', $vData + [
