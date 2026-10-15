@@ -18,14 +18,17 @@ require_once __DIR__ . '/Resultado.php';
  *
  * Desfechos (tipo): locked | rate_limited | bad | deleted | inactive | pending | ok.
  *
+ * Conta apagada/inativa: web e API gravam LOGIN_FAIL com motivo apagado/inactive (antes só a web; Segurança, #44).
+ * Esse desfecho só existe com a senha certa, e AccountFlow::checkLogin já fez o mesmo password_verify de uma senha
+ * errada (DUMMY_HASH para conta inexistente), então gravar o log não muda o tempo de resposta.
+ *
  * Diferenças web/API preservadas de propósito (SNAPSHOT, ver tests/standalone/char_login_conta_test.php):
- * - $logInactive: a web grava LOGIN_FAIL (motivo apagado/inactive) para conta apagada/inativa; a API não grava.
  * - $ensureActivation: a web chama AccountFlow::ensureActivation em conta pendente (dados['expires']);
  *   a API só responde 403.
  */
 final class LoginAttempt
 {
-    public static function run(string $email, string $password, bool $logInactive, bool $ensureActivation): Resultado
+    public static function run(string $email, string $password, bool $ensureActivation): Resultado
     {
         $result = AccountFlow::checkLogin($email, $password, Settings::int('login_max_failures'));
         if ($result['status'] === 'locked') {
@@ -47,9 +50,7 @@ final class LoginAttempt
             return new Resultado('bad', t('err.bad_login'), [], $events);
         }
         if ($result['status'] === 'deleted' || $result['status'] === 'inactive') {
-            $events = $logInactive
-                ? [[ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']]]
-                : [];
+            $events = [[ActivityLog::LOGIN_FAIL, ['email' => $email, 'motivo' => $result['status'] === 'deleted' ? 'apagado' : 'inactive']]];
             return new Resultado($result['status'], account_text($result['status']), [], $events);
         }
         if ($result['status'] === 'pending') {

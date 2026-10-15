@@ -126,8 +126,9 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/sessao' && $method === 'POST') {
         $email = strtolower(trim((string) ($body['email'] ?? '')));
-        // API: não grava LOGIN_FAIL para conta apagada/inativa e não reenvia ativação (SNAPSHOT, ver LoginAttempt).
-        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), logInactive: false, ensureActivation: false);
+        // API: não reenvia ativação (SNAPSHOT, ver LoginAttempt). Conta apagada/inativa grava LOGIN_FAIL com o motivo,
+        // como a web, e responde 403 com a mensagem específica, que só existe com a senha certa (senha errada: 401).
+        $res = LoginAttempt::run($email, (string) ($body['password'] ?? ''), ensureActivation: false);
         $res->registrar();
         $status = match ($res->tipo) {
             'ok' => 200,
