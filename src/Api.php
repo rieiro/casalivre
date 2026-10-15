@@ -253,10 +253,10 @@ function handle_api(string $path, string $method): void
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'POST') {
         $house = api_owned_property($user, $m[1]);
-        $createdPhotos = [];
-        $saved = PhotoStorage::storeUploads((int) $user['id'], (int) $house['id'], $_FILES['fotos'] ?? [], $createdPhotos);
-        activity(ActivityLog::PHOTO_ADD, ['imovel_id' => (int) $house['id'], 'salvas' => $saved], null, ['fotos' => $createdPhotos]);
-        json_out(201, ['salvas' => $saved, 'fotos' => PhotoRepository::list((int) $house['id'])]);
+        // Mesma ação da web (PhotoAdd): PHOTO_ADD com enviadas e salvas.
+        $res = PhotoAdd::run((int) $user['id'], (int) $house['id'], $_FILES['fotos'] ?? []);
+        $res->registrar();
+        json_out(201, ['salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'fotos' => PhotoRepository::list((int) $house['id'])]);
     }
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})/fotos/(\d+)$#', $path, $m) && $method === 'DELETE') {
@@ -379,7 +379,7 @@ function handle_api(string $path, string $method): void
         );
         $res->registrar();
         if ($res->tipo === 'invalido') {
-            api_error(422, $res->mensagem);
+            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros']]);
         }
         json_out(201, ['ok' => true]);
     }
@@ -413,11 +413,12 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
-        $fotoId = (int) ($body['foto_id'] ?? 0);
-        if ($fotoId < 1) {
-            api_error(422, 'foto_id obrigatório.');
+        // Validação em CoverSet (a mesma da web): foto_id do próprio imóvel; senão 422 com erros.foto_id.
+        $res = CoverSet::run((int) $property['id'], [(int) ($body['foto_id'] ?? 0)]);
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
+            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros']]);
         }
-        CoverSet::run((int) $property['id'], $fotoId)->registrar();
         json_out(200, ['ok' => true, 'fotos' => PhotoRepository::list((int) $property['id'])]);
     }
 

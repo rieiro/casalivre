@@ -1,13 +1,14 @@
 <?php
 // Caracterização (PR 0 do refactor): foto de capa e avaliação, web x API.
-// Registra o comportamento ATUAL. Linhas "SNAPSHOT" documentam diferenças web/API de hoje de propósito;
-// não são o comportamento desejado. Se um refactor mudar alguma, atualize o teste junto com a decisão.
+// Paridade (PR C): validação da capa e da nota nas ações comuns (CoverSet, ReviewAdd); a web mostra o erro na tela
+// e a API responde 422 com {error, erros: {campo: mensagem}}. Linhas "SNAPSHOT" restantes são retratos de hoje.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 t_temp_db();
 $owner = t_seed_owner();
 $other = t_seed_owner();
 require_once CL_ROOT . '/src/PhotoRepository.php';
+require_once CL_ROOT . '/src/Acoes/CoverSet.php';
 $hid = $owner['house_id'];
 $p1 = (int) PhotoRepository::insert($hid, 'a.jpg', 1, 1)['id'];
 $p2 = (int) PhotoRepository::insert($hid, 'b.jpg', 0, 2)['id'];
@@ -32,10 +33,17 @@ $logs = c_logs($act, $m);
 t_eq([ActivityLog::PHOTO_COVER], array_column($logs, 'code'), 'web /fotos/capa: grava PHOTO_COVER');
 t_eq($p2, $cover(), 'DB: capa = foto 2');
 $m = c_mark($act);
-$r = c_form($base, $h . '/fotos/capa', ['_csrf' => $csrf, 'fotos' => [$p1, $p3]], $jar);
-// SNAPSHOT: com 0 ou 2+ fotos marcadas a web ignora em silêncio (302); a API exige foto_id (422).
-t_eq(302, $r['status'], 'web /fotos/capa: 2 fotos AINDA 302 sem erro');
-t_eq([], c_codes($act, $m), 'web /fotos/capa: 2 fotos não grava');
+$editNotice = static function () use ($base, $h, $jar): string {
+    $g = t_http('GET', $base . $h . '/editar', null, [], $jar);
+    return $g['body'];
+};
+foreach (['2 fotos' => [$p1, $p3], '0 fotos' => []] as $label => $marked) {
+    $r = c_form($base, $h . '/fotos/capa', ['_csrf' => $csrf, 'fotos' => $marked], $jar);
+    t_eq([302, $h . '/editar'], [$r['status'], c_location($r)], "web /fotos/capa: $label 302 para /editar");
+    t_ok(str_contains($editNotice(), e(CoverSet::ERRO)), "web /fotos/capa: $label mostra o erro na tela de edição");
+}
+t_ok(!str_contains($editNotice(), e(CoverSet::ERRO)), 'web: o aviso aparece uma vez só');
+t_eq([], c_codes($act, $m), 'web /fotos/capa: 0/2 fotos não grava');
 t_eq($p2, $cover(), 'DB: capa inalterada');
 $m = c_mark($act);
 $r = c_form($base, $h . '/fotos/' . $p3 . '/capa', ['_csrf' => $csrf], $jar);
@@ -45,7 +53,8 @@ t_eq([ActivityLog::PHOTO_COVER], c_codes($act, $m), 'web /fotos/{id}/capa: grava
 t_eq($p3, $cover(), 'DB: capa = foto 3');
 $m = c_mark($act);
 $r = c_form($base, $h . '/fotos/' . $foreign . '/capa', ['_csrf' => $csrf], $jar);
-t_eq(302, $r['status'], 'web: foto de outro imóvel AINDA 302 (ignorada)');
+t_eq(302, $r['status'], 'web: foto de outro imóvel 302');
+t_ok(str_contains($editNotice(), e(CoverSet::ERRO)), 'web: foto de outro imóvel mostra o erro (não ignora)');
 t_eq([], c_codes($act, $m), 'web: foto de outro imóvel não grava');
 t_eq($p3, $cover(), 'DB: capa inalterada (foto alheia)');
 
@@ -59,9 +68,9 @@ t_eq([ActivityLog::PHOTO_COVER], c_codes($act, $m), 'API: grava PHOTO_COVER');
 t_eq($p1, $cover(), 'DB: capa = foto 1');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, [], $csrf, $jar);
-t_eq(422, $r['status'], 'API: sem foto_id 422');
+t_eq([422, ['foto_id' => CoverSet::ERRO]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem foto_id 422 com a mesma mensagem da web');
 $r = c_api('POST', $base, $api, ['foto_id' => $foreign], $csrf, $jar);
-t_eq(200, $r['status'], 'API: foto de outro imóvel AINDA 200 (ignorada)');
+t_eq([422, ['foto_id' => CoverSet::ERRO]], [$r['status'], $r['json']['erros'] ?? null], 'API: foto de outro imóvel 422 (como a web)');
 t_eq([], c_codes($act, $m), 'API: erros/foto alheia não gravam');
 t_eq($p1, $cover(), 'DB: capa inalterada');
 $r = c_api('POST', $base, '/api/imoveis/' . $other['hash'] . '/fotos/capa', ['foto_id' => $foreign], $csrf, $jar);
@@ -88,8 +97,10 @@ t_eq($h, c_location($r), 'web avaliar: volta externa descartada');
 $before = $count();
 $m = c_mark($act);
 $r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => 11], $anon);
-// SNAPSHOT: nota fora de 1..10 na web redireciona (302) sem gravar e sem erro; a API responde 422.
-t_eq(302, $r['status'], 'web avaliar: nota inválida AINDA 302');
+t_eq(422, $r['status'], 'web avaliar: nota inválida 422');
+t_ok(str_contains($r['body'], e('Nota deve ser entre 1 e 10.')), 'web avaliar: nota inválida mostra o erro na tela');
+$r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => 0], $anon);
+t_eq(422, $r['status'], 'web avaliar: nota 0 422');
 t_eq([], c_codes($act, $m), 'web avaliar: nota inválida não grava');
 t_eq($before, $count(), 'DB: nota inválida não cria review');
 $r = c_form($base, '/imoveis/' . str_repeat('0', 16) . '/avaliar', ['_csrf' => $acsrf, 'score' => 5], $anon);
@@ -106,11 +117,40 @@ t_eq([ActivityLog::REVIEW], c_codes($act, $m), 'API avaliar: grava REVIEW');
 $before = $count();
 $m = c_mark($act);
 $r = c_api('POST', $base, '/api' . $h . '/avaliar', ['score' => 0], $acsrf, $anon);
-t_eq(422, $r['status'], 'API avaliar: nota inválida 422');
+t_eq([422, ['score' => 'Nota deve ser entre 1 e 10.']], [$r['status'], $r['json']['erros'] ?? null], 'API avaliar: nota inválida 422 erros.score (mesma mensagem da web)');
 $r = c_api('POST', $base, '/api/imoveis/' . str_repeat('0', 16) . '/avaliar', ['score' => 5], $acsrf, $anon);
 t_eq(404, $r['status'], 'API avaliar: imóvel inexistente 404');
 t_eq([], c_codes($act, $m), 'API avaliar: erros não gravam');
 t_eq($before, $count(), 'DB: erros não criam review');
+echo "fotos: PHOTO_ADD com enviadas e salvas nos dois canais\n";
+$img = imagecreatetruecolor(8, 8);
+ob_start();
+imagejpeg($img);
+$jpeg = (string) ob_get_clean();
+$multipart = static function (array $fields, string $bound) use ($jpeg): string {
+    $b = '';
+    foreach ($fields as $k => $v) {
+        $b .= "--$bound\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n";
+    }
+    // Uma foto válida e um arquivo que não é imagem: enviadas 2, salvas 1.
+    $b .= "--$bound\r\nContent-Disposition: form-data; name=\"fotos[0]\"; filename=\"ok.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n$jpeg\r\n";
+    $b .= "--$bound\r\nContent-Disposition: form-data; name=\"fotos[1]\"; filename=\"x.jpg\"\r\nContent-Type: image/jpeg\r\n\r\nnao-e-imagem\r\n";
+    return $b . "--$bound--\r\n";
+};
+foreach (['web' => [$h . '/fotos', ['_csrf' => $csrf], []], 'API' => ['/api/casas/' . $owner['hash'] . '/fotos', [], ['X-CSRF-Token: ' . $csrf]]] as $canal => [$url, $fields, $extra]) {
+    $m = c_mark($act);
+    $r = t_http('POST', $base . $url, $multipart($fields, 'pcbound'), array_merge(['Content-Type: multipart/form-data; boundary=pcbound'], $extra), $jar);
+    t_eq($canal === 'web' ? 302 : 201, $r['status'], "$canal fotos: " . ($canal === 'web' ? '302' : '201'));
+    $logs = c_logs($act, $m);
+    t_eq([ActivityLog::PHOTO_ADD], array_column($logs, 'code'), "$canal fotos: grava PHOTO_ADD");
+    t_eq([2, 1], [$logs[0]['params']['enviadas'] ?? null, $logs[0]['params']['salvas'] ?? null], "$canal fotos: PHOTO_ADD enviadas=2 salvas=1");
+    if ($canal === 'API') {
+        t_eq([1, 2], [$r['json']['salvas'] ?? (json_decode($r['body'], true)['salvas'] ?? null), json_decode($r['body'], true)['enviadas'] ?? null], 'API fotos: devolve salvas e enviadas');
+    } else {
+        t_ok(str_contains($editNotice(), 'Salvas 1 de 2 fotos'), 'web fotos: aviso "Salvas 1 de 2" na tela de edição');
+    }
+}
+
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$hid]);
 // Mudança intencional (fix/avaliacao-rate-limit): web e API dividem o limite de 10 avaliações/h por IP.
 // Este arquivo já fez 10 POSTs de avaliação até aqui; zera o limite para checar o 404 de imóvel não ativo.
