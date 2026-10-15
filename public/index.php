@@ -56,6 +56,11 @@ if ($path === '/tiles/brasil.pmtiles') {
     }
 }
 
+// HEAD responde como GET (mesmo status e cabeçalhos; o SAPI descarta o corpo). Depois da SomenteVitrine e dos tiles,
+// que já tratam HEAD; antes da sessão, do pipeline e do roteamento, que só conhecem GET.
+if ($method === 'HEAD') {
+    $method = 'GET';
+}
 // Sessão só com cookie de sessão ou rota autenticada; páginas com formulário abrem a sessão
 // ao pedir o token CSRF (csrf_token() em view()).
 if (isset($_COOKIE[session_name()]) || casa_privado($path, $method)) {
