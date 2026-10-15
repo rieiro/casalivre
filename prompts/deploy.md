@@ -72,7 +72,6 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] `client_max_body_size` de 1m em todas as rotas; 20m só nas rotas de fotos (`/api/casas/<h>/fotos` e `/imoveis/<h>/fotos`).
 - [ ] Fotos com GD e WebP (desde o #39): o image-worker gera WebP em 320/800/1920, sem EXIF/GPS, com o original fora de public/ (ver Sprint 2, Fotos).
 - [ ] OSM: atribuição "© OpenStreetMap contributors" com link em toda página com mapa (falta em /busca/mapa).
-- [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
 - [ ] CDN (se usada): só /assets/ e /uploads/, num subdomínio sem cookies, com HTML e API na origem. Exige DPA (ela termina o TLS), não pode reescrever CSP nem X-Frame-Options, e precisa de um processo de purge.
 
 ## Sprint 2: tokens, API pública, fotos e mapas (PRs #35, #36, #39 e #40)
