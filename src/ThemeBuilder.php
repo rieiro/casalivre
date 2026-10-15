@@ -5,8 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/Theme.php';
 
 /**
- * Build dos temas (scripts/build-assets.php): themes/<nome>/brand.php -> public/assets/themes/<nome>.css e
- * <nome>/<logo|favicon>. expected() calcula uma vez os arquivos esperados; build() grava e remove órfãos,
+ * Build dos temas (scripts/build-assets.php): themes/<nome>/brand.php -> public/assets/themes/<nome>.css,
+ * <nome>/<logo|favicon> e <nome>/map-style.json (só se o tema declarar 'mapa'). expected() calcula uma vez os arquivos esperados; build() grava e remove órfãos,
  * outdated() (--check) compara com o disco sem gravar.
  */
 final class ThemeBuilder
@@ -32,6 +32,9 @@ final class ThemeBuilder
             }
             $brand = Theme::readBrand($file);
             $files["$out/$name.css"] = Theme::css($brand);
+            if ($brand['mapa'] !== []) {
+                $files[AssetManifest::publicDir() . MapStyle::themePath($name)] = MapStyle::encode(MapStyle::generate(self::baseStyle(), $brand['mapa']));
+            }
             foreach (['logo', 'favicon'] as $key) {
                 if ($brand[$key] !== null) {
                     $src = dirname($file) . '/' . $brand[$key];
@@ -48,6 +51,16 @@ final class ThemeBuilder
         }
         sort($names, SORT_STRING);
         return ['names' => $names, 'files' => $files];
+    }
+
+    /** Estilo base do mapa (lido uma vez por build). */
+    private static function baseStyle(): array
+    {
+        static $base = null;
+        if ($base === null) {
+            $base = json_decode((string) file_get_contents(AssetManifest::publicDir() . MapStyle::BASE), true, 512, JSON_THROW_ON_ERROR);
+        }
+        return $base;
     }
 
     /** Arquivos gerados no disco que não fazem parte do esperado (temas removidos). @return list<string> */
