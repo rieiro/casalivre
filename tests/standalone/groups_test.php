@@ -5,7 +5,8 @@
 // CSRF; entradas validadas; toda mudança vai para o activity_log (user_id pseudonimizado).
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
-require_once CL_ROOT . '/src/Acoes/Grupos.php';
+require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
+require_once CL_ROOT . '/src/Acoes/GrupoGestor.php';
 t_temp_db();
 $owner = t_seed_owner();
 $act = c_activity_file();
@@ -63,8 +64,8 @@ foreach ([[$jG, $cG], [$jO, $cO]] as [$jar, $csrf]) {
     t_eq(403, c_form($base, '/admin/grupos', ['_csrf' => $csrf, 'slug' => 'invasor', 'nome' => 'X', 'tema' => 'padrao'], $jar)['status'], 'não-admin POST /admin/grupos: 403');
 }
 t_eq(0, $groupCount(), 'não-admin não cria grupo');
-t_eq('nao_encontrado', Grupos::create(['id' => $gestor['id'], 'is_admin' => 0, 'status' => 'active'], 'x', 'X', 'padrao')->tipo, 'Grupos::create recusa não-admin (checagem no serviço)');
-t_eq('nao_encontrado', Grupos::create(['id' => $inativo['id'], 'is_admin' => 1, 'status' => 'inactive'], 'x', 'X', 'padrao')->tipo, 'Grupos::create recusa admin inativo');
+t_eq('nao_encontrado', GrupoAdmin::create(['id' => $gestor['id'], 'is_admin' => 0, 'status' => 'active'], 'x', 'X', 'padrao')->tipo, 'GrupoAdmin::create recusa não-admin (checagem no serviço)');
+t_eq('nao_encontrado', GrupoAdmin::create(['id' => $inativo['id'], 'is_admin' => 1, 'status' => 'inactive'], 'x', 'X', 'padrao')->tipo, 'GrupoAdmin::create recusa admin inativo');
 $noGroupLog($mark, 'não-admin');
 
 echo "criação: validação\n";
@@ -98,7 +99,7 @@ $mark = c_mark($act);
 $r = c_form($base, '/admin/grupos', ['_csrf' => $cA, 'slug' => 'imob-sul', 'nome' => 'Imob <b>Sul</b>', 'tema' => 'contraste'], $jA);
 t_eq(302, $r['status'], 'admin cria grupo: 302');
 t_eq('/admin/grupos/imob-sul', c_location($r), 'vai para a página do grupo');
-$g1 = Grupos::bySlug('imob-sul');
+$g1 = GroupRepository::findBySlug('imob-sul');
 // A entrada web passa pelo Sanitize do projeto (htmlspecialchars no POST): o nome é gravado já escapado, como os demais campos.
 $nomeHtml = htmlspecialchars('Imob <b>Sul</b>', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 t_eq(['imob-sul', $nomeHtml, 'contraste'], [$g1['slug'] ?? null, $g1['name'] ?? null, $g1['theme'] ?? null], 'grupo gravado');
@@ -108,13 +109,13 @@ t_eq(['imob-sul', 'contraste'], [$l[0]['params']['grupo'] ?? null, $l[0]['params
 t_eq(409, c_form($base, '/admin/grupos', ['_csrf' => $cA, 'slug' => 'imob-sul', 'nome' => 'Outro', 'tema' => 'padrao'], $jA)['status'], 'slug repetido: 409');
 t_eq(1, $groupCount(), 'slug repetido não cria');
 c_form($base, '/admin/grupos', ['_csrf' => $cA, 'slug' => 'rede-norte', 'nome' => 'Rede Norte', 'tema' => 'padrao'], $jA);
-$g2 = Grupos::bySlug('rede-norte');
+$g2 = GroupRepository::findBySlug('rede-norte');
 t_ok($g2 !== null, 'segundo grupo criado');
 $page = t_http('GET', $base . '/admin/grupos/imob-sul', null, [], $jA);
 t_eq(200, $page['status'], 'admin vê o grupo');
 t_ok(!str_contains($page['body'], '<b>Sul</b>'), 'nome do grupo escapado no HTML');
-t_eq('nao_encontrado', Grupos::update(['id' => $gestor['id'], 'is_admin' => 0, 'status' => 'active'], $g1, 'X', 'padrao')->tipo, 'Grupos::update recusa não-admin');
-t_eq('ok', Grupos::create(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], 'direto', '<script>x</script>', 'padrao')->tipo, 'criação direta (sem Sanitize) aceita nome com <');
+t_eq('nao_encontrado', GrupoAdmin::update(['id' => $gestor['id'], 'is_admin' => 0, 'status' => 'active'], $g1, 'X', 'padrao')->tipo, 'GrupoAdmin::update recusa não-admin');
+t_eq('ok', GrupoAdmin::create(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], 'direto', '<script>x</script>', 'padrao')->tipo, 'criação direta (sem Sanitize) aceita nome com <');
 $dir = t_http('GET', $base . '/admin/grupos', null, [], $jA)['body'];
 t_ok(str_contains($dir, '&lt;script&gt;x&lt;/script&gt;') && !str_contains($dir, '<script>x</script>'), 'nome cru escapado na saída (e())');
 db()->exec("DELETE FROM groups WHERE slug = 'direto'");
@@ -141,7 +142,7 @@ foreach ($posts as [$jar, $p, $f]) {
     t_eq(419, c_form($base, $p, $f, $jar)['status'], "POST $p sem _csrf: 419");
     t_eq(419, c_form($base, $p, ['_csrf' => str_repeat('0', 64)] + $f, $jar)['status'], "POST $p com _csrf errado: 419");
 }
-t_eq($nomeHtml, Grupos::bySlug('imob-sul')['name'], 'sem CSRF: nome não muda');
+t_eq($nomeHtml, GroupRepository::findBySlug('imob-sul')['name'], 'sem CSRF: nome não muda');
 t_eq(0, (int) $q('SELECT COUNT(*) FROM group_domains'), 'sem CSRF: sem domínio');
 t_eq(0, (int) $q('SELECT COUNT(*) FROM group_members'), 'sem CSRF: sem membro');
 t_eq(2, $groupCount(), 'sem CSRF: sem grupo novo');
@@ -152,9 +153,9 @@ $mark = c_mark($act);
 t_eq(422, c_form($base, '/admin/grupos/imob-sul', ['_csrf' => $cA, 'nome' => 'Imob Sul', 'tema' => '../x'], $jA)['status'], 'editar com tema inválido: 422');
 t_eq(422, c_form($base, '/admin/grupos/imob-sul', ['_csrf' => $cA, 'nome' => '', 'tema' => 'padrao'], $jA)['status'], 'editar com nome vazio: 422');
 t_eq(302, c_form($base, '/admin/grupos/imob-sul', ['_csrf' => $cA, 'nome' => 'Imob Sul', 'tema' => 'padrao', 'slug' => 'trocado'], $jA)['status'], 'editar nome e tema: 302');
-$g1 = Grupos::bySlug('imob-sul');
+$g1 = GroupRepository::findBySlug('imob-sul');
 t_eq(['Imob Sul', 'padrao'], [$g1['name'], $g1['theme']], 'nome e tema gravados; slug não muda pela edição');
-t_eq(null, Grupos::bySlug('trocado'), 'campo slug na edição é ignorado');
+t_eq(null, GroupRepository::findBySlug('trocado'), 'campo slug na edição é ignorado');
 $l = $codes($mark, ActivityLog::GROUP_UPDATE);
 t_eq(1, count($l), 'um GROUP_UPDATE');
 t_eq([['nome' => $nomeHtml, 'tema' => 'contraste'], ['nome' => 'Imob Sul', 'tema' => 'padrao']], [$l[0]['anterior'], $l[0]['atual']], 'GROUP_UPDATE com anterior/atual');
@@ -170,25 +171,25 @@ t_eq(422, t_http('POST', $base . '/admin/grupos/imob-sul/dominios', '_csrf=' . u
 t_eq(0, (int) $q('SELECT COUNT(*) FROM group_domains'), 'domínios inválidos não gravam');
 $noGroupLog($mark, 'domínio inválido');
 t_eq(302, c_form($base, '/admin/grupos/imob-sul/dominios', ['_csrf' => $cA, 'dominio' => '  Imob.Example.COM '], $jA)['status'], 'domínio válido: 302');
-t_eq(['imob.example.com'], Grupos::domains((int) $g1['id']), 'domínio gravado em minúsculas, sem espaços');
+t_eq(['imob.example.com'], GroupRepository::domains((int) $g1['id']), 'domínio gravado em minúsculas, sem espaços');
 t_eq(409, c_form($base, '/admin/grupos/rede-norte/dominios', ['_csrf' => $cA, 'dominio' => 'imob.example.com'], $jA)['status'], 'mesmo domínio em outro grupo: 409');
-t_eq([], Grupos::domains((int) $g2['id']), 'domínio repetido não grava');
+t_eq([], GroupRepository::domains((int) $g2['id']), 'domínio repetido não grava');
 $l = $codes($mark, ActivityLog::GROUP_DOMAIN_ADD);
 t_eq(1, count($l), 'um GROUP_DOMAIN_ADD');
 t_eq('imob.example.com', $l[0]['params']['dominio'] ?? null, 'GROUP_DOMAIN_ADD com o domínio');
 putenv('APP_URL=https://plataforma.casalivre.test');
-t_eq(null, Grupos::cleanDomain('Plataforma.CasaLivre.test'), 'domínio da plataforma (APP_URL) recusado');
+t_eq(null, GrupoValidacao::domain('Plataforma.CasaLivre.test'), 'domínio da plataforma (APP_URL) recusado');
 putenv('APP_URL');
-for ($i = 2; $i <= Grupos::MAX_DOMAINS; $i++) {
+for ($i = 2; $i <= GrupoValidacao::MAX_DOMAINS; $i++) {
     c_form($base, '/admin/grupos/imob-sul/dominios', ['_csrf' => $cA, 'dominio' => "d$i.example.com"], $jA);
 }
-t_eq(Grupos::MAX_DOMAINS, count(Grupos::domains((int) $g1['id'])), 'até o limite de domínios');
+t_eq(GrupoValidacao::MAX_DOMAINS, count(GroupRepository::domains((int) $g1['id'])), 'até o limite de domínios');
 t_eq(422, c_form($base, '/admin/grupos/imob-sul/dominios', ['_csrf' => $cA, 'dominio' => 'demais.example.com'], $jA)['status'], 'acima do limite: 422');
 $mark = c_mark($act);
 t_eq(302, c_form($base, '/admin/grupos/imob-sul/dominios/remover', ['_csrf' => $cA, 'dominio' => 'd2.example.com'], $jA)['status'], 'remover domínio: 302');
-t_ok(!in_array('d2.example.com', Grupos::domains((int) $g1['id']), true), 'domínio removido');
+t_ok(!in_array('d2.example.com', GroupRepository::domains((int) $g1['id']), true), 'domínio removido');
 c_form($base, '/admin/grupos/rede-norte/dominios/remover', ['_csrf' => $cA, 'dominio' => 'imob.example.com'], $jA);
-t_ok(in_array('imob.example.com', Grupos::domains((int) $g1['id']), true), 'remover pelo outro grupo não apaga domínio alheio');
+t_ok(in_array('imob.example.com', GroupRepository::domains((int) $g1['id']), true), 'remover pelo outro grupo não apaga domínio alheio');
 t_eq(1, count($codes($mark, ActivityLog::GROUP_DOMAIN_REMOVE)), 'um GROUP_DOMAIN_REMOVE (o sem efeito não loga)');
 
 echo "membros\n";
@@ -206,8 +207,8 @@ c_form($base, '/admin/grupos/imob-sul/membros', ['_csrf' => $cA, 'email' => strt
 c_form($base, '/admin/grupos/imob-sul/membros', ['_csrf' => $cA, 'email' => $gestor['email'], 'papel' => 'gestor'], $jA);
 c_form($base, '/admin/grupos/imob-sul/membros', ['_csrf' => $cA, 'email' => $gestor['email'], 'papel' => 'gestor'], $jA);
 c_form($base, '/admin/grupos/imob-sul/membros', ['_csrf' => $cA, 'email' => $membro['email'], 'papel' => 'membro'], $jA);
-t_eq('gestor', Grupos::role((int) $g1['id'], (int) $gestor['id']), 'gestor incluído (e-mail sem diferenciar maiúsculas) e promovido');
-t_eq('membro', Grupos::role((int) $g1['id'], (int) $membro['id']), 'membro incluído');
+t_eq('gestor', GroupRepository::activeRole((int) $g1['id'], (int) $gestor['id']), 'gestor incluído (e-mail sem diferenciar maiúsculas) e promovido');
+t_eq('membro', GroupRepository::activeRole((int) $g1['id'], (int) $membro['id']), 'membro incluído');
 $l = $codes($mark, ActivityLog::GROUP_MEMBER_SET);
 t_eq(3, count($l), 'três GROUP_MEMBER_SET (incluir, trocar papel, incluir; o repetido não loga)');
 t_eq([null, ['papel' => 'membro']], [$l[0]['anterior'], $l[1]['anterior']], 'troca de papel com anterior');
@@ -248,7 +249,7 @@ $noGroupLog($mark, 'imóvel inexistente');
 $rYes = c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' => $houseA['hash']], $jG);
 t_eq(302, $rYes['status'], 'convite válido: 302');
 $pYes = t_http('GET', $base . '/grupos/imob-sul', null, [], $jG)['body'];
-t_ok(str_contains($pNo, e(Grupos::INVITE_SENT)) && str_contains($pYes, e(Grupos::INVITE_SENT)), 'mesma mensagem com e sem imóvel (sem enumeração)');
+t_ok(str_contains($pNo, e(GrupoGestor::INVITE_SENT)) && str_contains($pYes, e(GrupoGestor::INVITE_SENT)), 'mesma mensagem com e sem imóvel (sem enumeração)');
 c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' => $houseA['hash']], $jG);
 t_eq(1, (int) $q('SELECT COUNT(*) FROM group_property_invites WHERE group_id = ? AND property_id = ?', [$g1['id'], $houseA['id']]), 'convite gravado uma vez');
 t_eq(null, $q('SELECT group_id FROM properties WHERE id = ?', [$houseA['id']]), 'convite não vincula sem aceite');
@@ -318,7 +319,7 @@ t_eq(1, count($codes($mark, ActivityLog::GROUP_MEMBER_REMOVE)), 'um GROUP_MEMBER
 t_eq(404, t_http('GET', $base . '/grupos/imob-sul', null, [], $jG)['status'], 'ex-gestor: 404');
 t_eq(404, c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' => $houseA['hash']], $jG)['status'], 'ex-gestor não convida');
 db()->prepare("UPDATE users SET status = 'inactive' WHERE id = ?")->execute([$membro['id']]);
-t_eq(null, Grupos::role((int) $g1['id'], (int) $membro['id']), 'conta inativa não tem papel');
+t_eq(null, GroupRepository::activeRole((int) $g1['id'], (int) $membro['id']), 'conta inativa não tem papel');
 
 foreach ($jars as $j) {
     @unlink($j);

@@ -13,4 +13,6 @@ require_once __DIR__ . '/Acoes/ICalFeedRemove.php';
 require_once __DIR__ . '/Acoes/CoverSet.php';
 require_once __DIR__ . '/Acoes/ReviewAdd.php';
 require_once __DIR__ . '/Acoes/ThemeSet.php';
-require_once __DIR__ . '/Acoes/Grupos.php';
+require_once __DIR__ . '/Acoes/GrupoAdmin.php';
+require_once __DIR__ . '/Acoes/GrupoGestor.php';
+require_once __DIR__ . '/Acoes/GrupoDono.php';
