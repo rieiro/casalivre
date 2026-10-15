@@ -46,11 +46,34 @@ final class GrupoValidacao
         return $d !== '' && strlen($d) <= 253 && preg_match(self::HOST_RE, $d) === 1 ? $d : null;
     }
 
-    /** Host da plataforma ou subdomínio dele. */
+    /** Host da plataforma ou subdomínio dele (inclui o domínio pai quando APP_URL tem www. e PLATFORM_ROOT_DOMAIN). */
     public static function isPlatform(string $d): bool
     {
-        $platform = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
-        return $platform !== '' && ($d === $platform || str_ends_with($d, '.' . $platform));
+        foreach (self::platformRoots() as $root) {
+            if ($d === $root || str_ends_with($d, '.' . $root)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Raízes da plataforma: host do APP_URL sem "www." inicial (www.casalivre.com.br -> casalivre.com.br, que cobre o www e
+     * todo subdomínio) e PLATFORM_ROOT_DOMAIN opcional (.env), só se tiver formato de host.
+     * @return list<string>
+     */
+    public static function platformRoots(): array
+    {
+        $roots = [];
+        $app = strtolower((string) parse_url((string) (getenv('APP_URL') ?: ''), PHP_URL_HOST));
+        if ($app !== '') {
+            $roots[] = str_starts_with($app, 'www.') && self::hostname(substr($app, 4)) !== null ? substr($app, 4) : $app;
+        }
+        $root = self::hostname(rtrim(strtolower(trim((string) (getenv('PLATFORM_ROOT_DOMAIN') ?: ''))), '.'));
+        if ($root !== null && !in_array($root, $roots, true)) {
+            $roots[] = $root;
+        }
+        return $roots;
     }
 
     public static function theme(mixed $theme): ?string

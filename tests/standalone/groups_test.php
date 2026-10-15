@@ -193,6 +193,24 @@ $adminRow = ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'];
 t_eq('invalido', GrupoAdmin::addDomain($adminRow, $g2, 'www.plataforma.casalivre.test')->tipo, 'GrupoAdmin::addDomain recusa subdomínio da plataforma');
 t_eq([], GroupRepository::domains((int) $g2['id']), 'subdomínio da plataforma não grava');
 putenv('APP_URL');
+// APP_URL com www.: o domínio pai (e qualquer subdomínio dele) também é da plataforma.
+putenv('APP_URL=https://www.casalivre.com.br');
+foreach (['casalivre.com.br', 'www.casalivre.com.br', 'imob.casalivre.com.br'] as $p) {
+    t_eq(null, GrupoValidacao::domain($p), 'APP_URL com www.: recusado ' . $p);
+}
+t_eq('outracasalivre.com.br', GrupoValidacao::domain('outracasalivre.com.br'), 'APP_URL com www.: vizinho aceito');
+t_eq(['casalivre.com.br'], GrupoValidacao::platformRoots(), 'APP_URL com www.: raiz sem www.');
+// PLATFORM_ROOT_DOMAIN: raiz extra (ex.: APP_URL num subdomínio app.) também barra o pai e os subdomínios.
+putenv('APP_URL=https://app.casalivre.com.br');
+t_eq('casalivre.com.br', GrupoValidacao::domain('casalivre.com.br'), 'sem PLATFORM_ROOT_DOMAIN: o pai de app. não é barrado');
+putenv('PLATFORM_ROOT_DOMAIN=CasaLivre.com.br.');
+foreach (['casalivre.com.br', 'www.casalivre.com.br', 'app.casalivre.com.br', 'x.casalivre.com.br'] as $p) {
+    t_eq(null, GrupoValidacao::domain($p), 'PLATFORM_ROOT_DOMAIN: recusado ' . $p);
+}
+t_eq(['app.casalivre.com.br', 'casalivre.com.br'], GrupoValidacao::platformRoots(), 'PLATFORM_ROOT_DOMAIN normalizado (minúsculas, sem ponto final)');
+putenv('PLATFORM_ROOT_DOMAIN=http://lixo/');
+t_eq(['app.casalivre.com.br'], GrupoValidacao::platformRoots(), 'PLATFORM_ROOT_DOMAIN inválido é ignorado');
+putenv('PLATFORM_ROOT_DOMAIN');
 for ($i = 2; $i <= GrupoValidacao::MAX_DOMAINS; $i++) {
     c_form($base, '/admin/grupos/imob-sul/dominios', ['_csrf' => $cA, 'dominio' => "d$i.example.com"], $jA);
 }
