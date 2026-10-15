@@ -207,6 +207,14 @@ $r = t_http('POST', $base . '/api/casas/' . $owner['hash'] . '/fotos', "--pcb1--
 $j = json_decode($r['body'], true) ?: [];
 t_eq([422, 0, 0, t('photo.none_arrived')], [$r['status'], $j['salvas'] ?? null, $j['enviadas'] ?? null, $j['error'] ?? null], 'API fotos: nada chegou -> 422 photo.none_arrived');
 t_eq($antesFotos, count(PhotoRepository::list($hid)), 'DB: nenhuma foto criada nos 422');
+$r = t_http('POST', $base . $h . '/fotos', ("--pcb0\r\nContent-Disposition: form-data; name=\"_csrf\"\r\n\r\n$csrf\r\n") . $bad, ['Content-Type: multipart/form-data; boundary=pcb0'], $jar);
+t_ok($r['status'] === 302 && str_contains($editNotice(), e(strtr(t('photo.partial'), ['{salvas}' => '0', '{enviadas}' => '1', '{limite}' => (string) (Settings::int('max_photos_per_property') ?: 40)]))), 'web fotos: nada salvo mostra o mesmo erro (erros.fotos) na tela de edição');
+require_once CL_ROOT . '/src/PhotoStorage.php';
+require_once CL_ROOT . '/src/Acoes/PhotoAdd.php';
+$res = PhotoAdd::run($owner['user_id'], $hid, []);
+t_eq(['vazio', ['fotos' => t('photo.none_arrived')]], [$res->tipo, $res->dados['erros'] ?? null], 'PhotoAdd: nada chegou -> tipo vazio + erros.fotos');
+$apiSrc = (string) file_get_contents(CL_ROOT . '/src/Api.php');
+t_ok(!str_contains($apiSrc, "\$res->dados['salvas'] === 0"), 'API: a decisão do 422 fica na ação (isset erros), não na rota');
 
 echo "capa: rota /fotos/{id}/capa com valor bruto e dono por consulta pontual (opcionais a e 7)\n";
 $m = c_mark($act);
