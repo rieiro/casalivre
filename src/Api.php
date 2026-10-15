@@ -141,6 +141,10 @@ function handle_api(string $path, string $method): void
         if ($status === 200) {
             json_out(200, ['user' => api_public_user($res->dados['user'])]);
         }
+        if ($res->tipo === 'pending') {
+            // Como a web (verify_pending): até quando vale o link de ativação.
+            json_out(403, ['error' => $res->mensagem, 'expires' => $res->dados['expires']]);
+        }
         json_out($status, ['error' => $res->mensagem]);
     }
 

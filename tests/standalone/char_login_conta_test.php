@@ -5,6 +5,7 @@
 // desejado: se um refactor mudar alguma delas, o teste deve ser atualizado de propósito, junto com a decisão.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
+require_once CL_ROOT . '/src/Acoes/LoginAttempt.php';
 t_temp_db();
 $owner = t_seed_owner();
 require_once CL_ROOT . '/conta/Geo/CepRepository.php';
@@ -103,7 +104,7 @@ $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => 
 t_eq([403, t('err.pending')], [$r['status'], $r['json']['error'] ?? null], 'API: pendente 403 err.pending');
 t_eq([], c_codes($act, $m), 'API: pendente não grava activity_log');
 
-// Paridade (PR A): web e API reenviam a ativação pela mesma função (AccountFlow::ensureActivation).
+// Paridade (PR A): web e API reenviam a ativação pela mesma ação (LoginAttempt -> AccountFlow::ensureActivation).
 $activations = static function (string $email): int {
     $st = db()->prepare("SELECT COUNT(*) FROM mail_queue WHERE type = 'activation' AND recipient = ?");
     $st->execute([$email]);
@@ -116,6 +117,9 @@ $u = c_user('pending');
 $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
 t_eq([403, t('err.pending')], [$r['status'], $r['json']['error'] ?? null], 'API: pendente + senha certa: 403 err.pending');
 t_eq(1, $activations($u['email']), 'API: pendente + senha certa enfileira a ativação (como a web)');
+$exp = (string) ($r['json']['expires'] ?? '');
+t_ok(preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $exp) === 1 && $exp > date('Y-m-d H:i:s'), "API: pendente devolve expires futuro, como a web ($exp)");
+t_eq(['error', 'expires'], array_keys($r['json'] ?? []), 'API: pendente 403 = {error, expires}');
 
 echo "login: pendente com senha errada não revela o estado nem reenvia\n";
 // As senhas erradas acima (#83 + este bloco) passariam do limite de IP (5): zera para isolar o caso.
@@ -132,7 +136,7 @@ t_eq(0, $activations($u['email']), 'pendente + senha errada (web e API): nenhuma
 echo "login: reenvio de ativação com limite por conta somando web e API\n";
 $u = c_user('pending');
 $sent = [];
-for ($i = 0; $i < 2 * AccountFlow::RESEND_MAX; $i++) {
+for ($i = 0; $i < 2 * LoginAttempt::RESEND_MAX; $i++) {
     $ageQueue();
     if ($i % 2 === 0) {
         $r = c_form($base, '/entrar', ['_csrf' => $csrf, 'email' => $u['email'], 'password' => $u['password']], $jar);
@@ -143,8 +147,28 @@ for ($i = 0; $i < 2 * AccountFlow::RESEND_MAX; $i++) {
     }
     $sent[] = $activations($u['email']);
 }
-t_eq(AccountFlow::RESEND_MAX, $activations($u['email']), 'web+API: no máximo RESEND_MAX ativações por conta na janela');
+t_eq(LoginAttempt::RESEND_MAX, $activations($u['email']), 'web+API: no máximo RESEND_MAX ativações por conta na janela');
 t_eq([1, 2, 3, 3, 3, 3], $sent, 'web e API contam no mesmo limite (web, API, web, depois bloqueado)');
+
+echo "login: só o reenvio que entra na fila gasta o limite (cooldown de 5 min não conta)\n";
+$u = c_user('pending');
+$seq = [];
+// 3 logins seguidos sem envelhecer a fila: o 1º enfileira, os outros caem no cooldown de 5 min e não gastam o limite.
+for ($i = 0; $i < 3; $i++) {
+    $r = c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
+    $seq[] = $activations($u['email']);
+}
+t_eq([1, 1, 1], $seq, 'cooldown da fila: só 1 ativação enfileirada em 3 logins seguidos');
+// Fora do cooldown, ainda cabem os outros 2 do limite (antes do D1, o balde já estaria em 3 e bloquearia).
+$seq = [];
+for ($i = 0; $i < 3; $i++) {
+    $ageQueue();
+    $r = $i % 2 === 0
+        ? c_form($base, '/entrar', ['_csrf' => $csrf, 'email' => $u['email'], 'password' => $u['password']], $jar)
+        : c_api('POST', $base, '/api/sessao', ['email' => $u['email'], 'password' => $u['password']], $csrf, $jar);
+    $seq[] = $activations($u['email']);
+}
+t_eq([2, 3, 3], $seq, 'depois do cooldown: mais 2 reenvios reais (total RESEND_MAX), o seguinte bloqueado');
 
 echo "login: sucesso\n";
 $u = c_user('active');
