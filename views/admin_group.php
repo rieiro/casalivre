@@ -28,7 +28,7 @@
                     <span class="muted">não verificado (o domínio só passa a usar o tema do grupo depois da verificação)</span>
                 <?php endif; ?>
                 <?php if ($dr['verify_token'] !== '' && $dr['last_check_at'] === null): ?>
-                    <span class="muted">checagem pendente: o servidor confere em até 1 hora</span>
+                    <span class="muted">checagem pendente: o servidor confere <?= e(DomainReverification::checkDeadline()) ?></span>
                 <?php elseif ($dr['verify_token'] !== '' && $dr['verified_at'] === null): ?>
                     <span class="muted">última checagem em <?= e((string) $dr['last_check_at']) ?> UTC: TXT não encontrado</span>
                 <?php endif; ?>

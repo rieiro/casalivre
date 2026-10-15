@@ -60,7 +60,6 @@ $answer[$name] = ['v=spf1 -all', 'casalivre-verificacao=outro'];
 t_eq(DomainVerification::MISSING, $fake->check('imob.example.com', $token), 'TXT sem o token: ausente');
 $answer[$name] = ['x', ' ' . $txt . ' '];
 t_eq(DomainVerification::OK, $fake->check('imob.example.com', $token), 'TXT com o token: ok');
-t_eq(true, $fake->matches('imob.example.com', $token), 'matches() segue igual');
 $calls = [];
 t_eq(DomainVerification::MISSING, $fake->check('imob.example.com', ''), 'token vazio: ausente');
 t_eq([], $calls, 'token vazio: sem consulta');

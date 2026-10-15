@@ -154,7 +154,7 @@ final class GrupoAdmin
         }
         $mudou = GroupRepository::requestDomainCheck((int) $group['id'], $d, $token);
         return new Resultado('ok', 'Verificação agendada: o servidor confere o registro TXT ' . DomainVerification::txtName($d) . ' = '
-            . DomainVerification::txtValue($token) . ' em até 1 hora (o DNS pode levar alguns minutos para propagar).', ['mudou' => $mudou]);
+            . DomainVerification::txtValue($token) . ' ' . DomainReverification::checkDeadline() . ' (o DNS pode levar alguns minutos para propagar).', ['mudou' => $mudou]);
     }
 
     /** Inclui ou troca o papel. E-mail sem conta ativa: mensagem única (não diz se existe, está inativa ou apagada). */

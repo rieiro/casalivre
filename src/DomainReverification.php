@@ -22,6 +22,8 @@ require_once __DIR__ . '/ActivityLog.php';
  */
 final class DomainReverification
 {
+    /** Cadência do cron (scripts/verify-domains.php, deploy: a cada hora): prazo máximo de um pedido "Verificar agora". */
+    public const CRON_INTERVAL_MINUTES = 60;
     public const RECHECK_HOURS = 23;
     public const MAX_FAILS = 3;
     public const GRACE_HOURS = 72;
@@ -64,18 +66,18 @@ final class DomainReverification
                 continue;
             }
             if ($result === DomainVerification::OK) {
-                if (GroupRepository::saveDomainCheck($id, $token, $stamp, $stamp, 0) && !$verified) {
+                if (GroupRepository::saveDomainCheck(id: $id, token: $token, verifiedAt: $stamp, checkedAt: $stamp, failCount: 0) && !$verified) {
                     activity(ActivityLog::GROUP_DOMAIN_VERIFIED, $params, ['verificado' => false], ['verificado' => true]);
                 }
                 continue;
             }
             if (!$verified) {
-                GroupRepository::saveDomainCheck($id, $token, null, $stamp, (int) $row['fail_count']);
+                GroupRepository::saveDomainCheck(id: $id, token: $token, verifiedAt: null, checkedAt: $stamp, failCount: (int) $row['fail_count']);
                 continue;
             }
             $fails = (int) $row['fail_count'] + 1;
             if ($fails < self::MAX_FAILS && !$graceOver) {
-                GroupRepository::saveDomainCheck($id, $token, (string) $row['verified_at'], $stamp, $fails);
+                GroupRepository::saveDomainCheck(id: $id, token: $token, verifiedAt: (string) $row['verified_at'], checkedAt: $stamp, failCount: $fails);
                 continue;
             }
             if ($this->unverify($row, $stamp, $fails, DomainVerification::MISSING)) {
@@ -88,12 +90,19 @@ final class DomainReverification
     /** verified_at NULL + log 46 (com motivo: ausente ou falha_consulta) + aviso; true se gravou. */
     private function unverify(array $row, string $stamp, int $fails, string $motivo): bool
     {
-        if (!GroupRepository::saveDomainCheck((int) $row['id'], (string) $row['verify_token'], null, $stamp, 0)) {
+        if (!GroupRepository::saveDomainCheck(id: (int) $row['id'], token: (string) $row['verify_token'], verifiedAt: null, checkedAt: $stamp, failCount: 0)) {
             return false;
         }
         activity(ActivityLog::GROUP_DOMAIN_UNVERIFIED, ['grupo' => $row['slug'], 'dominio' => $row['domain'], 'falhas' => $fails, 'motivo' => $motivo], ['verificado' => true], ['verificado' => false]);
         $this->warn();
         return true;
+    }
+
+    /** Prazo do pedido pendente para o admin, a partir da cadência do cron ("em até 1 hora"). */
+    public static function checkDeadline(): string
+    {
+        $m = self::CRON_INTERVAL_MINUTES;
+        return $m % 60 === 0 ? 'em até ' . ($m / 60) . ($m === 60 ? ' hora' : ' horas') : 'em até ' . $m . ' minutos';
     }
 
     /** Vencido: checagem pedida (last_check_at NULL) ou verificado com a última checagem há mais de RECHECK_HOURS. */

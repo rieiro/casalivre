@@ -48,12 +48,6 @@ final class DomainVerification
         return bin2hex(random_bytes(16));
     }
 
-    /** O TXT do domínio tem o valor do token? Token vazio: false sem consultar o DNS. */
-    public function matches(string $domain, string $token): bool
-    {
-        return $this->check($domain, $token) === self::OK;
-    }
-
     /** OK, MISSING ou LOOKUP_FAILED. Token vazio: MISSING sem consultar o DNS. */
     public function check(string $domain, string $token): string
     {
