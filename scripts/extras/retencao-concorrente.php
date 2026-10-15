@@ -85,7 +85,8 @@ $cep = (string) ($appDb->query("SELECT cep FROM ceps WHERE street <> '' AND city
 ok($stCad === 201, "preparação: cadastro pela API com CSRF da sessão ($stCad)");
 $link = link_ativacao($email);
 ok($link !== '', 'preparação: link de ativação no mail-dev.log após o mail-worker');
-if ($link !== '') { http('GET', parse_url($link, PHP_URL_PATH) . '?' . parse_url($link, PHP_URL_QUERY), null, $jar); }
+// Ativação por POST com CSRF (o GET do link só mostra o botão).
+if ($link !== '') { parse_str((string) parse_url($link, PHP_URL_QUERY), $q); http('POST', '/api/auth/verificar', ['token' => (string) ($q['token'] ?? '')], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]); }
 [$stLogin] = http('POST', '/api/sessao', ['email' => $email, 'password' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]);
 [$stEu] = http('GET', '/api/users/eu', null, $jar);
 ok($stLogin === 200 && $stEu === 200, "preparação: login com cookie + CSRF (sessao $stLogin, /api/users/eu $stEu)");

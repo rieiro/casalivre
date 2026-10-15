@@ -56,6 +56,17 @@ if ($path === '/tiles/brasil.pmtiles') {
     }
 }
 
+// HEAD: só reaproveita o GET de páginas públicas somente leitura (lista explícita, sem efeito colateral: nada de
+// token, log de auditoria ou escrita). Qualquer outra rota: 405 sem chamar o handler. A SomenteVitrine e os tiles
+// já trataram HEAD antes deste ponto.
+if ($method === 'HEAD') {
+    if (!head_permitido($path)) {
+        http_response_code(405);
+        header('Allow: GET');
+        exit;
+    }
+    $method = 'GET';
+}
 // Sessão só com cookie de sessão ou rota autenticada; páginas com formulário abrem a sessão
 // ao pedir o token CSRF (csrf_token() em view()).
 if (isset($_COOKIE[session_name()]) || casa_privado($path, $method)) {
@@ -163,6 +174,12 @@ function cors_allowed_origins(): array
         $list[] = $item;
     }
     return $list;
+}
+
+/** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
+function head_permitido(string $path): bool
+{
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
@@ -280,8 +297,16 @@ if ($path === '/idioma' && $method === 'POST') {
     redirect(safe_local_return($target));
 }
 
+// Ativação em dois passos: o GET (link do e-mail) só mostra o botão "Ativar conta"; o POST com CSRF consome o token.
+// Scanners de e-mail e pré-visualização de links fazem GET/HEAD e não podem ativar a conta nem queimar o token.
 if ($path === '/verificar' && $method === 'GET') {
-    $result = AccountFlow::activate((string) ($_GET['token'] ?? ''));
+    view('verify_confirm', ['token' => (string) ($_GET['token'] ?? '')]);
+    return null;
+}
+
+if ($path === '/verificar' && $method === 'POST') {
+    csrf_check();
+    $result = AccountFlow::activate((string) ($_POST['token'] ?? ''));
     if ($result['ok']) {
         activity(ActivityLog::EMAIL_VERIFY, ['email' => $result['email'], 'resultado' => 'ok']);
         view('message', ['title' => t('auth.verify_ok'), 'message' => t('auth.back_login')]);
@@ -696,9 +721,16 @@ if ($path === '/imoveis' && $method === 'POST') {
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+    // No domínio de um grupo, só imóvel dele (outro grupo ou sem grupo: 404); na plataforma, como antes.
+    [$noGrupo, $imovel] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    if ($noGrupo && $imovel === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
     view('property', [
         'hash' => $m[1],
-        'imovel' => GroupRepository::activePropertyByRef($m[1]),
+        'imovel' => $imovel,
         'use_api' => true,
         'checkin' => (string) ($_GET['checkin'] ?? ''),
         'checkout' => (string) ($_GET['checkout'] ?? ''),
@@ -841,7 +873,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
 
 if (preg_match('#^/ical/([a-f0-9]{32})$#', $path, $m) && $method === 'GET') {
     $property = HouseRepository::findByIcalHash($m[1]);
-    if (!$property || ($property['status'] ?? 'active') !== 'active') {
+    // No domínio de um grupo, só o calendário de imóvel dele (GrupoResolvedor::imovelNoHost, como a página do imóvel).
+    $noHost = $property ? GrupoResolvedor::imovelNoHost(property_ref($property), $_SERVER['HTTP_HOST'] ?? null) : [false, null];
+    if (!$property || ($property['status'] ?? 'active') !== 'active' || ($noHost[0] && $noHost[1] === null)) {
         http_response_code(404);
         exit('Não encontrado');
     }
@@ -914,6 +948,14 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
     csrf_check();
+    // No domínio de um grupo, só avalia imóvel dele (mesma regra do GET, GrupoResolvedor::imovelNoHost). Outro grupo,
+    // sem grupo ou inexistente: o mesmo 404 HTML do GET /imoveis/<h> nesse domínio, sem gravar nada.
+    [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    if ($noGrupo && $noHost === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
     $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
     if (!$property || ($property['status'] ?? 'active') !== 'active') {
         http_response_code(404);

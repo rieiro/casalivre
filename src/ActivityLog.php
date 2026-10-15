@@ -258,6 +258,10 @@ final class ActivityLog
 
     public static function record(int $code, array $params = [], mixed $valorAnterior = null, mixed $valorAtual = null): void
     {
+        // HEAD nunca grava auditoria (index.php trata HEAD da lista como GET; o método original fica em REQUEST_METHOD).
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'HEAD') {
+            return;
+        }
         try {
             $params = self::safeParams($params, $code);
             if (in_array($code, self::FIELD_NAMES_ONLY, true)) {

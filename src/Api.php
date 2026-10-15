@@ -304,7 +304,9 @@ function handle_api(string $path, string $method): void
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByPublicHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só imóvel dele (mesma regra da página, GrupoResolvedor::imovelNoHost).
+        [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
             api_error(404, 'Imóvel não encontrado.');
         }
         $id = (int) $house['id'];
@@ -363,7 +365,9 @@ function handle_api(string $path, string $method): void
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 'POST') {
         $house = HouseRepository::findByPublicHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só imóvel dele (mesma regra da página, GrupoResolvedor::imovelNoHost).
+        [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noGrupo && $noHost === null)) {
             api_error(404, 'Imóvel não encontrado.');
         }
         $res = ReviewAdd::run(
@@ -528,7 +532,9 @@ function handle_api(string $path, string $method): void
     // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.
     if (preg_match('#^/api/ical/([a-f0-9]{32})(\.ics)?$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByIcalHash($m[1]);
-        if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        // No domínio de um grupo, só o calendário de imóvel dele (GrupoResolvedor::imovelNoHost).
+        $noHost = $house ? GrupoResolvedor::imovelNoHost(property_ref($house), $_SERVER['HTTP_HOST'] ?? null) : [false, null];
+        if (!$house || ($house['status'] ?? 'active') !== 'active' || ($noHost[0] && $noHost[1] === null)) {
             api_error(404, 'Não encontrado.');
         }
         activity(ActivityLog::CALENDAR_EXPORT, ['imovel_id' => (int) $house['id']]);
