@@ -188,4 +188,13 @@ t_eq(ActivityLog::CALENDAR_FEED_REMOVE, c_logs($act, $m)[0]['code'] ?? null, 'AP
 t_ok(!isset($blocked($hid)[$day(30)]), 'DB: noite importada pela API liberada');
 t_eq(2, count($feeds()), 'DB: sobram os 2 feeds NOK');
 
+echo "calendar-3.js: tela usa o contrato da API (#86 D1 do Teste)\n";
+$js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/calendar-3.js');
+t_ok(str_contains($js, 'external_ical_url: data.external_ical_url') && str_contains($js, 'feed_title: data.feed_title'), 'JS: importar envia external_ical_url/feed_title');
+t_ok(!preg_match('/\\b(url|title)\\s*:\\s*data\\./', $js), 'JS: não envia mais url/title (a API recusa)');
+t_ok(!preg_match('/\\balert\\(/', $js), 'JS: erros na tela, sem alert()');
+t_ok(str_contains($js, 'e.data.erros') && str_contains($js, 'e.status === 502'), 'JS: mostra erros por campo (422/409) e trata o 502 (feed NOK)');
+$r = c_api('POST', $base, $api, ['url' => 'https://x.test/a.ics', 'title' => 'Velho'], $csrf, $jar);
+t_eq(422, $r['status'], 'API: corpo antigo {url, title} continua recusado (422)');
+
 t_done();
