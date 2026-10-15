@@ -46,6 +46,15 @@ db()->prepare("UPDATE settings SET value = 'valor-cru' WHERE skey = 'theme'")->e
 $r = ThemeSet::run('padrao', 'contraste', $lista);
 t_eq('valor-cru', $r->eventos[0][2]['tema'] ?? null, 'anterior vem do banco na mesma transação (não do parâmetro)');
 
+echo "atual velho (outro save chegou antes)\n";
+db()->prepare("UPDATE settings SET value = 'contraste' WHERE skey = 'theme'")->execute();
+$r = ThemeSet::run('contraste', 'padrao', $lista);
+t_eq('ok', $r->tipo, 'banco já com o tema pedido: ok');
+t_eq(false, $r->dados['mudou'], 'banco já com o tema pedido: mudou = false (comparação dentro da transação)');
+t_eq([], $r->eventos, 'banco já com o tema pedido: sem THEME_CHANGE');
+t_ok(!Db::inTransaction(db()), 'transação fechada após o no-op');
+db()->prepare("UPDATE settings SET value = 'padrao' WHERE skey = 'theme'")->execute();
+
 echo "sem linha settings.theme\n";
 db()->exec("DELETE FROM settings WHERE skey = 'theme'");
 $r = ThemeSet::run('contraste', 'padrao', $lista);

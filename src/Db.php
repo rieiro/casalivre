@@ -139,8 +139,27 @@ final class Db
      * @param callable(PDO): T $fn
      * @return T
      */
-    public static function transactional(PDO $pdo, callable $fn): mixed
+    public static function transactional(PDO $pdo, callable $fn, bool $immediate = false): mixed
     {
+        // $immediate: no SQLite abre com BEGIN IMMEDIATE (lock de escrita já no início, respeitando o busy_timeout),
+        // para leitura + escrita sem o deadlock do upgrade de lock da transação deferred. No pgsql não muda nada.
+        if ($immediate && !self::inTransaction($pdo) && (string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            $pdo->exec('BEGIN IMMEDIATE');
+            self::$rawTransaction = true;
+            try {
+                $result = $fn($pdo);
+                $pdo->exec('COMMIT');
+                return $result;
+            } catch (Throwable $e) {
+                try {
+                    $pdo->exec('ROLLBACK');
+                } catch (Throwable) {
+                }
+                throw $e;
+            } finally {
+                self::$rawTransaction = false;
+            }
+        }
         $own = false;
         if (!self::inTransaction($pdo)) {
             try {

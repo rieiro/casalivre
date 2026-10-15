@@ -31,7 +31,11 @@ final class Settings
         $exists = $pdo->prepare('SELECT 1 FROM settings WHERE skey = ?');
         foreach (self::defaults() as $key => [$value, $description]) {
             $exists->execute([$key]);
-            if (!$exists->fetchColumn()) {
+            $has = $exists->fetchColumn();
+            // Fecha a leitura antes de escrever: cursor aberto segura o lock de leitura no SQLite e o UPDATE
+            // seguinte recebe BUSY na hora (sem busy_timeout) se outro processo estiver escrevendo.
+            $exists->closeCursor();
+            if (!$has) {
                 $stmt->execute([$key, $value, $description]);
             }
         }
