@@ -18,6 +18,16 @@ final class GroupRepository
         return "COALESCE(NULLIF($col, ''), 'active') = 'active'";
     }
 
+    /**
+     * Imóvel ativo estrito: status = 'active' (mesma regra de HouseRepository::all() e de activePropertyByRef).
+     * Diferente de activeProperty(), status vazio ('') NÃO conta como ativo. Usado na busca/mapa da vitrine, para
+     * concordar com a página do imóvel. Alias opcional da tabela.
+     */
+    public static function activePropertyStrict(string $alias = ''): string
+    {
+        return ($alias === '' ? 'status' : $alias . '.status') . " = 'active'";
+    }
+
     /** Conta ativa, com alias da tabela users. */
     public static function activeUser(string $alias): string
     {
@@ -171,13 +181,12 @@ final class GroupRepository
     }
 
     /**
-     * Fonte da busca na vitrine: imóveis ativos do grupo (regra activeProperty(), a mesma da home e da página da vitrine),
-     * na ordem de HouseRepository::all() (ORDER BY id), filtrado no SQL (idx_properties_group). Diferença para all():
-     * status vazio ('') conta como ativo aqui (status é NOT NULL, então NULL não ocorre).
+     * Fonte da busca e do mapa na vitrine: imóveis do grupo com activePropertyStrict() (status = 'active'), as mesmas
+     * linhas e ordem de HouseRepository::all() (ORDER BY id), filtrado no SQL (idx_properties_group).
      */
     public static function searchSource(int $groupId): array
     {
-        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY id ASC');
+        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activePropertyStrict() . ' ORDER BY id ASC');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
