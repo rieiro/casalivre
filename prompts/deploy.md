@@ -70,7 +70,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Rotas autenticadas com `private, no-store`, sem o nginx sobrescrever.
 - [ ] Nenhum cache de resposta com Cookie, Set-Cookie ou Authorization. Chave com `$host` fixo e cache só em /assets/ e /uploads/.
 - [ ] `client_max_body_size` de 1m em todas as rotas; 20m só nas rotas de fotos (`/api/casas/<h>/fotos` e `/imoveis/<h>/fotos`).
-- [ ] Instalar o pacote `libvips`. Depois do PR de fotos, rodar o reprocessamento (WebP 480/960/1600, sem EXIF/GPS) e tirar os originais de public/.
+- [ ] Fotos com GD e WebP (desde o #39): o image-worker gera WebP em 320/800/1920, sem EXIF/GPS, com o original fora de public/ (ver Sprint 2, Fotos).
 - [ ] OSM: atribuição "© OpenStreetMap contributors" com link em toda página com mapa (falta em /busca/mapa).
 - [ ] OSM: antes de tráfego alto, proxy_cache de tiles (≥ 7 dias, com User-Agent de contato) e CSP `img-src 'self'`, ou tiles próprios.
 - [ ] CDN (se usada): só /assets/ e /uploads/, num subdomínio sem cookies, com HTML e API na origem. Exige DPA (ela termina o TLS), não pode reescrever CSP nem X-Frame-Options, e precisa de um processo de purge.
@@ -163,6 +163,16 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] nginx (#58/#59): sem query string no access_log em `/verificar` e `/senha/redefinir` (`log_format` com `$uri` ou `access_log off`); `real_ip` confirmado.
 - [ ] `storage/cache` gravável pelo PHP (#61): o login guarda ali o `login_dummy_hash.json`. Sem ele, o login de e-mail inexistente fica mais lento que o real.
 - [ ] `storage/` gravável pelo usuário do cron (lock do verify-domains, #65). Servidor com DNS de saída (`dns_get_record`). Domínios verificados são reverificados na primeira execução depois do SCHEMA 13.
+
+## #72 e #73: vitrine, ativação em duas etapas e HEAD (SCHEMA_VERSION 14)
+- [ ] (#72) nginx: o limite das locations de fotos (`20m`) também cobre o multipart chunked, que o BodyLimit deixa passar nessas rotas.
+- [ ] (#72) `APP_URL` de produção absoluto e `https://`: o 302 da vitrine depende dele (sem ele, 404).
+- [ ] (#73) SCHEMA_VERSION 14: recriar o banco com `setup.sh` + seeds (sem migração).
+- [ ] (#73) O link de ativação do e-mail não mudou (`/verificar?token=…`), mas abre uma página de confirmação; a conta só é ativada ao clicar em "Ativar conta" (POST com CSRF).
+- [ ] (#73) HEAD só é aceito em páginas públicas somente leitura; as demais rotas respondem 405. Monitores e health checks devem usar GET, ou HEAD em `/`.
+- [ ] (#73) Requisições HEAD não gravam `activity_log`.
+- [ ] (#73) iCal (`/ical/…`, `/api/ical/…`) em domínio de grupo responde 404 para imóvel de outro grupo ou sem grupo.
+- [ ] (#73) nginx: `autoindex off` em `/uploads/`. Assim que o `migrateLegacy` do image-worker terminar (100 fotos por execução; as fotos antigas usam ids sequenciais), negar a pasta antiga com `location ^~ /uploads/users/ { deny all; }`.
 
 ## Banco de dados (SQLite)
 
