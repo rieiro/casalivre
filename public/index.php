@@ -163,6 +163,10 @@ function casa_privado(string $path, string $method): bool
     if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema'], true)) {
         return true;
     }
+    // Grupos (PR 6): admin, área do membro e aceite do dono.
+    if (preg_match('#^/(admin/)?grupos(/|$)#', $path) === 1 || preg_match('#^/imoveis/[a-f0-9]{16}/grupo/#', $path) === 1) {
+        return true;
+    }
     if ($path === '/imoveis' && $method === 'POST') {
         return true;
     }
@@ -442,6 +446,132 @@ if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     }
     view('admin_theme', ['user' => $user, 'temas' => $temas, 'atual' => $atual, 'error' => null, 'ok' => isset($_GET['ok'])]);
     return null;
+}
+
+// Grupos (Sprint 3, PR 6). Regras e permissões em Grupos (src/Acoes/Grupos.php); aqui só login, CSRF e tela.
+// Grupo inexistente e grupo de que o usuário não é membro dão o mesmo 404.
+$grupoNaoEncontrado = static function (?array $user = null): never {
+    http_response_code(404);
+    view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body'), 'user' => $user]);
+    exit;
+};
+$grupoResposta = static function (Resultado $res, string $volta, callable $tela) use ($grupoNaoEncontrado): void {
+    $res->registrar();
+    if ($res->tipo === 'nao_encontrado') {
+        $grupoNaoEncontrado();
+    }
+    if ($res->tipo !== 'ok') {
+        http_response_code($res->tipo === 'invalido' ? 422 : 409);
+        $tela($res->mensagem, null);
+        exit;
+    }
+    $_SESSION['grupo_aviso'] = $res->mensagem ?? 'Salvo.';
+    redirect($volta);
+};
+$grupoAviso = static function (): ?string {
+    $msg = $_SESSION['grupo_aviso'] ?? null;
+    unset($_SESSION['grupo_aviso']);
+    return is_string($msg) ? $msg : null;
+};
+
+if ($path === '/admin/grupos' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    $tela = static function (?string $error, ?string $ok) use ($user): void {
+        view('admin_groups', ['user' => $user, 'groups' => Grupos::all(), 'temas' => Theme::available(), 'error' => $error, 'ok' => $ok, 'posted' => $_POST]);
+    };
+    if ($method === 'POST') {
+        csrf_check();
+        $res = Grupos::create($user, $_POST['slug'] ?? null, $_POST['nome'] ?? null, $_POST['tema'] ?? null);
+        $grupoResposta($res, '/admin/grupos/' . ($res->dados['slug'] ?? ''), $tela);
+    }
+    $tela(null, $grupoAviso());
+    return null;
+}
+
+if (preg_match('#^/admin/grupos/([a-z0-9-]{1,40})(?:/(dominios|dominios/remover|membros|membros/remover))?$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    $group = Grupos::bySlug($m[1]);
+    $acao = $m[2] ?? '';
+    if ($group === null || ($acao !== '' && $method !== 'POST')) {
+        $grupoNaoEncontrado($user);
+    }
+    $tela = static function (?string $error, ?string $ok) use ($user, $group): void {
+        $fresh = Grupos::bySlug($group['slug']) ?? $group;
+        view('admin_group', [
+            'user' => $user, 'group' => $fresh, 'temas' => Theme::available(), 'error' => $error, 'ok' => $ok,
+            'domains' => Grupos::domains((int) $fresh['id']), 'members' => Grupos::members((int) $fresh['id']),
+            'properties' => Grupos::properties((int) $fresh['id']), 'invites' => Grupos::invites((int) $fresh['id']),
+        ]);
+    };
+    if ($method === 'POST') {
+        csrf_check();
+        $res = match ($acao) {
+            '' => Grupos::update($user, $group, $_POST['nome'] ?? null, $_POST['tema'] ?? null),
+            'dominios' => Grupos::addDomain($user, $group, $_POST['dominio'] ?? null),
+            'dominios/remover' => Grupos::removeDomain($user, $group, $_POST['dominio'] ?? null),
+            'membros' => Grupos::setMember($user, $group, $_POST['email'] ?? null, $_POST['papel'] ?? null),
+            'membros/remover' => Grupos::removeMember($user, $group, $_POST['usuario'] ?? null),
+        };
+        $grupoResposta($res, '/admin/grupos/' . $group['slug'], $tela);
+    }
+    $tela(null, $grupoAviso());
+    return null;
+}
+
+if ($path === '/grupos' && $method === 'GET') {
+    $user = require_user();
+    view('groups', [
+        'user' => $user, 'groups' => Grupos::forUser((int) $user['id']), 'ok' => $grupoAviso(),
+        'invites' => Grupos::invitesForOwner((int) $user['id']), 'linked' => Grupos::ownerLinked((int) $user['id']),
+    ]);
+    return null;
+}
+
+if (preg_match('#^/grupos/([a-z0-9-]{1,40})(?:/(convites|convites/cancelar|imoveis/remover))?$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
+    $user = require_user();
+    $acao = $m[2] ?? '';
+    if ($method === 'POST') {
+        csrf_check();
+    }
+    $group = Grupos::bySlug($m[1]);
+    $role = $group === null ? null : Grupos::role((int) $group['id'], (int) $user['id']);
+    if ($group === null || $role === null || ($acao === '') === ($method === 'POST')) {
+        $grupoNaoEncontrado($user);
+    }
+    $tela = static function (?string $error, ?string $ok) use ($user, $group, $role): void {
+        view('group', [
+            'user' => $user, 'group' => $group, 'role' => $role, 'error' => $error, 'ok' => $ok,
+            'properties' => Grupos::properties((int) $group['id']),
+            'invites' => $role === 'gestor' ? Grupos::invites((int) $group['id']) : [],
+        ]);
+    };
+    if ($method === 'POST') {
+        $res = match ($acao) {
+            'convites' => Grupos::invite($user, $group, $_POST['imovel'] ?? null),
+            'convites/cancelar' => Grupos::cancelInvite($user, $group, $_POST['imovel'] ?? null),
+            'imoveis/remover' => Grupos::removeProperty($user, $group, $_POST['imovel'] ?? null),
+        };
+        $grupoResposta($res, '/grupos/' . $group['slug'], $tela);
+    }
+    $tela(null, $grupoAviso());
+    return null;
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/grupo/(aceitar|recusar|sair)$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $res = match ($m[2]) {
+        'aceitar' => Grupos::accept($user, $property, $_POST['grupo'] ?? null),
+        'recusar' => Grupos::reject($user, $property, $_POST['grupo'] ?? null),
+        'sair' => Grupos::leave($user, $property),
+    };
+    $grupoResposta($res, '/grupos', static function (?string $error) use ($user): void {
+        view('groups', [
+            'user' => $user, 'groups' => Grupos::forUser((int) $user['id']), 'ok' => null, 'error' => $error,
+            'invites' => Grupos::invitesForOwner((int) $user['id']), 'linked' => Grupos::ownerLinked((int) $user['id']),
+        ]);
+    });
 }
 
 if ($path === '/conta' && $method === 'GET') {
