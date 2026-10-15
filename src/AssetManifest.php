@@ -13,6 +13,8 @@ final class AssetManifest
     public const HASH_LEN = 12;
     /** Extensões versionadas: as que as páginas referenciam por URL (CSS, JS, estilo do mapa). */
     public const EXTENSIONS = ['css', 'js', 'json'];
+    /** Imagens versionadas só dentro de /assets/themes/ (logo e favicon gerados pelo build dos temas). */
+    public const THEME_IMAGE_EXT = ['svg', 'png', 'ico'];
 
     public static function publicDir(): string
     {
@@ -36,14 +38,18 @@ final class AssetManifest
         $out = [];
         $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base . '/assets', FilesystemIterator::SKIP_DOTS));
         foreach ($it as $info) {
-            if (!$info->isFile() || !in_array(strtolower($info->getExtension()), self::EXTENSIONS, true)) {
+            $abs = $info->getPathname();
+            $ext = strtolower($info->getExtension());
+            $rel = str_replace(DIRECTORY_SEPARATOR, '/', substr($abs, strlen($base)));
+            // Logo/favicon dos temas (Etapa 2) também ganham ?v=; as demais imagens continuam fora do manifesto.
+            $themeImage = str_starts_with($rel, '/assets/themes/') && in_array($ext, self::THEME_IMAGE_EXT, true);
+            if (!$info->isFile() || (!in_array($ext, self::EXTENSIONS, true) && !$themeImage)) {
                 continue;
             }
-            $abs = $info->getPathname();
             if ($abs === self::file()) {
                 continue;
             }
-            $out[str_replace(DIRECTORY_SEPARATOR, '/', substr($abs, strlen($base)))] = self::hashFile($abs);
+            $out[$rel] = self::hashFile($abs);
         }
         ksort($out, SORT_STRING);
         return $out;

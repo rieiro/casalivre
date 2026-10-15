@@ -1,5 +1,5 @@
 {
-    "/assets/app.css": "2d2fc1621bdc",
+    "/assets/app.css": "b510075a90f1",
     "/assets/app.js": "d5f6a95346f6",
     "/assets/form-data.js": "98c0e28cf323",
     "/assets/map/sprites/light.json": "bfac76cf7ed5",
@@ -20,6 +20,8 @@
     "/assets/pages/register.js": "bf38027d06b0",
     "/assets/pages/search.js": "774cad36c3fe",
     "/assets/safe-dom.js": "5531df8bf399",
+    "/assets/themes/contraste.css": "c739f24eda20",
+    "/assets/themes/padrao.css": "e297e5b2640d",
     "/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js": "09ddb4d54b12",
     "/assets/vendor/maplibre-gl/maplibre-gl-csp.js": "16786767beab",
     "/assets/vendor/maplibre-gl/maplibre-gl.css": "fc37702b85d1",
