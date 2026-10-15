@@ -834,13 +834,16 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
     $user = require_user();
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $calendarError = $_SESSION['calendar_error'] ?? null;
+    unset($_SESSION['calendar_error']);
     // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
     // (CalendarService::save), no import_ics e no cron scripts/sync-calendars.php.
     view('calendar', [
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
         'feeds' => HouseRepository::feeds((int) $property['id']),
-        'message' => null,
+        'message' => $calendarError,
+        'message_tone' => 'error',
     ]);
     return null;
 }
@@ -852,6 +855,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $res = CalendarSave::run($property, $_POST);
     $res->registrar();
     $message = $res->mensagem;
+    $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
     $action = (string) ($_POST['acao'] ?? '');
     $viewName = (string) ($_POST['cal_view'] ?? 'day');
     if (!in_array($viewName, ['day', 'price', 'min'], true)) {
@@ -862,6 +866,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
         'days' => HouseRepository::calendarDays((int) $property['id']),
         'feeds' => HouseRepository::feeds((int) $property['id']),
         'message' => $message,
+        'message_tone' => $messageTone,
         'restore' => $action === 'salvar' ? [
             'inicio' => (string) ($_POST['inicio'] ?? ''),
             'fim' => (string) ($_POST['fim'] ?? ''),
@@ -897,11 +902,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     $url = trim((string) ($_POST['external_ical_url'] ?? ''));
     $feedTitle = trim((string) ($_POST['feed_title'] ?? ''));
-    // Web: URL vazia vira "link salvo", CALENDAR_FEED_ADD sempre, CALENDAR_SYNC só em sucesso (ver ICalImport).
-    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle, Canal::Web);
+    // Regra e logs em ICalImport (iguais aos da API); aqui só a tela.
+    $res = ICalImport::run($property, (int) $user['id'], $url, $feedTitle);
     $res->registrar();
     $message = $res->mensagem;
-    $messageTone = in_array($res->tipo, ['vazio', 'ok'], true) ? 'ok' : 'error';
+    $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
         'days' => HouseRepository::calendarDays((int) $property['id']),
@@ -917,9 +922,13 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2], seguirSemFeed: true)->registrar();
-    // SNAPSHOT: a web não trata 'nao_encontrado' de propósito. Feed inexistente ainda ressincroniza e
-    // redireciona (302), como antes; tratar o desfecho mudaria o comportamento (a API responde 404).
+    $res = ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2]);
+    $res->registrar();
+    if ($res->tipo === 'nao_encontrado') {
+        // Feed inexistente: nada muda; a tela do calendário mostra o erro (a API responde 404).
+        $_SESSION['calendar_error'] = $res->mensagem;
+        redirect('/imoveis/' . $m[1] . '/calendario');
+    }
     CalendarSync::resyncProperty($propertyId);
     redirect('/imoveis/' . $m[1] . '/calendario');
 }

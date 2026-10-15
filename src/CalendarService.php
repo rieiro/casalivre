@@ -8,8 +8,9 @@ final class CalendarService
     public static function save(array $property, array $input): array
     {
         $logs = [];
-        $done = static function (string $message) use (&$logs): array {
-            return ['message' => $message, 'logs' => $logs];
+        // Recusa: tipo invalido (422) ou conflito (409), com o erro por campo; a gravação do limite (acima) fica.
+        $done = static function (string $message, ?string $tipo = null, ?string $campo = null) use (&$logs): array {
+            return ['message' => $message, 'logs' => $logs, 'tipo' => $tipo ?? 'ok', 'erros' => $campo !== null ? [$campo => $message] : []];
         };
         $propertyId = (int) $property['id'];
         $max = max_calendar_day($property);
@@ -28,7 +29,7 @@ final class CalendarService
             [$start, $end] = [$end, $start];
         }
         if ($start !== null && $end !== null && ($start < $today || $end > $max)) {
-            return $done(t('cal.range') . ' ' . format_date($max) . '.');
+            return $done(t('cal.range') . ' ' . format_date($max) . '.', 'invalido', 'inicio');
         }
         if ($hasMin && $start !== null && $end !== null && ($action === '' || $action === 'salvar')) {
             $audit = HouseRepository::applyMinNights($propertyId, $start, $end, max(1, (int) $input['min_nights']));
@@ -52,29 +53,29 @@ final class CalendarService
             $action = 'preco';
         }
         if ($start === null || $end === null) {
-            return $done(t('cal.need_range'));
+            return $done(t('cal.need_range'), 'invalido', 'inicio');
         }
         if ($end < $start) {
             [$start, $end] = [$end, $start];
         }
         if ($start < $today || $end > $max) {
-            return $done(t('cal.range') . ' ' . format_date($max) . '.');
+            return $done(t('cal.range') . ' ' . format_date($max) . '.', 'invalido', 'inicio');
         }
         $price = null;
         if ($action === 'preco') {
             if (!isset($input['price']) || $input['price'] === '') {
-                return $done(t('cal.need_price'));
+                return $done(t('cal.need_price'), 'invalido', 'price');
             }
             $price = parse_money((string) $input['price']);
             if ($price < 1 || $price > 999999) {
-                return $done(t('cal.price_max'));
+                return $done(t('cal.price_max'), 'invalido', 'price');
             }
         } elseif (!in_array($action, ['bloquear', 'abrir'], true)) {
-            return $done(t('cal.need_range'));
+            return $done(t('cal.need_range'), 'invalido', 'inicio');
         }
         $result = HouseRepository::applyRange($propertyId, $start, $end, $action, $price);
         if ($result['count'] === 0 && in_array($action, ['bloquear', 'abrir'], true)) {
-            return $done(t('cal.sync_locked'));
+            return $done(t('cal.sync_locked'), 'conflito', 'inicio');
         }
         $code = match ($action) {
             'preco' => ActivityLog::CALENDAR_PRICE,
