@@ -310,7 +310,7 @@ final class Mailer
             self::cmd($fp, 'MAIL FROM:<' . $from . '>', [250]);
             self::cmd($fp, 'RCPT TO:<' . $to . '>', [250, 251]);
             self::cmd($fp, 'DATA', [354]);
-            self::write($fp, self::message($from, $to, $subject, $body) . "\r\n.\r\n", '[mensagem]');
+            self::write($fp, self::dotStuff(self::message($from, $to, $subject, $body, self::htmlPart($subject, $body))) . "\r\n.\r\n", '[mensagem]');
             self::expect($fp, [250]);
             self::cmd($fp, 'QUIT', [221]);
         } finally {
@@ -318,13 +318,53 @@ final class Mailer
         }
     }
 
-    public static function message(string $from, string $to, string $subject, string $body): string
+    /**
+     * Mensagem RFC 5322. Sem $html: só text/plain (como antes). Com $html: multipart/alternative, com a parte texto
+     * primeiro (fallback) e a HTML depois, ambas UTF-8 em base64.
+     */
+    public static function message(string $from, string $to, string $subject, string $body, ?string $html = null): string
     {
+        if ($html !== null) {
+            $b = '=_cl_' . bin2hex(random_bytes(12));
+            $headers = array_merge(self::envelopeHeaders($from, $to, $subject), ['Content-Type: multipart/alternative; boundary="' . $b . '"']);
+            $part = static fn (string $type, string $content): string => '--' . $b . "\r\nContent-Type: " . $type . "; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n\r\n" . self::base64Body($content) . "\r\n";
+            return implode("\r\n", $headers) . "\r\n\r\n" . $part('text/plain', $body) . $part('text/html', $html) . '--' . $b . '--';
+        }
         $headers = array_merge(self::envelopeHeaders($from, $to, $subject), [
             'Content-Type: text/plain; charset=UTF-8',
             'Content-Transfer-Encoding: base64',
         ]);
         return implode("\r\n", $headers) . "\r\n\r\n" . self::base64Body($body);
+    }
+
+    /**
+     * Parte HTML (MailHtml, tema da plataforma). MAIL_HTML=0 desliga (só texto). Falha ao montar: só texto, sem derrubar o envio.
+     */
+    public static function htmlPart(string $subject, string $body): ?string
+    {
+        if (self::env('MAIL_HTML', '1') === '0') {
+            return null;
+        }
+        try {
+            require_once __DIR__ . '/MailHtml.php';
+            require_once __DIR__ . '/Theme.php';
+            try {
+                $brand = Theme::brand();
+            } catch (Throwable) {
+                $brand = ['nome' => 'CasaLivre', 'tokens' => []];
+            }
+            return MailHtml::render($subject, $body, $brand);
+        } catch (Throwable $e) {
+            error_log('CasaLivre: parte HTML do e-mail não montada (' . $e::class . ').');
+            return null;
+        }
+    }
+
+    /** Linhas que começam com "." ganham outro "." (RFC 5321 4.5.2); base64 nunca começa com ".", mas por garantia. */
+    private static function dotStuff(string $data): string
+    {
+        return preg_replace('/^\./m', '..', $data) ?? $data;
     }
 
     /** Cabeçalhos comuns (Date, From, To, Subject codificado, Message-ID, MIME-Version). @return list<string> */
