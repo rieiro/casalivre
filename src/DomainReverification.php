@@ -17,7 +17,7 @@ require_once __DIR__ . '/ActivityLog.php';
  * - TXT certo: verified_at = agora (a última confirmação), fail_count = 0; se não estava verificado, log 45;
  * - TXT ausente num não verificado: só grava last_check_at (o pedido do admin foi atendido, sem sucesso);
  * - TXT ausente num verificado: fail_count + 1; com MAX_FAILS seguidas ou GRACE_HOURS sem sucesso (desde verified_at)
- *   -> verified_at = NULL, fail_count = 0, log 46 e aviso por e-mail aos admins da plataforma.
+ *   -> verified_at = NULL, fail_count = 0, log 46 e aviso aos admins da plataforma (mail_queue, tipo domain-notice).
  * Grava só se o token não mudou no meio (o admin pode ter gerado outro).
  */
 final class DomainReverification
@@ -26,14 +26,15 @@ final class DomainReverification
     public const MAX_FAILS = 3;
     public const GRACE_HOURS = 72;
 
-    /** @var callable(string, string, string): void fn(e-mail, assunto, corpo) */
+    /** @var callable(string): void fn(e-mail do admin) */
     private $notify;
 
     public function __construct(private readonly DomainVerification $verification, ?callable $notify = null)
     {
-        $this->notify = $notify ?? static function (string $to, string $subject, string $body): void {
+        // Aviso pela mail_queue (tipo domain-notice; o mail-worker monta e envia, com retentativa): pr65 C2.
+        $this->notify = $notify ?? static function (string $to): void {
             require_once __DIR__ . '/Mailer.php';
-            Mailer::deliver($to, $subject, $body);
+            Mailer::enqueueAccountMail('domain-notice', $to);
         };
     }
 
@@ -91,7 +92,7 @@ final class DomainReverification
             return false;
         }
         activity(ActivityLog::GROUP_DOMAIN_UNVERIFIED, ['grupo' => $row['slug'], 'dominio' => $row['domain'], 'falhas' => $fails, 'motivo' => $motivo], ['verificado' => true], ['verificado' => false]);
-        $this->warn((string) $row['slug'], (string) $row['domain'], $fails);
+        $this->warn();
         return true;
     }
 
@@ -105,15 +106,12 @@ final class DomainReverification
         return $row['verified_at'] !== null && ($last === false || $now - $last >= self::RECHECK_HOURS * 3600);
     }
 
-    private function warn(string $slug, string $domain, int $fails): void
+    /** Enfileira o aviso a cada admin ativo (o corpo é montado no worker: Mailer::domainNotice). */
+    private function warn(): void
     {
-        $subject = 'CasaLivre: o domínio ' . $domain . ' do grupo ' . $slug . ' perdeu a verificação';
-        $body = 'A reverificação diária não achou o registro DNS TXT ' . DomainVerification::txtName($domain)
-            . ' (' . $fails . ' checagem(ns) seguida(s) sem o token, ou ' . self::GRACE_HOURS . " h sem sucesso, inclusive com o DNS sem responder).\r\n"
-            . "O domínio deixou de usar o tema do grupo. Para voltar, publique o TXT de novo e clique em \"Verificar agora\" em /admin/grupos/" . $slug . ".\r\n";
         foreach (GroupRepository::adminEmails() as $email) {
             try {
-                ($this->notify)($email, $subject, $body);
+                ($this->notify)($email);
             } catch (Throwable $e) {
                 error_log('CasaLivre: falha ao avisar admin sobre domínio (' . $e::class . ').');
             }

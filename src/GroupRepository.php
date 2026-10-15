@@ -132,6 +132,12 @@ final class GroupRepository
         return $st->rowCount() === 1;
     }
 
+    /** Domínios sem verificação já conferidos pelo cron (para o aviso aos admins). @return list<array{slug:string,domain:string}> */
+    public static function unverifiedCheckedDomains(): array
+    {
+        return db()->query("SELECT g.slug, d.domain FROM group_domains d JOIN groups g ON g.id = d.group_id WHERE d.verify_token <> '' AND d.verified_at IS NULL AND d.last_check_at IS NOT NULL ORDER BY g.slug, d.domain")->fetchAll();
+    }
+
     /** E-mails dos admins ativos da plataforma (quem cuida dos domínios). @return list<string> */
     public static function adminEmails(): array
     {

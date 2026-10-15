@@ -6,8 +6,9 @@ require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
 require_once CL_ROOT . '/src/DomainReverification.php';
+require_once CL_ROOT . '/src/Mailer.php';
 t_temp_db();
-t_seed_owner();
+$owner = t_seed_owner();
 $act = c_activity_file();
 $admin = c_user('active');
 db()->exec('UPDATE users SET is_admin = 1 WHERE id = ' . (int) $admin['id']);
@@ -39,8 +40,9 @@ $fake = new DomainVerification(static function (string $name) use (&$answer, &$c
     return $a;
 });
 $mails = [];
-$rev = new DomainReverification($fake, static function (string $to, string $subject, string $body) use (&$mails): void {
-    $mails[] = [$to, $subject, $body];
+// Aviso falso: recebe só o e-mail (o padrão enfileira domain-notice na mail_queue; o worker monta o texto).
+$rev = new DomainReverification($fake, static function (string $to) use (&$mails): void {
+    $mails[] = [$to];
 });
 $codes = static fn (int $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
 $name = '_casalivre.imob.example.com';
@@ -127,8 +129,9 @@ t_eq(1, count($l), 'um log 46');
 t_eq(['imob', 'imob.example.com', 3, 'ausente'], [$l[0]['params']['grupo'] ?? null, $l[0]['params']['dominio'] ?? null, $l[0]['params']['falhas'] ?? null, $l[0]['params']['motivo'] ?? null], 'log 46 com grupo, domínio, falhas e motivo ausente');
 t_eq(46, ActivityLog::GROUP_DOMAIN_UNVERIFIED, 'código 46');
 t_eq([$admin['email'], $admin2['email']], array_column($mails, 0), 'aviso por e-mail a cada admin ativo (não ao inativo)');
-t_ok(str_contains($mails[0][1], 'imob.example.com') && str_contains($mails[0][2], '_casalivre.imob.example.com') && str_contains($mails[0][2], '/admin/grupos/imob'), 'aviso com domínio, registro TXT e caminho do admin');
-t_ok(!str_contains($mails[0][2], $token), 'aviso sem o token');
+[$subject, $body] = Mailer::domainNotice(GroupRepository::unverifiedCheckedDomains());
+t_ok(str_contains($subject, 'perdeu a verificação') && str_contains($body, 'imob.example.com') && str_contains($body, '_casalivre.imob.example.com') && str_contains($body, '/admin/grupos/imob'), 'texto do aviso (worker) com domínio, registro TXT e caminho do admin');
+t_ok(!str_contains($body, $token), 'aviso sem o token');
 $mails = [];
 $rev->run($t0 + 300 * $h);
 t_eq([], $mails, 'não verificado já conferido: sem novo aviso');
@@ -208,6 +211,23 @@ $r = (new DomainReverification($fake, static function (): void {
     throw new RuntimeException('smtp');
 }))->run($tTroca);
 t_eq([1, null], [$r['desverificados'], $row()['verified_at']], 'aviso falhou: desverificado mesmo assim');
+
+echo "aviso pela mail_queue (pr65 C2)\n";
+require_once CL_ROOT . '/src/Mailer.php';
+t_ok(in_array('domain-notice', MailQueue::TYPES, true), 'domain-notice no mapa de tipos da fila');
+db()->exec('DELETE FROM mail_queue');
+db()->prepare('UPDATE group_domains SET verify_token = ?, verified_at = ?, last_check_at = NULL, fail_count = 2 WHERE domain = ?')->execute([$token, '2027-05-01 00:00:00', 'imob.example.com']);
+$answer[$name] = [];
+$envAntes = getenv('APP_ENV');
+putenv('APP_ENV=dev'); // dev sem SMTP_HOST: a fila aceita (em produção sem SMTP o enfileiramento é recusado, como nos e-mails de conta)
+$r = (new DomainReverification($fake))->run(gmmktime(0, 0, 0, 5, 2, 2027));
+putenv($envAntes === false ? 'APP_ENV' : 'APP_ENV=' . $envAntes);
+t_eq(1, $r['desverificados'], 'desverificado com o notificador padrão');
+$q = db()->query('SELECT type, recipient FROM mail_queue ORDER BY id')->fetchAll(PDO::FETCH_NUM);
+t_eq([['domain-notice', $admin['email']], ['domain-notice', $admin2['email']]], $q, 'notificador padrão enfileira domain-notice para cada admin ativo (sem enviar na hora)');
+t_eq(false, Mailer::deliverAccountMail('domain-notice', $exAdmin['email']), 'worker: admin inativo não recebe');
+t_eq(false, Mailer::deliverAccountMail('domain-notice', $owner['email']), 'worker: não-admin não recebe');
+t_eq(false, Mailer::deliverAccountMail('domain-notice', 'ninguem@example.com'), 'worker: e-mail sem conta não recebe');
 
 echo "script\n";
 exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg(CL_ROOT . '/scripts/verify-domains.php'), $o, $code);

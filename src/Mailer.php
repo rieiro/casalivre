@@ -91,6 +91,16 @@ final class Mailer
         require_once __DIR__ . '/Settings.php';
         require_once dirname(__DIR__) . '/conta/Account/AccountFlow.php';
         $email = Email::normalize($email);
+        if ($type === 'domain-notice') {
+            $user = UserRepository::findByEmail($email);
+            if (!$user || (int) ($user['is_admin'] ?? 0) !== 1 || ($user['status'] ?? '') !== 'active') {
+                return false;
+            }
+            require_once __DIR__ . '/GroupRepository.php';
+            [$subject, $body] = self::domainNotice(GroupRepository::unverifiedCheckedDomains());
+            self::deliver($email, $subject, $body);
+            return true;
+        }
         if ($type === 'exists') {
             $user = UserRepository::findByEmail($email);
             if (!$user) {
@@ -115,6 +125,29 @@ final class Mailer
         [$subject, $body] = self::linkMail($type, $url);
         self::deliver($email, $subject, $body);
         return true;
+    }
+
+    /**
+     * Aviso aos admins: domínio de grupo perdeu a verificação (o corpo é montado no worker; a fila só leva tipo e e-mail).
+     * Lista os domínios hoje sem verificação já conferidos pelo cron; sem token.
+     * @param list<array{slug:string,domain:string}> $domains
+     * @return array{0: string, 1: string} assunto e corpo
+     */
+    public static function domainNotice(array $domains): array
+    {
+        require_once __DIR__ . '/DomainVerification.php';
+        $lines = '';
+        foreach ($domains as $d) {
+            $lines .= '- ' . $d['domain'] . ' (grupo ' . $d['slug'] . '): registro ' . DomainVerification::txtName((string) $d['domain'])
+                . ', /admin/grupos/' . $d['slug'] . "\r\n";
+        }
+        return [
+            'CasaLivre: domínio de grupo perdeu a verificação',
+            "A reverificação dos domínios de grupo não confirmou o registro DNS TXT (checagens seguidas sem o token ou 72 h sem\r\n"
+                . "sucesso, inclusive com o DNS sem responder). Esses domínios deixaram de usar o tema do grupo.\r\n\r\n"
+                . "Domínios sem verificação agora:\r\n" . ($lines === '' ? "- (nenhum: já foram verificados de novo)\r\n" : $lines)
+                . "\r\nPara voltar, publique o TXT de novo e clique em \"Verificar agora\" na página do grupo.\r\n",
+        ];
     }
 
     /** Aviso "alguém tentou cadastrar seu e-mail" (sem token). @return array{0: string, 1: string} assunto e corpo */
