@@ -41,6 +41,9 @@ final class ExceptionShield
             http_response_code(500);
             if (!headers_sent()) {
                 header('Content-Type: text/html; charset=utf-8');
+                if (!preg_grep('/^cache-control:/i', headers_list())) {
+                    header('Cache-Control: private, no-cache');
+                }
             }
             $safe = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
             // Estilo em /assets/app.css (.err-shield): a CSP (sem 'unsafe-inline') bloqueava o <style> que havia aqui.

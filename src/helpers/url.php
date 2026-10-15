@@ -128,6 +128,9 @@ function reject_oversize_upload(): void
     header('Referrer-Policy: same-origin');
     header('Content-Security-Policy: ' . csp_header());
     header('Content-Type: text/html; charset=utf-8');
+    if (!headers_sent() && !preg_grep('/^cache-control:/i', headers_list())) {
+        header('Cache-Control: private, no-cache');
+    }
     echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
 }
