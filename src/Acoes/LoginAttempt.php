@@ -62,14 +62,24 @@ final class LoginAttempt
         if ($result['status'] === 'pending') {
             // Limite por conta (não por IP), para ninguém usar o login para lotar a caixa da vítima.
             $key = 'conta:' . hash('sha256', Email::normalize((string) $result['user']['email']));
-            $pending = AccountFlow::ensureActivation(
-                $result['user'],
-                Settings::int('email_verify_minutes'),
-                static fn (): bool => IpRateLimiter::peek(self::RESEND_BUCKET, self::RESEND_MAX, self::RESEND_WINDOW, $key) === 0
+            // Conferir o limite, enfileirar e contar sob o mesmo flock do arquivo do balde (IpRateLimiter::reserve):
+            // logins paralelos da mesma conta ficam em fila no lock, então no máximo RESEND_MAX e-mails por janela.
+            // Só conta quando o e-mail entrou de fato na fila (cooldown de 5 min ou falha de envio não gastam o limite).
+            $pending = null;
+            IpRateLimiter::reserve(
+                self::RESEND_BUCKET,
+                self::RESEND_MAX,
+                self::RESEND_WINDOW,
+                $key,
+                static function (bool $cabe) use (&$pending, $result): bool {
+                    $pending = AccountFlow::ensureActivation(
+                        $result['user'],
+                        Settings::int('email_verify_minutes'),
+                        static fn (): bool => $cabe
+                    );
+                    return $pending['enfileirado'];
+                }
             );
-            if ($pending['enfileirado']) {
-                IpRateLimiter::hit(self::RESEND_BUCKET, self::RESEND_MAX, self::RESEND_WINDOW, $key);
-            }
             return new Resultado('pending', t('err.pending'), ['expires' => $pending['expires']]);
         }
         AccountFlow::openSession((int) $result['user']['id']);
