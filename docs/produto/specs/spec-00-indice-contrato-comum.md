@@ -27,17 +27,16 @@ Origem gravada na criação: **Pedido**, **Imediata**, **OTA**, **Manual** (spec
 | — | Aguardando aprovação | Enviar solicitação | hóspede | identificado por OTP; aprovação manual | — | 01 §5 |
 | — | Aprovada | Reservar (instantânea) | hóspede | imóvel com reserva imediata | — | 01, 06 3b |
 | — | Aprovada | Lançar reserva manual | proprietário, gestor, operador com permissão de reservas | sem conflito de datas; comissão do canal manual exibida | — | 06 3b |
-| — | Aprovada | Sincronização | sistema | origem OTA | — | 06 3b [pendente: Arquitetura, estado inicial OTA] |
 | Aguardando aprovação | Aprovada | Aprovar | proprietário, gestor, operador (ou nó com delegação) | — | 24 h; 4 h se check-in < 72 h (herdado do nó, sobrescrevível por imóvel) | 02 §2, 06 |
 | Aguardando aprovação | Recusada | Recusar (motivo fixo) | idem | confirmação | idem | 02, 06 |
 | Aguardando aprovação | Expirada | Prazo vencido | sistema | sem resposta | idem | 01, 02 |
 | Aguardando aprovação | Cancelada | Desistir | hóspede | — | — | 09 |
-Uma solicitação Aprovada cria a reserva em **Aguardando pagamento**.
+Uma solicitação Aprovada cria a reserva em **Aguardando pagamento**. **Exceção OTA:** a reserva vinda de OTA não passa por solicitação de aprovação nem pagamento casalivre (2.2).
 
 ```mermaid
 stateDiagram-v2
   [*] --> AguardandoAprovacao: pedido
-  [*] --> Aprovada: imediata / manual / OTA
+  [*] --> Aprovada: imediata / manual
   AguardandoAprovacao --> Aprovada: aprovar
   AguardandoAprovacao --> Recusada: recusar
   AguardandoAprovacao --> Expirada: 24h/4h
@@ -49,6 +48,8 @@ stateDiagram-v2
 | De | Para | Gatilho | Quem | Condição | Prazo | Spec |
 |---|---|---|---|---|---|---|
 | — | Aguardando pagamento | Solicitação aprovada | sistema | snapshot de preço, política e termos | — | 01 §5 |
+| — | Confirmada | Sincronização OTA (iCal ou parceiro) | sistema | `origem = ota`; **sem etapa de pagamento casalivre**; bloqueia o calendário na hora; **fora do funil de conversão**; o ledger registra só o que a casalivre cobra (Produto; detalhes técnicos: Arquitetura) | imediato | 06 3b |
+| Confirmada (OTA) | Cancelada | Cancelamento na OTA | sistema / anfitrião | segue a **política da OTA**, não a do snapshot casalivre | — | 06 3b, 09 §3 |
 | Aguardando pagamento | Confirmada | "Estadia recebida" + "Limpeza recebida" (piloto, `pagamento_modo = fora`) | proprietário, gestor; operador só com delegação | as duas marcações; "Desfazer" por 5 s; comissão vira conta a receber | 24 h; 4 h se check-in < 72 h | 02 §3, 06 |
 | Aguardando pagamento | Expirada | Prazo vencido | sistema | sem as duas marcações; datas liberadas; contagem antibloqueio (3 seguidas / 7 dias [E]) | idem | 01 |
 | Aguardando pagamento | Cancelada | Cancelar | hóspede ou anfitrião | — | — | 09 |
@@ -62,6 +63,7 @@ Cancelamento com valor pago gera um **reembolso** (2.3).
 ```mermaid
 stateDiagram-v2
   [*] --> AguardandoPagamento
+  [*] --> Confirmada: OTA (origem=ota)
   AguardandoPagamento --> Confirmada: estadia + limpeza recebidas
   AguardandoPagamento --> Expirada: 24h/4h
   AguardandoPagamento --> Cancelada
@@ -154,6 +156,7 @@ stateDiagram-v2
 | emissor da cobrança | quem fatura uma parcela do split (casalivre, franqueado/parceiro, outro recebedor) | faturador |
 | Estadia recebida / Limpeza recebida | as duas marcações do piloto | Diária recebida, pago |
 | comprovante de reserva | resumo da reserva, não fiscal | recibo |
+| casalivre (em texto de tela) | plataforma de reservas | **"imobiliária", "corretora"** (proibidos na UI) |
 | solicitação / reserva | pedido antes da aprovação / após aprovação | booking, pedido (como estado) |
 
 ## 5. Registro de parâmetros
@@ -199,9 +202,12 @@ stateDiagram-v2
 | Emissor da cobrança | por parcela: casalivre, franqueado/parceiro, outro recebedor | modelo de split | decidido | 05 §2 |
 | Cobrança do franqueado (franquia) | 7% = 4% corretor + 3% fundo; NFS-e do franqueado; o franqueado repassa o fundo | modelo | decidido | 05 Ap. A |
 | Royalty casalivre | 3% (2% ou 3% no OTA), emissor casalivre | modelo | [pendente: Rafael, D12] | 05 |
-| Fundo regional | sem retenção pela casalivre (sem subconta, sem mandato); extrato alimentado pelo repasse do franqueado; prestação de contas trimestral | organização | decidido; formato [pendente: Negócios] | 05 §4 |
-| Extrato do proprietário | mensal, agrupado por emissor | global | decidido | 05 Ap. A |
+| Fundo regional | sem retenção pela casalivre (sem subconta, sem mandato); extrato alimentado pelo repasse do franqueado; extrato em tempo real por franqueado; trimestral PDF/CSV (saldos, entradas por franqueado e por reserva, mídia com notas, resultado de campanhas); anual consolidado; S8+ | organização | decidido (Negócios) | 05 §4 |
+| Extrato do proprietário | mensal, agrupado por emissor: nome, valor, link da fatura; sem royalty (royalty só no extrato do franqueado) | global | decidido | 05 Ap. A |
 | Fatura P9 | vencimento 10 dias; multa 2% + juros 1% a.m. pro rata + IPCA; D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) | global | [E]; encargos decididos (item 15) | 05 Ap. A |
+| Confiabilidade | rótulo "últimos 12 meses"; 90 dias só como gatilho (3+ → revisão) | global | decidido (Negócios) | 02, 09 |
+| Regras municipais | entidade `regra_municipal`; seeds: Cabo Frio cadastro voluntário sem taxa; Búzios R$ 14,60/hóspede 20/12–Carnaval+5, não confirmada, inativa; Arraial sem regra; taxa no checkout = porta futura; S8+ | município | decidido (Negócios); Búzios [pendente: Jurídico e Tributário] | 03, 04 2b |
+| CRECI no cadastro | campo com status de verificação para franqueado e parceiro (tela) | — | decidido (Produto) | 04, 05 |
 | Comissão do canal manual | — | modelo | [pendente: Rafael] | 06 3b |
 | Acréscimo por canal | % sobre o preço único | canal → imóvel | [E] | 03, 07 |
 | Bloqueios de publicação no piloto | recebedor KYC Aprovado + chave Pix vinculada a ele; denúncia visível no checkout e no detalhe | global | decidido (item 17); abertura do piloto [pendente: Rafael + Jurídico e Tributário] | 01, 03, 05, 09 |
@@ -223,6 +229,10 @@ stateDiagram-v2
 | 12 | 02, 10 | Lista de bloqueio "permanente em fraude comprovada" | Sempre com prazo; fraude 5 anos (J27) |
 | 13 | 08 | J26 marcado como "decidido" | Sem item no parecer; tratado pelo J28 |
 | 14 | 09 | Retenção da disputa sem o resultado e o log | Resultado e log 5 anos (J33) |
+| 15 | 00, 06 | Estado inicial da reserva OTA indefinido | Entra Confirmada com `origem = ota` (Produto) |
+| 16 | todas | Donos "OAB" / "CRC" | "Jurídico e Tributário" (Rafael decidiu não usar profissional externo) |
+| 17 | 02 | Indicador "1 cancelamento em 90 dias" com fórmula de 12 meses | Rótulo de 12 meses; 90 dias só como gatilho |
+| 18 | 05 | Exemplo do extrato do proprietário com "casalivre: R$ 30" (royalty) | Royalty só no extrato do franqueado |
 
 ## 7. Pendências
 | # | Decisão | Dono |
@@ -236,10 +246,7 @@ stateDiagram-v2
 | 7 | Textos D14 (termos, políticas, contratos) | Rafael + Jurídico e Tributário |
 | 8 | Intermediação × corretagem (Lei 6.530) | Jurídico e Tributário |
 | 9 | NFS-e da casalivre: código de serviço, ISS, CBS/IBS 2026 | Rafael + Jurídico e Tributário |
-| 10 | Formato da prestação de contas trimestral do fundo | Negócios |
-| 11 | Confiabilidade (02 §5): o painel mostra "cancelamentos em 90 dias", mas a fórmula usa 12 meses; escolher uma janela para o rótulo | Negócios |
-| 12 | Estado inicial das reservas OTA (Aprovada → Aguardando pagamento ou direto Confirmada) | Arquitetura + Produto |
-| 13 | Impedimentos extras do "excluir agora"; atualizar o backlog P5-2 (comparação até 4) | Negócios |
-| 14 | Normas municipais (cadastro, taxa de turismo) na Região dos Lagos | Negócios |
-| 15 | Calendário de feriados para os SLAs em dias úteis; mecanismos de cifragem, imutabilidade e IP reversível | Arquitetura |
-| 16 | Mascaramento, retenção das conversas, acesso do admin, favoritos locais; ferramenta da chamada de vídeo | Segurança, via Gerente Geral |
+| 10 | Impedimentos extras do "excluir agora"; atualizar o backlog P5-2 (comparação até 4) | Negócios |
+| 11 | Calendário de feriados para os SLAs em dias úteis; mecanismos de cifragem, imutabilidade e IP reversível | Arquitetura |
+| 12 | Mascaramento, retenção das conversas, acesso do admin, favoritos locais; ferramenta da chamada de vídeo | Segurança, via Gerente Geral |
+| 13 | Confirmar a taxa de turismo de Búzios (R$ 14,60 por hóspede, 20/12 ao Carnaval + 5 dias) para ativar a regra | Jurídico e Tributário |

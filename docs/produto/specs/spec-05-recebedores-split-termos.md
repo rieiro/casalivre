@@ -33,7 +33,7 @@ Itens sem permissão ficam ocultos se o papel nunca terá acesso, ou desabilitad
 | PF | documento com foto, selfie, comprovante de endereço de até 90 dias, conta ou chave Pix no mesmo CPF |
 | PJ | cartão CNPJ, contrato social, documento com foto e selfie do sócio-administrador, conta ou chave no CNPJ |
 | MEI | CCMEI, documento com foto e selfie do titular, conta ou chave no CNPJ ou no CPF do titular |
-| Corretor-franqueado | o do tipo dele (PF ou PJ), mais o **CRECI ativo**. Do CRECI, guarda-se só o **número, a data e o resultado da consulta** *[decidido, parecer J8]* |
+| Corretor-franqueado e parceiro | o do tipo dele (PF ou PJ), mais o **campo CRECI com status de verificação** ("Verificado", "Em verificação", "Não verificado", "Inativo") *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*. Do CRECI, guarda-se só o **número, a data e o resultado da consulta** *[decidido, parecer J8]* |
 | Prestador de limpeza | simplificado: PF ou MEI |
 O **vínculo do proprietário com o imóvel** (escritura, IPTU ou contrato) não faz parte do KYC: é pedido na publicação do anúncio (spec-03).
 O upload dos documentos usa o mesmo componente do comprovante. **Só um recebedor Aprovado pode ser vinculado a um imóvel publicado** (spec-03). **No piloto, publicar com pagamento por fora exige também a chave Pix vinculada a esse recebedor Aprovado** ([decidido, parecer item 17]), e o hóspede vê o canal "Denunciar anúncio ou pedido de pagamento suspeito" no checkout (spec-01) e no detalhe da reserva (spec-09).
@@ -57,7 +57,7 @@ O upload dos documentos usa o mesmo componente do comprovante. **Só um recebedo
 **Validação:** a soma dos percentuais sobre a mesma base não pode passar de 100% ("Os percentuais somam 104%. O máximo é 100%."). Há também o aviso de **conflito** quando duas regras cobrem o mesmo escopo, canal e vigência ("Já existe uma regra vigente para este canal a partir de 01/11"), e a validação dos mínimos maiores que o valor.
 **Simulador:** escolher uma reserva de exemplo (imóvel, canal, datas, valor) ou digitar os valores. O resultado é uma tabela recebedor → valor (diárias, limpeza fora do split, taxa), com **total = soma, saldo zero** ("Para R$ 1.000: proprietário R$ 940,00 · casalivre R$ 60,00 · diferença R$ 0,00").
 **Arredondamento** *[E]*: as parcelas dos outros recebedores são arredondadas para baixo, e o **centavo que sobra vai para o proprietário**. Exemplo: com R$ 333,33 e 94/6, a casalivre recebe R$ 19,99 (6% = 19,9998) e o proprietário R$ 313,34, total R$ 333,33 e diferença R$ 0,00.
-**Emissor nos cenários:** no **franquia, canal direto** (900/40/30/30), o **royalty de 3% (R$ 30) é cobrado pela casalivre**, e **o corretor (4%, R$ 40) mais o fundo (3%, R$ 30) = R$ 70 são cobrados pelo franqueado**, que repassa os R$ 30 ao fundo. O simulador mostra a coluna "Emissor" e um subtotal por emissor.
+**Emissor nos cenários:** no **franquia, canal direto** (900/40/30/30), **o corretor (4%, R$ 40) mais o fundo (3%, R$ 30) = R$ 70 são cobrados pelo franqueado**, que repassa os R$ 30 ao fundo. O **royalty (3%, R$ 30)** aparece **só na visão e no extrato do franqueado**, nunca na visão do proprietário *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*. O simulador mostra a coluna "Emissor" e um subtotal por emissor.
 **Cenários de canal OTA** *[E]*: franquia via OTA, com R$ 1.000 de diárias. Corretor 4% = R$ 40,00, royalty 2% = R$ 20,00 (a variação de 3% depende da D12), fundo 2% = R$ 20,00 e proprietário R$ 920,00. A taxa da OTA é cobrada pela própria OTA, fora do split.
 **Taxa de serviço do hóspede maior que 0%** *[E]*: o simulador mostra a **base de cálculo**. Exemplo: "Taxa de serviço 5% sobre as diárias (R$ 1.000,00) = R$ 50,00; a limpeza não entra na base." O hóspede paga R$ 1.050,00 mais a limpeza, e os R$ 50,00 vão ao recebedor configurado.
 **Critérios de aceite**
@@ -82,7 +82,12 @@ O upload dos documentos usa o mesmo componente do comprovante. **Só um recebedo
 5. A exportação respeita o escopo e fica no log.
 
 ## 4. Extrato do fundo regional: UC-A21
-**Origem dos valores:** as entradas vêm dos **repasses feitos pelo franqueado** (o fundo não recebe da casalivre). Há uma **prestação de contas trimestral**, com a tela "Prestação de contas · T3/2026" (entradas, saídas, saldo) [E].
+**Origem dos valores:** as entradas vêm dos **repasses feitos pelo franqueado** (o fundo não recebe da casalivre). *(Negócios; S8+)*
+- **Extrato em tempo real por franqueado da região:** cada repasse do franqueado e cada saída aparece na hora, com o saldo atualizado.
+- **Relatório trimestral (PDF e CSV):** **saldo inicial**; **entradas por franqueado e por reserva**; **despesas de mídia com as notas fiscais anexadas**; **resultado das campanhas** (investimento, cliques, reservas atribuídas ao canal direto, custo por reserva); **saldo final**.
+- **Relatório anual consolidado.**
+- Prazo: **S8 ou depois**.
+- Os relatórios são gerados no servidor, ficam no log e seguem as regras de exportação da seção 3.
 **Quem vê:** o admin_plataforma vê todos, o admin_org vê o do seu nó, e o gestor vê só o resumo.
 **Layout:** saldo atual em destaque ("Saldo: R$ 12.340,00 em 16/10"), filtro de período, e uma tabela de entradas e saídas (data, origem/reserva, descrição, valor, saldo). A exportação segue a regra da seção 3: o admin_org e o gestor exportam o escopo do nó, e o admin_plataforma exporta tudo.
 **Critérios de aceite:** o saldo bate com a soma dos lançamentos do período; o filtro de período atualiza o saldo e anuncia o novo valor; nenhum dado pessoal de hóspede aparece.
@@ -193,7 +198,7 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 
 **Decisões** (Negócios [E]; [decidido, parecer itens 13 a 16]; correção do Produto sobre o fundo):
 - **Faturas separadas por emissor** (parecer item 13): **a casalivre fatura só a parte dela** (comissão/royalty), e **o franqueado ou parceiro fatura a parte dele**. No modelo franquia, a cobrança do franqueado é de **7%: 4% do corretor + 3% do fundo regional**, com **NFS-e do franqueado**, e é **o franqueado que repassa os 3% ao fundo**. **A casalivre não retém o valor do fundo e não atua como mandatária**: não há subconta segregada nem cobrança "em nome do franqueado".
-- **Extrato consolidado do proprietário:** **uma tela mensal** reúne as cobranças **agrupadas por emissor** ("casalivre: R$ 30,00 · Franqueado Rede Lagos: R$ 70,00"), cada uma com o seu documento, vencimento, status e pagamento. O gestor do nó recebe uma cópia da cobrança do nó.
+- **Extrato consolidado do proprietário:** **uma tela mensal** reúne as cobranças **agrupadas por emissor** (ex.: "Franqueado Rede Lagos · R$ 70,00 · Ver fatura"). **Por emissor, a tela mostra: nome, valor e o link da fatura**, além de vencimento, status e pagamento *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*. **Nenhuma tela do proprietário mostra royalty**: o royalty aparece só no extrato do franqueado. O gestor do nó recebe uma cópia da cobrança do nó.
 - **NFS-e:** a casalivre emite **só sobre a parte dela** (item 14; o código de serviço é [pendente: Jurídico e Tributário]). Os documentos ficam guardados **6 anos** (item 16, J6).
 - **Vencimento em 10 dias.** Em atraso: **multa de 2% + juros de 1% ao mês, pro rata die, + correção pelo IPCA** (item 15).
 - **Escalonamento do atraso** (por cobrança, com aviso prévio no contrato):
@@ -224,10 +229,10 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 5. Um ajuste depois do fechamento entra como linha de ajuste na fatura seguinte, e a fatura fechada não é alterada.
 6. Cada papel vê e exporta só as faturas do seu escopo, e toda exportação e toda baixa ficam no log.
 7. O D+15 bloqueia só reservas novas e o D+30 desabilita o pagamento por fora. A quitação reverte os dois.
-8. Cada emissor gera só a sua fatura, e o extrato do proprietário mostra as cobranças agrupadas por emissor. A fatura da casalivre não contém a parcela do fundo nem a do franqueado.
+8. O extrato do proprietário lista, por emissor, nome, valor e link da fatura, e nunca uma linha de royalty; o royalty só aparece no extrato do franqueado.
+8a. Cada emissor gera só a sua fatura, e o extrato do proprietário mostra as cobranças agrupadas por emissor. A fatura da casalivre não contém a parcela do fundo nem a do franqueado.
 9. O valor em atraso inclui multa, juros pro rata die e correção pelo IPCA.
 10. Os valores são formatados como "R$ 1.234,56" e lidos por extenso no leitor de tela. A tabela tem caption e cabeçalhos (WCAG 1.3.1).
 
 **Pendências do apêndice**
 - [pendente: Rafael + Jurídico e Tributário] Código de serviço da NFS-e, município do ISS e destaques de CBS e IBS de 2026 (parecer item 14).
-- [pendente: Negócios] Formato e periodicidade da prestação de contas trimestral do fundo (seção 4).

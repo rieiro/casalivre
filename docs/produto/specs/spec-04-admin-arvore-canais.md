@@ -29,6 +29,8 @@ Base: `backlog.md` P2a (critérios 1 a 5), `sprints.md` (S5), `spec-02` (papéis
 **Objetivo:** criar e manter vitrines (marketplace, site regional, site do parceiro) com domínio, tema e imóveis, sem misturar com a árvore.
 **Lista:** nome, domínio, nó dono, status (Rascunho, Publicado, Despublicado), quantidade de imóveis e acréscimo.
 **Criar e editar:** nome, **slug** (`/g/slug`; minúsculas, números e hífen; validado na hora: "Disponível" ou "Já em uso") e **domínio próprio** opcional, com os estados **"Aguardando DNS"** (com as instruções de registro), **"Verificando…"**, **"DNS ok · emitindo SSL"**, **"Ativo (HTTPS)"** e **"Erro de DNS/SSL"** (com o motivo e "Verificar de novo"). Também o **nó dono**. As vitrines `/g/...` e os domínios atuais continuam funcionando.
+**Texto de marca** *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*: nenhum texto de tela usa **"imobiliária"** ou **"corretora"** para a casalivre (nome do canal, slogan, rodapé, textos do tema e da vitrine). O editor avisa ao salvar: "Não use 'imobiliária' nem 'corretora' para a casalivre." Lista em spec-00, termos proibidos.
+**Cadastro de franqueado e parceiro:** o convite/ativação mostra o **campo CRECI com o status de verificação** (spec-05, KYC).
 **Editor de tema:** logo (upload, com texto alternativo obrigatório), tokens de cor (`primary`, `on-primary`, `surface`, `on-surface`, `danger`, `success`, `warning`) e tokens de fonte. A **prévia ao vivo** mostra card, botão, card de preço, erro e sucesso, com a troca entre desktop e mobile. **Ao salvar**, cada par é validado (texto ≥ 4,5:1, componentes ≥ 3:1). **Abaixo do AA, o tema não é salvo**, e um resumo lista os pares reprovados ("on-primary sobre primary: 3,1:1, mínimo 4,5:1"), com links para os campos. **Quem cria:** os admins e o gestor no nó dele, só com a permissão delegada **"gerenciar canais"** *(aprovado)*. Um domínio próprio precisa estar com o **DNS verificado antes de publicar**. **Quem edita o tema:** os admins e o **gestor só se o canal pertence ao nó dele**. Para os outros, o item fica desabilitado com a explicação.
 **Imóveis no canal:**
 - Lista com **seleção em lote** ("Adicionar 12 imóveis", "Remover").
@@ -45,6 +47,23 @@ Base: `backlog.md` P2a (critérios 1 a 5), `sprints.md` (S5), `spec-02` (papéis
 5. A prévia do acréscimo é só de leitura e bate com o total que o hóspede vê naquele canal (spec-01).
 6. Um gestor de outro nó não edita o tema e vê a explicação.
 7. As vitrines e os domínios atuais continuam iguais depois da migração (regressão).
+
+## 2b. Regras municipais *(Negócios; S8+)*
+Entidade **`regra_municipal`**, mantida pelo admin_plataforma (o admin_org vê as cidades do seu nó). Campos:
+- **município** (código IBGE) e UF;
+- **cadastro obrigatório** (sim/não) e **número do cadastro exibido no anúncio**;
+- **taxa de turismo**: **valor por hóspede OU por noite**, **vigência**, **quem recolhe**, e **se entra no total** da reserva;
+- **texto do aviso** (mostrado ao anfitrião e, quando aplicável, no anúncio);
+- **status**: confirmada / não confirmada;
+- **ativa** (sim/não).
+Campos extras são aceitos desde que compatíveis (por exemplo, norma de referência e data da última conferência). Cada alteração vai para o log (classe administração). Uma regra inativa não tem efeito nas telas.
+**Seeds (dados do Negócios):**
+| Município | Cadastro | Taxa de turismo | Status | Ativa |
+|---|---|---|---|---|
+| Cabo Frio | voluntário (não obrigatório) | não há | confirmada | sim |
+| Armação dos Búzios | — | **R$ 14,60 por hóspede**, de **20/12 ao Carnaval + 5 dias** | **não confirmada** | **não** |
+| Arraial do Cabo | não há | não há | confirmada | sim |
+**Porta futura:** **taxa no checkout** (cobrar a taxa de turismo como linha própria quando "entra no total" = sim), desligada agora.
 
 ## 3. Log de auditoria
 **Objetivo:** rastrear quem fez o quê.
