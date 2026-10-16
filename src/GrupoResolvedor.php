@@ -38,11 +38,31 @@ final class GrupoResolvedor
         return ['origem' => self::PLATAFORMA, 'grupo' => null, 'tema' => Theme::current()];
     }
 
+    /**
+     * Cache por requisição de doDominio: chave = Host JÁ normalizado por GrupoValidacao::host (nunca o Host bruto), valor =
+     * grupo ou null (o "não achou" também fica guardado). Assim imovelNoHost e o resolver não repetem a mesma consulta
+     * na página do imóvel vista pelo domínio de um grupo. Vive só no processo (static); testes limpam com limparCache().
+     * @var array<string, ?array>
+     */
+    private static array $cacheDominio = [];
+
     /** Grupo do domínio verificado do Host (normalizado; nunca o da plataforma); senão null. */
     public static function doDominio(mixed $host): ?array
     {
         $h = GrupoValidacao::host($host);
-        return $h !== null && !GrupoValidacao::isPlatform($h) ? GroupRepository::findByVerifiedDomain($h) : null;
+        if ($h === null || GrupoValidacao::isPlatform($h)) {
+            return null;
+        }
+        if (!array_key_exists($h, self::$cacheDominio)) {
+            self::$cacheDominio[$h] = GroupRepository::findByVerifiedDomain($h);
+        }
+        return self::$cacheDominio[$h];
+    }
+
+    /** Esvazia o cache de doDominio (testes, entre casos que mudam grupo/domínio no mesmo processo). */
+    public static function limparCache(): void
+    {
+        self::$cacheDominio = [];
     }
 
     /**
