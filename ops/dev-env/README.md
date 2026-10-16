@@ -106,3 +106,55 @@ pacote no lock), apontado em `repo=`.
 - Usuário único: todos os serviços rodam com o seu uid (não há usuários
   `postgres`, `nginx` etc.).
 - DNS e CA: `resolv.conf` vem do host; CAs vêm do pacote do Void.
+
+## Serviços e banco (P0-2)
+
+```sh
+ops/dev-env/up-bwrap.sh -d     # instala $CL_HOME/sv (services.sh) e sobe
+ops/dev-env/db-setup.sh        # createdb, schema.pgsql.sql, migrate, CEPs e seed
+ops/dev-env/db-setup.sh --no-seed
+```
+
+- `sv/` (versionado): corpo dos `run`; o `services.sh` copia para
+  `$CL_HOME/sv/` com um cabeçalho que carrega `$CL_HOME/etc/dev-env.env`
+  (0600). Os serviços não herdam o env do host.
+- **postgresql**: `initdb -U postgres` no primeiro start, só socket Unix
+  (`listen_addresses=''`; `port=5432` só nomeia o socket `.s.PGSQL.5432`).
+  Socket em `$CL_RUN` (0700), modo 0770 com o grupo do bot; `timezone=UTC`.
+  `sv stop` usa `control/t` = `pg_ctl stop -m fast -w`; o `finish` repete se
+  sobrar processo. Duas subidas seguidas sem "not properly shut down".
+- Papéis (desenho do Bot BD, `pg-roles.sql`, idempotente, rodado como
+  `postgres` pelo `db-setup.sh`): NOLOGIN `casalivre_app`,
+  `casalivre_access_writer`, `casalivre_ops_judicial`, `casalivre_contract`,
+  `casalivre_retention`, `casalivre_fiscal_owner`; `casalivre_dev` LOGIN
+  CREATEDB NOSUPERUSER NOCREATEROLE, membro de todos `WITH INHERIT FALSE, SET
+  TRUE`; timezone UTC. Extensões de superusuário vão no `template1`
+  (`CL_PG_EXTENSIONS`, hoje vazia). `casalivre` é `OWNER casalivre_dev`. App,
+  testes, schema, migrate e seed conectam como `casalivre_dev`
+  (`PGUSER`, `DB_DSN ...;user=casalivre_dev`); o db-setup confere
+  `rolsuper = false`. CREATEDB só no dev/teste, nunca na produção.
+- `pg_hba`: `postgres` peer `map=admin`, `casalivre_dev` peer `map=casalivre`,
+  o resto `reject`. Sem root não há usuário do SO `postgres`: o `pg_ident`
+  liga o uid do bot a `postgres` (admin) e o do bot/FPM (mesmo uid aqui) a
+  `casalivre_dev`.
+- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
+  `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER` e `VALKEY_PASSWORD_FILE` via `etc/php-fpm-env.conf` (0600).
+- **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
+- **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
+  fora do `valkey.conf`), ACL de `programador-notas/p0-4-valkey-acl.md`:
+  `default` off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings,
+  hash, listas, zset, set, multi, ping/hello/auth/select 0), sem streams e sem
+  Lua; `cl_admin` separado. Senhas geradas uma vez em `etc/valkey-app.secret`
+  e `etc/valkey-admin.secret`, modo 0440 (produção `root:casalivre`; aqui, sem
+  root, o próprio uid), nunca em env: o app (`VALKEY_USER=cl_app`) lê
+  `VALKEY_PASSWORD_FILE`. `valkey-acl-check.sh` confere que `cl_app` faz
+  LPUSH/RPOP em `cl:*` e não roda `keys *`, `config get *` nem `get x`.
+- Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
+  sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
+  `php.ini` não muda.
+- Uploads, iguais à produção (`prompts/deploy.md`): `php.ini` com
+  `post_max_size = 20M`, `upload_max_filesize = 16M`, `max_file_uploads = 20`
+  (provision); nginx `client_max_body_size 1m` no `server` e `20m` só em
+  `^/(api/casas|imoveis)/<16 hex>/fotos$`. `exif` vem no pacote `php8.4` (não há
+  `php8.4-exif` no repo musl); o provision liga e confere. `nodejs` travado no
+  `versions.lock`. O provision roda o `check-test-deps.sh` (do #111) no rootfs.

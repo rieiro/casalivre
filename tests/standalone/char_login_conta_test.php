@@ -178,8 +178,10 @@ t_eq(302, $r['status'], 'web: sucesso 302');
 t_eq('/painel', c_location($r), 'web: sucesso redireciona para /painel');
 $logs = c_logs($act, $m);
 t_eq([ActivityLog::LOGIN_OK], array_column($logs, 'code'), 'web: sucesso grava LOGIN_OK');
-// SNAPSHOT: params.email sai null no activity_log (o e-mail não é gravado em claro); o canal vem em params.canal.
-t_eq(['email' => null, 'canal' => 'web'], $logs[0]['params'], 'web: LOGIN_OK params = {email:null, canal:web}');
+// O e-mail nunca é gravado em claro: sai como HMAC com LOG_SALT (null sem LOG_SALT). O esperado depende do
+// ambiente (a CI define LOG_SALT); calcula no mesmo ambiente do servidor. O canal vem em params.canal.
+t_eq(['email' => LogPrivacy::email($u['email']), 'canal' => 'web'], $logs[0]['params'], 'web: LOGIN_OK params = {email:HMAC (null sem LOG_SALT), canal:web}');
+t_ok(!in_array(strtolower($u['email']), array_map('strtolower', array_map('strval', $logs[0]['params'])), true), 'web: LOGIN_OK sem e-mail em claro');
 $jar2 = tempnam(sys_get_temp_dir(), 'jar');
 $csrf2 = c_csrf($base, $jar2);
 $m = c_mark($act);

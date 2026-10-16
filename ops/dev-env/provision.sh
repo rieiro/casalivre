@@ -118,6 +118,8 @@ ini=$CL_ROOTFS/etc/php8.4/php.ini
 # curl/gd/exif: usados pela app e pela suíte standalone (que precisa rodar aqui dentro).
 sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=curl\)/\1/' \
 	-e 's/^;\(extension=gd\)/\1/' -e 's/^;\(extension=exif\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pdo_sqlite\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
+	-e 's/^upload_max_filesize = .*/upload_max_filesize = 16M/' \
+	-e 's/^post_max_size = .*/post_max_size = 20M/' -e 's/^max_file_uploads = .*/max_file_uploads = 20/' \
 	-e 's/^;\(zend_extension=opcache\)/\1/' -e 's/^;\(opcache.enable=\).*/\11/' "$ini"
 grep -q '^extension=pdo_pgsql' "$ini" || echo 'extension=pdo_pgsql' >>"$ini"
 mkdir -p "$CL_ROOTFS/etc/php8.4/conf.d"
@@ -134,6 +136,15 @@ bwrap_base_args ro-bind
 bwrap "${BW_BASE[@]}" --tmpfs /tmp \
 	-- /usr/bin/php8.4 -r 'exit(file_get_contents("https://repo-default.voidlinux.org/") === false ? 1 : 0);' ||
 	die "https de dentro do rootfs falhou (CA?)"
+
+# P0-3 (critério 10): dependências da suíte, dentro do rootfs. O script vem do #111.
+if [ -f "$CL_DEVENV_DIR/check-test-deps.sh" ]; then
+	bwrap --ro-bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp --ro-bind "$CL_REPO" "$CL_REPO" \
+		--unshare-all --setenv PATH /usr/bin:/usr/sbin --setenv CL_PHP php8.4 \
+		-- /bin/bash "$CL_DEVENV_DIR/check-test-deps.sh" || die "dependências da suíte ausentes"
+else
+	log "aviso: check-test-deps.sh ausente (chega com o #111)"
+fi
 
 date -u +%FT%TZ >"$CL_HOME/.provisioned"
 log "provision ok em $CL_HOME"

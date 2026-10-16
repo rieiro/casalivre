@@ -16,6 +16,14 @@ http {
 		listen 127.0.0.1:${CL_PORT_HTTP};
 		root ${CL_REPO}/public;
 		index index.php;
+		# Limites = produção (prompts/deploy.md, PR #70): 1m em tudo, 20m só no upload de fotos.
+		client_max_body_size 1m;
+		location ~ "^/(api/casas|imoveis)/[a-f0-9]{16}/fotos$" {
+			client_max_body_size 20m;
+			include /etc/nginx/fastcgi_params;
+			fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+			fastcgi_pass unix:${CL_HOME}/run/php-fpm.sock;
+		}
 		location / { try_files $uri /index.php$is_args$args; }
 		location ~ \.php$ {
 			include /etc/nginx/fastcgi_params;

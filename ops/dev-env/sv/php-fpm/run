@@ -1,0 +1,2 @@
+# clear_env = yes no pool; as variáveis do app vão por env[] em etc/php-fpm-env.conf.
+exec php-fpm8.4 -F -y "$CL_HOME/etc/php-fpm.conf"
