@@ -20,7 +20,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **PHP 8.4** (única versão testada) com `pdo_sqlite` (ou `pdo_pgsql`), `mbstring`, `openssl` (obrigatória para SMTP com STARTTLS/TLS; sem ela, o envio falha com "Falha no TLS"), `curl`, `gd`, `xml`; `mongodb` se `LOG_DRIVER=mongodb`. Sem `php-curl`, os feeds iCal ficam NOK.
 - [ ] **OPcache no php-fpm de produção**: `opcache.enable=1` e `opcache.validate_timestamps=0`, com reload do php-fpm a cada deploy (sem o reload, o código antigo continua em memória).
 - [ ] **`zend.exception_ignore_args = On`** no `php.ini` ou pool do php-fpm (o app também força via `ini_set` em `public/index.php`).
-- [ ] **Saída HTTP 80/443 e DNS** liberados para os feeds iCal. O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
+- [ ] **Saída HTTPS (443) e DNS** liberados para os feeds iCal (só https desde o #91; a porta 80 não é necessária). O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
 - [ ] **Host fixo**: nginx com `server_name` explícito e `default_server` devolvendo 444 (bloqueia Host forjado nos links de e-mail).
 
 ## Limites de requisição (PR #34)
@@ -59,7 +59,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] `storage/logs/mail-dev.log` nunca pode existir em produção (é gerado só pelo mail-worker em modo dev, usado pelos scripts de teste).
 
 ### Feeds iCal (Airbnb, Booking, Google)
-- [ ] Saída HTTP 80/443 e DNS liberados (ver Servidor e PHP); export só pelo `ical_hash` secreto.
+- [ ] Saída HTTPS (443) e DNS liberados (ver Servidor e PHP); export só pelo `ical_hash` secreto.
 
 ## Transferência de dados e cache (nginx)
 Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
@@ -187,7 +187,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] Banco em SCHEMA 17 (15: `cal.url_required` e `cal.feed_missing`; 16: chaves `photo.*`/`review.*`; 17: `cal.feed_removed` e `cal.url_https`). As três versões só mudam seeds de tradução: recriar o banco com `setup.sh` + seeds, sem migração.
 - [ ] (#86) API do iCal aceita só `external_ical_url` e `feed_title`; download que falha dá 502; calendário inválido dá 422 ou 409. (#90) Upload pela API sem nenhuma foto salva dá 422.
 - [ ] (#86, Segurança) Proxy (nginx/CDN): **não substituir as respostas 5xx da aplicação em `/api/`** (sem `proxy_intercept_errors on` nem `error_page 502` nesse location). O `POST /api/imoveis/<h>/ical/importar` devolve 502 com JSON (`error`, `status: NOK`, `feeds`) quando o download do feed falha.
-- [ ] (#89/#91) Feeds novos só `https://`. Os feeds `http://` já cadastrados **param de sincronizar** (status NOK) até o dono recadastrar o feed em https. Avisar os donos antes do deploy.
+- [ ] (#89/#91) Feeds só `https://`, sem exceção. Nesta fase o banco é recriado do zero (decisão do usuário): não há feeds `http://` antigos nem migração. Feed `http://` que existir é recusado no cadastro e não sincroniza (NOK).
 - [ ] (#85) O limite de reenvio de ativação (3 por hora por conta) usa o e-mail como chave; isso funciona porque o e-mail de uma conta não pode ser trocado (não existe troca de e-mail).
 - [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. Se algum worker CLI virar processo de longa duração (laço), chamar `GrupoResolvedor::limparCache()` a cada iteração. Hoje o mail-worker processa um lote e sai (no máximo um lote com link antigo; aceito pela Segurança).
 - [ ] (#94) `scripts/seed-grupo-teste.php` é **só para dev**: recusa rodar se `APP_ENV` não for `dev`/`local` e nunca entra em scripts de setup ou deploy de produção.

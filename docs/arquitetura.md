@@ -598,8 +598,7 @@ flowchart TD
   `GrupoValidacao::host` (minúsculas, sem porta, sem ponto final; IP e IDN unicode → nada).
 - Host desconhecido → plataforma, sem redirecionar.
 - **Cache por requisição** (#93): `doDominio` guarda o resultado (inclusive "não achou") num cache estático do processo,
-  com a chave já normalizada por `GrupoValidacao::host` (nunca o `Host` bruto). Numa requisição web o processo morre no
-  fim, então o cache nunca fica velho. Um worker CLI que rodasse em laço precisaria chamar `limparCache()` a cada volta.
+  com a chave já normalizada por `GrupoValidacao::host` (nunca o `Host` bruto). Numa requisição web (php-fpm) o PHP zera as variáveis `static` ao fim de cada requisição, então o cache nunca passa de uma requisição para outra. Um worker CLI que rodasse em laço precisaria chamar `limparCache()` a cada volta.
 - "Plataforma" = host do `APP_URL` sem `www.` e, se definido, `PLATFORM_ROOT_DOMAIN`, incluindo subdomínios.
 - **Isolamento**: no domínio verificado do grupo X, `/g/<Y>/` responde 404 (`grupoDoSlugNoHost`). Senão o domínio de
   um grupo poderia exibir outro grupo com o endereço dele.
