@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once __DIR__ . '/InteiroBruto.php';
+require_once __DIR__ . '/TextoBruto.php';
 
 /**
  * Gravação do calendário (web POST /imoveis/{hash}/calendario e API POST /api/imoveis/{hash}/calendario).
@@ -12,17 +14,25 @@ require_once __DIR__ . '/Resultado.php';
  */
 final class CalendarSave
 {
-    /** Campos de texto (só string) e numéricos (string, int ou float); outro tipo (array, bool...) -> 422. */
+    /**
+     * Campos de texto (TextoBruto: só string), price (string, int ou float) e min_nights (inteiro: InteiroBruto, ou
+     * vazio); outro tipo ou formato (array, bool, 2.5, "2abc"...) -> 422 err.field_type no campo.
+     */
     private const TEXTO = ['inicio', 'fim', 'acao', 'day', 'cal_view'];
-    private const NUMERO = ['price', 'min_nights'];
 
     public static function run(array $property, array $input): Resultado
     {
         // Valor bruto conferido antes de qualquer (string)/(int): array em inicio/fim/acao/price etc. vira 422 com o
         // erro no campo (web e API iguais), sem "Array to string conversion" e sem gravar nada.
-        foreach (array_merge(self::TEXTO, self::NUMERO) as $campo) {
-            $v = $input[$campo] ?? null;
-            $ok = $v === null || is_string($v) || (in_array($campo, self::NUMERO, true) && (is_int($v) || is_float($v)));
+        $campos = [];
+        foreach (self::TEXTO as $campo) {
+            $campos[$campo] = TextoBruto::ok($input[$campo] ?? null);
+        }
+        $price = $input['price'] ?? null;
+        $campos['price'] = TextoBruto::ok($price) || is_int($price) || is_float($price);
+        $min = $input['min_nights'] ?? null;
+        $campos['min_nights'] = $min === null || $min === '' || InteiroBruto::parse($min) !== null;
+        foreach ($campos as $campo => $ok) {
             if (!$ok) {
                 return new Resultado('invalido', t('err.field_type'), ['erros' => [$campo => t('err.field_type')]]);
             }

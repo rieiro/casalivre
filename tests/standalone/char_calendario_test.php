@@ -298,4 +298,20 @@ t_ok(!str_contains($log, 'Array to string conversion') && !preg_match('/PHP (War
 t_eq([], c_codes($act, $m), 'nada gravado no activity_log');
 t_ok(!isset($blocked($hid)[$day(50)]), 'DB: noite não bloqueada');
 
+echo "opcionais pós-#91: min_nights inteiro (InteiroBruto), TextoBruto, https único\n";
+$m = c_mark($act);
+foreach ([2.5, '2.5', '2abc', ' 2', '-1', true] as $v) {
+    $r = c_api('POST', $base, '/api' . $cal, ['acao' => 'salvar', 'inicio' => $day(51), 'fim' => $day(51), 'min_nights' => $v], $csrf, $jar);
+    t_eq([422, ['min_nights' => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], 'API: min_nights ' . json_encode($v) . ' -> 422');
+}
+t_eq([], c_codes($act, $m), 'min_nights inválido: nada gravado');
+foreach ([3, '3'] as $v) {
+    $r = c_api('POST', $base, '/api' . $cal, ['acao' => 'salvar', 'inicio' => $day(52), 'fim' => $day(52), 'min_nights' => $v], $csrf, $jar);
+    t_eq(200, $r['status'], 'API: min_nights ' . json_encode($v) . ' (inteiro) aceito');
+}
+$ical = (string) file_get_contents(CL_ROOT . '/src/Acoes/ICalImport.php');
+t_ok(str_contains($ical, 'TextoBruto::ok(') && str_contains($ical, 'CalendarSync::isHttpsUrl(') && !str_contains($ical, 'function https('), 'ICalImport usa TextoBruto e a regra https única do CalendarSync');
+$sync = (string) file_get_contents(CL_ROOT . '/src/CalendarSync.php');
+t_ok(!str_contains($sync, 'só http/https') && str_contains($sync, 'self::isHttpsUrl($url)'), 'CalendarSync: fetch usa isHttpsUrl e o comentário diz só https');
+
 t_done();
