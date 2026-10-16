@@ -252,7 +252,7 @@ O **aluguel não gera NFS-e** (locação de bem imóvel não é serviço: Súmul
 | Direto | comissão casalivre | casalivre | proprietário | valor da comissão | 10.05 |
 | Parceria | comissão do parceiro | parceiro (CRECI ativo) | proprietário | parcela do parceiro | 10.05 |
 | Parceria | comissão casalivre | casalivre | configurável por modelo; padrão: proprietário (parceiro, se o contrato de parceria disser que ele paga a casalivre) | parcela da casalivre | 10.05 |
-| Franquia | corretor 4% + fundo 3% = 7% | franqueado | proprietário | 7% | 10.05 |
+| Franquia | corretor 4% + fundo 3% = 10% | franqueado | proprietário | 10% | 10.05 |
 | Franquia | royalty 3% | casalivre | **franqueado** | 3% (base do contrato de franquia) | **17.08** (franquia) |
 | Franquia | repasse do fundo 3% | — (sem NFS-e; repasse com extrato) | fundo regional | — | — |
 | Manual | comissão do canal manual, se houver [pendente: Rafael] | casalivre (e franqueado, se a franquia cobrar no manual) | proprietário | valor da comissão | 10.05 |
@@ -266,7 +266,7 @@ Sem comissão no canal manual, não há nota. Mensalidade de software, se for ad
 - Contrato de franquia e COF (Lei 13.966/2019 art. 2º): royalty, base, vencimento e emissão da NFS-e pela casalivre [CONFERIR o texto do art. 2º].
 
 ### A.4 Fundo regional
-- O franqueado fatura os **3% do fundo dentro dos 7%** da NFS-e dele (o fundo integra o preço do serviço do franqueado) e **repassa ao fundo** por obrigação do contrato de franquia.
+- O franqueado fatura os **3% do fundo dentro dos 10%** da NFS-e dele (o fundo integra o preço do serviço do franqueado) e **repassa ao fundo** por obrigação do contrato de franquia.
 - O repasse vai para uma **conta bancária segregada do fundo**, e o **extrato do repasse** alimenta o extrato do fundo regional (UC-A21; prestação de contas trimestral, formato [pendente: Negócios]).
 - A casalivre **não retém** o fundo, não atua como mandatária e não cobra o fundo do proprietário (rejeitado; parecer item 51).
 - O tratamento contábil do repasse no franqueado é dele [CONFERIR com o contador do franqueado].

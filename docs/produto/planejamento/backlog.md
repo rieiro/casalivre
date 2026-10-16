@@ -175,6 +175,7 @@ Pré-requisitos já aprovados, fora do ranking: Sprint 4 (busca SQL paginada + �
   2. A política escolhida vira o snapshot da reserva (P2).
   3. O total da prévia por canal é igual ao total da busca e do checkout naquele canal.
   4. As regras estruturadas são as mesmas da lista fixa de motivos de recusa (P2, 22).
+  5. **Inventário de móveis** (Lei 8.245/1991 art. 48; vira o Anexo I do contrato de locação por temporada): lista de móveis e utensílios por cômodo no cadastro do anúncio (S7). Sem inventário, "Publicar" fica desabilitado. Bloqueia o piloto (ver J-PIL).
 - **Prioridade:** Must. Revisões: UI, Segurança (contatos bloqueados, upload, PDF do condomínio), Arquitetura (libvips) e Banco de Dados.
 
 ## P3 — Avaliação vinculada à estadia
@@ -212,6 +213,7 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   1. Responde só com dados públicos do anúncio; sem dado, diz "não sei".
   2. Não envia dado pessoal ao provedor.
   3. Limite de custo por sessão.
+- **Spec pendente (antes de implementar):** spec do assistente de IA com fornecedor, país de processamento dos dados, prazo de guarda das conversas, contrato sem uso das conversas para treinamento, e regra de não prometer nada além do que está no anúncio. O fornecedor está na pauta do Rafael.
 
 ## Itens novos do Jurídico (recomendacoes-sem-orientacao-externa.md, 16/10)
 - **J-TXT (Must, risco Alto):** escrever o texto dos 3 termos D14, do contrato plataforma × anfitrião, da política de privacidade e da de cancelamento, seguindo o checklist da seção 5 (A a E). Os textos são escritos por Produto e Jurídico durante a S5 e a S6, revisados pelo Negócios e publicados com versão e data na S6, junto com o motor de aceite dos termos. Critério de aceite: todos os itens da seção 5 estão marcados, e cada texto está publicado com versão e data.
@@ -221,6 +223,7 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - canal de denúncia funcionando, com remoção rápida do anúncio;
   - aviso de pagamento fora da plataforma no checkout (S7);
   - troca de chave Pix pelo usuário desligada até a D3.
+  - inventário de móveis preenchido em 100% dos anúncios do piloto (Lei 8.245 art. 48, Anexo I do contrato; entra na S7 com o cadastro de anúncio, P10-5).
   O piloto não abre se algum item falhar.
 - **J-IBS (Should em 2026, Must antes de 01/2027):**
   - o ledger registra por reserva o anfitrião, o CPF/CNPJ, o documento, o valor bruto, a comissão e as datas;
@@ -228,3 +231,11 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - cláusula de responsabilidade fiscal e de regresso no contrato do anfitrião;
   - campo no anúncio para cadastro e taxa municipais.
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
+
+## Pauta do Rafael (decisões pendentes, 16/10)
+- Dados da empresa para os termos: razão social, CNPJ, endereço e DPO (encarregado).
+- Teto da caução.
+- Valor da limpeza extra.
+- Fornecedor de IA (ver P8).
+- Inscrição da casalivre no CRECI-RJ com corretor responsável (risco médio no canal direto enquanto não decidir).
+- Comissão do canal manual.
