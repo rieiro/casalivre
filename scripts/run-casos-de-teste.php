@@ -111,7 +111,8 @@ function limpar_rodada_anterior(): void
         $pdo->commit();
     } catch (PDOException $e) {
         $pdo->rollBack();
-        $fk = in_array((string) $e->getCode(), ['23503', '23000'], true) ? ' (violação de FK)' : '';
+        // FK: PG 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503; SQLite 23000 (código estendido 19/787).
+        $fk = in_array((string) $e->getCode(), ['23001', '23503', '23000'], true) ? ' (violação de FK)' : '';
         fwrite(STDERR, "Limpeza da massa falhou$fk: " . $e->getMessage() . "\n");
         exit(1);
     }

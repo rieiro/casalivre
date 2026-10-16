@@ -20,6 +20,35 @@ const DEFAULT_MAP = ['CURRENT_TIMESTAMP' => "datetime('now')", 'now()' => "datet
 const IDX_EXCEPTIONS = []; // nenhuma diferença de índice aceita hoje (índices da busca voltam no PR do ADR 001)
 const SEVEN = ['settings', 'languages', 'translations', 'cities', 'activity_actions', 'login_rate_limit', 'ceps'];
 
+/** Ordena recursivamente as chaves (comparação independente da ordem do catálogo). */
+function ksortDeep(array $a): array
+{
+    ksort($a);
+    foreach ($a as $k => $v) {
+        if (is_array($v) && !array_is_list($v)) {
+            $a[$k] = ksortDeep($v);
+        }
+    }
+    return $a;
+}
+
+/** Lista as diferenças entre dois snapshots (caminho: antes => depois), para a mensagem do teste. */
+function snapDiff(array $x, array $y, string $path = ''): array
+{
+    $out = [];
+    foreach (array_unique([...array_keys($x), ...array_keys($y)]) as $k) {
+        $p = $path . '/' . $k;
+        $a = $x[$k] ?? null;
+        $b = $y[$k] ?? null;
+        if (is_array($a) && is_array($b) && !array_is_list($a)) {
+            $out = [...$out, ...snapDiff($a, $b, $p)];
+        } elseif ($a !== $b) {
+            $out[] = $p . ': ' . json_encode($a) . ' => ' . json_encode($b);
+        }
+    }
+    return $out;
+}
+
 function normDefault(?string $d): ?string
 {
     if ($d === null) {
@@ -142,7 +171,7 @@ try {
     $lite->exec("DELETE FROM users WHERE id = $uid");
     t_ok(false, 'DELETE de dono com imóvel deveria falhar');
 } catch (PDOException $e) {
-    t_eq('23000', (string) $e->getCode(), 'DELETE de dono com imóvel: 23000 (RESTRICT)');
+    t_eq('23000', (string) $e->getCode(), 'DELETE de dono com imóvel: 23000 (RESTRICT; no PG é 23001)');
 }
 $lite->exec("DELETE FROM properties WHERE id = $pid");
 t_eq(0, (int) $lite->query("SELECT COUNT(*) FROM photos WHERE property_id = $pid")->fetchColumn(), 'DELETE do imóvel leva as fotos (CASCADE)');
@@ -186,9 +215,8 @@ try {
         }
         t_eq([], array_keys(array_diff_key($b['col'][$t] ?? [], $cols)), "PG sem colunas extras em $t");
     }
-    ksort($a['fk']);
-    ksort($b['fk']);
-    t_eq($a['fk'], $b['fk'], 'FKs e ON DELETE');
+    $fkDiff = snapDiff(ksortDeep($a['fk']), ksortDeep($b['fk']));
+    t_eq([], $fkDiff, 'FKs e ON DELETE (ordem das colunas ignorada)');
     foreach (array_unique([...array_keys($a['idx']), ...array_keys($b['idx'])]) as $n) {
         if (array_key_exists($n, IDX_EXCEPTIONS)) {
             continue;
@@ -196,6 +224,38 @@ try {
         t_eq($a['idx'][$n] ?? null, $b['idx'][$n] ?? null, "índice $n (colunas/unique/parcial)");
     }
     t_eq('r', $pg->query("SELECT confdeltype FROM pg_constraint WHERE conrelid = 'properties'::regclass AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'properties'::regclass AND attname = 'user_id')]::smallint[]")->fetchColumn(), 'PG: confdeltype = r');
+    // RESTRICT no PG: aceita 23001 (restrict_violation) e 23503 (foreign_key_violation). No PG 17 local
+    // o DELETE simples deu 23503; o Cori relatou 23001. Código que trata FK deve aceitar os dois.
+    $pgInsert = static function (PDO $pg, string $table, array $values): int {
+        $cols = $pg->prepare("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND is_nullable = 'NO' AND column_default IS NULL AND is_identity = 'NO'");
+        $cols->execute([$table]);
+        foreach ($cols as $c) {
+            if (!array_key_exists($c['column_name'], $values)) {
+                $values[$c['column_name']] = match (true) {
+                    in_array($c['data_type'], ['integer', 'bigint', 'double precision'], true) => 1,
+                    $c['data_type'] === 'date' => '2026-01-01',
+                    str_starts_with($c['data_type'], 'timestamp') => '2026-01-01 00:00:00',
+                    default => 'x' . bin2hex(random_bytes(4)),
+                };
+            }
+        }
+        $names = array_keys($values);
+        $st = $pg->prepare("INSERT INTO $table (" . implode(',', $names) . ') VALUES (' . implode(',', array_fill(0, count($names), '?')) . ') RETURNING id');
+        $st->execute(array_values($values));
+        return (int) $st->fetchColumn();
+    };
+    $pgUid = $pgInsert($pg, 'users', []);
+    $pgPid = $pgInsert($pg, 'properties', ['user_id' => $pgUid]);
+    $pgInsert($pg, 'photos', ['property_id' => $pgPid]);
+    try {
+        $pg->exec("DELETE FROM users WHERE id = $pgUid");
+        t_ok(false, 'PG: DELETE de dono com imóvel deveria falhar');
+    } catch (PDOException $e) {
+        t_ok(in_array((string) $e->getCode(), ['23001', '23503'], true), 'PG: DELETE de dono com imóvel falha com 23001/23503 (obtido ' . $e->getCode() . ')');
+    }
+    $pg->exec("DELETE FROM properties WHERE id = $pgPid");
+    t_eq(0, (int) $pg->query("SELECT COUNT(*) FROM photos WHERE property_id = $pgPid")->fetchColumn(), 'PG: DELETE do imóvel leva as fotos (CASCADE)');
+    $pg->exec("DELETE FROM users WHERE id = $pgUid");
     // zero DDL no PG: migrate.php no banco temporário; só schema_meta pode aparecer.
     $pg = null;
     exec('DB_DRIVER=pgsql DB_DSN=' . escapeshellarg($pgDbDsn) . ' DB_USER=' . escapeshellarg((string) $user) . ' DB_PASSWORD=' . escapeshellarg((string) $pass) . ' ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out2, $code2);
@@ -203,7 +263,7 @@ try {
     $pg = new PDO($pgDbDsn, $user, $pass, $opts);
     $after = pgSnapshot($pg);
     unset($after['col']['schema_meta']);
-    t_eq($b, $after, 'PG: migrate() não muda o schema (fora schema_meta)');
+    t_eq([], snapDiff(ksortDeep($b), ksortDeep($after)), 'PG: migrate() não muda o schema (fora schema_meta)');
 } finally {
     $pg = null;
     $admin->exec("DROP DATABASE IF EXISTS $dbName");
