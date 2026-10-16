@@ -209,7 +209,7 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 - **Porta futura:** débito automático e Pix Automático.
 
 **Fechamento do mês** (admin_plataforma; o admin_org só vê o escopo dele):
-- A prévia **por proprietário × emissor** mostra as **reservas concluídas e valores retidos em cancelamentos** (`fora`) do mês e, para cada parcela, o **emissor da cobrança** (regra do split, seção 2), e o total por emissor. Reservas canceladas antes do check-in **não entram** (P9-3).
+- A prévia **por proprietário × emissor** mostra as **reservas concluídas e valores retidos em cancelamentos** (`fora`) do mês e, para cada parcela, o **emissor da cobrança** (regra do split, seção 2), e o total por emissor. Cancelamento com **reembolso integral não gera linha**; com **reembolso parcial**, a parte que o anfitrião fica entra no **mês em que o cancelamento fica definitivo** (reembolso concluído, sem disputa aberta) (P9-3).
 - "Fechar mês" abre a confirmação "Gerar 14 faturas da casalivre (R$ 1.140,00). As cobranças dos franqueados são geradas no escopo de cada franqueado.". Depois do fechamento, as reservas do mês ficam travadas. Um ajuste posterior só entra como **lançamento de estorno ou de ajuste** na fatura seguinte.
 
 **Fatura:**
