@@ -143,6 +143,15 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
 - [ ] (Segurança #93) Se algum worker CLI passar a rodar em laço, chamar `GrupoResolvedor::limparCache()` a cada iteração.
 - [ ] WAL: tentar de novo ao criar um activity log novo (deploy novo com pedidos simultâneos). Mesmo item da seção de qualidade acima.
 
+## Sprint 4 (não iniciada)
+
+Itens aprovados pelo usuário (15/10), a partir do diagnóstico do Bot Arquitetura e Desempenho na develop a2e0dc8.
+
+1. [ ] **Busca com filtro no SQL e paginação.** Filtrar no SQL por status, cidade e hóspedes; paginar a `/api/busca` (`pagina`/`por_pagina`, `total`); criar um modo leve para o mapa. Hoje `SearchService::search` chama `HouseRepository::all()` (`src/SearchService.php:50`) e filtra em PHP, e a `/api/busca` devolve todos os itens (`src/Api.php:287-312`). Bench local sintético: ~24 ms com 2k imóveis e ~41 ms com 5k. Dono técnico: Bot Arquitetura e Desempenho (ADR `001-busca-sql-paginada`).
+2. [ ] **Índice (status, city).** Fazer depois do item 1. Hoje o EXPLAIN de city+status usa só `idx_properties_status`.
+
+Descartado: medição de concorrência de escrita no SQLite. O usuário decidiu que não é necessária, porque a migração de banco será feita de qualquer forma no futuro.
+
 ## Segurança e LGPD
 
 - [x] ~~(Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.~~ Descartada: sem troca de e-mail (decisão do usuário, #59).
