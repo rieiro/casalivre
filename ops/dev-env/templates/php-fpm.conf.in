@@ -1,0 +1,11 @@
+; Gerado por up-bwrap.sh a partir de templates/php-fpm.conf.in — não editar.
+[global]
+pid = ${CL_HOME}/run/php-fpm.pid
+error_log = ${CL_HOME}/log/php-fpm.log
+daemonize = no
+
+[www]
+listen = ${CL_HOME}/run/php-fpm.sock
+pm = ondemand
+pm.max_children = 4
+clear_env = yes

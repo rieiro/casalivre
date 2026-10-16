@@ -91,7 +91,7 @@ t_ok(count(array_filter($srcFiles, static fn (string $f): bool => str_contains($
 $appFiles = array_merge(
     glob(CL_ROOT . '/views/*.php') ?: [], $srcFiles, glob(CL_ROOT . '/public/assets/*.js') ?: [],
     glob(CL_ROOT . '/public/assets/pages/*.js') ?: [], [CL_ROOT . '/public/index.php', CL_ROOT . '/public/assets/app.css', CL_ROOT . '/public/assets/map/style-light.json'],
-    glob(CL_ROOT . '/public/assets/vendor/*/*.{js,css}', GLOB_BRACE) ?: []
+    glob(CL_ROOT . '/public/assets/vendor/*/*.js') ?: [], glob(CL_ROOT . '/public/assets/vendor/*/*.css') ?: []
 );
 $google = $osmTiles = [];
 foreach ($appFiles as $f) {

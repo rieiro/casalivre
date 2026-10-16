@@ -1,0 +1,8 @@
+# Gerado por up-bwrap.sh a partir de templates/valkey.conf.in — não editar.
+# Só socket Unix (sem TCP); o diretório é 0700.
+port 0
+unixsocket ${CL_HOME}/run/valkey.sock
+unixsocketperm 700
+daemonize no
+dir ${CL_HOME}/data
+logfile ${CL_HOME}/log/valkey.log

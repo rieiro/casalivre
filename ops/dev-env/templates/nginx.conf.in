@@ -1,0 +1,26 @@
+# Gerado por up-bwrap.sh a partir de templates/nginx.conf.in — não editar.
+daemon off;
+worker_processes 1;
+pid ${CL_HOME}/run/nginx.pid;
+error_log ${CL_HOME}/log/nginx-error.log;
+events { worker_connections 256; }
+http {
+	include /etc/nginx/mime.types;
+	access_log ${CL_HOME}/log/nginx-access.log;
+	client_body_temp_path ${CL_HOME}/run/nginx-body;
+	fastcgi_temp_path ${CL_HOME}/run/nginx-fastcgi;
+	proxy_temp_path ${CL_HOME}/run/nginx-proxy;
+	uwsgi_temp_path ${CL_HOME}/run/nginx-uwsgi;
+	scgi_temp_path ${CL_HOME}/run/nginx-scgi;
+	server {
+		listen 127.0.0.1:${CL_PORT_HTTP};
+		root ${CL_REPO}/public;
+		index index.php;
+		location / { try_files $uri /index.php$is_args$args; }
+		location ~ \.php$ {
+			include /etc/nginx/fastcgi_params;
+			fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+			fastcgi_pass unix:${CL_HOME}/run/php-fpm.sock;
+		}
+	}
+}
