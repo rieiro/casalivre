@@ -7,12 +7,13 @@
 **Desktop**
 - Lista (60%, cards em 2 colunas) e mapa (40%) fixo ao rolar.
 - Card e pin ficam destacados juntos.
-- "Buscar ao mover o mapa" vem ligado, com espera de ~500 ms. Desligado, aparece o botão "Buscar nesta área".
+- "Buscar ao mover o mapa" vem ligado, com espera de ~500 ms. Desligado, aparece o botão "Buscar nesta área". A map search replaces the place: the location field shows "Map area" with × to return to the last place (`spec-busca-localidade-resolvida.md`, UX item 6).
 
 **Mobile**
 - Lista em coluna única.
 - Botão flutuante "Mapa"/"Lista" acima da barra de abas.
 - Mapa em tela cheia, com carrossel de cards sincronizado com os pins.
+- "Buscar ao mover o mapa" is OFF by default on mobile; the "Buscar nesta área" button appears after a pan or zoom.
 
 **Componentes**
 - Card: fotos, favoritar, título, nota e "R$ X total · N noites · taxas inclusas".

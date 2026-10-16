@@ -34,3 +34,31 @@ Should, RICE high on effort/benefit. Fits inside ADR 001 (SQL search), which alr
 - **Demand signal.** Log unresolved text and places with zero results as aggregated counts (folded text, place, date). No user id and no IP. This feeds property and franchisee recruitment and the regional fund.
 - **A regional channel's site** searches its own region by default.
 - Extra acceptance: typing "Geribá" suggests the beach; "Search this area" returns only listings inside the visible map; the demand report lists the top unresolved terms with counts.
+
+## UX and accessibility (UI review, accepted by Produto 2026-10-16)
+Source: UI review of this spec. Applies to home and search (spec-01 §1–2) and to the map (`spec-telas-busca-mapa-upload-fotos.md` §1).
+
+1. **Combobox (W3C APG, editable combobox with list autocomplete).** The input has `role="combobox"`, `aria-expanded`, `aria-controls` and `aria-activedescendant`. Down/Up move through the options, Enter selects, Esc closes the list (a second Esc clears the text), and Tab leaves without selecting. A polite live region announces the count ("5 places"). Each option is at least 24×24 px (WCAG 2.5.8).
+2. **Labels that tell places apart.** Each suggestion shows the name, the type and the parent place: "Geribá · Beach · Búzios, RJ", "Centro · Neighborhood · Cabo Frio, RJ", "São Pedro da Aldeia · City · RJ". The matched characters are highlighted. Accents and case are optional when typing; the label always shows the accented name.
+   AC: "sao" and "São" give the same list; two homonyms never get the same label.
+3. **"Did you mean" is a choice, not a results page.** It keeps the typed text, lists up to 8 options with the labels from item 2, and moves focus to the list heading. With one option it is a single confirm ("Search in Rio de Janeiro, RJ?"). It never picks for the user when a city and a neighborhood or beach both match a prefix ("Centro", "Forte"); both are listed.
+4. **No match is never a dead end.** "We couldn't find 'Xyzabc'" offers up to 3 close spellings (when the backend supports typo tolerance), popular places in the channel's region and "Search on the map" (opens the map on the channel's default area). The typed text stays editable.
+   AC: from this state the user reaches a result list in 1 tap.
+5. **Suggestions API error.** The field keeps accepting text, and Enter goes through the server resolution of Solution step 3.
+   AC: with the suggestions API down, Enter still leads to results, "Did you mean" or the no-match state. A raw-text search never runs.
+6. **Map area.**
+   - "Search as I move the map" is ON by default on desktop and OFF on mobile, where the "Search this area" button is used.
+   - When a map area replaces the place, the field shows "Map area" with a clear (×) that returns to the last place.
+   - Above the pin cap of ADR 001 §5, the map says "Zoom in to see listings".
+   AC: after a pan with search on, the URL has `bbox` and no `local_id`; × restores `local_id` and its results.
+7. **URL and history.** The canonical URL holds `local_id` or `bbox` (4 decimals), dates, guests, filters and sort. Picking a place or running "Search this area" uses `pushState`; the cursor and the scroll position use `replaceState` (ADR 001 §5c).
+   AC: Back returns to the previous place or area with its list and scroll; a shared URL gives the same results; an old `localidade=` URL goes through items 3–4 and never to an error page.
+8. **"Lowest total price" sort, a performance guard only.** It is available for a city, a neighborhood, a beach/POI, or a map area no larger than the parameter **`sort_total_max_area`**. **Arquitetura** sets that value from PostgreSQL p95 data (ADR 001 §9–10); this spec does not fix a number.
+   - For a region or a larger map area, the option stays **visible but disabled**, with an inline explanation: "Lowest total price is available for a city or a smaller map area. Zoom in or pick a city." The text includes the "Pick a city" link and a "Zoom in" action (map). The explanation is tied to the option with `aria-describedby`. The option is never hidden without saying why.
+   - **Fallback:** if the user is on "Lowest total price" and the area becomes too large (zoom out, region picked), the sort falls back to Relevance and a polite live region announces "Sorted by relevance: lowest total price needs a city or a smaller map area." The same text appears next to the sort control until the user changes it.
+   AC: in a large area the option is visible and disabled with the explanation; the fallback is announced once and shown inline; no number for the threshold appears in any spec.
+9. **Mobile.** The full-screen "Where?" step (spec-01 §1) shows recent places and "Near me" (once it ships) before any typing. "Did you mean" and no-match render inside that step, not on another page.
+   AC: at 360 px the selected place and Back stay visible and the keyboard does not cover the options.
+10. **Regional channel.** A regional channel's field starts with the region as a removable chip ("Região dos Lagos ×"). Removing it searches the whole marketplace only if the channel allows it.
+
+Sources: W3C APG Combobox Pattern (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/) and its list autocomplete example (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-autocomplete-list/); WCAG 2.2 4.1.3 (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) and 2.5.8 (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html); NN/g, Site Search Suggestions (https://www.nngroup.com/articles/site-search-suggestions/) and "No Results" pages (https://www.nngroup.com/articles/search-no-results-serp/); Baymard, Autocomplete Suggestions (https://baymard.com/blog/autocomplete-design).
