@@ -232,6 +232,9 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - campo no anúncio para cadastro e taxa municipais.
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
+## Itens adiados
+- Hóspede estrangeiro sem CPF: document_type/document_country (passaporte) e hmac por tipo/país, depois do J40 com o Jurídico (decisão do Rafael: deixar para depois). Por enquanto o CPF é obrigatório (guest_fiscal_party_id NOT NULL).
+
 ## Pauta do Rafael (decisões pendentes, 16/10)
 - Dados da empresa para os termos: razão social, CNPJ, endereço e DPO (encarregado).
 - Teto da caução.
