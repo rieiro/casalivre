@@ -33,8 +33,8 @@ chmod 700 "$admin"
 [ ! -f "$etc/valkey-admin.secret" ] || mv -f "$etc/valkey-admin.secret" "$admin/valkey-admin.secret"
 admin_hash=$(gen_secret "$admin/valkey-admin.secret")
 chmod 0400 "$admin/valkey-admin.secret"
-app_cmds='+get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incrby +decr +mget +mset
-+hget +hset +hdel +hmget +hgetall +hincrby
+app_cmds='+get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incrby +decr +mget +mset +rename
++hget +hset +hdel +hmget +hgetall +hincrby +hlen +hexists
 +lpush +rpush +lpop +rpop +blpop +brpop +lmove +blmove +llen +lrange +lrem
 +zadd +zrem +zrange +zrangebyscore +zremrangebyscore +zcard
 +sadd +srem +smembers +sismember

@@ -191,6 +191,19 @@ $denied = static function (callable $f): bool {
 t_ok($denied(fn () => $r->rawCommand('SET', 'x-' . $tag, '1')), 'SET outside cl:* denied');
 t_ok($denied(fn () => $r->rawCommand('GET', 'x')), 'GET outside cl:* denied');
 t_ok($denied(fn () => $r->rawCommand('KEYS', '*')), 'KEYS denied');
+// ADR 001 §11 (demand-log flush): HLEN/HEXISTS and RENAME inside cl:* only.
+$hk = 'cl:acl-' . $tag;
+t_ok(!$denied(fn () => $r->rawCommand('HLEN', $hk)), 'HLEN cl:* allowed');
+t_ok($denied(fn () => $r->rawCommand('HLEN', 'x-' . $tag)), 'HLEN outside cl:* denied');
+t_ok(!$denied(fn () => $r->rawCommand('HEXISTS', $hk, 'f')), 'HEXISTS cl:* allowed');
+t_ok($denied(fn () => $r->rawCommand('HEXISTS', 'x-' . $tag, 'f')), 'HEXISTS outside cl:* denied');
+$r->set($hk . ':a', '1');
+t_ok(!$denied(fn () => $r->rawCommand('RENAME', $hk . ':a', $hk . ':b')), 'RENAME cl:* -> cl:* allowed');
+t_eq('1', $r->get($hk . ':b'), 'RENAME moved the value');
+t_ok($denied(fn () => $r->rawCommand('RENAME', $hk . ':b', 'x-' . $tag)), 'RENAME cl:* -> outside denied');
+t_ok($denied(fn () => $r->rawCommand('RENAME', 'x-' . $tag, $hk . ':c')), 'RENAME outside -> cl:* denied');
+t_eq('1', $r->get($hk . ':b'), 'denied RENAME left the key in place');
+$r->del([$hk . ':a', $hk . ':b']);
 t_ok($denied(fn () => $r->rawCommand('CONFIG', 'GET', '*')), 'CONFIG denied');
 t_ok($denied(fn () => $r->rawCommand('FLUSHALL')), 'FLUSHALL denied');
 t_ok($denied(fn () => $r->rawCommand('XADD', 'cl:s-' . $tag, '*', 'a', '1')), 'XADD (streams) denied');

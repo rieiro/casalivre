@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # P0-2: com o ambiente no ar, confere a ACL do Valkey (Segurança):
-# cl_app faz LPUSH/RPOP em cl:*, e 'keys *', 'config get *' e 'get x' falham;
+# cl_app faz LPUSH/RPOP, HLEN/HEXISTS e RENAME dentro de cl:*, e 'keys *', 'config get *', 'get x',
+# HLEN/HEXISTS fora de cl:* e RENAME de/para fora de cl:* falham (NOPERM);
 # default sem acesso. Sai 1 se algo divergir.
 . "$(dirname "$0")/lib.sh"
 refuse_root
@@ -34,6 +35,13 @@ in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && exec php8.4 -r '
 \$want = [
 	\"lpush cl:smoke\" => [\"ok\", fn () => \$app->lPush(\"cl:smoke\", \"x\")],
 	\"rpop cl:smoke\" => [\"ok\", fn () => \$app->rPop(\"cl:smoke\")],
+	\"hlen cl:x\" => [\"ok\", fn () => \$app->rawCommand(\"HLEN\", \"cl:x\")],
+	\"hlen x\" => [\"falhou\", fn () => \$app->rawCommand(\"HLEN\", \"x\")],
+	\"hexists cl:x f\" => [\"ok\", fn () => \$app->rawCommand(\"HEXISTS\", \"cl:x\", \"f\")],
+	\"hexists x f\" => [\"falhou\", fn () => \$app->rawCommand(\"HEXISTS\", \"x\", \"f\")],
+	\"rename cl:a cl:b\" => [\"ok\", fn () => \$app->set(\"cl:a\", \"1\") && \$app->rawCommand(\"RENAME\", \"cl:a\", \"cl:b\") && \$app->del(\"cl:b\") !== false],
+	\"rename cl:a x\" => [\"falhou\", fn () => \$app->set(\"cl:a\", \"1\") && \$app->rawCommand(\"RENAME\", \"cl:a\", \"x\")],
+	\"rename x cl:a\" => [\"falhou\", fn () => \$app->rawCommand(\"RENAME\", \"x\", \"cl:a\")],
 	\"keys *\" => [\"falhou\", fn () => \$app->rawCommand(\"KEYS\", \"*\")],
 	\"config get *\" => [\"falhou\", fn () => \$app->rawCommand(\"CONFIG\", \"GET\", \"*\")],
 	\"get x\" => [\"falhou\", fn () => \$app->rawCommand(\"GET\", \"x\")],

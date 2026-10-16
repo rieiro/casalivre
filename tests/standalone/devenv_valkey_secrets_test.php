@@ -40,6 +40,13 @@ t_eq('600', $mode("$home/etc/valkey.acl"), 'aclfile 0600');
 $acl = (string) @file_get_contents("$home/etc/valkey.acl");
 t_ok(str_contains($acl, '#' . hash('sha256', 'oldadminsecret')), 'cl_admin ACL uses the admin secret hash');
 t_ok(str_contains($acl, 'user cl_app on') && str_contains($acl, 'resetkeys ~cl:*'), 'cl_app limited to ~cl:*');
+$appLine = (string) (array_values(preg_grep('/^user cl_app /', explode("\n", $acl)) ?: [])[0] ?? '');
+foreach (['+rename', '+hlen', '+hexists', '+hincrby', '-@all'] as $cmd) {
+    t_ok(in_array($cmd, explode(' ', $appLine), true), "cl_app ACL has $cmd (ADR 001 §11)");
+}
+foreach (['+eval', '+evalsha', '+script', '+keys', '+scan', '+xadd', '+@all'] as $cmd) {
+    t_ok(!in_array($cmd, explode(' ', $appLine), true), "cl_app ACL has no $cmd");
+}
 foreach (['dev-env.env', 'php-fpm-env.conf'] as $f) {
     $c = (string) @file_get_contents("$home/etc/$f");
     t_ok(!str_contains($c, 'admin'), "$f does not mention the admin secret");
