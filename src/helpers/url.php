@@ -128,6 +128,13 @@ function ini_bytes(string $value): int
     };
 }
 
+/** Parágrafo do 413 de upload: tamanho enviado e limite (post_max_size), em MB. */
+function oversize_upload_message(int $length, int $max): string
+{
+    return '<p>Este envio tem ' . number_format($length / 1048576, 1, ',', '') . ' MB e o limite do sistema é '
+        . (int) floor($max / 1048576) . ' MB. Escolha menos fotos ou arquivos menores.</p>';
+}
+
 function reject_oversize_upload(): void
 {
     $length = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
@@ -135,8 +142,6 @@ function reject_oversize_upload(): void
     if ($length <= 0 || $max <= 0 || $length <= $max) {
         return;
     }
-    $sent = number_format($length / 1048576, 1, ',', '');
-    $limit = (string) (int) floor($max / 1048576);
     http_response_code(413);
     // Roda antes dos headers globais do index.php: manda aqui os mesmos headers de segurança.
     header('X-Content-Type-Options: nosniff');
@@ -147,7 +152,7 @@ function reject_oversize_upload(): void
     if (!headers_sent() && !preg_grep('/^cache-control:/i', headers_list())) {
         header('Cache-Control: private, no-cache');
     }
-    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem ' . $sent . ' MB e o limite do sistema é ' . $limit . ' MB. Escolha menos fotos ou arquivos menores.</p><p><a href="/">Voltar ao início</a></p></body></html>';
+    echo '<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="' . e(asset_url('/assets/app.css')) . '"><body class="err-page err-pad"><h1>Envio grande demais</h1>' . oversize_upload_message($length, $max) . '<p><a href="/">Voltar ao início</a></p></body></html>';
     exit;
 }
 
