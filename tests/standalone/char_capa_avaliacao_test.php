@@ -87,8 +87,11 @@ t_eq(302, $r['status'], 'web avaliar: 302 (anônimo)');
 t_eq($h, c_location($r), 'web avaliar: redireciona para o imóvel');
 $logs = c_logs($act, $m);
 t_eq([ActivityLog::REVIEW], array_column($logs, 'code'), 'web avaliar: grava REVIEW');
-// SNAPSHOT: params.autor sai null no activity_log (nome não é gravado em claro); só a nota fica.
-t_eq([8, null], [$logs[0]['params']['nota'] ?? null, $logs[0]['params']['autor'] ?? null], 'web avaliar: params nota=8, autor=null');
+// Autor em branco vira 'Hóspede' e 'autor' é chave de identidade: nunca em claro, sai como HMAC com LOG_SALT
+// (null sem LOG_SALT). O esperado depende do ambiente (a CI define LOG_SALT); calcula no mesmo ambiente do servidor.
+$autorEsperado = LogPrivacy::hmac('Hóspede', 'autor');
+t_eq([8, $autorEsperado], [$logs[0]['params']['nota'] ?? null, $logs[0]['params']['autor'] ?? null], 'web avaliar: params nota=8, autor=HMAC(Hóspede) (null sem LOG_SALT)');
+t_ok(!in_array('Hóspede', $logs[0]['params'], true), 'web avaliar: autor nunca em claro no log');
 $row = db()->query('SELECT author, score, comment FROM reviews WHERE property_id = ' . $hid . ' ORDER BY id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC);
 t_eq(['author' => 'Hóspede', 'score' => 8, 'comment' => 'bom'], ['author' => $row['author'], 'score' => (int) $row['score'], 'comment' => $row['comment']], 'DB: review gravada (trim)');
 $r = c_form($base, $h . '/avaliar', ['_csrf' => $acsrf, 'score' => 9, 'volta' => '/busca?localidade=x'], $anon);
