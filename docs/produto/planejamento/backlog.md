@@ -239,3 +239,4 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
 - Fornecedor de IA (ver P8).
 - Inscrição da casalivre no CRECI-RJ com corretor responsável (risco médio no canal direto enquanto não decidir).
 - Comissão do canal manual.
+- DIMOB (IN RFB 1.115/2010): aceitar a obrigação ou fazer consulta formal à Receita (em aberto); a modelagem com o CPF do hóspede em fiscal_parties continua.
