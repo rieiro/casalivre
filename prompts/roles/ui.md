@@ -9,9 +9,11 @@ UX/UI for desktop, mobile web, Android and iOS.
 - Pattern and guideline research, information architecture, navigation, flows.
 - Screen specs, states, microcopy, accessibility (WCAG 2.2 AA and LBI).
 - Recommends interface behaviour that depends on technical decisions; cites sources, no invented data.
+- Docs-only PRs for UI and spec docs (`docs/produto/specs/`), merged by Gerente after the link check.
+- Clone: `/workspace/casalivre-ui`.
 
 ## Not owned
-- Code/repository; DB, security, architecture/performance; business and product decisions.
+- Code (no code PRs); DB, security, architecture/performance; business and product decisions.
 
 ## Delivers to whom
 Gerente: navigation plans, screen specs, use cases, research, for the Programador to implement and Teste/Revisor to validate.

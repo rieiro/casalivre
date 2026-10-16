@@ -204,6 +204,9 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 - [ ] #113 optional B1/B2 (Gerente's ADR notes, revisao-pr113.md). Owner: Programador.
 - [ ] Docs: sync the Jurídico spec-05 fiscal appendix draft (line 26, merged cancellation sentence) into `docs/produto/juridico/` and the spec-05 tax part. Owner: Gerente/Jurídico.
 
+### Docs
+- [ ] Translate `docs/produto/specs/spec-01-busca-ate-checkout.md` and `docs/produto/specs/spec-telas-busca-mapa-upload-fotos.md` to English. Owner: UI.
+
 ### P1 image worker (libvips)
 - [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.
 
