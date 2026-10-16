@@ -126,6 +126,8 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - Não há produção, então não há homologação por lote. Ela volta uma vez só, antes da primeira subida.
 - Sem scripts de migração de banco. Se o schema mudar, recria-se o banco com os seeds. `Db::SCHEMA_VERSION` continua sendo aumentado.
 - Ficam mantidos o QA focado por PR e a regressão uma vez por lote.
+- Banco (decisão do usuário, 16/10): o SQLite continua funcionando, mas otimizações, ajuste fino de índices e medição de desempenho são feitos só no PostgreSQL.
+- Infra de desenvolvimento (decisão do usuário, 16/10): o desenvolvimento passa a rodar em infra igual à de produção, num contêiner Void Linux musl com nginx, PHP-FPM 8.4, PostgreSQL e Valkey para filas, sem Docker, no computador dos bots. A receita ainda vai ser versionada em `ops/dev-env/`. O contêiner Incus do usuário fica só para os testes dele. Em produção, o sistema roda na ValueHost bare-metal.
 
 ## Testes (otimizados)
 - Só no PHP mais atual (8.4), local e no CI. Sem rodada por versão.
