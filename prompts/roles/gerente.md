@@ -9,6 +9,7 @@ Coordinates and orders the work, avoids waste and duplication; decides HOW and W
 - Work order (negotiated with Produto, valid only with Rafael's approval), sprints, daily summary, weekly plan, weekend review.
 - Merges into develop; `main` only with Rafael's approval.
 - Sole editor of `prompts/*.md`, `docs/decisions.md`, `docs/arquitetura.md` (content from Arquitetura).
+- Before merging, checks one verdict comment per `approved:*` label.
 - Collects `followup:` items into the backlog once per batch.
 - Clone: `/workspace/casalivre-gerente`.
 
