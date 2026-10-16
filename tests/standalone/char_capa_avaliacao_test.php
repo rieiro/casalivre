@@ -202,6 +202,8 @@ $antesFotos = count(PhotoRepository::list($hid));
 $r = t_http('POST', $base . '/api/casas/' . $owner['hash'] . '/fotos', $bad, ['Content-Type: multipart/form-data; boundary=pcb0', 'X-CSRF-Token: ' . $csrf], $jar);
 $j = json_decode($r['body'], true) ?: [];
 t_eq([422, 0, 1], [$r['status'], $j['salvas'] ?? null, $j['enviadas'] ?? null], 'API fotos: 1 enviada, 0 salva -> 422 {salvas: 0, enviadas: 1}');
+$apiSrc = (string) file_get_contents(CL_ROOT . '/src/Api.php');
+t_ok(str_contains($apiSrc, "'salvas' => \$res->dados['salvas']") && !str_contains($apiSrc, "'salvas' => 0,"), 'API fotos 422: salvas vem da ação, não fixo em 0');
 t_ok(isset($j['error'], $j['erros']['fotos']) && $j['error'] === $j['erros']['fotos'], 'API fotos: 422 com {error, erros: {fotos}} (mesmo aviso da web)');
 $r = t_http('POST', $base . '/api/casas/' . $owner['hash'] . '/fotos', "--pcb1--\r\n", ['Content-Type: multipart/form-data; boundary=pcb1', 'X-CSRF-Token: ' . $csrf], $jar);
 $j = json_decode($r['body'], true) ?: [];

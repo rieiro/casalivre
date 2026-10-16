@@ -34,6 +34,11 @@ foreach (['http://8.8.8.8/cal.ics', 'ftp://8.8.8.8/a', 'javascript:alert(1)', ''
 $src = (string) file_get_contents(CL_ROOT . '/src/CalendarSync.php');
 t_ok(str_contains($src, "PROTOCOLS_STR] = 'https';") && !str_contains($src, 'CURLPROTO_HTTP |'), 'curl restrito a https');
 
+echo "isHttpsUrl (regra única)\n";
+foreach (['https://x.test/a.ics' => true, 'HTTPS://x.test/a' => true, 'http://x.test/a' => false, 'https:///a' => false, 'https://x.test/a b' => false, "https://x.test/\t" => false, 'javascript:alert(1)' => false, '' => false] as $u => $esperado) {
+    t_eq($esperado, CalendarSync::isHttpsUrl((string) $u), 'isHttpsUrl ' . json_encode($u));
+}
+
 echo "logRef\n";
 $ref = CalendarSync::logRef('https://www.airbnb.com/calendar/ical/123.ics?s=SEGREDO');
 t_ok(str_starts_with((string) $ref, 'www.airbnb.com#') && !str_contains((string) $ref, 'SEGREDO'), 'logRef guarda só host + hash');
