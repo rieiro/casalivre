@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Resultado.php';
+require_once __DIR__ . '/TextoBruto.php';
 
 /**
  * Cadastro + primeira importação de um feed iCal (web POST /imoveis/{hash}/ical/importar e
@@ -21,10 +22,10 @@ final class ICalImport
     {
         $propertyId = (int) $property['id'];
         // Tipo errado (array, número, bool): mensagem de campo inválido, não a de https/título.
-        if ($url !== null && !is_string($url)) {
+        if (!TextoBruto::ok($url)) {
             return self::recusa('tipo', 'external_ical_url', t('err.field_type'));
         }
-        if ($feedTitle !== null && !is_string($feedTitle)) {
+        if (!TextoBruto::ok($feedTitle)) {
             return self::recusa('tipo', 'feed_title', t('err.field_type'));
         }
         $url = trim((string) $url);
@@ -32,7 +33,7 @@ final class ICalImport
         if ($url === '') {
             return self::recusa('vazio', 'external_ical_url', t('cal.url_required'));
         }
-        if (!self::https($url)) {
+        if (!CalendarSync::isHttpsUrl($url)) {
             return self::recusa('url', 'external_ical_url', t('cal.url_https'));
         }
         $error = HouseRepository::addFeed($propertyId, $userId, $url, $feedTitle);
@@ -75,18 +76,6 @@ final class ICalImport
             ]],
         ];
         return new Resultado($ok ? 'ok' : 'nok', $message, ['importadas' => $count], $events);
-    }
-
-    /** Só https:// com host e sem espaços/controles (o esquema é conferido sem diferenciar maiúsculas). */
-    private static function https(string $url): bool
-    {
-        if (preg_match('/[\s\x00-\x1f\x7f]/', $url)) {
-            return false;
-        }
-        $parts = parse_url($url);
-        return is_array($parts)
-            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
-            && (string) ($parts['host'] ?? '') !== '';
     }
 
     private static function recusa(string $tipo, string $campo, string $message): Resultado

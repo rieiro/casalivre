@@ -263,7 +263,7 @@ function handle_api(string $path, string $method): void
         $res->registrar();
         if (isset($res->dados['erros'])) {
             // Nenhuma foto salva (PhotoAdd: vazio/nenhuma): 422 com os erros da ação, como CoverSet e ReviewAdd.
-            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros'], 'salvas' => 0, 'enviadas' => $res->dados['enviadas']]);
+            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros'], 'salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas']]);
         }
         json_out(201, ['salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'fotos' => PhotoRepository::list((int) $house['id'])]);
     }

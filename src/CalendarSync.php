@@ -143,8 +143,23 @@ final class CalendarSync
     }
 
     /**
+     * Regra única de URL de feed (cadastro em ICalImport e download em fetch): só https:// com host, sem espaços nem
+     * caracteres de controle; o esquema é comparado sem diferenciar maiúsculas.
+     */
+    public static function isHttpsUrl(string $url): bool
+    {
+        if (preg_match('/[\s\x00-\x1f\x7f]/', $url)) {
+            return false;
+        }
+        $parts = parse_url($url);
+        return is_array($parts)
+            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && (string) ($parts['host'] ?? '') !== '';
+    }
+
+    /**
      * Baixa um feed iCal externo com proteção contra SSRF:
-     * - só http/https, sem credenciais na URL;
+     * - só https (isHttpsUrl, a mesma regra do cadastro em ICalImport), sem credenciais na URL;
      * - host resolvido uma única vez e fixado com CURLOPT_RESOLVE (evita DNS rebinding);
      * - recusa IPs privados, loopback, link-local, reservados e CGNAT;
      * - redirecionamentos seguidos manualmente e revalidados a cada salto;
@@ -153,7 +168,7 @@ final class CalendarSync
     public static function fetch(string $url, int $timeout = 20): ?string
     {
         // Só https, inclusive para feeds antigos gravados com http (sem exceção; integridade contra MITM).
-        if (strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+        if (!self::isHttpsUrl($url)) {
             return null;
         }
         if (function_exists('exported_calendar_body')) {
