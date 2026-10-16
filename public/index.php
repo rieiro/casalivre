@@ -855,8 +855,11 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $res->registrar();
     $message = $res->mensagem;
     $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
-    $action = (string) ($_POST['acao'] ?? '');
-    $viewName = (string) ($_POST['cal_view'] ?? 'day');
+    // Só lê valores que são texto: com tipo errado (array), CalendarSave já recusou e aqui só se mostra o erro,
+    // sem (string) em array (nada de "Array to string conversion") e sem restaurar o formulário.
+    $post = static fn (string $k, string $padrao = ''): string => is_string($_POST[$k] ?? null) ? $_POST[$k] : $padrao;
+    $action = $post('acao');
+    $viewName = $post('cal_view', 'day');
     if (!in_array($viewName, ['day', 'price', 'min'], true)) {
         $viewName = 'day';
     }
@@ -866,9 +869,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
         'feeds' => HouseRepository::feeds((int) $property['id']),
         'message' => $message,
         'message_tone' => $messageTone,
-        'restore' => $action === 'salvar' ? [
-            'inicio' => (string) ($_POST['inicio'] ?? ''),
-            'fim' => (string) ($_POST['fim'] ?? ''),
+        // Restaura o formulário só com valores de texto (tipo errado: só o erro, como acima).
+        'restore' => $action === 'salvar' && is_string($_POST['inicio'] ?? '') && is_string($_POST['fim'] ?? '') && is_string($_POST['cal_view'] ?? '') ? [
+            'inicio' => $post('inicio'),
+            'fim' => $post('fim'),
             'view' => $viewName,
         ] : null,
     ]);
