@@ -195,6 +195,21 @@ file_put_contents($seedFile, $gd('imagepng', 900, 600));
 $seedRow = PhotoStorage::enqueueOriginal($h2, $seedFile, 1, 0);
 t_eq('processing', $seedRow['status'] ?? null, 'seed: foto em processing');
 t_eq(null, PhotoStorage::enqueueOriginal($h2, $tmp . '/up-e.jpg', 0, 1), 'seed: arquivo que não é imagem recusado');
+// P0-4: queue push error (here: QUEUE_DRIVER=valkey with an unreachable socket) marks the photo failed.
+$savedEnv = [];
+foreach (['QUEUE_DRIVER' => 'valkey', 'VALKEY_SOCKET' => $tmp . '/no-valkey.sock', 'VALKEY_USER' => 'cl_app', 'VALKEY_PASSWORD_FILE' => $seedFile] as $k => $v) {
+    $savedEnv[$k] = getenv($k);
+    putenv("$k=$v");
+}
+$qFail = PhotoStorage::enqueueOriginal($h2, $seedFile, 0, 30);
+foreach ($savedEnv as $k => $v) {
+    putenv($v === false ? $k : "$k=$v");
+}
+t_eq('failed', $qFail['status'] ?? null, 'queue push error: row returned as failed');
+$st = db()->prepare('SELECT status FROM photos WHERE id = ?');
+$st->execute([(int) ($qFail['id'] ?? 0)]);
+t_eq('failed', $st->fetchColumn(), 'queue push error: photo failed in the DB, not stuck in processing');
+db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) ($qFail['id'] ?? 0)]);
 PhotoStorage::$legacy = $tmp . '/public/uploads/users';
 mkdir(PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2, 0755, true);
 $legacyFile = PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2 . '/capa.jpg';

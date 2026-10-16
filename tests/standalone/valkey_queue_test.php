@@ -104,7 +104,33 @@ $got = $q->reserve(1);
 t_eq($c, $got[0]['id'] ?? null, 'stale job reserved again');
 $q->ack($c);
 
-echo "mail cooldown (SET NX EX, HMAC key)\n";
+echo "crash windows (Architecture #118)\n";
+// Crash between LMOVE and ZADD in reserve(): id in processing with no reserved score.
+$d = $q->push('four');
+$r->lMove($q->key('ready'), $q->key('processing'), 'RIGHT', 'LEFT');
+t_eq([], $q->reserve(1), 'orphan not handed out at once (could be a live reservation)');
+$sc = $r->zRange($q->key('reserved'), 0, -1, ['withscores' => true]);
+t_ok(isset($sc[(string) $d]), 'orphan in processing gets a reserved score');
+$r->zAdd($q->key('reserved'), time() - ValkeyJobQueue::STALE_SECONDS - 1, (string) $d);
+$got = $q->reserve(1);
+t_eq($d, $got[0]['id'] ?? null, 'orphan returns to ready once stale and is reserved again');
+t_eq(1, (int) $r->lLen($q->key('processing')), 'no duplicate id in processing');
+// fail(): release and ZADD delayed are one MULTI, nothing left half-moved.
+t_eq(false, $q->fail($d, 'SMTP 550 <ana@casalivre.test> rejected'), 'fail retries');
+t_eq(0, (int) $r->lLen($q->key('processing')), 'fail: out of processing');
+t_eq(0, (int) $r->zCard($q->key('reserved')), 'fail: out of reserved');
+t_eq(1, (int) $r->zCard($q->key('delayed')), 'fail: in delayed');
+$err = (string) ($r->hGetAll($q->key('job:' . $d))['last_error'] ?? '');
+t_ok(!str_contains($err, 'ana@casalivre.test') && str_contains($err, '[email]'), 'last_error masks the address');
+// Due delayed id moves to ready exactly once.
+$r->zAdd($q->key('delayed'), time() - 1, (string) $d);
+$got = $q->reserve(5);
+t_eq([$d], array_column($got, 'id'), 'due delayed job reserved once');
+t_eq(0, (int) $r->lLen($q->key('ready')), 'no duplicate left in ready');
+$q->ack($d);
+t_eq(0, (int) $r->lLen($q->key('processing')) + (int) $r->zCard($q->key('reserved')) + (int) $r->exists($q->key('job:' . $d)), 'ack: release and DEL together');
+
+echo "mail cooldown (HMAC key, set only after the insert)\n";
 $mq = new ValkeyMailQueue($r);
 $mail = 'cd-' . $tag . '@casalivre.test';
 $cdKey = $mq->key('cd:' . SqliteMailQueue::cooldownKey('reset', $mail));
@@ -114,6 +140,36 @@ t_eq(false, $mq->push('reset', $mail), 'second push within cooldown refused');
 t_ok(!str_contains($cdKey, $mail), 'cooldown key has no address');
 // Take our job back out of the real mail queue (a running queue-worker may already have taken it: the
 // address does not exist, so it sends nothing).
+$id = (string) ($r->lRange($mq->key('ready'), 0, 0)[0] ?? '');
+if ($id !== '' && $r->lRem($mq->key('ready'), $id, 1) === 1) {
+    $r->del($mq->key('job:' . $id));
+}
+$r->del($cdKey);
+// Insert fails (INCR throws): no cooldown is left behind, so the retry goes through.
+$broken = new class () extends Redis {
+    public bool $fail = true;
+
+    public function incr($key, $by = 1): Redis|int|false
+    {
+        if ($this->fail) {
+            throw new RedisException('simulated failure');
+        }
+        return parent::incr($key, $by);
+    }
+};
+$broken->connect((string) getenv('VALKEY_SOCKET'));
+$broken->auth([(string) getenv('VALKEY_USER'), trim((string) file_get_contents((string) getenv('VALKEY_PASSWORD_FILE')))]);
+$bq = new ValkeyMailQueue($broken);
+$threw = false;
+try {
+    $bq->push('reset', $mail);
+} catch (RedisException $e) {
+    $threw = true;
+}
+t_ok($threw, 'push with a failing insert throws');
+t_eq(0, (int) $r->exists($cdKey), 'failed insert leaves no cooldown');
+$broken->fail = false;
+t_eq(true, $bq->push('reset', $mail), 'retry after the failed insert is accepted');
 $id = (string) ($r->lRange($mq->key('ready'), 0, 0)[0] ?? '');
 if ($id !== '' && $r->lRem($mq->key('ready'), $id, 1) === 1) {
     $r->del($mq->key('job:' . $id));

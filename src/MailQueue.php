@@ -121,12 +121,14 @@ final class ValkeyMailQueue extends ValkeyJobQueue implements MailQueue
         if (!in_array($type, self::TYPES, true)) {
             throw new InvalidArgumentException('Tipo de e-mail inválido.');
         }
-        // Cooldown: SET NX EX on the HMAC key (no address in the key).
+        // Cooldown: EXISTS, then SET EX on the HMAC key (no address in the key).
+        // The cooldown is set only after the insert succeeded, so a failed insert does not block a retry.
         $cd = $this->key('cd:' . SqliteMailQueue::cooldownKey($type, $recipient));
-        if ($this->r->set($cd, '1', ['nx', 'ex' => MailQueues::cooldownSeconds($type)]) !== true) {
+        if ((int) $this->r->exists($cd) > 0) {
             return false;
         }
         $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient)]);
+        $this->r->set($cd, '1', ['ex' => MailQueues::cooldownSeconds($type)]);
         return true;
     }
 }

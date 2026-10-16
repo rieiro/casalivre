@@ -78,32 +78,59 @@ abstract class ValkeyJobQueue implements JobQueue
 
     protected function insertJob(array $data): int
     {
-        $id = (int) $this->r->incr($this->key('seq'));
+        $id = $this->r->incr($this->key('seq'));
+        if (!is_int($id) || $id < 1) {
+            throw new RuntimeException('Valkey: INCR seq failed.');
+        }
         $fields = [...array_map('strval', $data), 'attempts' => '0', 'last_error' => '', 'status' => 'pending'];
         $this->r->multi();
         $this->r->hSet($this->key('job:' . $id), $fields);
         $this->r->lPush($this->key('ready'), (string) $id);
-        $this->r->exec();
+        $res = $this->r->exec();
+        if (!is_array($res) || in_array(false, $res, true)) {
+            throw new RuntimeException('Valkey: enqueue failed.');
+        }
         return $id;
     }
 
-    /** Moves due delayed ids and stale reservations back to ready. */
+    /**
+     * Moves due delayed ids and stale reservations back to ready. Each move (ZREM + LREM + LPUSH) runs in one
+     * MULTI under WATCH, so a crash never loses an id and a concurrent promote never duplicates one (EXEC
+     * aborts if the zset changed; the next reserve() retries). An id in processing without a reserved score
+     * (crash between LMOVE and ZADD in reserve()) gets one now (ZADD NX), so it goes stale and returns to ready.
+     */
     private function promote(): void
     {
         $now = time();
-        foreach ($this->r->zRangeByScore($this->key('delayed'), '-inf', (string) $now) ?: [] as $id) {
-            if ($this->r->zRem($this->key('delayed'), $id) === 1) {
-                $this->r->lPush($this->key('ready'), $id);
+        $this->move('delayed', $now, false);
+        $reserved = $this->r->zRange($this->key('reserved'), 0, -1, ['withscores' => true]) ?: [];
+        foreach ($this->r->lRange($this->key('processing'), 0, -1) ?: [] as $id) {
+            if (!isset($reserved[$id])) {
+                $this->r->zAdd($this->key('reserved'), ['NX'], $now, $id);
             }
         }
-        foreach ($this->r->zRangeByScore($this->key('reserved'), '-inf', (string) ($now - static::STALE_SECONDS)) ?: [] as $id) {
-            if ($this->r->zRem($this->key('reserved'), $id) === 1) {
-                $this->r->multi();
+        $this->move('reserved', $now - static::STALE_SECONDS, true);
+    }
+
+    /** Atomically moves the ids of zset $set with score <= $max to ready (also out of processing if $fromProcessing). */
+    private function move(string $set, int $max, bool $fromProcessing): void
+    {
+        $key = $this->key($set);
+        $this->r->watch($key);
+        $ids = $this->r->zRangeByScore($key, '-inf', (string) $max) ?: [];
+        if ($ids === []) {
+            $this->r->unwatch();
+            return;
+        }
+        $this->r->multi();
+        foreach ($ids as $id) {
+            $this->r->zRem($key, $id);
+            if ($fromProcessing) {
                 $this->r->lRem($this->key('processing'), $id, 1);
-                $this->r->lPush($this->key('ready'), $id);
-                $this->r->exec();
             }
+            $this->r->lPush($this->key('ready'), $id);
         }
+        $this->r->exec();
     }
 
     public function reserve(int $limit): array
@@ -135,18 +162,33 @@ abstract class ValkeyJobQueue implements JobQueue
         return $job;
     }
 
+    /** Queues the removal of $id from processing/reserved inside the caller's MULTI. */
+    private function queueRelease(string $id): void
+    {
+        $this->r->lRem($this->key('processing'), $id, 1);
+        $this->r->zRem($this->key('reserved'), $id);
+    }
+
     private function release(string $id): void
     {
         $this->r->multi();
-        $this->r->lRem($this->key('processing'), $id, 1);
-        $this->r->zRem($this->key('reserved'), $id);
+        $this->queueRelease($id);
         $this->r->exec();
     }
 
+    /** Release and DEL in one MULTI. */
     public function ack(int $id): void
     {
-        $this->release((string) $id);
+        $this->r->multi();
+        $this->queueRelease((string) $id);
         $this->r->del($this->key('job:' . $id));
+        $this->r->exec();
+    }
+
+    /** E-mail addresses in error text are masked before storing (Security followup: last_error lives 7 days). */
+    public static function maskError(string $error): string
+    {
+        return substr((string) preg_replace('/[^\s<>"\'@]+@[^\s<>"\']+/', '[email]', $error), 0, 200);
     }
 
     public function fail(int $id, string $error = ''): bool
@@ -154,9 +196,11 @@ abstract class ValkeyJobQueue implements JobQueue
         $job = $this->key('job:' . $id);
         $attempts = (int) $this->r->hIncrBy($job, 'attempts', 1);
         $giveUp = $attempts >= Queues::MAX_ATTEMPTS;
-        $this->release((string) $id);
+        // One MULTI: out of processing/reserved and into delayed (or failed) together, so a crash
+        // cannot lose the job. A crash before it leaves the id in processing; it goes stale and is retried.
         $this->r->multi();
-        $this->r->hSet($job, 'last_error', substr($error, 0, 200));
+        $this->queueRelease((string) $id);
+        $this->r->hSet($job, 'last_error', self::maskError($error));
         if ($giveUp) {
             $this->r->hSet($job, 'status', 'failed');
             foreach ($this->clearOnDone() as $f) {
