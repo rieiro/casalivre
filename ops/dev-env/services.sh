@@ -16,20 +16,33 @@ pg_user=$(id -un)
 pg_group=$(id -gn)
 dsn="pgsql:host=$CL_RUN;dbname=casalivre;user=casalivre_dev"
 
-# Valkey: ACL PROVISÓRIA (igual à do P0-2 inicial; não mais aberta).
-# TODO(P0-4): trocar pela ACL final da Segurança (cl_app ~cl:* &cl:* -@all +
-# allowlist, sem streams/Lua; cl_admin separado), ver
-# /workspace/programador-notas/p0-4-valkey-acl.md.
-# Senha gerada uma vez, em arquivo 0440 (na produção root:casalivre; aqui, sem
-# root, o próprio uid), nunca em env. A ACL guarda só o sha256.
-secret=$etc/valkey.secret
-[ -s "$secret" ] || { od -An -tx1 -N32 /dev/urandom | tr -d ' \n' >"$secret.tmp" && mv "$secret.tmp" "$secret"; }
-chmod 0440 "$secret"
-vhash=$(sha256sum <"$secret" | cut -d' ' -f1)
-printf 'user default off\nuser casalivre on #%s ~* &* +@all -@dangerous\n' "$vhash" >"$etc/valkey.acl.tmp"
+# Valkey: ACL de /workspace/programador-notas/p0-4-valkey-acl.md (Segurança).
+# Senhas geradas uma vez, em arquivo 0440 (na produção root:casalivre; aqui,
+# sem root, o próprio uid), nunca em env. A ACL guarda só o sha256.
+gen_secret() {
+	[ -s "$1" ] || { od -An -tx1 -N32 /dev/urandom | tr -d ' \n' >"$1.tmp" && mv "$1.tmp" "$1"; }
+	chmod 0440 "$1"
+	sha256sum <"$1" | cut -d' ' -f1
+}
+secret=$etc/valkey-app.secret
+app_hash=$(gen_secret "$secret")
+admin_hash=$(gen_secret "$etc/valkey-admin.secret")
+app_cmds='+get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incrby +decr +mget +mset
++hget +hset +hdel +hmget +hgetall +hincrby
++lpush +rpush +lpop +rpop +blpop +brpop +lmove +blmove +llen +lrange +lrem
++zadd +zrem +zrange +zrangebyscore +zremrangebyscore +zcard
++sadd +srem +smembers +sismember
++multi +exec +discard +watch +unwatch
++ping +hello +auth +select|0'
+# Sem Lua (nem +eval/+script/+evalsha), sem streams. aclfile 0600, fora do valkey.conf.
+{
+	echo 'user default off resetkeys resetchannels -@all'
+	echo "user cl_app on #$app_hash resetkeys ~cl:* resetchannels &cl:* -@all $(echo $app_cmds)"
+	echo "user cl_admin on #$admin_hash ~* &* +@all"
+} >"$etc/valkey.acl.tmp"
 chmod 0600 "$etc/valkey.acl.tmp"
 mv "$etc/valkey.acl.tmp" "$etc/valkey.acl"
-rm -f "$etc/valkey-app.secret" "$etc/valkey-admin.secret"
+rm -f "$etc/valkey.secret"  # nome antigo (ACL provisória)
 
 cat >"$etc/dev-env.env.tmp" <<ENV
 # Gerado por services.sh — não editar. Lido pelos run do runit.
@@ -37,7 +50,7 @@ export CL_HOME='$CL_HOME' CL_REPO='$CL_REPO' CL_RUN='$CL_RUN' CL_PG_USER='$pg_us
 export HOME='$CL_HOME' PATH=/usr/bin:/usr/sbin LANG=C.UTF-8
 export PGHOST='$CL_RUN' PGUSER=casalivre_dev PGDATABASE=casalivre
 export APP_ENV=dev DB_DRIVER=pgsql DB_DSN='$dsn'
-export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=casalivre VALKEY_PASSWORD_FILE='$secret'
+export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=cl_app VALKEY_PASSWORD_FILE='$secret'
 ENV
 mv "$etc/dev-env.env.tmp" "$etc/dev-env.env"
 
@@ -50,7 +63,7 @@ env[APP_ENV] = dev
 env[DB_DRIVER] = pgsql
 env[DB_DSN] = "$dsn"
 env[VALKEY_SOCKET] = $CL_RUN/valkey.sock
-env[VALKEY_USER] = casalivre
+env[VALKEY_USER] = cl_app
 env[VALKEY_PASSWORD_FILE] = $secret
 ENV
 mv "$etc/php-fpm-env.conf.tmp" "$etc/php-fpm-env.conf"

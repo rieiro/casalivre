@@ -1,2 +1,2 @@
-# Só socket Unix (port 0) e ACL: default desligado, usuário do app com senha gerada.
-exec valkey-server "$CL_HOME/etc/valkey.conf" --port 0 --aclfile "$CL_HOME/etc/valkey.acl"
+# Só socket Unix (port 0, socket 0660, S1) e ACL: default desligado, usuário do app com senha gerada.
+exec valkey-server "$CL_HOME/etc/valkey.conf" --port 0 --aclfile "$CL_HOME/etc/valkey.acl" --unixsocketperm 660

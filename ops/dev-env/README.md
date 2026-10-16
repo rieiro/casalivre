@@ -140,12 +140,15 @@ ops/dev-env/db-setup.sh --no-seed
 - **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
   `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER` e `VALKEY_PASSWORD_FILE` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
-- **valkey**: `--port 0` (só socket), `--aclfile etc/valkey.acl` (0600, fora
-  do `valkey.conf`). ACL **provisória**: `default` off + `casalivre` com
-  `~* &* +@all -@dangerous`. TODO(P0-4): ACL final da Segurança
-  (`/workspace/programador-notas/p0-4-valkey-acl.md`). Senha gerada uma vez em
-  `etc/valkey.secret`, 0440 (produção `root:casalivre`; aqui, sem root, o
-  próprio uid), nunca em env: o app lê `VALKEY_PASSWORD_FILE`.
+- **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
+  fora do `valkey.conf`), ACL de `programador-notas/p0-4-valkey-acl.md`:
+  `default` off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings,
+  hash, listas, zset, set, multi, ping/hello/auth/select 0), sem streams e sem
+  Lua; `cl_admin` separado. Senhas geradas uma vez em `etc/valkey-app.secret`
+  e `etc/valkey-admin.secret`, modo 0440 (produção `root:casalivre`; aqui, sem
+  root, o próprio uid), nunca em env: o app (`VALKEY_USER=cl_app`) lê
+  `VALKEY_PASSWORD_FILE`. `valkey-acl-check.sh` confere que `cl_app` faz
+  LPUSH/RPOP em `cl:*` e não roda `keys *`, `config get *` nem `get x`.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
   `php.ini` não muda.
