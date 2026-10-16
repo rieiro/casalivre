@@ -88,8 +88,18 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 - **hóspede** (nome, e-mail e celular; a identificação por OTP segue a spec-01 quando o hóspede acessar);
 - **valor** (o cálculo da spec-07 já preenchido e editável, com o motivo da alteração);
 - **política de cancelamento** (a do imóvel, já preenchida).
-Antes de confirmar, aparece a **comissão do canal manual**: "Comissão casalivre (canal manual): R$ X (Y%)" *[E] [pendente: Rafael]*. Ao confirmar, a reserva é criada como uma **solicitação já aprovada** (segue para Aguardando pagamento, spec-01) e **grava quem a lançou** ("Lançada por Ana (gestora) em 16/10, 10:12").
-**Critérios de aceite:** (1) toda reserva tem uma origem, visível como rótulo; (2) a reserva manual mostra a comissão antes de confirmar; (3) o autor e a data ficam gravados e no log; (4) as datas lançadas são bloqueadas como as de qualquer reserva, e o lançamento é recusado se houver conflito; (5) só quem tem papel no imóvel com permissão de reservas consegue lançar (o servidor responde 403 aos outros).
+Antes de confirmar, aparece a **comissão do canal manual**: "Comissão casalivre (canal manual): R$ X (Y%)" *[E] [pendente: Rafael]*. Ao confirmar, a reserva é criada como uma **solicitação já aprovada** e fica em **"Aceite pendente"**: o hóspede recebe um **link com OTP** para aceitar os termos e o contrato (com o Anexo I, inventário). Depois do aceite, segue para Aguardando pagamento (spec-01). O anfitrião vê o estado "Aceite pendente" no painel Hoje, no calendário e no detalhe, com **"Reenviar link"** (limite de reenvios e log) e **grava quem a lançou** ("Lançada por Ana (gestora) em 16/10, 10:12").
+**Critérios de aceite:** (1) toda reserva tem uma origem, visível como rótulo; (2) a reserva manual mostra a comissão antes de confirmar; (2a) a reserva manual fica em "Aceite pendente" até o hóspede aceitar pelo link com OTP, e "Reenviar link" gera um novo link e invalida o anterior; (3) o autor e a data ficam gravados e no log; (4) as datas lançadas são bloqueadas como as de qualquer reserva, e o lançamento é recusado se houver conflito; (5) só quem tem papel no imóvel com permissão de reservas consegue lançar (o servidor responde 403 aos outros).
+
+## 3c. Meus documentos (anfitrião) *(Produto, requisito de tela)*
+No menu do modo Gerenciar: tabela com **termo** (contrato do anfitrião, termos de uso, política de privacidade etc.), **versão**, **data e hora do aceite** e **"Baixar PDF"**. O PDF reproduz a versão aceita, não a atual. Estado vazio: "Nenhum termo aceito ainda."
+
+## 3d. Caução e danos (anfitrião) *(Produto, requisito de tela)*
+- Depois do check-out, a reserva com caução mostra o card **"Registrar dano · até [check-out + 48 h]"** no painel Hoje e no detalhe.
+- **Registrar dano:** itens do inventário (Anexo I) ou texto livre, **fotos obrigatórias** (upload com as regras da spec-09 §6), valor pedido.
+- Sem registro em 48 h, a caução fica **"Devolver caução"** para o anfitrião, e o hóspede é avisado (spec-09).
+- Com registro, o hóspede vê e pode aceitar ou contestar; a contestação abre disputa (spec-09 §6).
+**Critérios de aceite:** (1) depois de 48 h do check-out o botão "Registrar dano" some e o servidor recusa o registro; (2) um registro sem foto não é salvo; (3) o hóspede vê o registro e as fotos.
 
 ## 4. WCAG 2.2 AA
 - Calendário mensal no padrão **Grid da APG** (`role="grid"`, com setas, Home/End, PageUp/PageDown e `aria-selected`). No multicalendário, cada célula é rotulada com o imóvel, a data e o status (1.3.1, 2.1.1).

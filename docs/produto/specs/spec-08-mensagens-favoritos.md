@@ -53,6 +53,12 @@ Esta spec substitui os estados vazios de Favoritos e Mensagens da spec-01, seç�
 2. O total de cada imóvel é igual ao do card, ao do detalhe e ao do checkout (spec-07, B3), com as mesmas datas.
 3. A tabela tem cabeçalhos de linha e de coluna. No mobile, a rolagem horizontal fica só dentro da comparação, nunca na página (1.4.10), e os botões Anterior e Próximo funcionam sem gesto.
 
+## 3b. Assistente automatizado (chat com IA) *(Produto, requisito de tela)*
+- O chat mostra sempre o aviso **"Atendimento automatizado; peça um humano a qualquer momento"** e o botão **"Falar com uma pessoa"**, que passa a conversa ao anfitrião ou ao suporte, com o histórico.
+- **O assistente nunca mostra preço ou condição diferente do anúncio**: só cita dados do anúncio e do snapshot (preço calculado no servidor, política, regras, caução, inventário), com o link da seção de origem. Quando não tem o dado, responde "Não tenho essa informação; vou chamar uma pessoa."
+- As mensagens do assistente têm o rótulo "Assistente" e seguem o mascaramento e a retenção da seção 1.
+**Critérios de aceite:** (1) o aviso e o botão estão sempre visíveis; (2) "Falar com uma pessoa" funciona em qualquer momento; (3) um preço ou condição citado bate com o anúncio ou o snapshot.
+
 ## 4. WCAG 2.2 AA
 - A lista de mensagens é uma lista, e cada item tem nome, prévia e "não lida" em texto. As mensagens novas são anunciadas por `role="log"` com `aria-live="polite"`, sem roubar o foco (4.1.3).
 - O campo de mensagem tem rótulo visível. Enter envia e Shift+Enter quebra a linha, com uma instrução visível. O erro de envio aparece em texto (3.3.1).
