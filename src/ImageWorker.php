@@ -130,13 +130,35 @@ final class ImageWorker
         return $img;
     }
 
-    private static function writeWebp(GdImage $img, int $maxWidth, string $target): string
+    /**
+     * Reduz para $width px (altura proporcional) só com imagecopyresampled: o imagescale com IMG_BICUBIC,
+     * IMG_BICUBIC_FIXED e IMG_WEIGHTED4 retorna false na libgd do Void (e o BICUBIC tem a pior qualidade onde
+     * funciona); resampled é determinístico e o de melhor SSIM medido (adr/revisao-pr106-r2.md). O destino é
+     * sempre WebP: preserva o alpha (sem blending + savealpha). Lança em falha, com log.
+     */
+    public static function resize(GdImage $img, int $width): GdImage
     {
         $w = imagesx($img);
-        $out = $w > $maxWidth ? imagescale($img, $maxWidth, -1, IMG_BICUBIC) : $img;
-        if (!$out instanceof GdImage) {
+        $h = imagesy($img);
+        $nh = max(1, (int) round($h * $width / $w));
+        $dst = imagecreatetruecolor($width, $nh);
+        if (!$dst instanceof GdImage) {
+            error_log("CasaLivre: ImageWorker: imagecreatetruecolor({$width}x{$nh}) falhou.");
             throw new RuntimeException('Falha ao redimensionar.');
         }
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        if (!imagecopyresampled($dst, $img, 0, 0, 0, 0, $width, $nh, $w, $h)) {
+            imagedestroy($dst);
+            error_log("CasaLivre: ImageWorker: imagecopyresampled {$w}x{$h} -> {$width}x{$nh} falhou.");
+            throw new RuntimeException('Falha ao redimensionar.');
+        }
+        return $dst;
+    }
+
+    private static function writeWebp(GdImage $img, int $maxWidth, string $target): string
+    {
+        $out = imagesx($img) > $maxWidth ? self::resize($img, $maxWidth) : $img;
         $dir = dirname($target);
         if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
             throw new RuntimeException('Pasta pública de fotos indisponível.');
