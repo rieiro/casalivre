@@ -32,14 +32,14 @@ final class Queues
     public const BACKOFF = [1 => 60, 2 => 300, 3 => 900];
 
     /**
-     * Driver das filas (QUEUE_DRIVER; padrão sqlite). Único ponto de troca: um driver Redis entra aqui
-     * e nas fábricas MailQueues::make()/ImageQueues::make(), sem mudar quem enfileira nem os workers.
+     * Queue driver (QUEUE_DRIVER: sqlite, the default, or valkey). Single switch point, used by the
+     * MailQueues::make()/ImageQueues::make() factories; producers and workers do not change.
      */
     public static function driver(): string
     {
         Db::loadEnv();
         $driver = strtolower(trim((string) (getenv('QUEUE_DRIVER') ?: 'sqlite')));
-        if ($driver !== 'sqlite') {
+        if (!in_array($driver, ['sqlite', 'valkey'], true)) {
             throw new RuntimeException('QUEUE_DRIVER não suportado: ' . $driver);
         }
         return $driver;

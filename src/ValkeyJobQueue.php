@@ -1,0 +1,178 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/JobQueue.php';
+
+/**
+ * Valkey connection for the queues (phpredis). Unix socket only, ACL user from VALKEY_USER
+ * (cl_app in the dev env) with the password read from VALKEY_PASSWORD_FILE, never from env.
+ */
+final class Valkey
+{
+    /** Every key the app writes starts with this prefix (cl_app ACL: ~cl:* only). */
+    public const PREFIX = 'cl:';
+
+    public static function connect(): Redis
+    {
+        Db::loadEnv();
+        if (!extension_loaded('redis')) {
+            throw new RuntimeException('QUEUE_DRIVER=valkey needs the phpredis extension (php8.4-redis).');
+        }
+        $socket = (string) getenv('VALKEY_SOCKET');
+        $user = (string) getenv('VALKEY_USER');
+        $file = (string) getenv('VALKEY_PASSWORD_FILE');
+        if ($socket === '' || $user === '' || $file === '') {
+            throw new RuntimeException('QUEUE_DRIVER=valkey needs VALKEY_SOCKET, VALKEY_USER and VALKEY_PASSWORD_FILE.');
+        }
+        $pass = @file_get_contents($file);
+        if ($pass === false) {
+            throw new RuntimeException('VALKEY_PASSWORD_FILE is not readable.');
+        }
+        $r = new Redis();
+        $r->connect($socket);
+        if (!$r->auth([$user, trim($pass)])) {
+            throw new RuntimeException('Valkey AUTH failed for ' . $user . '.');
+        }
+        return $r;
+    }
+}
+
+/**
+ * Queue on Valkey lists, using only commands in the cl_app allowlist (no Lua, no streams, no KEYS/SCAN).
+ * Keys, all under cl:q:<name>:
+ *   seq           INCR job id
+ *   job:<id>      HASH with the data columns, attempts, last_error, status
+ *   ready         LIST of ids ready to run (LPUSH in, LMOVE out from the right: FIFO)
+ *   processing    LIST of reserved ids
+ *   reserved      ZSET id -> reservation time (stale reservations go back to ready)
+ *   delayed       ZSET id -> next attempt time (backoff after fail)
+ * Done items are deleted on ack; given-up items keep only status/attempts/last_error and expire after
+ * DONE_TTL_DAYS, so purge() has nothing to delete (Valkey expires them).
+ */
+abstract class ValkeyJobQueue implements JobQueue
+{
+    public const STALE_SECONDS = SqlJobQueue::STALE_SECONDS;
+    public const DONE_TTL_DAYS = 7;
+
+    public function __construct(protected Redis $r)
+    {
+    }
+
+    /** Queue name, e.g. 'mail'. */
+    abstract protected function name(): string;
+
+    /** @return list<string> data fields returned by reserve() */
+    abstract protected function dataFields(): array;
+
+    /** Fields cleared when the item gives up (e.g. the mail recipient). @return list<string> */
+    protected function clearOnDone(): array
+    {
+        return [];
+    }
+
+    public function key(string $suffix): string
+    {
+        return Valkey::PREFIX . 'q:' . $this->name() . ':' . $suffix;
+    }
+
+    protected function insertJob(array $data): int
+    {
+        $id = (int) $this->r->incr($this->key('seq'));
+        $fields = [...array_map('strval', $data), 'attempts' => '0', 'last_error' => '', 'status' => 'pending'];
+        $this->r->multi();
+        $this->r->hSet($this->key('job:' . $id), $fields);
+        $this->r->lPush($this->key('ready'), (string) $id);
+        $this->r->exec();
+        return $id;
+    }
+
+    /** Moves due delayed ids and stale reservations back to ready. */
+    private function promote(): void
+    {
+        $now = time();
+        foreach ($this->r->zRangeByScore($this->key('delayed'), '-inf', (string) $now) ?: [] as $id) {
+            if ($this->r->zRem($this->key('delayed'), $id) === 1) {
+                $this->r->lPush($this->key('ready'), $id);
+            }
+        }
+        foreach ($this->r->zRangeByScore($this->key('reserved'), '-inf', (string) ($now - static::STALE_SECONDS)) ?: [] as $id) {
+            if ($this->r->zRem($this->key('reserved'), $id) === 1) {
+                $this->r->multi();
+                $this->r->lRem($this->key('processing'), $id, 1);
+                $this->r->lPush($this->key('ready'), $id);
+                $this->r->exec();
+            }
+        }
+    }
+
+    public function reserve(int $limit): array
+    {
+        $this->promote();
+        $out = [];
+        for ($i = 0; $i < max(1, $limit); $i++) {
+            $id = $this->r->lMove($this->key('ready'), $this->key('processing'), 'RIGHT', 'LEFT');
+            if (!is_string($id)) {
+                break;
+            }
+            $this->r->zAdd($this->key('reserved'), time(), $id);
+            $h = $this->r->hGetAll($this->key('job:' . $id));
+            if (!is_array($h) || $h === []) {
+                $this->release($id);
+                continue;
+            }
+            $job = ['id' => (int) $id, 'attempts' => (int) ($h['attempts'] ?? 0)];
+            foreach ($this->dataFields() as $f) {
+                $job[$f] = (string) ($h[$f] ?? '');
+            }
+            $out[] = $this->shape($job);
+        }
+        return $out;
+    }
+
+    protected function shape(array $job): array
+    {
+        return $job;
+    }
+
+    private function release(string $id): void
+    {
+        $this->r->multi();
+        $this->r->lRem($this->key('processing'), $id, 1);
+        $this->r->zRem($this->key('reserved'), $id);
+        $this->r->exec();
+    }
+
+    public function ack(int $id): void
+    {
+        $this->release((string) $id);
+        $this->r->del($this->key('job:' . $id));
+    }
+
+    public function fail(int $id, string $error = ''): bool
+    {
+        $job = $this->key('job:' . $id);
+        $attempts = (int) $this->r->hIncrBy($job, 'attempts', 1);
+        $giveUp = $attempts >= Queues::MAX_ATTEMPTS;
+        $this->release((string) $id);
+        $this->r->multi();
+        $this->r->hSet($job, 'last_error', substr($error, 0, 200));
+        if ($giveUp) {
+            $this->r->hSet($job, 'status', 'failed');
+            foreach ($this->clearOnDone() as $f) {
+                $this->r->hDel($job, $f);
+            }
+            $this->r->expire($job, self::DONE_TTL_DAYS * 86400);
+        } else {
+            $this->r->zAdd($this->key('delayed'), time() + Queues::backoffSeconds($attempts), (string) $id);
+        }
+        $this->r->exec();
+        return $giveUp;
+    }
+
+    /** Done items are deleted on ack and given-up ones expire (DONE_TTL_DAYS): nothing to purge. */
+    public function purge(int $days): int
+    {
+        return 0;
+    }
+}

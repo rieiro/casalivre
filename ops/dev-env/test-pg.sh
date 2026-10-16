@@ -23,6 +23,12 @@ if [ "$php" = php8.4 ]; then
 	run() {
 		local args=("${BW_BASE[@]}" --perms 1777 --tmpfs /tmp --bind "$CL_REPO" "$CL_REPO" --bind "$CL_RUN" "$CL_RUN"
 			--chdir "$CL_REPO" --setenv CL_PHP php8.4) v
+		# P0-4: Valkey as cl_app for valkey_queue_test (socket in $CL_RUN, app secret read-only).
+		if [ -S "$CL_RUN/valkey.sock" ] && [ -r "$CL_HOME/etc/valkey-app.secret" ]; then
+			args+=(--ro-bind "$CL_HOME/etc/valkey-app.secret" "$CL_HOME/etc/valkey-app.secret"
+				--setenv VALKEY_SOCKET "$CL_RUN/valkey.sock" --setenv VALKEY_USER cl_app
+				--setenv VALKEY_PASSWORD_FILE "$CL_HOME/etc/valkey-app.secret")
+		fi
 		for v in TEST_PG_DSN TEST_PG_USER TEST_PG_PASSWORD PARITY_PG_DSN PARITY_PG_USER PARITY_PG_PASSWORD; do
 			[ -z "${!v:-}" ] || args+=(--setenv "$v" "${!v}")
 		done

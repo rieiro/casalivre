@@ -1,0 +1,5 @@
+# P0-4: Valkey queue worker (QUEUE_DRIVER=valkey from dev-env.env). runit restarts it if it dies.
+# Waits for the Valkey socket so it does not crash-loop on start.
+[ -S "$CL_RUN/valkey.sock" ] || { sleep 0.2; exit 1; }
+cd "$CL_REPO" || exit 1
+exec php8.4 scripts/queue-worker.php 2>&1
