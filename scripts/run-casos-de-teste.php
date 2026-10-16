@@ -102,10 +102,20 @@ function limpar_rodada_anterior(): void
         PhotoStorage::deletePhotoFiles($photo);
     }
     $pdo->beginTransaction();
-    $pdo->exec("DELETE FROM image_queue WHERE photo_id IN (SELECT p.id FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users))");
-    $contas = $pdo->exec("DELETE FROM users WHERE id IN ($users)"); // imóveis, fotos, calendário e avaliações em cascata
-    $pdo->exec('DELETE FROM login_rate_limit');
-    $pdo->commit();
+    try {
+        $pdo->exec("DELETE FROM image_queue WHERE photo_id IN (SELECT p.id FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users))");
+        // properties.user_id é ON DELETE RESTRICT: apaga os imóveis antes (fotos, calendário, feeds, avaliações e convites em cascata).
+        $pdo->exec("DELETE FROM properties WHERE user_id IN ($users)");
+        $contas = $pdo->exec("DELETE FROM users WHERE id IN ($users)");
+        $pdo->exec('DELETE FROM login_rate_limit');
+        $pdo->commit();
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        // FK: PG 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503; SQLite 23000 (código estendido 19/787).
+        $fk = in_array((string) $e->getCode(), ['23001', '23503', '23000'], true) ? ' (violação de FK)' : '';
+        fwrite(STDERR, "Limpeza da massa falhou$fk: " . $e->getMessage() . "\n");
+        exit(1);
+    }
     foreach (glob($root . '/storage/cache/ratelimit/*') ?: [] as $f) {
         @unlink($f);
     }
