@@ -14,7 +14,7 @@ Enviadas pelo Bot Gerente Geral. Cada uma traz a recomendação do Gerente de Pr
 | D9 | **Assistente de IA** | Custo e LGPD | Cotação ~R$ 60/mês por 1 mil conversas [E]. Adiar para depois da P4 | — |
 | D10 | **Boleto no piloto** | Mais fraude/atraso, público menor [NV] | Não no piloto; avaliar depois com dado de uso | P6 |
 | D11 | **Piloto antes da P6** | Receita e controle sem PSP | Grupo controlado; reserva registrada na plataforma com pagamento marcado "fora"; o ledger lança a comissão como conta a receber do proprietário, cobrada por fatura mensal (P9); vale até a P6 | Sprint 7 |
-| D12 | **Royalty no canal OTA: 2% ou 3%** (franquia; demais modelos pendentes) | Margem estreita (plano: alavanca principal) | Negócios recomenda; parâmetro, não bloqueia o código | P6/channel manager |
+| D12 | **Royalty no canal OTA: 2% ou 3%** (franquia; demais modelos pendentes). **Decidido 2026-10-16: royalty e fundo de 2% na OTA.** | Margem estreita (plano: alavanca principal) | Negócios recomenda; parâmetro, não bloqueia o código | P6/channel manager |
 | D13 | **Limpeza paga direto ao prestador** (contrato e nota próprios) | Tributário e split | **Já aprovada pelo Rafael**; registrar só para constar | — |
 | D14 | **Texto dos 3 termos** (locação, limpeza, plataforma) | Aceite no checkout desde a P2 | Jurídico (D7) redige a v1 antes da Sprint 7 | Sprint 7 |
 | D15 | **Regime tributário/NFS-e dos recebedores** | Campo já na P2b; emissão só no futuro | Guardar o dado agora e decidir a emissão (prefeitura/provedor) depois | — |

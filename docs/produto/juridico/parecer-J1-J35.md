@@ -281,3 +281,64 @@ Leis de referência: LGPD = Lei 13.709/2018; MCI = Marco Civil, Lei 12.965/2014;
 7. **Verificar** nas prefeituras de Cabo Frio, Búzios, Arraial do Cabo e demais do piloto: cadastro de imóvel de temporada e taxa de turismo (item 10).
 8. **Verificar** no BCB os limites de dispensa da Res. BCB 80/2021 antes da P6, e no site da ANPD o Enunciado 1/2023, a Res. 2/2022 e a Res. 15/2024.
 9. **[OAB]** Revisão final dos documentos D14 (termos do hóspede, contrato do anfitrião, política de privacidade, de cancelamento e de avaliações).
+
+---
+## I. J38–J39 (16/10/2026, Rafael decidiu seguir sem OAB/CRC; valem os pareceres do Bot Jurídico)
+Referências: `spec-00-indice-contrato-comum.md` (§5 parâmetros, §7 pendências 1, 2 e 9), `spec-05` §2 e Ap. A, `juridico/recomendacoes-sem-orientacao-externa.md` §2 e §4.
+
+### 50. J38 — Intermediação (plataforma) ou corretagem? CRECI e NFS-e
+- **Decisão (mais provável):** a casalivre faz **intermediação por plataforma digital**: anúncio, busca, reserva, cobrança da comissão e ferramentas. Ela **não** procura o negócio por instrução do cliente nem negocia em nome dele, como na corretagem (CC art. 722). **Mas** a cobrança de comissão percentual por locação fechada aproxima o modelo da corretagem (CC art. 725: remuneração devida quando o resultado é obtido). Por isso, o risco de o CRECI-RJ autuar por exercício irregular é **médio**. Quem faz a corretagem de fato no modelo franquia e na parceria é o **corretor inscrito** (franqueado/parceiro), e isso protege o modelo.
+- **Base legal:** CC arts. 722 a 729 (corretagem; art. 729: normas especiais prevalecem); Lei 6.530/1978 art. 3º (compete ao corretor a intermediação na compra, venda, permuta e **locação** de imóveis) e art. 6º (inscrição de PJ no CRECI) **[CONFERIR a redação do art. 6º no Planalto: ele exige que a PJ inscrita tenha um corretor inscrito como sócio-gerente ou diretor/responsável]**; Decreto 81.871/1978 (regulamento) **[CONFERIR]**. Jurisprudência sobre plataformas × CRECI: há decisões em sentidos diferentes e **não localizei** precedente do STJ que pacifique o tema. **Não cito acórdão** [CONFERIR antes de usar em defesa].
+- **CRECI:** (a) **canal direto, sem corretor:** é onde o risco fica concentrado. A mitigação mais barata é **inscrever a casalivre como PJ no CRECI-RJ** com um corretor inscrito como responsável técnico (pode ser um franqueado contratado para isso) **[Rafael: custo de anuidade e do responsável]**; (b) franquia e parceria: exigir CRECI ativo do franqueado/parceiro (consulta J8) e deixar no contrato que a corretagem é dele; (c) a casalivre não usa "imobiliária" nem "corretora" na marca ou nos anúncios.
+- **NFS-e:** **não muda**. O subitem **10.05** da LC 116/2003 ("agenciamento, **corretagem** ou intermediação de bens móveis ou imóveis…") cobre os dois enquadramentos. A diferença está só na inscrição no CRECI, não no código. Royalty de franquia é outro subitem (ver J39).
+- **Prazo:** decidir a inscrição antes do piloto com canal direto.
+- **Risco:** **médio** (canal direto sem CRECI); **baixo** (franquia e parceria com corretor inscrito).
+- **Constar nos termos (D14):** termos de uso: "a casalivre é uma plataforma de anúncios e reservas; quando houver corretor, ele é identificado com o número do CRECI". Contrato com o franqueado/parceiro: corretagem e responsabilidade técnica dele, CRECI ativo como condição do contrato.
+
+### 51. J39 — NFS-e de cada parte do split, por modelo
+Premissas: faturas separadas por emissor (item 13); pagamento da locação fora da plataforma no piloto (o aluguel não passa pela casalivre e **não** gera NFS-e: a locação de bem imóvel não é serviço, Súmula Vinculante 31/STF); ISS no município do estabelecimento do prestador (LC 116 art. 3º, caput); base = preço do serviço (LC 116 art. 7º). **NBS:** usar a correlação LC 116 × NBS publicada no portal da NFS-e Nacional (nfse.gov.br) **[CONFERIR o código NBS exato; não informo um número sem confirmar]**.
+
+**Modelo direto (casalivre × proprietário, sem corretor)**
+| Parcela | Emite | Para | Base | Código |
+|---|---|---|---|---|
+| Comissão casalivre | casalivre | proprietário (tomador) | valor da comissão | LC 116 10.05 |
+
+**Parceria (parceiro corretor/imobiliária)**
+| Parcela | Emite | Para | Base | Código |
+|---|---|---|---|---|
+| Comissão do parceiro | parceiro (com CRECI) | proprietário | parte do parceiro | 10.05 |
+| Comissão casalivre | casalivre | proprietário | parte da casalivre | 10.05 |
+Se o parceiro pagar a casalivre (e não o proprietário), a casalivre emite contra o parceiro; definir no contrato de parceria **[Rafael]**.
+
+**Franquia (900/40/30/30 ‰, decidido em spec-05 Ap. A)**
+| Parcela | Emite | Para | Base | Código |
+|---|---|---|---|---|
+| Comissão da franquia: 10% no padrão (corretor 4% + royalty 3% + fundo 3%) | franqueado | proprietário | 10% no padrão (o royalty e o fundo integram o preço do serviço do franqueado) | 10.05 |
+| Repasse ao fundo 3% | — (sem NFS-e; repasse contratual de franquia, comprovado por extrato) | fundo | — | — **[CONFERIR com o tratamento contábil do franqueado: é despesa dele]** |
+| Royalty 3% no padrão (ou o percentual vigente no contrato de franquia), pago pelo franqueado com os 10% | casalivre | **franqueado** | percentual do royalty (base definida no contrato de franquia) | LC 116 **17.08 (franquia/franchising)** |
+**Atenção:** a spec-05 (cenário 900/40/30/30) dá a entender que a casalivre cobra o royalty do valor da reserva, enquanto as recomendações e esta decisão dizem que a cobrança é do **franqueado**. Se a casalivre emitir contra o **proprietário**, aquilo **não é royalty**: é comissão de intermediação (10.05) e o franqueado não paga royalty. Escolher um dos dois e alinhar spec, contrato e COF **[Rafael]**. Recomendo **royalty contra o franqueado, 17.08**. O ISS de franquia é questionado (STF reconheceu a constitucionalidade do ISS sobre franquia no RE 603.136, Tema 300, 2020 **[CONFERIR]**).
+
+**Canal manual (reserva lançada pelo anfitrião)**
+| Parcela | Emite | Para | Base | Código |
+|---|---|---|---|---|
+| Comissão do canal manual (se houver; pendente Rafael) | casalivre (e o franqueado, se a franquia cobrar no manual) | proprietário | valor da comissão | 10.05 |
+Sem comissão no canal manual, não há NFS-e. Mensalidade ou assinatura do software (se adotada) é outro serviço: **LC 116 1.05 (licenciamento ou cessão de direito de uso de programas)** ou **1.03 (processamento, armazenamento… plataformas)** **[CONFERIR com o município]**.
+
+**IBS/CBS a partir de 2027 (LC 214/2025):**
+- 2026: destaque de teste (CBS 0,9%, IBS 0,1%) na NFS-e nacional, compensável e sem custo efetivo para quem cumpre as obrigações acessórias **[CONFERIR atos da Receita/CGIBS]**.
+- 2027: a CBS passa a ser cobrada na alíquota cheia sobre cada uma dessas notas (comissão, royalty), no lugar de PIS/Cofins; o IBS continua em 0,1% até 2028; o ISS cai de 2029 a 2032 e acaba em 2033. **Base:** o valor do serviço de cada emissor; não há redutor para intermediação nem para franquia **[CONFERIR anexos de redução da LC 214]**.
+- Quem estiver no **Simples** recolhe IBS/CBS dentro do DAS e só transfere crédito limitado ao tomador, salvo opção pelo regime regular (LC 214 art. 41). Isso afeta o franqueado que toma o royalty: se for contribuinte do regime regular, ele aproveita crédito do IBS/CBS destacado pela casalivre.
+- **Plataforma (LC 214 art. 22):** responsabilidade solidária da casalivre quando o fornecedor não emitir documento fiscal; manter o ledger por reserva e emissor (já previsto).
+- **Risco:** **médio** (código 17.08 × 10.05 do royalty, alíquota municipal, NBS); **alto** se emitir "royalty" contra o proprietário (natureza errada, CTN art. 118).
+- **Prazo:** emissão no mês da prestação; guarda de 6 anos corridos (item 16).
+- **Constar nos termos (D14):** contrato com o proprietário: discriminar quem cobra cada parcela e quem emite cada nota. Contrato de franquia/COF (Lei 13.966/2019 art. 2º): royalty de 3%, base, vencimento e NFS-e da casalivre contra o franqueado; obrigação do franqueado de repassar o fundo.
+
+### Pendências novas para o Rafael
+10. Inscrição da casalivre no CRECI-RJ com corretor responsável (custo) ou canal direto só com corretor parceiro (J38).
+11. Royalty contra o **franqueado** (17.08, recomendado) × contra o proprietário (10.05, deixa de ser royalty). Alinhar a spec-05, o contrato e a COF (J39).
+12. Comissão do canal manual e quem paga a casalivre na parceria (J39).
+
+### 52. Verificação de 16/10/2026: NFS-e Nacional (tomador) e DIMOB
+- **NFS-e:** DPS v1.01; NT 009 v1.01 (01/10/2026, Ato Técnico Conjunto nº 7, de 28/09/2026). O grupo `toma` é opcional no XSD [CONFERIR no Anexo I oficial]; quando informado, a pessoa física é identificada pelo CPF. A NT 009 valida o município do tomador contra o cadastro CPF/CNPJ. **Decisão:** sempre identificar o tomador. Fontes: gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc e a NT 009 v1.01 (PDF).
+- **DIMOB:** a IN RFB 1.115/2010 está **em vigor** (alterada pela IN 2.218/2024, que mexe só nas multas). É obrigatória para PJ que intermedeia aluguel de imóveis, sem exceção para temporada ou plataforma. Exige CPF/CNPJ do locador **e do locatário** e os valores mensais de aluguel e comissão. **Decisão (mais provável):** a casalivre é obrigada. Coletar o CPF do hóspede (LGPD art. 7º II) e guardar em `fiscal_parties` até 1º/jan do ano do último evento + 7. Controverso (REQ 16/2025 na Câmara): [pendente: Rafael] aceitar ou fazer consulta formal. **Risco:** médio (multa de 3% do valor das operações omitidas, reduzida em 70% no Simples). Fontes: gov.br/receitafederal (DIMOB, Perguntas e Respostas) e gov.br/pt-br/servicos/declarar-atividades-imobiliarias, acesso em 16/10/2026.
+- **Substitui** os [CONFERIR] sobre a DIMOB em `spec-05-apendice-fiscal.md` (A.7) e em `recomendacoes-sem-orientacao-externa.md`.

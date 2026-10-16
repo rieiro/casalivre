@@ -11,18 +11,24 @@ Fontes: `decisoes-rafael.md` (D13: limpeza paga direto ao prestador, aprovada; D
 **Estados:** vazio em Próximas ("Nenhuma viagem marcada." + "Explorar imóveis"); vazio em Passadas ou Canceladas (texto curto); carregando (skeleton); erro ("Não carregamos suas viagens. Tentar novamente"); banner de bloqueio antibloqueio, quando houver (spec-01, seção 5b).
 **Critérios de aceite:** (1) cada reserva aparece em uma só aba, conforme o estado; (2) a próxima ação tem a data absoluta e o tempo restante; (3) uma reserva recusada mostra só a mensagem neutra e "Ver parecidos" (spec-01, seção 5b).
 
+## 1b. Meus documentos (hóspede) *(Produto, requisito de tela)*
+No Perfil: cada **termo aceito** (termos de uso, contrato da reserva com o Anexo I, política de cancelamento), com a **versão**, a **data e hora do aceite** e **"Baixar PDF"** da versão aceita.
+
 ## 2. Detalhe da reserva
 **Canal de denúncia sempre visível** ([decidido, parecer item 17]): "Denunciar anúncio ou pedido de pagamento suspeito" no topo do detalhe.
 **Topo:** status, código, o **rótulo de origem** (Pedido, Imediata, OTA ou Manual; spec-06, 3b) e a **linha do tempo** (Enviada → Aprovada → Paga → Confirmada → Em estadia → Concluída), com a etapa atual marcada em texto.
 **Prazos:** a aprovação e o pagamento seguem a regra **24 h, ou 4 h se o check-in for em menos de 72 h** (P2-23). Cada prazo mostra o texto absoluto e o relativo, e só é anunciado quando falta 1 h e quando expira.
 **Pagamento por fora (piloto D11):** em Aguardando pagamento, aparecem as duas linhas da spec-01: **Estadia** (valor e chave do recebedor do imóvel) e **Limpeza** (valor e chave do prestador; D13). Cada uma tem "Copiar chave", com o aviso "Pagamento direto ao anfitrião, sem a proteção casalivre". Também aparece o status parcial ("Estadia recebida · Limpeza pendente").
 **Composição:** o snapshot da spec-07, B3, com "Preço garantido em [data]".
+**Inventário (Anexo I):** a lista por cômodo do snapshot (spec-03 §2b), com as fotos, só leitura.
+**Caução e saída antecipada:** o valor da caução (se houver), a regra de saída antecipada e o escopo da limpeza do snapshot. Depois do check-out: "O anfitrião pode registrar danos até [check-out + 48 h]", e então "Caução devolvida" ou o registro de dano com fotos, com "Aceitar" e "Contestar" (a contestação abre a disputa existente, §6; *confirmado pelo Produto*).
 **Comprovante de reserva** ([decidido, parecer J34]; **nunca "recibo"**): depois da Confirmada, o botão "Ver comprovante de reserva" mostra um resumo com o código, as datas, as linhas, o total e "pagamento informado como feito diretamente ao anfitrião em [data]; não é recibo nem documento fiscal". Também traz o nome de quem reservou, o nome do anfitrião, a política aplicada e a data de emissão. Ele é exportável em PDF.
 **Contatos:** seguem a regra da spec-08 (no piloto, liberados na confirmação).
 **Ações por estado:**
 | Estado | Ações do hóspede |
 |---|---|
 | Aguardando aprovação | Cancelar solicitação (sem custo), Mensagens |
+| Aceite pendente (reserva manual) | Aceitar termos e contrato (link com OTP), Mensagens |
 | Aguardando pagamento | Copiar chave, Cancelar sem custo (spec-01) |
 | Confirmada | Lista da portaria, Ver comprovante de reserva, Cancelar reserva (com simulação), Mensagens, "Alterar datas" (desabilitado: "Em breve") |
 | Em estadia | Relatar problema, Mensagens |
@@ -40,7 +46,7 @@ Quando o imóvel exige (spec-03), aparece o formulário com a **finalidade** (sp
 **Regras (pagamentos.md §6, spec-03):**
 - **Aguardando aprovação ou pagamento:** sem custo, e as datas são liberadas.
 - **Reserva com origem OTA:** o cancelamento e o reembolso seguem a **política da OTA** e são feitos na OTA; a tela mostra "Reserva feita em [OTA]. Cancele por lá." (spec-06 3b).
-- **CDC, 7 dias a partir da reserva:** reembolso de 100% **se o cancelamento for em até 7 dias da reserva E antes do check-in**, sem exceção para check-in próximo ([decidido, parecer J35]). Depois do início da estadia, não se aplica.
+- **CDC, 7 dias a partir da confirmação da reserva:** reembolso de 100% **se o cancelamento for em até 7 dias da confirmação E antes do check-in**, sem exceção para check-in próximo ([decidido, parecer J35]). Depois do início da estadia, não se aplica.
 - Depois disso, vale a política: **Flexível** (100% até 24 h antes; depois, a 1ª diária não volta), **Moderada** (100% até 5 dias antes; depois, 50%) ou **Rígida** (100% até 14 dias antes, 50% entre 14 e 7 dias, 0% com menos de 7 dias).
 - **Sempre:** a limpeza e a taxa não usadas são devolvidas.
 **Simulação (exemplo, Moderada, cancelando 3 dias antes):**
@@ -50,13 +56,14 @@ Quando o imóvel exige (spec-03), aparece o formulário com a **finalidade** (sp
 - **"Você recebe: R$ 1.250"**
 Aparece também a regra aplicada ("Política Moderada: 50% com menos de 5 dias") e a linha do tempo das datas-limite desta reserva.
 **Motivo** (opcional, lista fixa) e **confirmação** ("Cancelar e receber R$ 1.250?").
+**Comissão no cancelamento** (alinhado ao P9-3, spec-05 Ap. A): a comissão incide **só sobre o valor que o anfitrião fica**; um cancelamento com **reembolso integral não gera linha na fatura**; com **reembolso parcial**, o valor retido entra na fatura P9 do mês em que o cancelamento fica definitivo (reembolso concluído, sem disputa aberta) *(Produto)*.
 **Reembolso no piloto (pagamento por fora)** *[E] (Negócios)*:
 - O **anfitrião tem 5 dias úteis** para devolver e **anexar o comprovante Pix com o ID da transação** (a limpeza segue a mesma regra, pelo prestador).
 - O hóspede vê "Reembolso de R$ 1.250 até [data] · aguardando o anfitrião". Quando o comprovante chega, ele escolhe **"Recebi"** ou **"Não recebi / contestar"**. **Se não responder em 72 h, a devolução é considerada feita.**
 - **Se o anfitrião perder o prazo:**
   - abre-se uma **disputa automática**;
   - os anúncios dele **deixam de aceitar reservas novas**;
-  - **a comissão continua devida**;
+  - aplicam-se as penalidades já previstas (as acima e a perda do pagamento por fora); **o atraso não gera comissão**;
   - o proprietário **perde o pagamento por fora**.
 - Nesse caso, o hóspede recebe **orientação sobre o Procon** e uma **declaração da plataforma com o histórico** ([decidido, parecer item 22]: dados da reserva, mensagens relevantes, status, datas e valores; do anfitrião, só o nome e os dados do anúncio; linguagem factual) da reserva (PDF, com as datas, os valores e os comprovantes).
 **Critérios de aceite:** (1) o prazo de 5 dias úteis aparece para os dois lados; (2) sem resposta do hóspede em 72 h, o reembolso fica como feito; (3) com o prazo vencido, a disputa é aberta, os anúncios são suspensos para reservas novas e o pagamento por fora é desabilitado; (4) o extrato fica disponível ao hóspede.
@@ -137,4 +144,4 @@ Os itens pendentes não bloqueiam o restante da spec.
 1. [pendente: Rafael + Jurídico e Tributário] D14: textos finais dos termos e das políticas. As cláusulas mínimas estão no parecer (itens 17 a 22, J35).
 2. [pendente: Rafael + Jurídico e Tributário] Proteção ao hóspede no piloto (parecer item 17, risco alto): só abrir o piloto com KYC do anfitrião, chave Pix vinculada e canal de denúncia.
 3. [pendente: Rafael] D3: avisos de status, de prazos, de cancelamento e de disputa. Até lá, só em Viagens e no painel.
-4. [pendente: Rafael] Aceitar o custo do arrependimento de 7 dias até o check-in (o anfitrião perde a reserva) e embutir no contrato do anfitrião (parecer J35, pendência 3). A regra já está aplicada nas telas.
+4. [pendente: Rafael] Aceitar o custo do arrependimento de 7 dias (contados da confirmação) até o check-in (o anfitrião perde a reserva) e embutir no contrato do anfitrião (parecer J35, pendência 3). A regra já está aplicada nas telas.
