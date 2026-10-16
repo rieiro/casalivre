@@ -203,6 +203,8 @@ for line in bz2.open(sys.argv[1], "rt", encoding="utf-8", errors="replace"):
             }
             return '';
         }
+        // Drena o stdout restante antes do proc_close: se o laço parou cedo (erro no import), o python3
+        // ficaria bloqueado escrevendo num pipe cheio e o proc_close esperaria para sempre.
         if (is_resource($pipes[1] ?? null)) {
             stream_get_contents($pipes[1]);
             fclose($pipes[1]);

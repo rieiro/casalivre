@@ -12,19 +12,14 @@ else
   exit 1
 fi
 
-mkdir -p storage/db storage/logs storage/mail storage/sessions public/uploads/users
+# Pastas de runtime e banco novo a partir de database/schema.sql: mesma rotina do scripts/migrate.php (src/Db.php).
+"$PHP_BIN" -r '
+  require "src/Db.php";
+  Db::ensureStorageDirs();
+  $created = Db::ensureSqliteFromSchema();
+  if ($created !== null) { echo "Banco criado: $created\n"; }
+'
 chmod 0777 storage/db storage/logs storage/mail storage/sessions public/uploads || true
-
-if [[ ! -f storage/db/casalivre.sqlite ]]; then
-  "$PHP_BIN" -r 'exit(0);'
-  sqlite3 storage/db/casalivre.sqlite < database/schema.sql 2>/dev/null || \
-    "$PHP_BIN" -r '
-      $pdo = new PDO("sqlite:storage/db/casalivre.sqlite");
-      $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-      $pdo->exec(file_get_contents("database/schema.sql"));
-      echo "Banco criado\n";
-    '
-fi
 
 # .env: cria (de .env.example ou do zero) ou mantém o existente; garante GEO_SALT (>= 32) e chmod 600.
 "$ROOT/scripts/setup-env.sh" "$PHP_BIN"
