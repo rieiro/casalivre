@@ -1,0 +1,4 @@
+# Gerado por up-bwrap.sh a partir de templates/postgresql.conf.in — não editar.
+listen_addresses = '127.0.0.1'
+port = ${CL_PORT_PG}
+unix_socket_directories = '${CL_HOME}/run'
