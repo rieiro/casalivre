@@ -93,7 +93,7 @@ t_eq(2, $code, 'conexão impossível: sai com 2');
 t_ok(str_contains($err, 'FALHA na migração'), 'mensagem clara no STDERR');
 
 echo "SQLite inalterado\n";
-t_temp_db();
+t_temp_sqlite();
 $db = Db::pdo();
 t_eq(Db::SCHEMA_VERSION, (int) $db->query('PRAGMA user_version')->fetchColumn(), 'SQLite segue migrando sozinho na conexão (user_version = SCHEMA_VERSION)');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/Db.php'), 'nightly_price / 100'), 'conversão money_unit (divisão por 100) removida');

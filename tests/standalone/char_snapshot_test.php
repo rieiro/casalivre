@@ -80,7 +80,7 @@ require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/UserRepository.php';
 require_once CL_ROOT . '/src/HouseRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $senha = 'Casa#Snap2026';
 $userId = UserRepository::insert([
     'name' => 'Dona Snapshot', 'cpf' => '52998224725', 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',
@@ -151,7 +151,11 @@ $bound = 'snapbound';
 $corpo = "--$bound\r\nContent-Disposition: form-data; name=\"_csrf\"\r\n\r\n$csrf\r\n--$bound\r\nContent-Disposition: form-data; name=\"fotos[0]\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\n"
     . str_repeat('a', $limite + 1024) . "\r\n--$bound--\r\n";
 $r = t_http('POST', $base . '/imoveis/' . $hash . '/fotos', $corpo, ['Content-Type: multipart/form-data; boundary=' . $bound], $jar);
-snap('html-erro-413-upload', snap_headers($r) . "\n" . snap_norm($r['body'], $fixos));
+// Limite e tamanho saem do mesmo php.ini do app (post_max_size), via oversize_upload_message():
+// o snapshot não fixa o limite (dev 20M, ambiente/produção 20M). A frase é conferida aqui e sai do snapshot.
+$frase = oversize_upload_message(strlen($corpo), $limite);
+t_ok(str_contains($r['body'], $frase), "413 upload: frase com o limite do php.ini ($frase)");
+snap('html-erro-413-upload', snap_headers($r) . "\n" . snap_norm(str_replace($frase, '', $r['body']), $fixos));
 
 // 500 do ExceptionShield (página própria com <style> inline): servidor com banco inacessível.
 $dsn = (string) getenv('DB_DSN');

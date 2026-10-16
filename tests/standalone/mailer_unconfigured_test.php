@@ -5,7 +5,7 @@
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $hideInResponse = function_exists('expose_account_links'); // PR #15 (link fora da resposta) já mesclado?
 
 foreach (['ausente' => null, 'production' => 'production'] as $label => $env) {

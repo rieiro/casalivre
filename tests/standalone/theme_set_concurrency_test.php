@@ -4,7 +4,7 @@
 // tema == tema_anterior; trocas alternadas sem duplicata e saldo igual ao valor final.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
-$dbFile = t_temp_db();
+$dbFile = t_temp_sqlite();
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/src/Settings.php';

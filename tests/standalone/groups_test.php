@@ -4,6 +4,22 @@
 // dono aceita/recusa/sai. Não-membro, não-dono e grupo inexistente: mesmo 404 (sem enumeração). Todo POST exige
 // CSRF; entradas validadas; toda mudança vai para o activity_log (user_id pseudonimizado).
 require __DIR__ . '/lib.php';
+
+/** Trigger que aborta o INSERT em group_members do usuário (SQLite: TEMP TRIGGER; PG: função + trigger, com SQLSTATE). */
+function t_fail_trigger(string $name, int $userId, string $msg, string $pgState): void
+{
+    if (t_is_pg()) {
+        db()->exec("CREATE FUNCTION t_$name() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.user_id = $userId THEN RAISE EXCEPTION '$msg' USING ERRCODE = '$pgState'; END IF; RETURN NEW; END \$\$");
+        db()->exec("CREATE TRIGGER $name BEFORE INSERT ON group_members FOR EACH ROW EXECUTE FUNCTION t_$name()");
+        return;
+    }
+    db()->exec("CREATE TEMP TRIGGER $name BEFORE INSERT ON group_members WHEN NEW.user_id = $userId BEGIN SELECT RAISE(ABORT, '$msg'); END");
+}
+
+function t_drop_fail_trigger(string $name): void
+{
+    db()->exec(t_is_pg() ? "DROP TRIGGER $name ON group_members; DROP FUNCTION t_$name()" : "DROP TRIGGER $name");
+}
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
 require_once CL_ROOT . '/src/Acoes/GrupoGestor.php';
@@ -254,20 +270,20 @@ echo "setMember em transação\n";
 $tx = c_user('active');
 $adminRow = ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'];
 $mark = c_mark($act);
-db()->exec("CREATE TEMP TRIGGER corrida BEFORE INSERT ON group_members WHEN NEW.user_id = " . (int) $tx['id'] . " BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: group_members.group_id, group_members.user_id'); END");
+t_fail_trigger('corrida', (int) $tx['id'], 'UNIQUE constraint failed: group_members.group_id, group_members.user_id', '23505');
 $r = GrupoAdmin::setMember($adminRow, $g2, $tx['email'], 'gestor');
 t_eq('conflito', $r->tipo, 'setMember: UNIQUE na corrida vira conflito');
 t_eq([], $r->eventos, 'setMember: conflito sem log');
 t_ok(!Db::inTransaction(db()), 'setMember: nenhuma transação pendente após o conflito');
-db()->exec('DROP TRIGGER corrida');
-db()->exec("CREATE TEMP TRIGGER falha BEFORE INSERT ON group_members WHEN NEW.user_id = " . (int) $tx['id'] . " BEGIN SELECT RAISE(ABORT, 'falha simulada'); END");
+t_drop_fail_trigger('corrida');
+t_fail_trigger('falha', (int) $tx['id'], 'falha simulada', 'P0001');
 $err = null;
 try {
     GrupoAdmin::setMember($adminRow, $g2, $tx['email'], 'gestor');
 } catch (PDOException $e) {
     $err = $e;
 }
-db()->exec('DROP TRIGGER falha');
+t_drop_fail_trigger('falha');
 t_ok($err !== null, 'setMember: outra falha de banco propaga');
 t_ok(!Db::inTransaction(db()), 'setMember: nenhuma transação pendente após a falha');
 t_eq(null, GroupRepository::storedRole((int) $g2['id'], (int) $tx['id']), 'setMember: nada gravado nas falhas');
@@ -378,9 +394,14 @@ t_eq(302, c_form($base, '/admin/grupos/imob-sul/membros/remover', ['_csrf' => $c
 t_eq(1, count($codes($mark, ActivityLog::GROUP_MEMBER_REMOVE)), 'segunda remoção não gera log');
 // Corrida: a leitura ainda vê o membro, mas o DELETE não apaga nada (outra requisição chegou antes).
 db()->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$g1['id'], $gestor['id'], 'membro']);
-db()->exec('CREATE TEMP TRIGGER outra_remocao BEFORE DELETE ON group_members WHEN OLD.user_id = ' . (int) $gestor['id'] . ' BEGIN SELECT RAISE(IGNORE); END');
+if (t_is_pg()) { // BEFORE DELETE que devolve NULL = RAISE(IGNORE) do SQLite
+    db()->exec('CREATE FUNCTION t_outra_remocao() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.user_id = ' . (int) $gestor['id'] . ' THEN RETURN NULL; END IF; RETURN OLD; END $$');
+    db()->exec('CREATE TRIGGER outra_remocao BEFORE DELETE ON group_members FOR EACH ROW EXECUTE FUNCTION t_outra_remocao()');
+} else {
+    db()->exec('CREATE TEMP TRIGGER outra_remocao BEFORE DELETE ON group_members WHEN OLD.user_id = ' . (int) $gestor['id'] . ' BEGIN SELECT RAISE(IGNORE); END');
+}
 $rr = GrupoAdmin::removeMember(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], $g1, (string) $gestor['id']);
-db()->exec('DROP TRIGGER outra_remocao');
+t_drop_fail_trigger('outra_remocao');
 t_eq(['ok', false, []], [$rr->tipo, $rr->dados['mudou'] ?? null, $rr->eventos], 'removeMember com DELETE sem linha (corrida): sem log');
 db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([$g1['id'], $gestor['id']]);
 t_eq(404, t_http('GET', $base . '/grupos/imob-sul', null, [], $jG)['status'], 'ex-gestor: 404');

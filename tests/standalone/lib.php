@@ -61,10 +61,22 @@ function t_done(): never
 }
 
 /**
- * Prepara um banco SQLite temporário (DB_DSN) com o schema do projeto.
- * Deve ser chamado antes de qualquer acesso a db().
+ * Prepara um banco temporário (DB_DSN) com o schema do projeto.
+ * Padrão: SQLite. Com TEST_PG_DSN (ex.: pgsql:host=/run/pg;dbname=postgres, P0-3) cria o banco
+ * casalivre_t_<pid>_<rand> no PG, carrega schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim.
+ * Deve ser chamado antes de qualquer acesso a db(). Retorna o arquivo SQLite ou o DSN do banco PG.
  */
 function t_temp_db(): string
+{
+    $pgAdmin = (string) getenv('TEST_PG_DSN');
+    if ($pgAdmin !== '') {
+        return t_temp_pg($pgAdmin);
+    }
+    return t_temp_sqlite();
+}
+
+/** Banco SQLite temporário mesmo com TEST_PG_DSN (testes do caminho SQLite: PRAGMA, sqlite_master, arquivo). */
+function t_temp_sqlite(): string
 {
     $dir = sys_get_temp_dir() . '/casalivre-test-' . bin2hex(random_bytes(4));
     mkdir($dir, 0700, true);
@@ -82,6 +94,40 @@ function t_temp_db(): string
     return $file;
 }
 
+/** true quando a suíte roda em PG (TEST_PG_DSN definido). */
+function t_is_pg(): bool
+{
+    return (string) getenv('TEST_PG_DSN') !== '';
+}
+
+/** Banco PG temporário: cria, carrega o schema, migra (seeds + versão) e apaga no shutdown. */
+function t_temp_pg(string $adminDsn): string
+{
+    $opts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+    $user = getenv('TEST_PG_USER') ?: null;
+    $pass = getenv('TEST_PG_PASSWORD') ?: null;
+    $name = 'casalivre_t_' . getmypid() . '_' . bin2hex(random_bytes(3));
+    $admin = new PDO($adminDsn, $user, $pass, $opts);
+    $admin->exec("CREATE DATABASE $name");
+    $dsn = preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
+    register_shutdown_function(static function () use ($adminDsn, $user, $pass, $opts, $name): void {
+        try {
+            (new PDO($adminDsn, $user, $pass, $opts))->exec("DROP DATABASE IF EXISTS $name WITH (FORCE)");
+        } catch (Throwable $e) {
+            fwrite(STDERR, "t_temp_pg: não apagou $name: {$e->getMessage()}\n");
+        }
+    });
+    (new PDO($dsn, $user, $pass, $opts))->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
+    putenv('DB_DRIVER=pgsql');
+    putenv('DB_DSN=' . $dsn);
+    $user !== null && putenv('DB_USER=' . $user);
+    $pass !== null && putenv('DB_PASSWORD=' . $pass);
+    // Em processo, como no SQLite (migrate() carrega Settings, I18n, ActivityLog...).
+    require_once CL_ROOT . '/src/Db.php';
+    Db::migrateNow();
+    return $dsn;
+}
+
 /** Sobe `php -S` com o front controller usando o banco temporário. Retorna a URL base. */
 function t_server(): string
 {
@@ -96,7 +142,7 @@ function t_server(): string
     $port = (int) substr(strrchr((string) stream_socket_get_name($sock, false), ':'), 1);
     fclose($sock);
     $nonce = bin2hex(random_bytes(16));
-    $env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
+    $env = array_merge(getenv(), ['DB_DRIVER' => (string) (getenv('DB_DRIVER') ?: 'sqlite'), 'DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
     // APP_URL fixa (obrigatória fora de dev/local); o teste pode definir outra antes de subir o servidor.
     $env['APP_URL'] = (string) (getenv('APP_URL') ?: 'http://127.0.0.1:' . $port);
     // GEO_SALT é obrigatório fora de dev/local (GeoSalt::enforce); o teste pode definir outro (inclusive vazio).

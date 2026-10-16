@@ -189,7 +189,7 @@ if ($haveSsl) {
 echo "integração: POST /api/users enfileira; o worker envia\n";
 // Mesmo banco temporário do início (db() já está aberto nele); só esvazia a fila dos casos anteriores.
 db()->exec('DELETE FROM mail_queue');
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $out = $tmp . '/api.jsonl';
 $port = fake_smtp('plain', $out, $procs);
 putenv('SMTP_PORT=' . $port);
