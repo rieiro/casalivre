@@ -8,7 +8,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] `verification_link` e link de redefinição fora das respostas da API e das telas em produção (PR #15).
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
-- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com CSP `default-src 'self'; script-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
+- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com a CSP atual (igual em todas as páginas; referência: `tests/standalone/snapshots/csp.txt` e `xss_csp_test`): `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`, mais `X-Frame-Options: DENY`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
 - [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
 
@@ -29,7 +29,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] **`fastcgi_request_buffering on`** (padrão; manter ligado).
 - [ ] **php.ini:** `post_max_size` e `upload_max_filesize` coerentes com o nginx (ex.: `20M` / `16M`); `zend.exception_ignore_args = On`.
 - [ ] **`real_ip`** só atrás de proxy confiável (não aceitar `X-Forwarded-For` de qualquer origem).
-- [ ] **`storage/cache/ratelimit`** com permissão `0700` (dono do php-fpm). O diretório se limpa sozinho; o cron de limpeza fica opcional.
+- [ ] **`storage/cache/ratelimit`** com permissão `0700` (dono do php-fpm). O diretório se limpa sozinho; o cron de limpeza fica opcional. Disco local e servidor único: ver a seção "Limitador de taxa" abaixo.
 - [ ] **`storage/logs/error.log`** com permissão `0600`, retenção ativa, e amostrar o arquivo depois do deploy (sem dado pessoal).
 
 ## Variáveis de ambiente
@@ -128,6 +128,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 **.env**
 - [ ] `APP_URL` obrigatório em produção e **https://** (links de e-mail, links de grupo e raiz da plataforma). Sem ele válido o mail-worker não inicia: escreve `mail-worker: APP_URL não configurada.` / `APP_URL inválida.` no stderr, sai com código 2 e não toca na fila. Conferir o .env lido pelo cron e monitorar o código de saída.
 - [ ] `PLATFORM_ROOT_DOMAIN` (opcional): domínio raiz quando o APP_URL é subdomínio diferente de www. (ex.: app.casalivre.com.br → casalivre.com.br). Ele e seus subdomínios nunca viram domínio de grupo.
+- [ ] (#64) Domínios de grupo já cadastrados ficam não verificados: só passam a valer depois da verificação DNS TXT.
 - [ ] `MAIL_HTML`: padrão ligado (texto + HTML); `MAIL_HTML=0` força só texto.
 - [ ] `SESSION_SAMESITE` (opcional, padrão Lax; None só com HTTPS).
 
@@ -182,6 +183,28 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] (#73) iCal (`/ical/…`, `/api/ical/…`) em domínio de grupo responde 404 para imóvel de outro grupo ou sem grupo.
 - [ ] (#73) nginx: `autoindex off` em `/uploads/`. Assim que o `migrateLegacy` do image-worker terminar (100 fotos por execução; as fotos antigas usam ids sequenciais), negar a pasta antiga com `location ^~ /uploads/users/ { deny all; }`.
 
+## Paridade web/API, calendário e grupo de teste (#83–#94, SCHEMA_VERSION 17)
+- [ ] Banco em SCHEMA 17 (15: `cal.url_required` e `cal.feed_missing`; 16: chaves `photo.*`/`review.*`; 17: `cal.feed_removed` e `cal.url_https`). As três versões só mudam seeds de tradução: recriar o banco com `setup.sh` + seeds, sem migração.
+- [ ] (#86) API do iCal aceita só `external_ical_url` e `feed_title`; download que falha dá 502; calendário inválido dá 422 ou 409. (#90) Upload pela API sem nenhuma foto salva dá 422.
+- [ ] (#86, Segurança) Proxy (nginx/CDN): **não substituir as respostas 5xx da aplicação em `/api/`** (sem `proxy_intercept_errors on` nem `error_page 502` nesse location). O `POST /api/imoveis/<h>/ical/importar` devolve 502 com JSON (`error`, `status: NOK`, `feeds`) quando o download do feed falha.
+- [ ] (#89/#91) Feeds novos só `https://`. Os feeds `http://` já cadastrados **param de sincronizar** (status NOK) até o dono recadastrar o feed em https. Avisar os donos antes do deploy.
+- [ ] (#85) O limite de reenvio de ativação (3 por hora por conta) usa o e-mail como chave; isso funciona porque o e-mail de uma conta não pode ser trocado (não existe troca de e-mail).
+- [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. Se algum worker CLI virar processo de longa duração (laço), chamar `GrupoResolvedor::limparCache()` a cada iteração. Hoje o mail-worker processa um lote e sai (no máximo um lote com link antigo; aceito pela Segurança).
+- [ ] (#94) `scripts/seed-grupo-teste.php` é **só para dev**: recusa rodar se `APP_ENV` não for `dev`/`local` e nunca entra em scripts de setup ou deploy de produção.
+
+## Limitador de taxa (#85, #88; nota final)
+- [ ] Os limites por IP e por conta (`IpRateLimiter`, pasta `storage/cache/ratelimit`) usam arquivos com `flock`. Com **um servidor só**, a pasta fica em **disco local** (não NFS), porque o `flock` precisa funcionar.
+- [ ] Com mais de um servidor, NFS não serve, e cada nó com a sua pasta conta à parte (os limites se multiplicam pelo número de nós). **Antes de subir o segundo servidor**, mover o limitador para um armazenamento compartilhado e atômico (tabela no banco principal com UPSERT e trava de linha, ou Redis com INCR+EXPIRE). Até lá, a produção fica num servidor de aplicação só.
+- [ ] A pasta precisa ser gravável pelo php-fpm (`0700`). Se não for, o limitador deixa tudo passar (**fail-open**), inclusive o reenvio de ativação por conta e os baldes de cadastro e esqueci a senha.
+
+## PHP, sessão e arquivos (condições da Segurança)
+- [ ] (#89/#91) `display_errors=Off` e `log_errors=On` (php.ini ou pool do php-fpm). Entradas malformadas, como um array em campo de texto, geram avisos que, com `display_errors` ligado, mostrariam caminhos internos ao cliente.
+- [ ] (#64) `session.cookie_domain` **vazio** no php.ini e no pool do php-fpm. O app não define o `Domain` do cookie (`conta/Auth/Session.php`), então vale o do php.ini: vazio, o cookie de sessão fica só no host do `APP_URL` e nunca é compartilhado com os domínios de grupo.
+- [ ] (#57) `themes/` (e todo o código da aplicação) pertence a um usuário diferente do php-fpm e é **só leitura** para ele. O php-fpm escreve apenas em `storage/` e `public/uploads/`. Nunca permitir upload ou edição de tema pela web, porque o `brand.php` é executado.
+
+## Páginas de erro do nginx (#56)
+- [ ] Se o nginx servir uma página de erro própria (ex.: 502/504 fora de `/api/`), ela precisa ter os mesmos cabeçalhos de segurança do app: CSP (a mesma do item de XSS acima), `X-Frame-Options DENY` e `X-Content-Type-Options nosniff`, todos com `add_header ... always` (sem `always`, o nginx não manda os cabeçalhos em respostas de erro). Continua valendo: o nginx não manda outro CSP nem outro X-Frame-Options nas páginas do PHP.
+
 ## Banco de dados (SQLite)
 
 - [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
@@ -210,7 +233,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Permissões e arquivos
 
 - [ ] `storage/logs/api` `0700` e arquivos de log `0600`, do usuário do php-fpm (o app usa `umask 0077`).
-- [ ] `storage/cache/ratelimit/` gravável pelo php-fpm; caso contrário, o rate limit fica desligado (sem 429).
+- [ ] `storage/cache/ratelimit/` gravável pelo php-fpm (`0700`); caso contrário, o limitador deixa tudo passar (fail-open, sem 429). Ver a seção "Limitador de taxa".
 - [ ] Não publicar `vendor/`, `tests/`, `phpunit.xml` nem `.phpunit.cache/` no servidor. Em produção, não rodar `composer install` (ou só `--no-dev --no-interaction`); Composer e PHPUnit 11 são apenas para testes.
 
 ## Compatibilidade
