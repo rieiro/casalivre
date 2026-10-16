@@ -105,15 +105,21 @@ ops/dev-env/db-setup.sh --no-seed
 - **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
   `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER` e `VALKEY_PASSWORD_FILE` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
-- **valkey**: `--port 0` (só socket), ACL `user default off` + usuário
-  `casalivre` com senha gerada uma vez em `etc/valkey.secret` (a ACL guarda só o
-  sha256). A senha nunca vai para env: o app lê o arquivo apontado por
-  `VALKEY_PASSWORD_FILE`. Modo 0440; na produção o dono é `root:casalivre`,
-  aqui (sem root) é o próprio uid.
+- **valkey**: `--port 0` (só socket), `--aclfile etc/valkey.acl` (0600, fora
+  do `valkey.conf`), ACL de `programador-notas/p0-4-valkey-acl.md`: `default`
+  off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings, hash, listas,
+  zset, set, multi, ping/hello/auth/select 0), sem streams e sem Lua;
+  `cl_admin` separado. Senhas geradas uma vez em `etc/valkey-app.secret` e
+  `etc/valkey-admin.secret`, modo 0440 (produção `root:casalivre`; aqui, sem
+  root, o próprio uid), nunca em env: o app lê `VALKEY_PASSWORD_FILE`.
+  `valkey-acl-check.sh` confere que `cl_app` não roda `keys *`,
+  `config get *` nem `get x`.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
   `php.ini` não muda.
-- Uploads: `upload_max_filesize`/`post_max_size` = 16M no `php.ini` (provision)
-  e `client_max_body_size 16M` no nginx. `exif` vem no pacote `php8.4` (não há
+- Uploads, iguais à produção (`prompts/deploy.md`): `php.ini` com
+  `post_max_size = 20M`, `upload_max_filesize = 16M`, `max_file_uploads = 20`
+  (provision); nginx `client_max_body_size 1m` no `server` e `20m` só em
+  `^/(api/casas|imoveis)/<16 hex>/fotos$`. `exif` vem no pacote `php8.4` (não há
   `php8.4-exif` no repo musl); o provision liga e confere. `nodejs` travado no
   `versions.lock`. O provision roda o `check-test-deps.sh` (do #111) no rootfs.

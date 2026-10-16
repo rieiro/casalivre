@@ -87,7 +87,8 @@ chmod 1777 "$CL_ROOTFS/tmp"
 ini=$CL_ROOTFS/etc/php8.4/php.ini
 [ -f "$ini" ] || die "php.ini não encontrado em $ini"
 sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
-	-e 's/^;\(extension=exif\)/\1/' -e 's/^\(upload_max_filesize\|post_max_size\) = .*/\1 = 16M/' \
+	-e 's/^;\(extension=exif\)/\1/' -e 's/^upload_max_filesize = .*/upload_max_filesize = 16M/' \
+	-e 's/^post_max_size = .*/post_max_size = 20M/' -e 's/^max_file_uploads = .*/max_file_uploads = 20/' \
 	-e 's/^;\(zend_extension=opcache\)/\1/' -e 's/^;\(opcache.enable=\).*/\11/' "$ini"
 grep -q '^extension=pdo_pgsql' "$ini" || echo 'extension=pdo_pgsql' >>"$ini"
 mkdir -p "$CL_ROOTFS/etc/php8.4/conf.d"
