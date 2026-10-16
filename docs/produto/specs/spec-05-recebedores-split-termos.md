@@ -251,7 +251,7 @@ O **aluguel não gera NFS-e** (locação de bem imóvel não é serviço: Súmul
 |---|---|---|---|---|---|
 | Direto | comissão casalivre | casalivre | proprietário | valor da comissão | 10.05 |
 | Parceria | comissão do parceiro | parceiro (CRECI ativo) | proprietário | parcela do parceiro | 10.05 |
-| Parceria | comissão casalivre | casalivre | proprietário, ou parceiro [pendente: Rafael] | parcela da casalivre | 10.05 |
+| Parceria | comissão casalivre | casalivre | configurável por modelo; padrão: proprietário (parceiro, se o contrato de parceria disser que ele paga a casalivre) | parcela da casalivre | 10.05 |
 | Franquia | corretor 4% + fundo 3% = 7% | franqueado | proprietário | 7% | 10.05 |
 | Franquia | royalty 3% | casalivre | **franqueado** | 3% (base do contrato de franquia) | **17.08** (franquia) |
 | Franquia | repasse do fundo 3% | — (sem NFS-e; repasse com extrato) | fundo regional | — | — |
