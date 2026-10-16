@@ -198,7 +198,7 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 
 **Decisões** (Negócios [E]; [decidido, parecer itens 13 a 16]; correção do Produto sobre o fundo):
 - **Faturas separadas por emissor** (parecer item 13): **a casalivre fatura só a parte dela** (comissão/royalty), e **o franqueado ou parceiro fatura a parte dele**. No modelo franquia, a cobrança do franqueado é de **7%: 4% do corretor + 3% do fundo regional**, com **NFS-e do franqueado**, e é **o franqueado que repassa os 3% ao fundo**. **A casalivre não retém o valor do fundo e não atua como mandatária**: não há subconta segregada nem cobrança "em nome do franqueado".
-- **Extrato consolidado do proprietário:** **uma tela mensal** reúne as cobranças **agrupadas por emissor** (ex.: "Franqueado Rede Lagos · R$ 70,00 · Ver fatura"). **Por emissor, a tela mostra: nome, valor e o link da fatura**, além de vencimento, status e pagamento *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*. **Nenhuma tela do proprietário mostra royalty**: o royalty aparece só no extrato do franqueado. O gestor do nó recebe uma cópia da cobrança do nó.
+- **Extrato consolidado do proprietário:** a linha de cada reserva tem o rótulo **"Reserva concluída"** ou **"Valor retido em cancelamento"** *(Produto, tela)*. **Uma tela mensal** reúne as cobranças **agrupadas por emissor** (ex.: "Franqueado Rede Lagos · R$ 70,00 · Ver fatura"). **Por emissor, a tela mostra: nome, valor e o link da fatura**, além de vencimento, status e pagamento *(requisito de tela, Produto; regras fiscais com o Jurídico e Tributário)*. **Nenhuma tela do proprietário mostra royalty**: o royalty aparece só no extrato do franqueado. O gestor do nó recebe uma cópia da cobrança do nó.
 - **NFS-e:** cada emissor emite só sobre a sua parcela; natureza, emissor e tomador por modelo, royalty, fundo, CRECI, IBS/CBS, CPF do tomador e guarda estão na **parte fiscal (A.1 a A.10)**, abaixo.
 - **Vencimento em 10 dias.** Em atraso: **multa de 2% + juros de 1% ao mês, pro rata die, + correção pelo IPCA** (item 15).
 - **Escalonamento do atraso** (por cobrança, com aviso prévio no contrato):
@@ -209,7 +209,7 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 - **Porta futura:** débito automático e Pix Automático.
 
 **Fechamento do mês** (admin_plataforma; o admin_org só vê o escopo dele):
-- A prévia **por proprietário × emissor** mostra as reservas `fora` **concluídas** no mês e, para cada parcela, o **emissor da cobrança** (regra do split, seção 2), e o total por emissor. Reservas canceladas antes do check-in **não entram** (P9-3).
+- A prévia **por proprietário × emissor** mostra as **reservas concluídas e valores retidos em cancelamentos** (`fora`) do mês e, para cada parcela, o **emissor da cobrança** (regra do split, seção 2), e o total por emissor. Reservas canceladas antes do check-in **não entram** (P9-3).
 - "Fechar mês" abre a confirmação "Gerar 14 faturas da casalivre (R$ 1.140,00). As cobranças dos franqueados são geradas no escopo de cada franqueado.". Depois do fechamento, as reservas do mês ficam travadas. Um ajuste posterior só entra como **lançamento de estorno ou de ajuste** na fatura seguinte.
 
 **Fatura:**
@@ -222,9 +222,9 @@ Fontes: `backlog.md` P9 (critérios 1 a 3), `roadmap.md` (piloto D11: comissão 
 **Estados:** mês sem reservas `fora` ("Nada a faturar em setembro"); fechamento em andamento; erro ao gerar ("Nenhuma fatura foi gerada. Tentar novamente", sendo uma operação atômica); fatura vencida.
 
 **Critérios de aceite**
-1. (P9-1) A fatura do mês soma exatamente as contas a receber das reservas `fora` concluídas no mês, e o total é igual à soma das linhas.
+1. (P9-1) A fatura do mês soma exatamente as contas a receber das reservas concluídas e valores retidos em cancelamentos (`fora`) do mês, e o total é igual à soma das linhas.
 2. (P9-2) A baixa gera um lançamento que zera o recebível correspondente. Com uma baixa parcial, o saldo restante aparece.
-3. (P9-3) Uma reserva cancelada antes do check-in não aparece na prévia nem na fatura.
+3. (P9-3) Um cancelamento com **reembolso integral** não gera linha na prévia nem na fatura. Com **reembolso parcial**, a parte que o anfitrião fica entra na fatura do **mês em que o cancelamento fica definitivo** (reembolso concluído e sem disputa aberta), com comissão só sobre o valor retido *(Produto)*.
 4. Fechar o mesmo mês duas vezes não duplica as faturas (idempotência).
 5. Um ajuste depois do fechamento entra como linha de ajuste na fatura seguinte, e a fatura fechada não é alterada.
 6. Cada papel vê e exporta só as faturas do seu escopo, e toda exportação e toda baixa ficam no log.

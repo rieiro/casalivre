@@ -246,7 +246,7 @@ stateDiagram-v2
 | Aceite da reserva manual | link com OTP; estado "Aceite pendente"; reenvio | global | decidido (Produto) | 06, 09 |
 | Meus documentos | termos aceitos com versão, data/hora e PDF | anfitrião e hóspede | decidido (Produto) | 02, 06, 09 |
 | Assistente automatizado | aviso fixo + "Falar com uma pessoa"; só dados do anúncio | global | decidido (Produto) | 08 |
-| Comissão no cancelamento | só sobre o valor que o anfitrião fica; reembolso integral = sem comissão; atraso no reembolso não gera comissão | global | decidido (Produto) | 05 Ap. A, 09 |
+| Comissão no cancelamento | só sobre o valor que o anfitrião fica; reembolso integral = sem linha na fatura; reembolso parcial: valor retido entra na P9 do mês em que o cancelamento fica definitivo (reembolso concluído, sem disputa aberta); atraso no reembolso não gera comissão | global | decidido (Produto) | 05 Ap. A, 09 |
 | Comissão do canal manual | — | modelo | [pendente: Rafael] | 06 3b |
 | Acréscimo por canal | % sobre o preço único | canal → imóvel | [E] | 03, 07 |
 | Bloqueios de publicação no piloto | recebedor KYC Aprovado + chave Pix vinculada a ele; denúncia visível no checkout e no detalhe | global | decidido (item 17); abertura do piloto [pendente: Rafael + Jurídico e Tributário] | 01, 03, 05, 09 |
@@ -274,6 +274,7 @@ stateDiagram-v2
 | 18 | 05 | Exemplo do extrato do proprietário com "casalivre: R$ 30" (royalty) | Royalty só no extrato do franqueado |
 | 19 | 01, 03, 09, 00 | Arrependimento de 7 dias "a partir da reserva" | A partir da confirmação da reserva |
 | 20 | 09, 00 | "A comissão continua devida" quando o reembolso atrasa (conflita com o P9-3) | Atraso não gera comissão; aplica as penalidades existentes; reembolso integral não gera comissão |
+| 21 | 05 Ap. A | P9 "só reservas concluídas" e cancelada antes do check-in sempre fora | "Reservas concluídas e valores retidos em cancelamentos"; reembolso integral sem linha |
 
 ## 7. Pendências
 | # | Decisão | Dono |
@@ -291,4 +292,3 @@ stateDiagram-v2
 | 11 | Calendário de feriados para os SLAs em dias úteis; mecanismos de cifragem, imutabilidade e IP reversível | Arquitetura |
 | 12 | Mascaramento, retenção das conversas, acesso do admin, favoritos locais; ferramenta da chamada de vídeo | Segurança, via Gerente Geral |
 | 13 | Confirmar a taxa de turismo de Búzios (R$ 14,60 por hóspede, 20/12 ao Carnaval + 5 dias) para ativar a regra | Jurídico e Tributário |
-| 14 | Cancelamento com reembolso parcial: o P9 fatura só reservas concluídas; definir se a parte que o anfitrião fica entra na fatura | Negócios |

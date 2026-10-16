@@ -21,7 +21,7 @@ No Perfil: cada **termo aceito** (termos de uso, contrato da reserva com o Anexo
 **Pagamento por fora (piloto D11):** em Aguardando pagamento, aparecem as duas linhas da spec-01: **Estadia** (valor e chave do recebedor do imóvel) e **Limpeza** (valor e chave do prestador; D13). Cada uma tem "Copiar chave", com o aviso "Pagamento direto ao anfitrião, sem a proteção casalivre". Também aparece o status parcial ("Estadia recebida · Limpeza pendente").
 **Composição:** o snapshot da spec-07, B3, com "Preço garantido em [data]".
 **Inventário (Anexo I):** a lista por cômodo do snapshot (spec-03 §2b), com as fotos, só leitura.
-**Caução e saída antecipada:** o valor da caução (se houver), a regra de saída antecipada e o escopo da limpeza do snapshot. Depois do check-out: "O anfitrião pode registrar danos até [check-out + 48 h]", e então "Caução devolvida" ou o registro de dano com fotos, com "Aceitar" e "Contestar" (a contestação abre disputa, §6).
+**Caução e saída antecipada:** o valor da caução (se houver), a regra de saída antecipada e o escopo da limpeza do snapshot. Depois do check-out: "O anfitrião pode registrar danos até [check-out + 48 h]", e então "Caução devolvida" ou o registro de dano com fotos, com "Aceitar" e "Contestar" (a contestação abre a disputa existente, §6; *confirmado pelo Produto*).
 **Comprovante de reserva** ([decidido, parecer J34]; **nunca "recibo"**): depois da Confirmada, o botão "Ver comprovante de reserva" mostra um resumo com o código, as datas, as linhas, o total e "pagamento informado como feito diretamente ao anfitrião em [data]; não é recibo nem documento fiscal". Também traz o nome de quem reservou, o nome do anfitrião, a política aplicada e a data de emissão. Ele é exportável em PDF.
 **Contatos:** seguem a regra da spec-08 (no piloto, liberados na confirmação).
 **Ações por estado:**
@@ -56,7 +56,7 @@ Quando o imóvel exige (spec-03), aparece o formulário com a **finalidade** (sp
 - **"Você recebe: R$ 1.250"**
 Aparece também a regra aplicada ("Política Moderada: 50% com menos de 5 dias") e a linha do tempo das datas-limite desta reserva.
 **Motivo** (opcional, lista fixa) e **confirmação** ("Cancelar e receber R$ 1.250?").
-**Comissão no cancelamento** (alinhado ao P9-3, spec-05 Ap. A): a comissão incide **só sobre o valor que o anfitrião fica**; um cancelamento com **reembolso integral não gera comissão**.
+**Comissão no cancelamento** (alinhado ao P9-3, spec-05 Ap. A): a comissão incide **só sobre o valor que o anfitrião fica**; um cancelamento com **reembolso integral não gera linha na fatura**; com **reembolso parcial**, o valor retido entra na fatura P9 do mês em que o cancelamento fica definitivo (reembolso concluído, sem disputa aberta) *(Produto)*.
 **Reembolso no piloto (pagamento por fora)** *[E] (Negócios)*:
 - O **anfitrião tem 5 dias úteis** para devolver e **anexar o comprovante Pix com o ID da transação** (a limpeza segue a mesma regra, pelo prestador).
 - O hóspede vê "Reembolso de R$ 1.250 até [data] · aguardando o anfitrião". Quando o comprovante chega, ele escolhe **"Recebi"** ou **"Não recebi / contestar"**. **Se não responder em 72 h, a devolução é considerada feita.**
