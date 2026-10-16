@@ -130,13 +130,17 @@ t_eq(0, (int) $r->lLen($q->key('ready')), 'no duplicate left in ready');
 $q->ack($d);
 t_eq(0, (int) $r->lLen($q->key('processing')) + (int) $r->zCard($q->key('reserved')) + (int) $r->exists($q->key('job:' . $d)), 'ack: release and DEL together');
 
-echo "mail cooldown (HMAC key, set only after the insert)\n";
+echo "mail cooldown (HMAC key, SET NX EX before the insert, DEL if it fails)\n";
 $mq = new ValkeyMailQueue($r);
 $mail = 'cd-' . $tag . '@casalivre.test';
 $cdKey = $mq->key('cd:' . SqliteMailQueue::cooldownKey('reset', $mail));
 $r->del($cdKey);
+$beforeSeq = (int) $r->get($mq->key('seq'));
 t_eq(true, $mq->push('reset', $mail), 'first push ok');
+t_eq(1, (int) $r->exists($cdKey), 'cooldown key exists right after a successful push');
+t_ok((int) $r->ttl($cdKey) > 0, 'cooldown key has a TTL');
 t_eq(false, $mq->push('reset', $mail), 'second push within cooldown refused');
+t_eq(1, (int) $r->get($mq->key('seq')) - $beforeSeq, 'two back-to-back pushes yield exactly one job');
 t_ok(!str_contains($cdKey, $mail), 'cooldown key has no address');
 // Take our job back out of the real mail queue (a running queue-worker may already have taken it: the
 // address does not exist, so it sends nothing).
