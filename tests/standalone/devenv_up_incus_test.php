@@ -82,7 +82,10 @@ t_ok(str_contains($init, 'security.privileged=false'), 'unprivileged container')
 t_ok(str_contains($init, ' | -s | default | '), 'own root disk on pool "default" (init -s), not the profile');
 $uid = (string) posix_getuid();
 t_ok(str_contains($init, "raw.idmap=uid $uid $uid"), 'idmap 1:1 for this uid');
-t_ok(str_contains($all, "lxc.init.cmd = /usr/bin/runsvdir -P $home/sv") && str_contains($all, "lxc.init.uid = $uid"), 'init: runsvdir -P CL_HOME/sv as this uid');
+$gid = (string) posix_getgid();
+t_ok(str_contains($all, 'lxc.init.cmd = /bin/sh ' . realpath(CL_ROOT) . "/ops/dev-env/incus-init.sh $home $uid $gid"), 'init: incus-init.sh from the mounted repo with CL_HOME uid gid');
+t_ok(!str_contains($all, 'lxc.init.uid'), 'init runs as container root (needed for lo up), services drop to the uid');
+t_ok(str_contains($all, 'listen=tcp:127.0.0.1:34567') && str_contains($all, 'connect=tcp:127.0.0.1:34567'), 'proxy still targets 127.0.0.1 in the container (works once lo is up)');
 $disks = array_values(array_filter($c, static fn ($l) => str_contains($l, ' | disk | ')));
 $paths = array_map(static fn ($l) => preg_match('/path=(\S+)/', $l, $m) ? $m[1] : '', $disks);
 sort($paths);
@@ -168,6 +171,44 @@ t_eq(0, $check('incus')[0], 'stale env.pid -> incus may start');
 @unlink("$home/run/env.pid");
 @unlink($state);
 t_eq(0, $check('incus')[0], 'nothing up -> proceeds');
+
+echo "incus-init.sh (PID 1): lo up, runsvdir as uid, clean stop on SIGPWR\n";
+$ib = "$base/initbin";
+$ilog = "$base/init.log";
+mkdir($ib);
+foreach (['ip' => 'echo "ip $*" >>' . escapeshellarg($ilog),
+    'chpst' => 'echo "chpst $1 $2" >>' . escapeshellarg($ilog) . '; shift 2; exec "$@"',
+    'runsvdir' => 'echo "runsvdir $*" >>' . escapeshellarg($ilog) . '; exec sleep 30',
+    'sv' => 'echo "sv $*" >>' . escapeshellarg($ilog)] as $n => $body) {
+    file_put_contents("$ib/$n", "#!/bin/sh\n$body\n");
+    chmod("$ib/$n", 0700);
+}
+$ih = "$base/inithome";
+mkdir("$ih/sv/postgresql", 0700, true);
+mkdir("$ih/sv/nginx", 0700, true);
+$init = proc_open(['/usr/bin/env', 'CL_INIT_PATH=' . "$ib:/usr/bin:/bin", '/bin/sh', "$dev/incus-init.sh", $ih, '1234', '5678'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+$ipid = (int) proc_get_status($init)['pid'];
+for ($i = 0; $i < 50 && !str_contains((string) @file_get_contents($ilog), 'runsvdir'); $i++) {
+    usleep(100000);
+}
+$l = (string) @file_get_contents($ilog);
+t_ok(str_starts_with($l, "ip link set lo up\n"), 'lo brought up first');
+t_ok(str_contains($l, "chpst -u :1234:5678\nrunsvdir -P $ih/sv"), 'runsvdir -P CL_HOME/sv as uid:gid via chpst');
+posix_kill($ipid, defined('SIGPWR') ? SIGPWR : 30);
+for ($i = 0; $i < 50 && proc_get_status($init)['running']; $i++) {
+    usleep(100000);
+}
+$st = proc_get_status($init);
+t_ok(!$st['running'] && $st['exitcode'] === 0, 'SIGPWR: init exits 0 (incus stop does not time out)');
+$l = (string) @file_get_contents($ilog);
+$pg = strpos($l, "sv -w 30 stop $ih/sv/postgresql");
+$ng = strpos($l, "sv -w 10 stop $ih/sv/nginx");
+t_ok($pg !== false && $ng !== false && $pg < $ng, 'PG stopped first, then the rest (runsvdir gets HUP and exits)');
+t_eq(1, substr_count($l, 'stop ' . $ih . '/sv/postgresql'), 'PG stopped once');
+if ($st['running']) {
+    proc_terminate($init, 9);
+}
+proc_close($init);
 
 echo "up.sh dispatch\n";
 $stubDev = "$base/dev";

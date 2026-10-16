@@ -12,8 +12,10 @@ if [ -f "$CL_RUN/incus.name" ]; then
 	if [ "$(incus_status)" = RUNNING ]; then
 		incus exec "$name" --user "$(id -u)" --group "$(id -g)" --cwd "$CL_HOME" -- \
 			sv -w 30 stop "$CL_HOME/sv/postgresql" || true
+		# SIGPWR -> incus-init.sh stops the rest cleanly; --force only if that times out.
 		incus stop --timeout 30 "$name" || incus stop --force "$name"
 	fi
+	[ "$(incus_status)" != RUNNING ] || die "incus $name still running; $CL_RUN/incus.name kept"
 	rm -f "$CL_RUN/incus.name"
 	log "down (incus $name)"
 	exit 0

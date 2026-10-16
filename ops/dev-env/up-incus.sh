@@ -6,7 +6,8 @@
 #     when the rootfs changes;
 #   - the same dirs as up-bwrap.sh are disk devices: the repo and $CL_HOME/{run,etc,log,sv,data}.
 #     $CL_HOME/admin (cl_admin secret) and the rest of CL_HOME are never mounted;
-#   - raw.idmap maps this uid/gid 1:1, and init is runsvdir -P $CL_HOME/sv as this uid (lxc.init.uid);
+#   - raw.idmap maps this uid/gid 1:1; init is incus-init.sh (lo up, runsvdir -P $CL_HOME/sv as this uid,
+#     clean service stop on SIGPWR from `incus stop`);
 #   - PG, Valkey and FPM stay on Unix sockets in $CL_RUN; the only port is a proxy device on
 #     127.0.0.1:$CL_PORT_HTTP.
 # Idempotent: a running container for this CL_HOME is left alone; a stopped one is recreated (state lives
@@ -24,7 +25,7 @@ uid=$(id -u) gid=$(id -g)
 # raw.idmap (uid/gid 1:1) needs the Incus daemon (root) to be allowed to map them.
 subid_ok() { awk -F: -v id="$2" '$1 == "root" && $2 <= id && id < $2 + $3 { ok = 1 } END { exit !ok }' "$1" 2>/dev/null; }
 if ! subid_ok "${CL_SUBUID_FILE:-/etc/subuid}" "$uid" || ! subid_ok "${CL_SUBGID_FILE:-/etc/subgid}" "$gid"; then
-	die "raw.idmap needs root:$uid:1 in ${CL_SUBUID_FILE:-/etc/subuid} and root:$gid:1 in ${CL_SUBGID_FILE:-/etc/subgid}. Fix (as root): echo root:$uid:1 >>/etc/subuid; echo root:$gid:1 >>/etc/subgid; systemctl restart incus"
+	die "raw.idmap needs root:$uid:1 in ${CL_SUBUID_FILE:-/etc/subuid} and root:$gid:1 in ${CL_SUBGID_FILE:-/etc/subgid}. Fix (as root): echo root:$uid:1 >>/etc/subuid; echo root:$gid:1 >>/etc/subgid; restart the incus daemon"
 fi
 
 name=$(incus_name)
@@ -56,7 +57,7 @@ fi
 incus init "$alias" "$name" -s "$CL_INCUS_POOL" \
 	-c security.privileged=false -c security.nesting=false \
 	-c raw.idmap="$(printf 'uid %s %s\ngid %s %s' "$uid" "$uid" "$gid" "$gid")" \
-	-c raw.lxc="$(printf 'lxc.init.cmd = /usr/bin/runsvdir -P %s/sv\nlxc.init.uid = %s\nlxc.init.gid = %s' "$CL_HOME" "$uid" "$gid")" \
+	-c raw.lxc="lxc.init.cmd = /bin/sh $CL_REPO/ops/dev-env/incus-init.sh $CL_HOME $uid $gid" \
 	-c environment.HOME="$CL_HOME" -c environment.PATH=/usr/bin:/usr/sbin -c environment.LANG=C.UTF-8 \
 	-c environment.CL_HOME="$CL_HOME" -c environment.CL_REPO="$CL_REPO" -c environment.CL_PORT_HTTP="$CL_PORT_HTTP"
 incus config device add "$name" repo disk source="$CL_REPO" path="$CL_REPO"
