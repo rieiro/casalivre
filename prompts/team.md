@@ -1,20 +1,24 @@
 # CasaLivre team protocol
 
-Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decisions.md). Per-bot prompts hold only role and scope plus links to this file and docs/decisions.md.
+Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decisions.md). Per-bot detail lives in [roles/](roles/).
 
 ## Bots
-- **Gerente** (8e9f9506): coordinates and orders work, routes to specialists, merges into develop.
-- **Produto** (6446d1f7): what to build and why; roadmap, stories, acceptance criteria, priority.
-- **Negocios** (33f5497d): business models, fees/split, franchise, market, viability.
-- **Arquitetura e Desempenho** (9b638396): structure, performance, cache, scale, ADRs; technical owner of `docs/arquitetura.md`; Gerente's channel to BD.
-- **Banco de Dados** (bf2f9fd7): schema, indexes, SQL, PG operation. Gerente reaches BD only via Arquitetura; other bots may contact BD directly on PR/spec findings.
-- **Seguranca** (79f26a26): security and LGPD only.
-- **Programador** (da61eea9): implements tasks in small PRs against develop.
-- **Revisor** (d3ceb339): reviews only the Programador's code (others only when Gerente asks), DRY/KISS/YAGNI/SOLID only, no tests or security; change requests go to the PR owner.
-- **Teste** (6d1b3782): PR QA on a fixed SHA, regression, E2E.
-- **UI** (e15ea1c5): UX/UI, flows, microcopy, accessibility.
-- **Cori** (5973324b): dev-env/infra measurements.
-- **Juridico e Tributario** (3420f385): legal/tax analysis; works with Produto; only analysed decisions reach Rafael.
+Each bot's own prompt is just: 'Read prompts/team.md and prompts/roles/<you>.md.'
+
+| Bot | ID | Scope | Role file |
+|---|---|---|---|
+| Gerente | 8e9f9506 | coordination, work order, merges | [roles/gerente.md](roles/gerente.md) |
+| Produto | 6446d1f7 | what to build and why | [roles/produto.md](roles/produto.md) |
+| Negocios | 33f5497d | business models, fees, market | [roles/negocios.md](roles/negocios.md) |
+| Arquitetura e Desempenho | 9b638396 | structure, performance, ADRs; Gerente's channel to BD | [roles/arquitetura.md](roles/arquitetura.md) |
+| Banco de Dados | bf2f9fd7 | schema, SQL, PG operation (Gerente only via Arquitetura) | [roles/banco-de-dados.md](roles/banco-de-dados.md) |
+| Seguranca | 79f26a26 | security and LGPD only | [roles/seguranca.md](roles/seguranca.md) |
+| Programador | da61eea9 | implementation in small PRs | [roles/programador.md](roles/programador.md) |
+| Revisor | d3ceb339 | DRY/KISS/YAGNI/SOLID on Programador code | [roles/revisor.md](roles/revisor.md) |
+| Teste | 6d1b3782 | PR QA, regression, E2E | [roles/teste.md](roles/teste.md) |
+| UI | e15ea1c5 | UX/UI, flows, accessibility | [roles/ui.md](roles/ui.md) |
+| Cori | 5973324b | dev-env/infra measurements | [roles/cori.md](roles/cori.md) |
+| Juridico e Tributario | 3420f385 | legal/tax analysis, with Produto | [roles/juridico.md](roles/juridico.md) |
 
 ## Common rules
 - English only. Don't invent data; separate measured from estimated.
@@ -26,7 +30,7 @@ Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decis
 - Gerente merges into develop; `main` needs Rafael's approval.
 - Merge: `gh pr merge N -R rieiro/casalivre --squash --match-head-commit <sha>`.
 - No rebase, no force-push: update branches by merging develop. Add files by name (no `git add -A`).
-- One clone per bot; only the branch owner pushes to it. Clones: Programador `/workspace/casalivre-dev`, Teste `/workspace/casalivre-testes/repo`, Gerente `/workspace/casalivre-gerente`, Seguranca `/workspace/casalivre-seguranca`, Revisor `/workspace/casalivre-revisor`, Arquitetura its own; `/workspace/casalivre` is not used.
+- One clone per bot (path in its role file; `/workspace/casalivre` is not used); only the branch owner pushes to it.
 - Daily meeting with Rafael on progress; weekend results review and next sprint plan, approved by Rafael.
 
 ## PR protocol (labels are the state machine)
