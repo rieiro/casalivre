@@ -2,13 +2,23 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/SchemaDesatualizado.php';
+
 final class Db
 {
+    /** Conexão compartilhada do processo (antes era um static local de pdo()). */
+    private static ?PDO $conn = null;
+
+    /** true só dentro de migrateNow(): no pgsql, pdo() não confere a versão (quem migra é o próprio script). */
+    private static bool $migrating = false;
+
+    /** Chave do pg_advisory_lock da migração (fixa; qualquer bigint serve, só precisa ser única no banco). */
+    public const PG_MIGRATE_LOCK = 718331201;
+
     public static function pdo(): PDO
     {
-        static $pdo = null;
-        if ($pdo instanceof PDO) {
-            return $pdo;
+        if (self::$conn instanceof PDO) {
+            return self::$conn;
         }
         self::loadEnv();
         $driver = getenv('DB_DRIVER') ?: 'sqlite';
@@ -40,7 +50,7 @@ final class Db
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             // DEF-008: só migra quando o banco está atrás de SCHEMA_VERSION. A checagem
             // (PRAGMA user_version) é uma leitura barata, sem lock de escrita.
-            if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+            if (self::sqliteVersion($pdo) < self::SCHEMA_VERSION) {
                 try {
                     self::migrateSqlite($pdo, false);
                 } catch (Throwable $e) {
@@ -48,10 +58,25 @@ final class Db
                     throw $e;
                 }
             }
-        } else {
-            self::migrate($pdo);
+        } elseif (!self::$migrating) {
+            // pgsql: a requisição web só CONFERE a versão (uma consulta); nunca migra. Ver ensureSchemaCurrent().
+            self::ensureSchemaCurrent($pdo);
         }
-        return $pdo;
+        return self::$conn = $pdo;
+    }
+
+    /**
+     * pgsql (requisição web/worker): uma única consulta em schema_meta. Banco atrás de SCHEMA_VERSION
+     * (ou sem schema_meta) => SchemaDesatualizado (503 no ExceptionShield). Quem migra é scripts/migrate.php.
+     */
+    public static function ensureSchemaCurrent(PDO $pdo): void
+    {
+        $version = self::pgSchemaVersion($pdo);
+        if ($version < self::SCHEMA_VERSION) {
+            throw new SchemaDesatualizado(
+                'Banco na versão ' . $version . ', esperada ' . self::SCHEMA_VERSION . '. Rode php scripts/migrate.php antes de liberar o tráfego.'
+            );
+        }
     }
 
     /** DSN efetivo: DB_DSN ou, no driver sqlite, storage/db/casalivre.sqlite. */
@@ -155,19 +180,90 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 17; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário)
+    public const SCHEMA_VERSION = 18; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário); 18: schema_meta (versão no pgsql) e fim da conversão money_unit (bancos recriados do zero, já em reais)
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
     {
-        $pdo = self::pdo();
+        self::$migrating = true;
+        try {
+            $pdo = self::pdo();
+        } finally {
+            self::$migrating = false;
+        }
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             self::migrateSqlite($pdo, $force);
-            return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+            return self::sqliteVersion($pdo);
         }
-        self::migrate($pdo);
-        return self::SCHEMA_VERSION;
+        return self::migratePgsql($pdo, $force);
     }
+
+    /**
+     * pgsql: pg_advisory_lock serializa migrate.php concorrentes (o segundo espera o primeiro e, ao
+     * rechecar a versão, não refaz nada). Tudo numa transação (DDL é transacional no Postgres); a versão
+     * é gravada em schema_meta no mesmo COMMIT.
+     */
+    private static function migratePgsql(PDO $pdo, bool $force): int
+    {
+        $pdo->query('SELECT pg_advisory_lock(' . self::PG_MIGRATE_LOCK . ')');
+        try {
+            $pdo->beginTransaction();
+            try {
+                $pdo->exec(self::SCHEMA_META_DDL);
+                $current = self::pgSchemaVersion($pdo);
+                if ($force || $current < self::SCHEMA_VERSION) {
+                    self::migrate($pdo);
+                    $pdo->prepare("INSERT INTO schema_meta (skey, value) VALUES ('schema_version', ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value")
+                        ->execute([(string) self::SCHEMA_VERSION]);
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+        } finally {
+            $pdo->query('SELECT pg_advisory_unlock(' . self::PG_MIGRATE_LOCK . ')');
+        }
+        return self::pgSchemaVersion($pdo);
+    }
+
+    /**
+     * Versão gravada em schema_meta (pgsql). 0 se a tabela ou a linha não existem.
+     * Atenção: no Postgres, a consulta que falha (tabela ausente) aborta a transação aberta; dentro de
+     * migratePgsql a tabela já foi criada antes, então isso não acontece lá.
+     */
+    private static function pgSchemaVersion(PDO $pdo): int
+    {
+        try {
+            $value = $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn();
+        } catch (PDOException $e) {
+            // Só "tabela não existe" vale como versão 0 (42P01 no Postgres; "no such table" no SQLite,
+            // usado nos testes). Rede, permissão (falta GRANT SELECT ON schema_meta), timeout: relança.
+            if (self::isUndefinedTable($e)) {
+                return 0;
+            }
+            throw $e;
+        }
+        return $value === false ? 0 : (int) $value;
+    }
+
+    public static function isUndefinedTable(PDOException $e): bool
+    {
+        return (string) $e->getCode() === '42P01'
+            || (($e->errorInfo[0] ?? null) === '42P01')
+            || str_contains($e->getMessage(), 'no such table');
+    }
+
+    /** Versão do schema SQLite (PRAGMA user_version). */
+    private static function sqliteVersion(PDO $pdo): int
+    {
+        return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+    }
+
+    /** Metadados internos da migração (versão do schema no pgsql). */
+    private const SCHEMA_META_DDL = 'CREATE TABLE IF NOT EXISTS schema_meta (skey TEXT PRIMARY KEY, value TEXT NOT NULL)';
 
     /**
      * Em WAL, promover uma transação de leitura para escrita falha na hora com
@@ -262,7 +358,7 @@ final class Db
         $pdo->exec('BEGIN IMMEDIATE');
         self::$rawTransaction = true;
         try {
-            if ($force || (int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+            if ($force || self::sqliteVersion($pdo) < self::SCHEMA_VERSION) {
                 self::migrate($pdo);
                 $pdo->exec('PRAGMA user_version = ' . (int) self::SCHEMA_VERSION);
             }
@@ -534,14 +630,6 @@ final class Db
         require_once __DIR__ . '/I18n.php';
         require_once __DIR__ . '/CityRepository.php';
         require_once __DIR__ . '/ActivityLog.php';
-        $unit = $pdo->prepare('SELECT value FROM settings WHERE skey = ?');
-        $unit->execute(['money_unit']);
-        if ($unit->fetchColumn() !== 'reais') {
-            $pdo->exec('UPDATE properties SET nightly_price = CAST(ROUND(nightly_price / 100.0) AS INTEGER)');
-            $pdo->exec('UPDATE calendar_days SET price = CAST(ROUND(price / 100.0) AS INTEGER) WHERE price IS NOT NULL');
-            $pdo->prepare('INSERT INTO settings (skey, value, description) VALUES (?, ?, ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value')
-                ->execute(['money_unit', 'reais', 'Diária gravada como número inteiro, sem centavos']);
-        }
         Settings::seed($pdo);
         I18n::seed($pdo);
         CityRepository::ensure($pdo);
