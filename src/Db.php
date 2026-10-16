@@ -182,6 +182,23 @@ final class Db
      */
     public const SCHEMA_VERSION = 19; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário); 18: schema_meta (versão no pgsql) e fim da conversão money_unit (bancos recriados do zero, já em reais); 19: paridade dos schemas (7 tabelas no schema, properties.user_id RESTRICT, sem idx_ceps_cep/idx_photos_property, tokens parciais). Política: banco recriado do zero pelos arquivos de schema; o migrate() NÃO leva um banco v18 ao v19 (só roda os seeds e marca a versão)
 
+    /**
+     * Política v19: banco é recriado do zero. Versão 0 (banco novo, vindo do schema) ou já em SCHEMA_VERSION
+     * migra normalmente; 1..18 aborta (senão um v18 seria carimbado 19 sem o RESTRICT do schema novo).
+     */
+    public const MIN_UPGRADE_FROM = 19;
+
+    /** Lança se o banco está numa versão antiga que esta versão não sabe levar ao schema atual. */
+    private static function assertUpgradable(int $version): void
+    {
+        if ($version >= 1 && $version < self::MIN_UPGRADE_FROM) {
+            throw new RuntimeException(
+                "Banco na versão $version: esta versão (" . self::SCHEMA_VERSION . ') não migra bancos anteriores à v'
+                . self::MIN_UPGRADE_FROM . '. Recrie o banco do zero (database/schema.sql ou schema.pgsql.sql) e rode php scripts/migrate.php.'
+            );
+        }
+    }
+
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
     {
@@ -211,6 +228,7 @@ final class Db
             try {
                 $pdo->exec(self::SCHEMA_META_DDL);
                 $current = self::pgSchemaVersion($pdo);
+                self::assertUpgradable($current);
                 if ($force || $current < self::SCHEMA_VERSION) {
                     self::migrate($pdo);
                     $pdo->prepare("INSERT INTO schema_meta (skey, value) VALUES ('schema_version', ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value")
@@ -358,6 +376,7 @@ final class Db
         $pdo->exec('BEGIN IMMEDIATE');
         self::$rawTransaction = true;
         try {
+            self::assertUpgradable(self::sqliteVersion($pdo));
             if ($force || self::sqliteVersion($pdo) < self::SCHEMA_VERSION) {
                 self::migrate($pdo);
                 // FK quebrada (ex.: imóvel de usuário inexistente com RESTRICT) aborta: ROLLBACK no catch abaixo.

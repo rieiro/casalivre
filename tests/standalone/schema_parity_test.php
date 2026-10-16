@@ -171,7 +171,7 @@ try {
     $lite->exec("DELETE FROM users WHERE id = $uid");
     t_ok(false, 'DELETE de dono com imóvel deveria falhar');
 } catch (PDOException $e) {
-    t_eq('23000', (string) $e->getCode(), 'DELETE de dono com imóvel: 23000 (RESTRICT; no PG é 23001)');
+    t_eq('23000', (string) $e->getCode(), 'DELETE de dono com imóvel: 23000 (RESTRICT; no PG 23001 ou 23503)');
 }
 $lite->exec("DELETE FROM properties WHERE id = $pid");
 t_eq(0, (int) $lite->query("SELECT COUNT(*) FROM photos WHERE property_id = $pid")->fetchColumn(), 'DELETE do imóvel leva as fotos (CASCADE)');
@@ -182,13 +182,13 @@ echo "migrate aborta se foreign_key_check falhar\n";
 $lite->exec('PRAGMA foreign_keys = OFF');
 insertRow($lite, 'properties', ['user_id' => 999999]);
 $lite->exec('PRAGMA foreign_keys = ON');
-$lite->exec('PRAGMA user_version = 18');
+$lite->exec('PRAGMA user_version = 0');
 $lite = null;
 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out, $code);
 t_eq(2, $code, 'migrate.php sai com 2');
 t_ok(str_contains(implode("\n", $out), 'foreign_key_check'), 'mensagem cita foreign_key_check');
 $check = new PDO('sqlite:' . $file);
-t_eq(18, (int) $check->query('PRAGMA user_version')->fetchColumn(), 'ROLLBACK: user_version continua 18');
+t_eq(0, (int) $check->query('PRAGMA user_version')->fetchColumn(), 'ROLLBACK: user_version continua 0');
 $check = null;
 
 echo "PG\n";
@@ -208,7 +208,11 @@ try {
     $pg = new PDO($pgDbDsn, $user, $pass, $opts);
     $pg->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
     $b = pgSnapshot($pg);
-    t_eq(array_keys($a['col']), array_keys($b['col']), 'mesmas tabelas');
+    t_ok(isset($b['col']['schema_meta']), 'PG: schema_meta vem do schema.pgsql.sql');
+    t_eq(false, $pg->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'PG: schema_meta nasce sem schema_version (versão 0)');
+    $bTables = $b;
+    unset($bTables['col']['schema_meta']); // exceção documentada: só no PG
+    t_eq(array_keys($a['col']), array_keys($bTables['col']), 'mesmas tabelas (fora schema_meta, só do PG)');
     foreach ($a['col'] as $t => $cols) {
         foreach ($cols as $c => $def) {
             t_eq($def, $b['col'][$t][$c] ?? null, "coluna $t.$c (tipo/null/default)");
@@ -256,14 +260,26 @@ try {
     $pg->exec("DELETE FROM properties WHERE id = $pgPid");
     t_eq(0, (int) $pg->query("SELECT COUNT(*) FROM photos WHERE property_id = $pgPid")->fetchColumn(), 'PG: DELETE do imóvel leva as fotos (CASCADE)');
     $pg->exec("DELETE FROM users WHERE id = $pgUid");
-    // zero DDL no PG: migrate.php no banco temporário; só schema_meta pode aparecer.
+    // zero DDL no PG: migrate.php no banco temporário não muda nada.
     $pg = null;
     exec('DB_DRIVER=pgsql DB_DSN=' . escapeshellarg($pgDbDsn) . ' DB_USER=' . escapeshellarg((string) $user) . ' DB_PASSWORD=' . escapeshellarg((string) $pass) . ' ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out2, $code2);
     t_eq(0, $code2, 'PG: migrate.php sai com 0' . ($code2 ? ' ' . implode(' ', $out2) : ''));
     $pg = new PDO($pgDbDsn, $user, $pass, $opts);
     $after = pgSnapshot($pg);
-    unset($after['col']['schema_meta']);
-    t_eq([], snapDiff(ksortDeep($b), ksortDeep($after)), 'PG: migrate() não muda o schema (fora schema_meta)');
+    t_eq([], snapDiff(ksortDeep($b), ksortDeep($after)), 'PG: migrate() não muda o schema (schema_meta já vem do schema.pgsql.sql)');
+    // Política v19 no PG: versão 1..18 aborta (exit 2, 'recrie o banco do zero'); 19 segue ok.
+    $pgMigrate = static function () use ($pgDbDsn, $user, $pass): array {
+        exec('DB_DRIVER=pgsql DB_DSN=' . escapeshellarg($pgDbDsn) . ' DB_USER=' . escapeshellarg((string) $user) . ' DB_PASSWORD=' . escapeshellarg((string) $pass) . ' ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $o, $c);
+        return [$c, implode("\n", $o)];
+    };
+    $pg->exec("UPDATE schema_meta SET value = '18' WHERE skey = 'schema_version'");
+    [$c18, $o18] = $pgMigrate();
+    t_eq(2, $c18, 'PG v18: migrate.php sai com 2');
+    t_ok(str_contains($o18, 'Recrie o banco do zero'), 'PG v18: mensagem "recrie o banco do zero"');
+    t_eq('18', $pg->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'PG v18: versão intacta (não carimba 19)');
+    $pg->exec("UPDATE schema_meta SET value = '19' WHERE skey = 'schema_version'");
+    [$c19] = $pgMigrate();
+    t_eq(0, $c19, 'PG v19: migrate.php sai com 0');
 } finally {
     $pg = null;
     $admin->exec("DROP DATABASE IF EXISTS $dbName");
