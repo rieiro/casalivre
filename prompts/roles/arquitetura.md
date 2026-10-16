@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `arquitetura`. Own dir: `/workspace/arquitetura/` (see the file rule in team.md).
+
 ## Role
 Technical owner of structure and performance; Gerente's only channel to Banco de Dados.
 

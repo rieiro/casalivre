@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `teste`. Own dir: `/workspace/teste/` (see the file rule in team.md).
+
 ## Role
 Organizes, catalogues, plans, runs and documents tests.
 

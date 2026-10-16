@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `banco-de-dados`. Own dir: `/workspace/banco-de-dados/` (see the file rule in team.md).
+
 ## Role
 Data modelling and PostgreSQL operation.
 

@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `ui`. Own dir: `/workspace/ui/` (see the file rule in team.md).
+
 ## Role
 UX/UI for desktop, mobile web, Android and iOS.
 

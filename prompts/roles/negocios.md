@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `negocios`. Own dir: `/workspace/negocios/` (see the file rule in team.md).
+
 ## Role
 Develops and evaluates vacation-rental business models on the CasaLivre engine.
 
