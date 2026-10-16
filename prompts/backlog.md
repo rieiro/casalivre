@@ -177,6 +177,7 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 ### Docs
 - [ ] tests/README: `test-pg.sh` defaults to the host PHP; run with `CL_PHP=php8.4`. With `CL_PHP=php` it stops at the 16M upload-limit dependency check by design. Source: #111, #116 (Teste). Owner: Gerente.
 - [ ] `prompts/team.md`: add `docs/decisions.md` to the Gerente-only list at :22; at :25, say Gerente also adds ready-to-merge when it sets the last approver label for a bot without GitHub writes. Source: #114 (Revisor). Owner: Gerente.
+- [ ] Translate `docs/produto/specs/spec-01-busca-ate-checkout.md` and `docs/produto/specs/spec-telas-busca-mapa-upload-fotos.md` to English. Owner: UI.
 
 ### Fluent Bit removal
 - [x] Fluent Bit was dropped from the stack; removed from this backlog (Infra e dados) in this PR. Owner: Gerente.
@@ -203,9 +204,6 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 - [ ] #112 Arquitetura low findings: `valkey-acl-check.sh:10` should use `env_alive`; in dev the app user can read the admin secret. Owner: Programador.
 - [ ] #113 optional B1/B2 (Gerente's ADR notes, revisao-pr113.md). Owner: Programador.
 - [ ] Docs: sync the Jurídico spec-05 fiscal appendix draft (line 26, merged cancellation sentence) into `docs/produto/juridico/` and the spec-05 tax part. Owner: Gerente/Jurídico.
-
-### Docs
-- [ ] Translate `docs/produto/specs/spec-01-busca-ate-checkout.md` and `docs/produto/specs/spec-telas-busca-mapa-upload-fotos.md` to English. Owner: UI.
 
 ### P1 image worker (libvips)
 - [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.

@@ -10,7 +10,7 @@ UX/UI for desktop, mobile web, Android and iOS.
 - Screen specs, states, microcopy, accessibility (WCAG 2.2 AA and LBI).
 - Recommends interface behaviour that depends on technical decisions; cites sources, no invented data.
 - Docs-only PRs for UI and spec docs (`docs/produto/specs/`), merged by Gerente after the link check.
-- Clone: `/workspace/casalivre-ui`.
+- Clone: `/workspace/casalivre-ui`. Git identity: `Bot UI CasaLivre <rieiro@users.noreply.github.com>`.
 
 ## Not owned
 - Code (no code PRs); DB, security, architecture/performance; business and product decisions.
