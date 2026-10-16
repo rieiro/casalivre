@@ -110,13 +110,7 @@ function t_temp_pg(string $adminDsn): string
     $admin = new PDO($adminDsn, $user, $pass, $opts);
     $admin->exec("CREATE DATABASE $name");
     $dsn = preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
-    register_shutdown_function(static function () use ($adminDsn, $user, $pass, $opts, $name): void {
-        try {
-            (new PDO($adminDsn, $user, $pass, $opts))->exec("DROP DATABASE IF EXISTS $name WITH (FORCE)");
-        } catch (Throwable $e) {
-            fwrite(STDERR, "t_temp_pg: não apagou $name: {$e->getMessage()}\n");
-        }
-    });
+    register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
     (new PDO($dsn, $user, $pass, $opts))->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
     putenv('DB_DRIVER=pgsql');
     putenv('DB_DSN=' . $dsn);
@@ -126,6 +120,59 @@ function t_temp_pg(string $adminDsn): string
     require_once CL_ROOT . '/src/Db.php';
     Db::migrateNow();
     return $dsn;
+}
+
+/** Admin PDO for the test PG (TEST_PG_DSN/USER/PASSWORD). */
+function t_pg_admin(string $adminDsn): PDO
+{
+    return new PDO($adminDsn, getenv('TEST_PG_USER') ?: null, getenv('TEST_PG_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+}
+
+/**
+ * Drops a test database. WITH (FORCE) first; if PG denies it (e.g. "permission denied to terminate process"
+ * on a backend casalivre_dev may not signal), closes the test's own connection and retries without FORCE
+ * for a few seconds, until the other sessions leave.
+ */
+function t_pg_drop(string $adminDsn, string $name): bool
+{
+    try {
+        $admin = t_pg_admin($adminDsn);
+        $admin->exec("DROP DATABASE IF EXISTS $name WITH (FORCE)");
+        return true;
+    } catch (Throwable $e) {
+        $first = $e->getMessage();
+    }
+    if (class_exists('Db', false)) {
+        (new ReflectionProperty('Db', 'conn'))->setValue(null, null); // test only: release the app connection
+        gc_collect_cycles();
+    }
+    for ($i = 0; $i < 20; $i++) {
+        try {
+            ($admin ?? t_pg_admin($adminDsn))->exec("DROP DATABASE IF EXISTS $name");
+            return true;
+        } catch (Throwable $e) {
+            usleep(250000);
+        }
+    }
+    fwrite(STDERR, "t_temp_pg: could not drop $name: $first / {$e->getMessage()}\n");
+    return false;
+}
+
+/**
+ * run.php sweep: drops casalivre_t_<pid>_* whose test process no longer exists (leftovers of interrupted tests).
+ * Databases of live processes (a parallel run) are kept. PIDs are those of the PID namespace running the suite.
+ * @return list<string> dropped databases
+ */
+function t_pg_sweep(string $adminDsn): array
+{
+    $gone = [];
+    $rows = t_pg_admin($adminDsn)->query("SELECT datname FROM pg_database WHERE datname LIKE 'casalivre\\_t\\_%'")->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($rows as $db) {
+        if (preg_match('/^casalivre_t_(\d+)_[0-9a-f]+$/', (string) $db, $m) && !file_exists('/proc/' . $m[1]) && t_pg_drop($adminDsn, (string) $db)) {
+            $gone[] = (string) $db;
+        }
+    }
+    return $gone;
 }
 
 /** Sobe `php -S` com o front controller usando o banco temporário. Retorna a URL base. */

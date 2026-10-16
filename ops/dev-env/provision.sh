@@ -137,15 +137,12 @@ bwrap "${BW_BASE[@]}" --tmpfs /tmp \
 	-- /usr/bin/php8.4 -r 'exit(file_get_contents("https://repo-default.voidlinux.org/") === false ? 1 : 0);' ||
 	die "https de dentro do rootfs falhou (CA?)"
 
-# P0-3 (critério 10): dependências da suíte, dentro do rootfs. O repo entra em /mnt (já existe): o rootfs é
-# somente leitura e não tem o caminho do host para o bind.
-if [ -f "$CL_DEVENV_DIR/check-test-deps.sh" ]; then
-	bwrap --ro-bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp --ro-bind "$CL_REPO" /mnt \
-		--unshare-all --setenv PATH /usr/bin:/usr/sbin --setenv CL_PHP php8.4 \
-		-- /bin/bash /mnt/ops/dev-env/check-test-deps.sh || die "dependências da suíte ausentes"
-else
-	log "aviso: check-test-deps.sh ausente (chega com o #111)"
-fi
+# P0-3 (criterion 10): test-suite dependencies, checked inside the rootfs. Same base binds as the runtime
+# (BW_BASE, read-only rootfs); the repo is bound read-only at /mnt, which already exists in the rootfs
+# (a read-only rootfs has no mount point for the host path).
+bwrap_base_args ro-bind
+bwrap "${BW_BASE[@]}" --tmpfs /tmp --ro-bind "$CL_REPO" /mnt --setenv CL_PHP php8.4 \
+	-- /bin/bash /mnt/ops/dev-env/check-test-deps.sh || die "test-suite dependencies missing"
 
 date -u +%FT%TZ >"$CL_HOME/.provisioned"
 log "provision ok em $CL_HOME"

@@ -50,8 +50,12 @@ done
 bwrap_base_args ro-bind
 args=("${BW_BASE[@]}" --perms 1777 --tmpfs /tmp --bind "$CL_REPO" "$CL_REPO")
 for d in run etc log sv data; do args+=(--bind "$CL_HOME/$d" "$CL_HOME/$d"); done
-# Com o rootfs ro o bwrap não cria pontos de montagem: cria aqui (fora de /tmp,
-# que é tmpfs no runtime).
+# Mount points: bwrap cannot create them on a read-only rootfs, so they are created here,
+# on the host side, where the rootfs is writable (it is read-only only inside the runtime).
+# They are empty directories, created idempotently on every up. They stay here, not in
+# provision.sh, because they depend on CL_REPO/CL_HOME at up time (a provisioned rootfs can
+# be reused by another CL_HOME or checkout). Paths under /tmp are skipped: /tmp is a tmpfs
+# in the runtime, so its mount points live there.
 for d in "$CL_REPO" "$CL_HOME"/run "$CL_HOME"/etc "$CL_HOME"/log "$CL_HOME"/sv "$CL_HOME"/data; do
 	case $d in /tmp/*) ;; *) mkdir -p "$CL_ROOTFS$d" ;; esac
 done
