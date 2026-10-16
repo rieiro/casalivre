@@ -1,6 +1,6 @@
 # CasaLivre: Spec 01, da busca ao checkout (v1.1, 16/10/2026, com os ajustes do Negócios, alvo S7/S8, meta WCAG 2.2 AA)
 
-Base: `produto-draft/roadmap.md` e `sprints.md` (v0.2, não aprovados), `spec-telas-busca-mapa-upload-fotos.md` (v1, que esta spec complementa sem substituir) e `casos-de-uso.md`.
+Base: `docs/produto/planejamento/roadmap.md` e `docs/produto/planejamento/sprints.md` (v0.2, não aprovados), `spec-telas-busca-mapa-upload-fotos.md` (v1, que esta spec complementa sem substituir) e `casos-de-uso.md`.
 Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confirmação**.
 
 ## 0. Regras gerais
@@ -17,7 +17,7 @@ Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confir
 **Objetivo:** começar uma busca em até 3 passos: destino, datas e hóspedes.
 **Layout:** no desktop, uma pílula de busca no hero com 3 segmentos e o botão Buscar. No mobile, um campo "Para onde?" abre a busca em tela cheia, em etapas, com Voltar e Limpar.
 **Componentes:** autocomplete de destino, calendário de 2 meses (1 no mobile) com "Datas flexíveis", contador de hóspedes, com adultos (12+), crianças (3 a 11) e bebês (0 a 2, que por padrão não contam na capacidade), mais os pets. Se houver menores, aparece o aviso fixo "Menores só com os pais ou o responsável, ou com autorização (ECA, arts. 82 e 83)", e o checkbox de **declaração do adulto responsável** "Declaro ser maior de 18 anos e responsável pelos menores, que estarão acompanhados ou autorizados na forma do ECA" ([decidido, parecer J11]), buscas recentes e categorias.
-**Estados:** destino sem sugestão ("Nenhum lugar encontrado. Confira a grafia."), erro de rede no autocomplete (o campo segue aceitando texto livre).
+**Destination field:** follows `spec-busca-localidade-resolvida.md` (UX items 1–5, 9–10): APG combobox, labels with type and parent place, "Did you mean", a no-match state with suggestions and "Search on the map". On an autocomplete network error the field keeps accepting text, and Enter goes through server resolution; a raw-text search never runs.
 **Microcopy:** "Para onde?", "Quando?", "Quem vai?", "Buscar".
 **Critérios de aceite**
 1. Dado que estou na home, quando ela carrega, então a busca fica visível sem rolar, em 360 px e em 1280 px.
@@ -28,7 +28,7 @@ Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confir
 ## 2. Resultados (lista + mapa): UC-H03, UC-H04, UC-H05
 **Objetivo:** comparar pelo preço total e pela localização. O layout, os pins, os clusters, o popup, a atribuição OSM e os estados do mapa seguem a spec v1, seção 1.
 **Novidades por causa da S4 (paginação por cursor):**
-- Ordenação: **Relevância** (padrão), **Menor preço total** e **Melhor avaliação**. "Menor preço total" só aparece com **cidade definida** ou **mapa aproximado**; fora disso, fica oculta (spec-07).
+- Ordenação: **Relevância** (padrão), **Menor preço total** e **Melhor avaliação**. "Menor preço total" is a performance guard only: it is available for a city, neighborhood, beach/POI or a map area up to the `sort_total_max_area` parameter (set by Arquitetura from PostgreSQL p95). For larger areas it stays **visible but disabled** with an inline explanation and "Zoom in" / "Pick a city"; if it was active, the sort falls back to Relevance with an announcement (`spec-busca-localidade-resolvida.md`, UX item 8; spec-07).
 - A lista carrega **20 itens por vez**, com o botão **"Mostrar mais imóveis"** no fim. Não há número de página nem rolagem infinita, e o rodapé continua acessível.
 - As contagens são **aproximadas**: "Mais de 120 imóveis", "~40 com piscina".
 - O mapa consulta pela área visível (bbox), separado da lista. Aviso quando são diferentes: "O mapa mostra os imóveis desta área".
@@ -44,7 +44,8 @@ Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confir
 2. Dado que abri um imóvel e voltei, então vejo a mesma lista e a mesma posição.
 3. Dado que há datas, então todo card mostra o total com limpeza e taxa incluídas, e esse valor é igual ao do detalhe.
 4. Nenhuma contagem é apresentada como exata ("Mais de", "~").
-5. Mover o mapa não reinicia a lista, a não ser que o usuário peça "Buscar nesta área" ou a opção "Buscar ao mover o mapa" esteja ligada.
+5. Mover o mapa não reinicia a lista, a não ser que o usuário peça "Buscar nesta área" ou a opção "Buscar ao mover o mapa" esteja ligada (ON by default on desktop, OFF on mobile). Then the field shows "Map area" with × to return to the last place, and the URL has `bbox` instead of `local_id` (`spec-busca-localidade-resolvida.md`, UX items 6–7).
+7. In a large area, "Menor preço total" is visible but disabled, with the explanation; the fallback to Relevance is announced in a polite live region and shown next to the sort control.
 6. O selo do tipo de reserva tem texto e não depende só de cor.
 
 ## 3. Detalhe do imóvel: UC-H07, UC-H08, UC-H09, UC-H13
