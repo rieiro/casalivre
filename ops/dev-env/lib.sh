@@ -114,3 +114,69 @@ in_env() {
 	local child=$1; shift
 	nsenter --preserve-credentials -U -m -p -i -r -w -t "$child" -- "$@"
 }
+
+# Renders templates/*.in into $CL_HOME/etc with the rootfs's own envsubst (in a throwaway bwrap
+# without network), only for the listed variables ($uri, $args etc. of nginx stay untouched).
+# $1 = bwrap (up-bwrap.sh) | host (up-incus.sh: the Incus host may not have bwrap; uses the host envsubst).
+render_templates() {
+	local t out mode=$1
+	# shellcheck disable=SC2016  # literal on purpose: list for envsubst
+	local vars='${CL_HOME} ${CL_REPO} ${CL_PORT_HTTP}'
+	for t in "$CL_DEVENV_DIR"/templates/*.in; do
+		out=$CL_HOME/etc/$(basename "${t%.in}")
+		if [ "$mode" = bwrap ]; then
+			bwrap_base_args ro-bind
+			bwrap "${BW_BASE[@]}" --unshare-net -- /usr/bin/envsubst "$vars" <"$t" >"$out.tmp"
+		else
+			command -v envsubst >/dev/null 2>&1 || die "envsubst (gettext) is needed on the host"
+			envsubst "$vars" <"$t" >"$out.tmp"
+		fi
+		mv "$out.tmp" "$out"
+	done
+}
+
+# Incus container name for this uid + CL_HOME (one env per CL_HOME, like env.pid).
+incus_name() {
+	printf 'cl-dev-%s-%s\n' "$(id -u)" "$(printf '%s' "$CL_HOME" | sha256sum | cut -c1-8)"
+}
+
+# Status of this CL_HOME's Incus container (RUNNING, STOPPED...; empty if absent or no incus client).
+incus_status() {
+	command -v incus >/dev/null 2>&1 || return 0
+	incus list "$(incus_name)" --format csv --columns s 2>/dev/null || true
+}
+
+# One runtime per CL_HOME: PG/Valkey of two runtimes would share data and sockets. Dies if the bwrap
+# env (env.pid alive) or the Incus container (RUNNING) of this CL_HOME is up. Called by prestart, after
+# each up script's own "already up" check. $1 = the runtime about to start (for the message).
+refuse_running() {
+	local bw init
+	read -r bw _ init _ < <(read_pids; echo) || true
+	if env_alive "${bw:-}" "${init:-}"; then
+		die "the bwrap env is already up on CL_HOME=$CL_HOME (bwrap ${bw:-}, init ${init:-}); run down.sh before starting $1"
+	fi
+	if [ "$(incus_status)" = RUNNING ]; then
+		die "the incus env $(incus_name) is already up on CL_HOME=$CL_HOME; run down.sh before starting $1"
+	fi
+}
+
+# Pre-start shared by up-bwrap.sh and up-incus.sh: CL_HOME dirs (0700), stale postmaster.pid cleanup,
+# templates and services.sh (sv/ and the services' env). $1 = bwrap | incus.
+prestart() {
+	local mode=$1 pm
+	case $mode in bwrap | incus) ;; *) die "prestart: mode must be bwrap or incus" ;; esac
+	refuse_running "$mode"
+	ensure_dirs
+	# A leftover postmaster.pid would collide with PIDs reused in the new namespace/container. The PID in
+	# it belongs to the old one (not checkable from the host), so it is removed only if no live postgres
+	# uses that PGDATA; otherwise abort.
+	for pm in "$CL_HOME"/data/*/postmaster.pid; do
+		[ -f "$pm" ] || continue
+		pgdata_in_use "$(dirname "$pm")" && die "live postgres in $(dirname "$pm"); run down.sh"
+		log "removing $pm (dead postmaster)"
+		rm -f "$pm"
+	done
+	# The Incus host may not have bwrap: templates use the host envsubst there.
+	if [ "$mode" = bwrap ]; then render_templates bwrap; else render_templates host; fi
+	"$CL_DEVENV_DIR/services.sh"
+}

@@ -18,32 +18,11 @@ if env_alive "${bw:-}" "${init:-}"; then
 	exit 0
 fi
 rm -f "$CL_PIDFILE"
+# Stale incus.name (container not running; refuse_running dies later if it is): clear it so
+# down.sh takes the bwrap path.
+[ ! -f "$CL_RUN/incus.name" ] || [ "$(incus_status)" = RUNNING ] || rm -f "$CL_RUN/incus.name"
 
-ensure_dirs
-
-# postmaster.pid que sobrou colidiria com PIDs reusados no namespace novo. O
-# PID gravado é do namespace antigo (não dá para olhar no host), então só
-# remove se nenhum postgres vivo usa esse PGDATA; senão aborta.
-for pm in "$CL_HOME"/data/*/postmaster.pid; do
-	[ -f "$pm" ] || continue
-	pgdata_in_use "$(dirname "$pm")" && die "há postgres vivo em $(dirname "$pm"); rode down.sh"
-	log "removendo $pm (postmaster morto)"
-	rm -f "$pm"
-done
-
-# Templates: envsubst do próprio rootfs, só com as variáveis listadas (não
-# toca em $uri, $args etc. do nginx).
-# shellcheck disable=SC2016  # literal de propósito: lista para o envsubst
-vars='${CL_HOME} ${CL_REPO} ${CL_PORT_HTTP}'
-for t in "$CL_DEVENV_DIR"/templates/*.in; do
-	out=$CL_HOME/etc/$(basename "${t%.in}")
-	bwrap_base_args ro-bind
-	bwrap "${BW_BASE[@]}" --unshare-net -- \
-		/usr/bin/envsubst "$vars" <"$t" >"$out.tmp"
-	mv "$out.tmp" "$out"
-done
-
-"$CL_DEVENV_DIR/services.sh"  # P0-2: sv/ e env dos serviços
+prestart bwrap
 
 # Runtime com rootfs somente leitura (serviço comprometido não altera os
 # binários); /tmp em tmpfs 1777; graváveis só os diretórios do CL_HOME e o repo.

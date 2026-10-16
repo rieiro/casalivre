@@ -11,7 +11,29 @@ começa vazio.
 ops/dev-env/provision.sh      # baixa/verifica o rootfs, instala as versões travadas
 ops/dev-env/up-bwrap.sh -d    # sobe em segundo plano (setsid + nohup); sem -d fica em primeiro plano
 ops/dev-env/down.sh           # para os serviços e mata só o PID registrado
+ops/dev-env/up.sh [--bwrap|--incus] [args]   # P0-5: one entry point; CL_RUNTIME=bwrap|incus, default bwrap
 ```
+
+### Incus (P0-5)
+
+`up-incus.sh` (or `up.sh --incus`) runs the same env in an unprivileged Incus container. Only the
+entry layer changes; the rootfs, configs and `sv/` are the ones `up-bwrap.sh` uses:
+
+- the rootfs is `$CL_ROOTFS` from `provision.sh`, packed as-is into a local image
+  `cl-rootfs-<hash of versions.lock + .provisioned>` (no build, no installs; re-imported only when the
+  rootfs changes);
+- mounts: the repo and `$CL_HOME/{run,etc,log,sv,data}`, the same as bwrap. `$CL_HOME/admin` (cl_admin
+  secret) is never mounted;
+- `raw.idmap` maps your uid/gid 1:1; PID 1 is `incus-init.sh` (brings `lo` up, runs
+  `runsvdir -P $CL_HOME/sv` as your uid, and on SIGPWR from `incus stop` stops PG first and then the
+  rest); PG, Valkey
+  and FPM stay on sockets in `$CL_RUN`; the only port is a proxy device on `127.0.0.1:$CL_PORT_HTTP`;
+- `down.sh` stops PG cleanly and then the container (`$CL_RUN/incus.name`).
+
+Host requirements: the `incus` client, `envsubst` (gettext), `tar`, and a daemon that allows
+`raw.idmap` for your uid (`/etc/subuid` and `/etc/subgid` with `root:<uid>:1`). Known differences from
+bwrap: the container root is the image copy, writable (not `--ro-bind`); a running container is left
+alone and a stopped one is recreated (state lives in the mounted dirs).
 
 Requisitos no host: Linux com user namespaces sem privilégio, `bwrap`
 (bubblewrap), `nsenter`, `setsid`, `curl`, `tar` com xz. Nada de sudo: os três
