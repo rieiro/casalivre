@@ -1,7 +1,7 @@
 # Política de privacidade da casalivre
 
 > **MINUTA, versão 0.1, de 16/10/2026. Não publicar.**
-> Primeira versão escrita pelo redator jurídico (bot) com base em `juridico/recomendacoes-sem-orientacao-externa.md` (seção 5, item E, e seção 6) e `juridico/parecer-J1-J35.md` (J1 a J35 e itens 47 a 49), conferida com as specs 01 a 10. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver `juridico/recomendacoes-sem-orientacao-externa.md`).**
+> Primeira versão escrita pelo redator jurídico (bot) com base em [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md) (seção 5, item E, e seção 6) e [../parecer-J1-J35.md](../parecer-J1-J35.md) (J1 a J35 e itens 47 a 49), conferida com as specs 01 a 10. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md)).**
 > Antes de publicar: preencher os campos **[PREENCHER]**, resolver os pontos **[CONFERIR]**, concluir o RIPD da selfie (LGPD, art. 38) e os testes de legítimo interesse (LIA, art. 10) da lista de bloqueio, da avaliação de hóspedes e da moderação, e obter o "ok" do Rafael.
 
 **Versão:** [PREENCHER] · **Vigente a partir de:** [PREENCHER] · **Última atualização:** [PREENCHER]
