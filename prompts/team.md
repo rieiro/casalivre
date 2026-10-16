@@ -4,6 +4,7 @@ Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decis
 
 ## Bots
 Each bot's own prompt is just: 'Read prompts/team.md and prompts/roles/<you>.md.'
+Read prompts/team.md and your own prompts/roles/<bot>.md from develop on GitHub (no local copies) once at the start of each new task or PR. Skip for follow-ups within the same task. Re-read only when team.md or your own role file changes.
 
 | Bot | ID | Scope | Role file |
 |---|---|---|---|
