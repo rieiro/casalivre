@@ -116,7 +116,7 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 
 ## Fluxo de um PR
 1. O Programador (ou o dono) abre o PR e avisa o Gerente.
-2. Todo PR do Programador (toda implementação) passa obrigatoriamente pela avaliação do Revisor, da Segurança e da Arquitetura e Desempenho, além do QA do Teste. A Segurança dá atenção especial a login, upload, API pública, dados pessoais, CSP/cabeçalhos e snapshots de CSP e das páginas de erro; a Arquitetura, a estrutura (banco/schema, filas, cache, resolvedor, build, mapa, índices) e o desempenho.
+2. Todo PR do Programador (toda implementação) passa obrigatoriamente pela avaliação do Revisor, da Segurança e da Arquitetura e Desempenho, além do QA do Teste. Exceção a essa regra dos quatro avaliadores: o Revisor revisa o código do Programador, menos em PR pequeno de correção, que vai direto ao QA. A Segurança dá atenção especial a login, upload, API pública, dados pessoais, CSP/cabeçalhos e snapshots de CSP e das páginas de erro; a Arquitetura, a estrutura (banco/schema, filas, cache, resolvedor, build, mapa, índices) e o desempenho.
 3. QA: um PR de cada vez, na ordem de merge. O head fica **congelado** durante o QA. O Teste testa um SHA fixo e para se o head mudar.
 4. Correções: o Programador faz push na própria branch e avisa o novo SHA ao Gerente. O re-QA cobre só o diff.
 5. Com o QA e as revisões exigidas aprovados, o Gerente mescla na develop sem pedir aprovação ao usuário. O usuário é consultado só nas decisões antes do PR ou em dúvidas realmente relevantes.
