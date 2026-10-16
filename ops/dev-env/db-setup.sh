@@ -10,22 +10,30 @@ cl_defaults
 seed=1
 case "${1:-}" in --no-seed) seed=0 ;; "") ;; *) die "uso: $0 [--no-seed]" ;; esac
 
-read -r bw child _ < <(read_pids; echo) || true
-pid_is_ours "${bw:-}" && runsvdir_ok "${child:-}" || die "ambiente fora do ar: rode up-bwrap.sh -d"
+read -r bw child init _ < <(read_pids; echo) || true
+env_alive "${bw:-}" "${init:-}" && runsvdir_ok "${child:-}" || die "ambiente fora do ar: rode up-bwrap.sh -d"
 
 # Tudo dentro do ambiente, com o mesmo env dos serviços.
 envsh() { in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && cd '$CL_REPO' && $1"; }
 
 for _ in $(seq 100); do
-	envsh 'pg_isready -q -d postgres' 2>/dev/null && break
+	envsh 'pg_isready -q -U postgres -d postgres' 2>/dev/null && break
 	sleep 0.1
 done
-envsh 'pg_isready -q -d postgres' || die "PostgreSQL não respondeu (ver $CL_HOME/log e sv status)"
+envsh 'pg_isready -q -U postgres -d postgres' || die "PostgreSQL não respondeu (ver $CL_HOME/log e sv status)"
 
-# Usuário dev (= usuário do host, peer) com CREATEDB: o P0-3 cria bancos de teste.
-envsh 'psql -d postgres -tAc "SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user" | grep -qx t' ||
-	die "usuário PG $(id -un) sem CREATEDB"
-envsh 'psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''casalivre'\''" | grep -q 1 || createdb casalivre'
+# Como postgres (peer, mapa admin): papéis, extensões no template1 e o banco.
+pgadm() { envsh "psql -X -q -v ON_ERROR_STOP=1 -U postgres $1"; }
+pgadm "-d postgres -f '$CL_DEVENV_DIR/pg-roles.sql'"
+# Extensões que exigem superusuário entram no template1 (o banco de teste herda).
+for ext in ${CL_PG_EXTENSIONS:-}; do
+	pgadm "-d template1 -c 'CREATE EXTENSION IF NOT EXISTS \"$ext\"'"
+done
+pgadm "-d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = 'casalivre'\"" | grep -q 1 ||
+	pgadm "-d postgres -c 'CREATE DATABASE casalivre OWNER casalivre_dev'"
+# Daqui em diante tudo como casalivre_dev (PGUSER/DB_DSN). Fumaça: sem superusuário.
+[ "$(envsh 'psql -X -tAc "SELECT rolsuper::text || rolcreatedb::text FROM pg_roles WHERE rolname = current_user"')" = falsetrue ] ||
+	die "casalivre_dev precisa ser NOSUPERUSER e CREATEDB"
 if ! envsh 'psql -tAc "SELECT to_regclass('\''public.schema_meta'\'')" | grep -q schema_meta'; then
 	log "carregando database/schema.pgsql.sql"
 	envsh 'psql -q -v ON_ERROR_STOP=1 -f database/schema.pgsql.sql'
