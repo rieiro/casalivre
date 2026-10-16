@@ -16,6 +16,8 @@ dsn="pgsql:host=$CL_RUN;dbname=casalivre"
 # Senha do Valkey: gerada uma vez; a ACL guarda só o sha256.
 secret=$etc/valkey.secret
 [ -s "$secret" ] || od -An -tx1 -N32 /dev/urandom | tr -d ' \n' >"$secret"
+# 0440: na produção root:casalivre; aqui (sem root) o dono é o nosso uid.
+chmod 0440 "$secret"
 vpass=$(cat "$secret")
 vhash=$(printf '%s' "$vpass" | sha256sum | cut -d' ' -f1)
 printf 'user default off\nuser casalivre on #%s ~* &* +@all -@dangerous\n' "$vhash" >"$etc/valkey.acl.tmp"
@@ -25,9 +27,9 @@ cat >"$etc/dev-env.env.tmp" <<ENV
 # Gerado por services.sh — não editar. Lido pelos run do runit.
 export CL_HOME='$CL_HOME' CL_REPO='$CL_REPO' CL_RUN='$CL_RUN' CL_PG_USER='$pg_user'
 export HOME='$CL_HOME' PATH=/usr/bin:/usr/sbin LANG=C.UTF-8
-export PGHOST='$CL_RUN' PGPORT='$CL_PORT_PG' PGDATABASE=casalivre
+export PGHOST='$CL_RUN' PGDATABASE=casalivre
 export APP_ENV=dev DB_DRIVER=pgsql DB_DSN='$dsn'
-export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=casalivre VALKEY_PASSWORD='$vpass'
+export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=casalivre VALKEY_PASSWORD_FILE='$secret'
 ENV
 mv "$etc/dev-env.env.tmp" "$etc/dev-env.env"
 
@@ -41,7 +43,7 @@ env[DB_DRIVER] = pgsql
 env[DB_DSN] = "$dsn"
 env[VALKEY_SOCKET] = $CL_RUN/valkey.sock
 env[VALKEY_USER] = casalivre
-env[VALKEY_PASSWORD] = $vpass
+env[VALKEY_PASSWORD_FILE] = $secret
 ENV
 mv "$etc/php-fpm-env.conf.tmp" "$etc/php-fpm-env.conf"
 

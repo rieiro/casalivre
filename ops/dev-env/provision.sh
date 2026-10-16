@@ -87,6 +87,7 @@ chmod 1777 "$CL_ROOTFS/tmp"
 ini=$CL_ROOTFS/etc/php8.4/php.ini
 [ -f "$ini" ] || die "php.ini não encontrado em $ini"
 sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
+	-e 's/^;\(extension=exif\)/\1/' -e 's/^\(upload_max_filesize\|post_max_size\) = .*/\1 = 16M/' \
 	-e 's/^;\(zend_extension=opcache\)/\1/' -e 's/^;\(opcache.enable=\).*/\11/' "$ini"
 grep -q '^extension=pdo_pgsql' "$ini" || echo 'extension=pdo_pgsql' >>"$ini"
 mkdir -p "$CL_ROOTFS/etc/php8.4/conf.d"
@@ -94,7 +95,7 @@ if ! as_root php8.4 -m 2>/dev/null | grep -qx redis; then
 	echo 'extension=redis' >"$CL_ROOTFS/etc/php8.4/conf.d/redis.ini"
 fi
 mods=$(as_root php8.4 -m)
-for m in openssl pdo_pgsql redis 'Zend OPcache'; do
+for m in openssl pdo_pgsql redis exif 'Zend OPcache'; do
 	grep -qx "$m" <<<"$mods" || die "extensão PHP ausente: $m"
 done
 
@@ -103,6 +104,15 @@ bwrap --ro-bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp \
 	--ro-bind /etc/resolv.conf /etc/resolv.conf --unshare-user --unshare-pid --share-net \
 	-- /usr/bin/php8.4 -r 'exit(file_get_contents("https://repo-default.voidlinux.org/") === false ? 1 : 0);' ||
 	die "https de dentro do rootfs falhou (CA?)"
+
+# P0-3 (critério 10): dependências da suíte, dentro do rootfs. O script vem do #111.
+if [ -f "$CL_DEVENV_DIR/check-test-deps.sh" ]; then
+	bwrap --ro-bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp --ro-bind "$CL_REPO" "$CL_REPO" \
+		--unshare-all --setenv PATH /usr/bin:/usr/sbin --setenv CL_PHP php8.4 \
+		-- /bin/bash "$CL_DEVENV_DIR/check-test-deps.sh" || die "dependências da suíte ausentes"
+else
+	log "aviso: check-test-deps.sh ausente (chega com o #111)"
+fi
 
 date -u +%FT%TZ >"$CL_HOME/.provisioned"
 log "provision ok em $CL_HOME"

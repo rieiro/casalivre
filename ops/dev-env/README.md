@@ -95,15 +95,25 @@ ops/dev-env/db-setup.sh --no-seed
   `$CL_HOME/sv/` com um cabeçalho que carrega `$CL_HOME/etc/dev-env.env`
   (0600). Os serviços não herdam o env do host.
 - **postgresql**: `initdb` no primeiro start (`--auth-local=peer`,
-  `--auth-host=reject`), só socket Unix (`listen_addresses=''`). `sv stop`
+  `--auth-host=reject`), só socket Unix (`listen_addresses=''`; `port=5432` só nomeia o
+  socket `.s.PGSQL.5432`, então o cliente não precisa de `PGPORT`). `sv stop`
   usa `control/t` = `pg_ctl stop -m fast -w`; o `finish` repete se sobrar
   processo. Duas subidas seguidas sem "not properly shut down".
+- Usuário PG = usuário do host (criado no `initdb`, peer, com CREATEDB;
+  o `db-setup.sh` confere). CREATEDB é só do usuário PG de dev/teste;
+  na produção o usuário do app nunca tem CREATEDB. Socket em `$CL_RUN` (`PGHOST=$CL_RUN`).
 - **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
-  `DB_DSN` (socket) e `VALKEY_*` via `etc/php-fpm-env.conf` (0600).
+  `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER` e `VALKEY_PASSWORD_FILE` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
 - **valkey**: `--port 0` (só socket), ACL `user default off` + usuário
-  `casalivre` com senha gerada uma vez em `etc/valkey.secret` (0600; a ACL
-  guarda só o sha256).
+  `casalivre` com senha gerada uma vez em `etc/valkey.secret` (a ACL guarda só o
+  sha256). A senha nunca vai para env: o app lê o arquivo apontado por
+  `VALKEY_PASSWORD_FILE`. Modo 0440; na produção o dono é `root:casalivre`,
+  aqui (sem root) é o próprio uid.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
   `php.ini` não muda.
+- Uploads: `upload_max_filesize`/`post_max_size` = 16M no `php.ini` (provision)
+  e `client_max_body_size 16M` no nginx. `exif` vem no pacote `php8.4` (não há
+  `php8.4-exif` no repo musl); o provision liga e confere. `nodejs` travado no
+  `versions.lock`. O provision roda o `check-test-deps.sh` (do #111) no rootfs.

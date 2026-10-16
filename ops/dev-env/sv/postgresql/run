@@ -5,4 +5,5 @@ if [ ! -f "$pgdata/PG_VERSION" ]; then
 	initdb -D "$pgdata" -U "$CL_PG_USER" --auth-local=peer --auth-host=reject -E UTF8 --locale=C.UTF-8 >>"$CL_HOME/log/initdb.log" 2>&1 || exit 1
 	echo "include '$CL_HOME/etc/postgresql.conf'" >>"$pgdata/postgresql.conf"
 fi
-exec postgres -D "$pgdata" -c listen_addresses=''
+# Porta fixa: com listen_addresses vazio ela só nomeia o socket (.s.PGSQL.5432).
+exec postgres -D "$pgdata" -c listen_addresses='' -c port=5432

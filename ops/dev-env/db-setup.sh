@@ -22,6 +22,9 @@ for _ in $(seq 100); do
 done
 envsh 'pg_isready -q -d postgres' || die "PostgreSQL não respondeu (ver $CL_HOME/log e sv status)"
 
+# Usuário dev (= usuário do host, peer) com CREATEDB: o P0-3 cria bancos de teste.
+envsh 'psql -d postgres -tAc "SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user" | grep -qx t' ||
+	die "usuário PG $(id -un) sem CREATEDB"
 envsh 'psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''casalivre'\''" | grep -q 1 || createdb casalivre'
 if ! envsh 'psql -tAc "SELECT to_regclass('\''public.schema_meta'\'')" | grep -q schema_meta'; then
 	log "carregando database/schema.pgsql.sql"

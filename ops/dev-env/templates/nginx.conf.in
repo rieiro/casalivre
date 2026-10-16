@@ -6,6 +6,7 @@ error_log ${CL_HOME}/log/nginx-error.log;
 events { worker_connections 256; }
 http {
 	include /etc/nginx/mime.types;
+	client_max_body_size 16M;  # = upload_max_filesize/post_max_size do php.ini
 	access_log ${CL_HOME}/log/nginx-access.log;
 	client_body_temp_path ${CL_HOME}/run/nginx-body;
 	fastcgi_temp_path ${CL_HOME}/run/nginx-fastcgi;
