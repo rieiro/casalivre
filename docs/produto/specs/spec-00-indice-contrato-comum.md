@@ -147,7 +147,7 @@ stateDiagram-v2
 | proprietário | dono do imóvel e titular do recebimento da estadia | dono, locatário |
 | hóspede | quem reserva | cliente, inquilino |
 | nó | ponto da árvore de gestão (profundidade livre) | filial, nível |
-| organização | nó com `tipo` (rede, franquia, imobiliária são só rótulos) | "rede" como termo genérico |
+| organização | nó com `tipo` (rede, franquia, **Imobiliária** etc. são só rótulos). **"Imobiliária" é um tipo permitido** para organizações clientes que de fato são imobiliárias | "rede" como termo genérico |
 | admin_org | administrador de um nó | admin_rede, admin da rede |
 | franqueado | admin_org/gestor de nó franquia; também recebedor | papel "franqueado" |
 | canal | vitrine de distribuição (marketplace, site do nó, OTA) | site, vitrine própria |
@@ -156,7 +156,7 @@ stateDiagram-v2
 | emissor da cobrança | quem fatura uma parcela do split (casalivre, franqueado/parceiro, outro recebedor) | faturador |
 | Estadia recebida / Limpeza recebida | as duas marcações do piloto | Diária recebida, pago |
 | comprovante de reserva | resumo da reserva, não fiscal | recibo |
-| casalivre (em texto de tela) | plataforma de reservas | **"imobiliária", "corretora"** (proibidos na UI) |
+| casalivre (em texto de tela) | plataforma de reservas | **"imobiliária", "corretora"**: proibidos **só em textos que descrevem a própria casalivre**; não se aplicam ao tipo ou ao nome de organizações clientes |
 | solicitação / reserva | pedido antes da aprovação / após aprovação | booking, pedido (como estado) |
 
 ## 5. Registro de parâmetros
@@ -207,7 +207,8 @@ stateDiagram-v2
 | Fatura P9 | vencimento 10 dias; multa 2% + juros 1% a.m. pro rata + IPCA; D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) | global | [E]; encargos decididos (item 15) | 05 Ap. A |
 | Confiabilidade | rótulo "últimos 12 meses"; 90 dias só como gatilho (3+ → revisão) | global | decidido (Negócios) | 02, 09 |
 | Regras municipais | entidade `regra_municipal`; seeds: Cabo Frio cadastro voluntário sem taxa; Búzios R$ 14,60/hóspede 20/12–Carnaval+5, não confirmada, inativa; Arraial sem regra; taxa no checkout = porta futura; S8+ | município | decidido (Negócios); Búzios [pendente: Jurídico e Tributário] | 03, 04 2b |
-| CRECI no cadastro | campo com status de verificação para franqueado e parceiro (tela) | — | decidido (Produto) | 04, 05 |
+| CRECI no cadastro | status Verificado, Em verificação, Não verificado, Inativo; só Verificado permite operar como franqueado ou parceiro | — | decidido (Produto) | 04, 05 |
+| Reverificação de regra municipal | campo "reverificar em"; Cabo Frio e Arraial do Cabo: 01/12/2026 | município | decidido (Produto) | 04 2b |
 | Comissão do canal manual | — | modelo | [pendente: Rafael] | 06 3b |
 | Acréscimo por canal | % sobre o preço único | canal → imóvel | [E] | 03, 07 |
 | Bloqueios de publicação no piloto | recebedor KYC Aprovado + chave Pix vinculada a ele; denúncia visível no checkout e no detalhe | global | decidido (item 17); abertura do piloto [pendente: Rafael + Jurídico e Tributário] | 01, 03, 05, 09 |
