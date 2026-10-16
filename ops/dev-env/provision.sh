@@ -15,7 +15,8 @@ url=$(lock_get rootfs_url)
 repo=$(lock_get repo)
 mapfile -t pkgs < <(lock_pkgs)
 
-mkdir -p "$CL_CACHE/xbps" "$CL_CACHE/dl" "$CL_RUN" "$CL_HOME/etc" "$CL_HOME/log" "$CL_HOME/data"
+ensure_dirs
+mkdir -p "$CL_CACHE/xbps" "$CL_CACHE/dl"
 tarball=$CL_CACHE/dl/$name
 if [ ! -f "$tarball" ]; then
 	if [ -n "${CL_ROOTFS_TARBALL:-}" ]; then
@@ -32,25 +33,44 @@ if [ ! -x "$CL_ROOTFS/usr/bin/xbps-install" ]; then
 	log "extraindo rootfs em $CL_ROOTFS"
 	rm -rf "$CL_ROOTFS.part"
 	mkdir -p "$CL_ROOTFS.part"
-	tar -xJf "$tarball" -C "$CL_ROOTFS.part" --no-same-owner --exclude='./dev/*'
+	tar -xJf "$tarball" -C "$CL_ROOTFS.part" --no-same-owner -p --exclude='./dev/*'
 	mv "$CL_ROOTFS.part" "$CL_ROOTFS"
 fi
 
 # Root falso (user namespace) só para o gerenciador de pacotes. Cache do xbps
 # fica fora do rootfs ($CL_CACHE/xbps).
 as_root() {
-	bwrap --bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp \
-		--ro-bind /etc/resolv.conf /etc/resolv.conf \
+	bwrap_base_args bind
+	bwrap "${BW_BASE[@]}" --tmpfs /tmp \
 		--bind "$CL_CACHE/xbps" /var/cache/xbps \
-		--unshare-user --uid 0 --gid 0 --unshare-pid --unshare-ipc --share-net \
-		--setenv PATH /usr/bin:/usr/sbin \
+		--uid 0 --gid 0 \
 		-- "$@"
 }
 
+# Chaves de assinatura do repo: só as que vieram no rootfs verificado por
+# sha256. Com -y o xbps aceitaria uma chave nova sem perguntar; aqui isso
+# derruba o provision.
+keys_dir=$CL_ROOTFS/var/db/xbps/keys
+keys_ref=$CL_HOME/.xbps-keys
+list_keys() { find "$keys_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort; }
+[ -f "$keys_ref" ] || list_keys >"$keys_ref"
+check_keys() {
+	list_keys | cmp -s - "$keys_ref" ||
+		die "chave de repositório nova em $keys_dir (esperado: $(tr '\n' ' ' <"$keys_ref")); não aceito"
+}
+xbps_install() { as_root xbps-install "$@"; check_keys; }
+
 echo "repository=$repo" >"$CL_ROOTFS/etc/xbps.d/00-repository-main.conf"
-log "atualizando xbps e base"
-as_root xbps-install -Suy xbps
-as_root xbps-install -Suy
+check_keys
+# -Su só no primeiro provision (sem o marcador .provisioned): num re-provision
+# a base fica como está e os travados não se movem (além do hold).
+if [ ! -f "$CL_HOME/.provisioned" ]; then
+	log "primeiro provision: atualizando xbps e base"
+	xbps_install -Suy xbps
+	xbps_install -Suy
+else
+	log "re-provision: sem -Su (remova $CL_HOME/.provisioned para atualizar a base)"
+fi
 pkgname() { printf '%s\n' "${1%-*}"; }
 installed() { as_root xbps-query -p pkgver "$1" 2>/dev/null || true; }
 # ca-certificates: https de dentro do ambiente (critério 13); gettext: envsubst
@@ -60,9 +80,18 @@ for p in ca-certificates gettext; do [ -n "$(installed "$p")" ] || want+=("$p");
 for p in "${pkgs[@]}"; do [ "$(installed "$(pkgname "$p")")" = "$p" ] || want+=("$p"); done
 if [ "${#want[@]}" -gt 0 ]; then
 	log "instalando: ${want[*]}"
-	as_root xbps-install -y "${want[@]}" ||
+	# Pin mudou no lock: tira o hold do pacote antigo antes de trocar a versão.
+	for p in "${want[@]}"; do
+		n=$(pkgname "$p")
+		[ -z "$(installed "$n")" ] || as_root xbps-pkgdb -m unhold "$n" 2>/dev/null || true
+	done
+	xbps_install -y "${want[@]}" ||
 		die "falha ao instalar as versões travadas (o repo pode ter avançado; ver README, 'Versões')"
 fi
+# Hold nos travados: o -Su dos próximos provisions não os move.
+holds=()
+for p in "${pkgs[@]}"; do holds+=("$(pkgname "$p")"); done
+as_root xbps-pkgdb -m hold "${holds[@]}"
 
 bad=0
 for p in "${pkgs[@]}"; do
@@ -86,8 +115,10 @@ chmod 1777 "$CL_ROOTFS/tmp"
 # php.ini: pdo_pgsql, redis, OPcache.
 ini=$CL_ROOTFS/etc/php8.4/php.ini
 [ -f "$ini" ] || die "php.ini não encontrado em $ini"
-sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
-	-e 's/^;\(extension=exif\)/\1/' -e 's/^upload_max_filesize = .*/upload_max_filesize = 16M/' \
+# curl/gd/exif: usados pela app e pela suíte standalone (que precisa rodar aqui dentro).
+sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=curl\)/\1/' \
+	-e 's/^;\(extension=gd\)/\1/' -e 's/^;\(extension=exif\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pdo_sqlite\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
+	-e 's/^upload_max_filesize = .*/upload_max_filesize = 16M/' \
 	-e 's/^post_max_size = .*/post_max_size = 20M/' -e 's/^max_file_uploads = .*/max_file_uploads = 20/' \
 	-e 's/^;\(zend_extension=opcache\)/\1/' -e 's/^;\(opcache.enable=\).*/\11/' "$ini"
 grep -q '^extension=pdo_pgsql' "$ini" || echo 'extension=pdo_pgsql' >>"$ini"
@@ -96,13 +127,13 @@ if ! as_root php8.4 -m 2>/dev/null | grep -qx redis; then
 	echo 'extension=redis' >"$CL_ROOTFS/etc/php8.4/conf.d/redis.ini"
 fi
 mods=$(as_root php8.4 -m)
-for m in openssl pdo_pgsql redis exif 'Zend OPcache'; do
+for m in openssl curl gd exif mbstring pdo_pgsql pdo_sqlite redis 'Zend OPcache'; do
 	grep -qx "$m" <<<"$mods" || die "extensão PHP ausente: $m"
 done
 
 # https de dentro (critério 13), como o usuário comum, com a validação de CA.
-bwrap --ro-bind "$CL_ROOTFS" / --dev /dev --proc /proc --tmpfs /tmp \
-	--ro-bind /etc/resolv.conf /etc/resolv.conf --unshare-user --unshare-pid --share-net \
+bwrap_base_args ro-bind
+bwrap "${BW_BASE[@]}" --tmpfs /tmp \
 	-- /usr/bin/php8.4 -r 'exit(file_get_contents("https://repo-default.voidlinux.org/") === false ? 1 : 0);' ||
 	die "https de dentro do rootfs falhou (CA?)"
 

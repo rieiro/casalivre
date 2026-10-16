@@ -19,16 +19,12 @@ scripts abortam se rodarem como root.
 
 ## Variáveis
 
-| Variável | Default |
-|---|---|
-| `CL_HOME` | `$HOME/.casalivre-dev` |
-| `CL_PORT_HTTP` | `20000 + (UID % 4000) * 10` |
-| `CL_PORT_PG` | HTTP + 1 |
-| `CL_PORT_VALKEY` | HTTP + 2 |
-| `CL_PORT_FPM` | HTTP + 3 |
-| `CL_ROOTFS` | `$CL_HOME/rootfs` |
-| `CL_CACHE` | `$CL_HOME/cache` (tarball e cache do xbps, fora do rootfs) |
-| `CL_ROOTFS_TARBALL` | vazio; aponta para um tarball local em vez de baixar (o sha256 é conferido igual) |
+`CL_HOME`, `CL_PORT_HTTP`, `CL_ROOTFS`, `CL_CACHE`
+e `CL_ROOTFS_TARBALL` (tarball local em vez de baixar; o sha256 é conferido
+igual). Defaults e a fórmula da porta HTTP (derivada do UID) ficam num lugar
+só: `cl_defaults` em `lib.sh`. É a única porta TCP: PostgreSQL, Valkey e
+PHP-FPM escutam só em socket Unix em `$CL_HOME/run`. Dois ambientes do mesmo
+uid precisam de `CL_PORT_HTTP` diferente.
 
 Cada usuário (bot) tem seu bloco de portas e seu `CL_HOME`, então dois
 ambientes rodam juntos sem conflito e o `down.sh` de um não toca o outro.
@@ -45,11 +41,21 @@ host.
 php8.4-fpm, php8.4-pgsql, php8.4-redis, postgresql18(-client), valkey e nginx.
 O provision instala exatamente esses e falha se o instalado divergir.
 `ca-certificates` e `gettext` (envsubst) vêm do repo sem trava; o resto da
-base é atualizado com `xbps-install -Su` (rolling).
+base é atualizada com `xbps-install -Su` só no primeiro provision (sem
+`$CL_HOME/.provisioned`; re-provision não roda `-Su`): rolling de propósito, então o build
+não é reproduzível bit a bit. O xbps confere a assinatura RSA dos repos com as
+chaves que vêm no rootfs (verificado por sha256); se aparecer chave nova, o
+provision falha em vez de aceitá-la.
+
+Os pacotes travados também ficam em hold (`xbps-pkgdb -m hold`), então nem um
+`-Su` os move; a reprodutibilidade é parcial (base,
+ca-certificates e gettext rolling).
 
 Atenção: o repo do Void não guarda versões antigas. Quando um pacote travado
-avançar no repo, o provision falha com "not found in repository pool"; aí é
-atualizar o `versions.lock` (PR) ou apontar `repo=` para um espelho/arquivo.
+avançar no repo, o provision falha com "not found in repository pool". Por
+enquanto o pin é atualizado por PR no `versions.lock`. Trabalho futuro: um
+espelho local de `.xbps` indexado com `xbps-rindex -a` (com sha256 de cada
+pacote no lock), apontado em `repo=`.
 
 ## Como funciona
 
@@ -60,18 +66,36 @@ atualizar o `versions.lock` (PR) ou apontar `repo=` para um espelho/arquivo.
   no `php.ini` e confere com `php -m`; faz um GET https de dentro como usuário
   comum (CA).
 - `up-bwrap.sh`: idempotente (PID vivo e do mesmo `CL_HOME` = não sobe outro);
-  apaga `postmaster.pid` que sobrou (o ambiente anterior morreu, então o PID
-  dele está morto, e PIDs se repetem no namespace novo); renderiza
+  apaga `postmaster.pid` que sobrou só se nenhum postgres vivo usa aquele
+  PGDATA (senão aborta), porque PIDs se repetem no namespace novo; renderiza
   `templates/*.in` em `$CL_HOME/etc` com envsubst e lista explícita de
   variáveis; sobe `bwrap --unshare-user --unshare-pid --unshare-ipc --share-net`
   **sem** `--die-with-parent`, com `/etc/resolv.conf` do host em bind somente
   leitura. Grava `<bwrap> <runsvdir> <init do namespace>` em
   `$CL_HOME/run/env.pid`.
 - `down.sh`: confere que o PID registrado ainda é o bwrap deste `CL_HOME`;
-  para o PostgreSQL primeiro (`sv stop` e `pg_ctl stop -m fast -w`), depois os
-  demais serviços (`nsenter` nos namespaces do ambiente); manda HUP ao
-  runsvdir; se não sair, TERM no runsvdir e por fim KILL no init do namespace
-  e no bwrap. Nunca mata por nome.
+  para o PostgreSQL primeiro (`sv stop`; o serviço do P0-2 deve parar em modo
+  fast), depois os demais serviços (`nsenter` nos namespaces do ambiente); manda HUP ao
+  runsvdir; se não sair em 5 s, TERM no runsvdir; mais 5 s e KILL no init do
+  namespace e no bwrap (pior caso ~10 s). O ambiente conta como vivo se o
+  bwrap externo **ou** o init do namespace estiver vivo: se o externo morrer,
+  o `up` não sobe outro e o `down` mata o init. Nunca mata por nome.
+
+## Isolamento (máquina compartilhada)
+
+- `umask 077`; `$CL_HOME`, `run/`, `etc/`, `log/`, `sv/`, `data/` e `cache/`
+  em 0700, conferidos com `stat` (o script falha se não estiverem).
+- Todo bwrap usa `--unshare-all --share-net --new-session --clearenv`: só
+  entram `HOME`, `PATH`, `LANG`, `TZ` e `CL_*`; nada de `SSH_AUTH_SOCK`,
+  tokens etc. O php-fpm usa `clear_env = yes`.
+- No runtime o rootfs é somente leitura e `/tmp` é tmpfs 1777; graváveis só
+  `run etc log sv data` do `CL_HOME` e o repo.
+- Risco residual: `--share-net` também compartilha os sockets unix abstratos
+  do host (dbus, X11 etc.) e a porta HTTP em 127.0.0.1 é alcançável por
+  outros uids locais (PG e Valkey ficam só em socket). Não há seccomp.
+- O provision imprime `ERROR: failed to create system group ...` (_phpfpm,
+  postgres, _valkey, nginx): é o root falso do xbps, inofensivo; os serviços
+  rodam com o seu uid.
 
 ## Diferenças da produção
 
