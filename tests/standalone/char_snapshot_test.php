@@ -151,7 +151,12 @@ $bound = 'snapbound';
 $corpo = "--$bound\r\nContent-Disposition: form-data; name=\"_csrf\"\r\n\r\n$csrf\r\n--$bound\r\nContent-Disposition: form-data; name=\"fotos[0]\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\n"
     . str_repeat('a', $limite + 1024) . "\r\n--$bound--\r\n";
 $r = t_http('POST', $base . '/imoveis/' . $hash . '/fotos', $corpo, ['Content-Type: multipart/form-data; boundary=' . $bound], $jar);
-snap('html-erro-413-upload', snap_headers($r) . "\n" . snap_norm($r['body'], $fixos));
+// Limite e tamanho saem do mesmo php.ini do app (post_max_size), com a fórmula do reject_oversize_upload:
+// o snapshot não fixa o limite (dev 8M, ambiente/produção 20M). A frase é conferida aqui e sai do snapshot.
+$frase = '<p>Este envio tem ' . number_format(strlen($corpo) / 1048576, 1, ',', '') . ' MB e o limite do sistema é '
+    . (int) floor($limite / 1048576) . ' MB. Escolha menos fotos ou arquivos menores.</p>';
+t_ok(str_contains($r['body'], $frase), "413 upload: frase com o limite do php.ini ($frase)");
+snap('html-erro-413-upload', snap_headers($r) . "\n" . snap_norm(str_replace($frase, '', $r['body']), $fixos));
 
 // 500 do ExceptionShield (página própria com <style> inline): servidor com banco inacessível.
 $dsn = (string) getenv('DB_DSN');

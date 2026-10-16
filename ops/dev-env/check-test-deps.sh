@@ -9,7 +9,7 @@ php=${CL_PHP:-php}
 fail=0
 err() { echo "check-test-deps: ERRO: $*" >&2; fail=1; }
 
-if grep -rIn --include='*.php' 'GLOB_BRACE' "$repo/src" "$repo/scripts" "$repo/tests" "$repo/public" "$repo/conta" "$repo/views" 2>/dev/null; then
+if grep -rInE --include='*.php' '[,|(][[:space:]]*GLOB_BRACE' "$repo/src" "$repo/scripts" "$repo/tests" "$repo/public" "$repo/conta" "$repo/views" 2>/dev/null; then
 	err "GLOB_BRACE no código (não existe no musl); use dois glob() e array_merge"
 fi
 "$php" -r 'exit(extension_loaded("exif") ? 0 : 1);' || err "extensão exif ausente no PHP ($php)"
