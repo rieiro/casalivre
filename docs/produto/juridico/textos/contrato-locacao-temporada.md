@@ -23,7 +23,7 @@
 
 2.2. **Capacidade:** {n} hóspedes, {n} quartos, {n} camas, {n} banheiros. Bebês de 0 a 2 anos {contam / não contam} na capacidade, conforme o anúncio.
 
-2.3. **Mobília e utensílios.** O imóvel é entregue mobiliado. **A descrição dos móveis e utensílios que o guarnecem, e o estado em que se encontram, consta do Anexo I** (Lei 8.245/1991, art. 48, parágrafo único). [CONFERIR com Produto: a spec-03 tem comodidades, mas **não tem um campo de inventário com o estado dos itens**. Sem esse anexo, o contrato não cumpre o art. 48, parágrafo único. É preciso criar o campo "Inventário" no anúncio, ou a lista de comodidades com estado, antes do piloto.]
+2.3. **Mobília e utensílios.** O imóvel é entregue mobiliado. **A descrição dos móveis e utensílios que o guarnecem, e o estado em que se encontram, consta do Anexo I** (Lei 8.245/1991, art. 48, parágrafo único). O anúncio só é publicado com esse inventário preenchido por cômodo, e o Anexo I é gerado a partir dele.
 
 2.4. **Comodidades e regras** do anúncio, vigentes na data da reserva, integram este contrato.
 
@@ -35,9 +35,13 @@
 
 3.3. **Desocupação.** O Hóspede deve deixar o imóvel até a hora do check-out. A permanência depois disso depende de acordo prévio com o Anfitrião, pela plataforma, com o pagamento das diárias adicionais. [CONFERIR: a spec não prevê multa nem cobrança automática por permanência; não incluir valor sem decisão do Rafael.]
 
+3.3-A. **Saída antecipada.** Se o Hóspede sair antes do check-out por decisão própria, **as noites não usadas não são reembolsadas**, salvo se a política de cancelamento da reserva disser outra coisa. Problemas do imóvel que levem à saída seguem a disputa (cláusula 10).
+
 3.4. **Prorrogação pela lei.** Se, terminado o prazo, o Hóspede permanecer no imóvel **sem oposição do Anfitrião por mais de 30 dias**, a locação passa a ser considerada **prorrogada por tempo indeterminado**, e o pagamento antecipado do aluguel e dos encargos deixa de ser exigível. Nesse caso, o Anfitrião só pode denunciar o contrato depois de 30 meses do início ou nas hipóteses do art. 47 da Lei 8.245/1991 (art. 50 e parágrafo único). **Para evitar isso, o Anfitrião deve se opor por escrito à permanência**, pela plataforma, logo depois do fim do prazo.
 
 ## 4. Preço e pagamento
+
+4.0. **Reserva manual.** Na reserva lançada pelo Anfitrião, este contrato só vale depois do aceite do Hóspede, por um link com código de confirmação (OTP). Até lá, a reserva fica com o status **"Aceite pendente"**.
 
 4.1. **Valor da locação:** {composição do snapshot}:
 - Diárias: {n} × {valores por noite} = {R$};
@@ -60,11 +64,17 @@ A **limpeza** ({R$}) é contratada com o prestador de limpeza pelo *Termo de ser
 
 4.7. **Tributos e taxas municipais.** Taxa de turismo ou cadastro municipal, quando existirem, são de responsabilidade do Anfitrião, salvo se o anúncio indicar, antes da reserva, que a lei municipal manda o Hóspede pagar. [CONFERIR: taxa de turismo sustentável de Búzios (PLC 22/2025), com sanção e responsável pelo recolhimento ainda não confirmados.]
 
-## 5. Garantia
+## 5. Garantia (caução)
 
-5.1. **No piloto, não é exigida garantia** (caução, fiança, seguro ou outra) pela plataforma.
+5.1. **Caução opcional.** A caução é exigida só se o anúncio prever. O valor é definido pelo Anfitrião, mostrado antes da reserva, e **não pode passar de 3 meses de aluguel** (Lei 8.245/1991, art. 38, § 2º): **{R$ ou "não há caução"}**. A caução em dinheiro é a única garantia deste contrato (art. 37, parágrafo único; art. 49).
 
-5.2. Se a casalivre passar a permitir garantia, ela será uma só das modalidades do art. 37 da Lei 8.245/1991 (art. 49), mostrada no anúncio antes da reserva. A caução em dinheiro não pode passar de três meses de aluguel e segue o art. 38, § 2º. [CONFERIR com o Rafael: decidir se haverá caução para danos; a caução em dinheiro tem regra de depósito em poupança que dificulta o uso em temporada.]
+5.2. **Pagamento.** A caução é paga junto com a estadia, por Pix, para a mesma chave do recebedor verificado.
+
+5.3. **Devolução.** O Anfitrião tem **48 horas depois do check-out** para registrar dano na plataforma, **com fotos** (cláusula 10.2).
+- Sem registro nesse prazo, **a caução é devolvida integralmente**.
+- Com registro, o Anfitrião só retém o valor do dano comprovado e devolve o restante. Se o Hóspede discordar, abre disputa.
+
+5.4. [CONFERIR: (1) o art. 38, § 2º, manda depositar a caução em dinheiro em caderneta de poupança, com os rendimentos revertidos ao locatário; definir como isso se aplica a uma temporada curta; (2) como medir "3 meses de aluguel" quando o aluguel é por temporada; (3) o prazo para devolver a caução (sugestão: 5 dias úteis, como o reembolso).]
 
 ## 6. Ocupantes, menores e portaria
 
@@ -110,15 +120,15 @@ O Hóspede se obriga a (Lei 8.245/1991, art. 23):
 
 10.1. **Entrada.** O Hóspede pode registrar o estado do imóvel no check-in. **Problemas na entrada** (imóvel diferente do anúncio, sujeira, defeito, acesso negado) devem ser relatados pela plataforma em **até 24 horas depois da entrada, com fotos**. Sem esse registro, presume-se que o imóvel foi recebido conforme o Anexo I, admitida prova em contrário. [CONFERIR: presunção relativa; avaliar se cabe em relação de consumo.]
 
-10.2. **Saída.** O Anfitrião faz a vistoria de saída e registra na plataforma, com fotos, eventual dano ou falta de item do Anexo I. [CONFERIR com Produto: definir o prazo para o Anfitrião registrar o dano depois do check-out; a disputa pode ser aberta até 14 dias depois do check-out, spec-09, seção 6.]
+10.2. **Saída.** O Anfitrião faz a vistoria de saída e registra na plataforma, **com fotos e em até 48 horas depois do check-out**, eventual dano ou falta de item do Anexo I. Depois desse prazo, a caução é devolvida (cláusula 5.3).
 
-10.3. **Danos.** Constatado dano causado pelo Hóspede, pelos acompanhantes ou pelas visitas, as partes tentam acordo pela plataforma. Sem acordo, qualquer delas pode abrir **disputa**, mediada pelo responsável local e, depois, pela casalivre (Termos de uso, item 14). **No piloto, a casalivre não retém valores e não cobra danos em nome do Anfitrião.** A mediação não impede o recurso ao Procon ou à Justiça.
+10.3. **Danos.** Constatado dano causado pelo Hóspede, pelos acompanhantes ou pelas visitas, as partes tentam acordo pela plataforma. Sem acordo, qualquer delas pode abrir **disputa**, mediada pelo responsável local e, depois, pela casalivre (Termos de uso, item 14). Havendo caução, o dano comprovado é abatido dela (cláusula 5.3). **No piloto, a casalivre não retém valores e não cobra danos em nome do Anfitrião.** A mediação não impede o recurso ao Procon ou à Justiça.
 
 ## 11. Cancelamento, arrependimento e reembolso
 
 11.1. **Política aplicável:** **{Flexível / Moderada / Rígida}**, gravada na reserva, com estas **datas-limite calculadas para esta reserva**: {ex.: "100% até 06/12, 23:59 · 50% até 13/12 · depois disso, sem reembolso"}. As regras completas estão na **Política de cancelamento** da casalivre, que integra este contrato.
 
-11.2. **Direito de arrependimento.** O Hóspede pode desistir com **reembolso de 100%** em **até 7 dias a partir da reserva, desde que antes do check-in**, inclusive quando o check-in for em menos de 7 dias (CDC, art. 49; Decreto 7.962/2013, art. 5º). O Anfitrião declara conhecer e aceitar essa regra.
+11.2. **Direito de arrependimento.** O Hóspede pode desistir com **reembolso de 100%** em **até 7 dias contados da confirmação da reserva, desde que antes do check-in**, inclusive quando o check-in for em menos de 7 dias (CDC, art. 49; Decreto 7.962/2013, art. 5º). O Anfitrião declara conhecer e aceitar essa regra.
 
 11.3. **Sempre:** a limpeza e a taxa de serviço não usadas são devolvidas. Se o **Anfitrião cancelar**, o Hóspede recebe **100%**.
 
@@ -150,8 +160,7 @@ As comunicações sobre esta locação são feitas **pelas mensagens da platafor
 
 ## Anexo I: inventário de móveis e utensílios e estado de conservação
 
-{Gerado a partir do anúncio: item, quantidade, cômodo, estado (novo, bom, regular), observação e foto de referência.}
-[CONFERIR com Produto: campo inexistente nas specs; ver cláusula 2.3.]
+{Gerado a partir do inventário por cômodo do anúncio, obrigatório para publicar: cômodo, item, quantidade, estado (novo, bom, regular), observação e foto de referência.}
 
 ## Anexo II: regras do condomínio
 
@@ -159,4 +168,4 @@ As comunicações sobre esta locação são feitas **pelas mensagens da platafor
 
 ## Anexo III: resumo da reserva
 
-{Código, datas, hóspedes por faixa etária, composição do preço, chave Pix mascarada do recebedor, política de cancelamento com as datas-limite, data e hora do aceite.}
+{Código, datas, hóspedes por faixa etária, composição do preço, caução (se houver), chave Pix mascarada do recebedor, política de cancelamento com as datas-limite, data e hora do aceite.}

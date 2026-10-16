@@ -24,13 +24,13 @@ Enquanto a reserva estiver em **Aguardando aprovação** ou **Aguardando pagamen
 
 ## 3. Direito de arrependimento (CDC, art. 49)
 
-3.1. **Regra.** O hóspede pode desistir da reserva com **reembolso de 100%** (diárias, limpeza e taxa de serviço) **em até 7 dias a partir da reserva, desde que antes do check-in**.
+3.1. **Regra.** O hóspede pode desistir da reserva com **reembolso de 100%** (diárias, limpeza e taxa de serviço) **em até 7 dias contados da confirmação da reserva, desde que antes do check-in**.
 
 3.2. **Check-in em menos de 7 dias.** A regra vale também nesse caso: o direito pode ser exercido **até o check-in**. Não há exceção para reservas de última hora.
 
 3.3. **Depois do check-in,** o direito de arrependimento não se aplica, porque a estadia já começou.
 
-3.4. **Marco inicial.** Os 7 dias contam da data em que a reserva foi feita, ou seja, do envio da solicitação ou da reserva instantânea. [CONFERIR com o Rafael: o parecer fala em "7 dias corridos da reserva (ou do recebimento da confirmação)"; contar da **confirmação** é a leitura mais protetiva ao consumidor e reduz o risco no Procon.]
+3.4. **Marco inicial.** Os 7 dias contam **da confirmação da reserva** (quando ela fica *Confirmada*). Antes disso, o cancelamento já é gratuito (item 2).
 
 3.5. **Como exercer.** Pelo botão **"Cancelar reserva"** em *Viagens*, a mesma ferramenta usada para reservar, ou pelo canal de atendimento (Decreto 7.962/2013, art. 5º, § 1º). A plataforma **confirma imediatamente** o recebimento (art. 5º, § 4º). O arrependimento desfaz também o Termo de serviço de limpeza, sem ônus (art. 5º, § 2º).
 
@@ -66,7 +66,9 @@ Fora da regra do item 3, vale a política escolhida pelo anfitrião:
 
 5.1. Depois do check-in, não é possível cancelar pela plataforma. Problemas durante a estadia são tratados pelo botão **"Relatar problema"** (item 9).
 
-5.2. **Saída antecipada.** [CONFERIR: as specs não preveem reembolso de noites não usadas quando o hóspede sai antes do fim. Até haver regra, o texto é: "A saída antecipada por decisão do hóspede não gera reembolso automático das noites não usadas; o anfitrião pode concordar com devolução pela plataforma, e problemas do imóvel seguem a disputa." Decidir com o Rafael.]
+5.2. **Saída antecipada.** Se o hóspede sair antes do check-out por decisão própria, **as noites não usadas não são reembolsadas**, salvo se a política escolhida disser outra coisa. Problemas do imóvel que levem à saída seguem a disputa (item 9).
+
+5.3. **Caução.** Se o anúncio exigir caução, ela é devolvida integralmente quando o anfitrião não registra dano, com fotos, em até 48 horas depois do check-out (Contrato de locação, cláusula 5).
 
 ## 6. Cancelamento pelo anfitrião
 

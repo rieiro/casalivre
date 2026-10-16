@@ -101,6 +101,8 @@ Para facilitar a leitura, usamos estes termos:
 - (c) cancelamentos em série também podem gerar restrição, com aviso antes de confirmar.
 [CONFERIR: os limites são provisórios e serão calibrados no piloto, spec-01, seção 5b.]
 
+7.7-A. **Reserva manual.** Quando o anfitrião lança uma reserva para você, você recebe um link com código de confirmação (OTP) para aceitar os três termos. Até o aceite, a reserva fica com o status **"Aceite pendente"**.
+
 7.8. **Reservas feitas em outras plataformas.** Reservas feitas em outros sites ou aplicativos (por exemplo, OTAs) seguem os termos daquela plataforma. A casalivre só recebe as datas ocupadas para bloquear o calendário.
 
 ## 8. Pagamento no piloto: direto ao recebedor, sem a proteção casalivre
@@ -111,7 +113,7 @@ Para facilitar a leitura, usamos estes termos:
 8.1. **Nada é pago no checkout.** Depois da aprovação (ou logo depois do envio, na reserva instantânea), você tem **24 horas** para pagar, ou **4 horas** se o check-in estiver próximo. A data e a hora-limite aparecem na reserva. Sem o pagamento no prazo, a reserva **expira** e as datas são liberadas.
 
 8.2. **Duas chaves Pix.** A reserva mostra **duas linhas de pagamento**, cada uma com valor e chave próprios:
-- **Estadia:** valor das diárias, pago ao **recebedor do imóvel**;
+- **Estadia:** valor das diárias (e da caução, se houver), pago ao **recebedor do imóvel**;
 - **Limpeza:** valor da limpeza, pago ao **prestador de limpeza**.
 
 8.3. **Chave verificada.** Cada chave pertence a um recebedor cuja identidade foi verificada pela casalivre e é registrada **no mesmo CPF ou CNPJ desse recebedor**. Uma chave recém-alterada só passa a valer depois de um período de segurança e nunca aparece em reservas já feitas.
@@ -137,7 +139,7 @@ Para facilitar a leitura, usamos estes termos:
 10.1. As regras completas estão na **Política de cancelamento**, que faz parte destes Termos. Resumo:
 
 - **Antes do pagamento** (*Aguardando aprovação* ou *Aguardando pagamento*): cancelamento **sem custo**, pelos dois lados.
-- **Direito de arrependimento (CDC, art. 49):** reembolso de **100%** se você cancelar **em até 7 dias a partir da reserva, desde que antes do check-in**. Isso vale também quando o check-in é em menos de 7 dias: nesse caso, o prazo vai até o check-in.
+- **Direito de arrependimento (CDC, art. 49):** reembolso de **100%** se você cancelar **em até 7 dias contados da confirmação da reserva, desde que antes do check-in**. Isso vale também quando o check-in é em menos de 7 dias: nesse caso, o prazo vai até o check-in.
 - **Depois disso:** vale a política escolhida pelo anfitrião (Flexível, Moderada ou Rígida), com as datas-limite calculadas e exibidas na sua reserva.
 - **Sempre:** a limpeza e a taxa de serviço não usadas são devolvidas.
 - **Cancelamento pelo anfitrião:** você recebe **100%**.
@@ -155,7 +157,7 @@ Para facilitar a leitura, usamos estes termos:
 
 11.4. **Problemas no check-in.** Problemas na entrada (imóvel diferente do anúncio, sujeira, acesso negado) devem ser relatados pelo botão **"Relatar problema"** em até **24 horas depois da entrada**, com fotos.
 
-11.5. **Danos.** Você responde pelos danos que você ou seus acompanhantes e visitantes causarem ao imóvel, nos termos do Contrato de locação por temporada.
+11.5. **Danos e caução.** Você responde pelos danos que você ou seus acompanhantes e visitantes causarem ao imóvel, nos termos do Contrato de locação por temporada. Se o anúncio exigir caução (opcional, limitada a 3 meses de aluguel), ela é paga junto com a estadia e devolvida se o anfitrião não registrar dano, com fotos, em até 48 horas depois do check-out. As noites não usadas por saída antecipada não são reembolsadas, salvo se a política escolhida disser outra coisa.
 
 ## 12. Mensagens
 

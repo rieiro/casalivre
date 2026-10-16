@@ -313,9 +313,9 @@ Se o parceiro pagar a casalivre (e não o proprietário), a casalivre emite cont
 **Franquia (900/40/30/30 ‰, decidido em spec-05 Ap. A)**
 | Parcela | Emite | Para | Base | Código |
 |---|---|---|---|---|
-| Corretor 4% + fundo 3% = 7% | franqueado | proprietário | 7% (o fundo integra o preço do serviço do franqueado) | 10.05 |
+| Comissão da franquia: 10% no padrão (corretor 4% + royalty 3% + fundo 3%) | franqueado | proprietário | 10% no padrão (o royalty e o fundo integram o preço do serviço do franqueado) | 10.05 |
 | Repasse ao fundo 3% | — (sem NFS-e; repasse contratual de franquia, comprovado por extrato) | fundo | — | — **[CONFERIR com o tratamento contábil do franqueado: é despesa dele]** |
-| Royalty 3% | casalivre | **franqueado** | 3% (base definida no contrato de franquia) | LC 116 **17.08 (franquia/franchising)** |
+| Royalty 3% no padrão (ou o percentual vigente no contrato de franquia), pago pelo franqueado com os 10% | casalivre | **franqueado** | percentual do royalty (base definida no contrato de franquia) | LC 116 **17.08 (franquia/franchising)** |
 **Atenção:** a spec-05 (cenário 900/40/30/30) dá a entender que a casalivre cobra o royalty do valor da reserva, enquanto as recomendações e esta decisão dizem que a cobrança é do **franqueado**. Se a casalivre emitir contra o **proprietário**, aquilo **não é royalty**: é comissão de intermediação (10.05) e o franqueado não paga royalty. Escolher um dos dois e alinhar spec, contrato e COF **[Rafael]**. Recomendo **royalty contra o franqueado, 17.08**. O ISS de franquia é questionado (STF reconheceu a constitucionalidade do ISS sobre franquia no RE 603.136, Tema 300, 2020 **[CONFERIR]**).
 
 **Canal manual (reserva lançada pelo anfitrião)**

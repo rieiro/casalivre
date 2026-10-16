@@ -66,6 +66,7 @@ As bases legais são as do art. 7º da LGPD (dados pessoais) e do art. 11 (dados
 | Dados da reserva: imóvel, datas, hóspedes por faixa etária, pets, valores e composição do preço (snapshot), política aplicada, mensagem ao anfitrião, status e histórico | Executar a reserva, o cancelamento, o reembolso e a disputa | Execução de contrato (art. 7º, V); exercício regular de direitos (art. 7º, VI) | Pela duração do contrato e mais **5 anos** (CDC, art. 27). Os lançamentos financeiros seguem a guarda fiscal (abaixo) |
 | Aceites: versão e hash de cada termo, data, hora, canal e IP do aceite | Provar o que foi aceito | Exercício regular de direitos (art. 7º, VI) | Duração do contrato e mais **5 anos** |
 | Lançamentos financeiros e fiscais (valores, pagamento marcado, comprovante anexado, reembolsos, faturas) | Contabilidade, obrigações fiscais e prova | Obrigação legal (art. 7º, II) e exercício de direitos (art. 7º, VI) | **5 anos contados de 1º de janeiro do ano seguinte** (na prática, 6 anos corridos), ou até o fim de processo fiscal |
+| CPF de quem reserva no cadastro fiscal (`fiscal_parties`), cifrado | Declaração de atividades imobiliárias (DIMOB) à Receita Federal, quando aplicável | Obrigação legal (art. 7º, II) | Até 1º de janeiro do ano do último evento fiscal + 7, salvo legal hold [CONFERIR: obrigatoriedade da DIMOB para a plataforma, pendente do Rafael] |
 | Declaração do adulto responsável pelos menores | Proteger crianças e adolescentes (ECA, arts. 82 e 83) | Execução de contrato e melhor interesse do menor (arts. 7º, V, e 14) | Com a reserva |
 
 ### 5.3. Portaria do condomínio e menores
@@ -116,7 +117,7 @@ Você vê as avaliações que recebeu, pode responder e contestar cada uma e, a 
 - As respostas são **geradas de forma automatizada**. Você pode pedir **atendimento humano** a qualquer momento.
 - O assistente **não toma decisões** sobre aprovação, cancelamento, reembolso, disputa ou bloqueio. Se uma decisão unicamente automatizada vier a afetar seus interesses, você pode pedir revisão por uma pessoa (LGPD, art. 20).
 - **Não informe** ao assistente senhas, códigos, dados de cartão, documentos ou dados de saúde.
-- Fornecedor do modelo de IA: **[PREENCHER: nome do fornecedor e país onde processa os dados]**. [PREENCHER: se o fornecedor pode ou não usar as conversas para treinar modelos. Recomendação: contratar com proibição de uso para treinamento.]
+- Fornecedor do modelo de IA: **[PREENCHER: nome do fornecedor e país onde processa os dados]**. **As conversas com o assistente não podem ser usadas para treinar modelos de IA**, nem pela casalivre nem pelo fornecedor, e isso consta do contrato com ele.
 
 ### 5.8. Anfitriões, proprietários e equipes
 
@@ -132,7 +133,7 @@ Você vê as avaliações que recebeu, pode responder e contestar cada uma e, a 
 | Dado | Finalidade | Base legal | Guarda |
 |---|---|---|---|
 | **Selfie e prova de vida** (dado biométrico, portanto sensível) | Comparar com a foto do documento e **prevenir fraude** no cadastro | **Prevenção à fraude e segurança do titular em processos de identificação e autenticação de cadastro** (art. 11, II, "g"), **sem necessidade de consentimento** | **Apagada 30 dias depois da decisão** (aprovação ou recusa); fica só o resultado e o hash |
-| Documento com foto, comprovante de endereço (até 90 dias), cartão CNPJ, contrato social, CCMEI | Verificar identidade e o direito de receber | Execução de contrato e exercício de direitos (art. 7º, V, VI e IX) | Aprovados: durante o relacionamento e mais **5 anos** contados do fim do relacionamento [CONFERIR: decisão do Rafael entre relação + 5 anos (spec-05) e relação + 2 anos (recomendação do parecer J5)]. Recusados: imagens apagadas em **30 dias** |
+| Documento com foto, comprovante de endereço (até 90 dias), cartão CNPJ, contrato social, CCMEI | Verificar identidade e o direito de receber | Execução de contrato e exercício de direitos (art. 7º, V, VI e IX) | Aprovados (inclusive a imagem do documento): durante o relacionamento e mais **5 anos** contados do fim do relacionamento. Recusados: imagens apagadas em **30 dias** |
 | Resultado da verificação (status, fonte, data, quem aprovou, hash, nome, CPF/CNPJ cifrado) | Prova e prevenção à fraude | Exercício de direitos e legítimo interesse (art. 7º, VI e IX) | Aprovados: relacionamento + **5 anos**. Recusados: **6 meses**, ou **5 anos** se a recusa for por fraude |
 | CPF/CNPJ, regime tributário, banco, agência, conta e chave Pix (titular igual ao CPF/CNPJ) | Exibir a chave correta ao hóspede, emitir extratos e informes | Execução de contrato e obrigação legal (art. 7º, II e V) | Com o relacionamento; os registros financeiros seguem a guarda fiscal (6 anos) |
 | CPF/CNPJ do **tomador das notas fiscais** (proprietário e, no royalty, o franqueado) | Emitir NFS-e, extratos, informe de IR e DIMOB | Obrigação legal (art. 7º, II) | Num **cadastro fiscal separado** (`fiscal_parties`), **cifrado** e mascarado em telas e faturas, até **1º de janeiro do ano do último pagamento + 7**, salvo legal hold |
@@ -160,7 +161,7 @@ Você vê as avaliações que recebeu, pode responder e contestar cada uma e, a 
 |---|---|---|
 | Anfitrião, proprietário e equipe autorizada do imóvel | Dados da solicitação e da reserva; contatos depois da confirmação; lista da portaria, se houver; resumo das avaliações do hóspede enquanto o pedido estiver pendente | Executar a locação |
 | Prestador de limpeza | O necessário para a limpeza [CONFERIR] | Executar o serviço de limpeza |
-| Franqueado (corretor) do território | Status das reservas e dos recebedores, sem documentos de KYC; dados das reservas da franquia necessários à fatura dele ao proprietário | Suporte local, mediação e faturamento da parte dele (7%) |
+| Franqueado (corretor) do território | Status das reservas e dos recebedores, sem documentos de KYC; dados das reservas da franquia necessários à fatura dele ao proprietário | Suporte local, mediação e faturamento da comissão da franquia ao proprietário |
 | Condomínio (portaria) | Nome e documento dos hóspedes | Controle de acesso, quando exigido |
 | Provedores de infraestrutura e hospedagem | Todos os dados, como operadores | Funcionamento da plataforma. [PREENCHER: fornecedor de nuvem e região dos servidores] |
 | Provedor de WhatsApp, SMS e e-mail | Nome, celular, e-mail e o texto do aviso (sem conteúdo de mensagens) | Códigos de confirmação e avisos. [PREENCHER: fornecedor (D3)] |
@@ -185,7 +186,7 @@ Alguns dados são mantidos depois da exclusão da conta **para cumprir obrigaç�
 | Lançamentos financeiros, informes de IR e notas fiscais | 5 anos de 1º de janeiro do ano seguinte (na prática, 6 anos) |
 | CPF/CNPJ do tomador das notas fiscais (cadastro fiscal) | Até 1º de janeiro do ano do último pagamento + 7 |
 | Aceites de termos e dados da reserva | Fim do contrato + 5 anos |
-| Documentos e resultado do KYC de recebedores aprovados | Fim do relacionamento + 5 anos [CONFERIR: decisão do Rafael, ver 5.9] |
+| Documentos e resultado do KYC de recebedores aprovados | Fim do relacionamento + 5 anos |
 | Mensagens enviadas (autor "Usuário removido") | Até o fim da guarda da conversa (12 meses depois do check-out ou 90 dias sem reserva) |
 | Avaliações públicas (autor "Usuário removido") | Conforme 5.5 |
 | Disputas resolvidas | Fotos e mensagens: 12 meses depois da resolução; resultado: 5 anos |

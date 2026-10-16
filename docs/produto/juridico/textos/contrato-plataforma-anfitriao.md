@@ -48,7 +48,7 @@
 
 3.4. **Análise.** A análise é **manual**, feita só pela equipe de verificação da casalivre, em até **2 dias úteis**. As validações automáticas conferem o dígito do CPF/CNPJ, a situação do CNPJ na Receita (BrasilAPI) e se **o titular da chave Pix é o mesmo do documento**. O resultado pode ser *Aprovado*, *Pendência* (com motivo e reenvio) ou *Recusado*. O franqueado vê só o status e o resultado das validações, nunca os documentos.
 
-3.5. **Selfie (dado biométrico).** A selfie é tratada com base na **prevenção à fraude e segurança do titular nos processos de identificação e autenticação de cadastro** (LGPD, art. 11, II, "g"), **sem necessidade de consentimento**, e é **apagada 30 dias depois da decisão**. Os documentos dos aprovados ficam cifrados durante o relacionamento e por mais **5 anos** contados do fim dele; os dos recusados são apagados em 30 dias. [CONFERIR: decisão do Rafael entre relação + 5 anos e relação + 2 anos para a imagem do documento; ver Política de Privacidade, 5.9.]
+3.5. **Selfie (dado biométrico).** A selfie é tratada com base na **prevenção à fraude e segurança do titular nos processos de identificação e autenticação de cadastro** (LGPD, art. 11, II, "g"), **sem necessidade de consentimento**, e é **apagada 30 dias depois da decisão**. Os documentos dos aprovados, inclusive a imagem, ficam cifrados durante o relacionamento e por mais **5 anos** contados do fim dele; os dos recusados são apagados em 30 dias.
 
 3.6. **Chave Pix.** A chave deve estar registrada **no mesmo CPF ou CNPJ do recebedor verificado**. A plataforma recusa uma chave de outro titular. Qualquer troca de chave:
 - (a) exige senha e código enviado ao canal já cadastrado do titular;
@@ -62,7 +62,16 @@ Um gestor só troca a chave com delegação expressa e confirmação do propriet
 
 ## 4. Anúncio
 
-4.1. O Anfitrião é responsável pela **veracidade e atualização** de fotos, descrição, capacidade, comodidades, **inventário de móveis e utensílios com o estado de conservação** (Lei 8.245/1991, art. 48, parágrafo único), regras da casa, regras do condomínio, preço, limpeza, calendário e política de cancelamento.
+4.1. O Anfitrião é responsável pela **veracidade e atualização** de fotos, descrição, capacidade, comodidades, **inventário de móveis e utensílios com o estado de conservação** (Lei 8.245/1991, art. 48, parágrafo único), regras da casa, regras do condomínio, preço, limpeza, caução (se houver), calendário e política de cancelamento.
+
+4.1-A. **Inventário obrigatório.** **O anúncio só é publicado com o inventário preenchido por cômodo** (item, quantidade e estado de conservação). Esse inventário preenche o Anexo I do Contrato de locação por temporada de cada reserva.
+
+4.1-B. **Caução opcional.** O Anfitrião pode exigir caução em dinheiro, com valor definido por ele no anúncio e mostrado antes da reserva, **limitada a 3 meses de aluguel** (Lei 8.245/1991, art. 38, § 2º). A caução é a única garantia da locação (art. 37, parágrafo único). Ela é paga junto com a estadia, pela chave do recebedor verificado.
+- O Anfitrião tem **48 horas depois do check-out** para registrar dano na plataforma, **com fotos**.
+- Sem registro nesse prazo, **a caução é devolvida** integralmente.
+- Com registro, o Anfitrião só retém o valor do dano comprovado e devolve o restante. A divergência vai para a disputa.
+
+[CONFERIR: (1) o art. 38, § 2º, manda depositar a caução em dinheiro em caderneta de poupança, com os rendimentos revertidos ao locatário; definir como isso se aplica a uma temporada curta; (2) como medir "3 meses de aluguel" quando o aluguel é por temporada, e não mensal; (3) o prazo para devolver a caução (sugestão: 5 dias úteis, como o reembolso).]
 
 4.2. É proibido incluir contatos (telefone, e-mail, links) no anúncio. Eles são liberados depois da reserva.
 
@@ -84,7 +93,7 @@ Um gestor só troca a chave com delegação expressa e confirmação do propriet
 
 5.3. **Marcar como pago.** O Anfitrião registra separadamente **"Diária recebida"** e **"Limpeza recebida"** (esta, pelo prestador), com comprovante opcional. A reserva só fica *Confirmada* com as duas marcações. Desfazer depois de 5 segundos exige justificativa.
 
-5.4. **Reserva manual.** O Anfitrião pode lançar reservas manuais para clientes próprios, que seguem este contrato e a comissão do canal manual. [PREENCHER: comissão do canal manual, pendente do Rafael (spec-06, 3b).]
+5.4. **Reserva manual.** O Anfitrião pode lançar reservas manuais para clientes próprios, que seguem este contrato e a comissão do canal manual. **O hóspede recebe um link com código de confirmação (OTP) para aceitar o Contrato de locação, o Termo de serviço de limpeza e os Termos de uso.** Até o aceite, a reserva fica com o status **"Aceite pendente"**. [PREENCHER: comissão do canal manual, pendente do Rafael (spec-06, 3b).]
 
 5.5. **Lista da portaria.** O Anfitrião usa a lista **só para o controle de acesso**, envia à portaria **só pelo link seguro da plataforma** (nome e documento, sem foto) e não a copia por e-mail ou WhatsApp. Depois de 7 dias do check-out, só abre a lista com motivo, e ela é apagada aos 90 dias.
 
@@ -111,7 +120,7 @@ As reservas do piloto seguem as regras do piloto.
 ## 7. Cancelamento pelo hóspede, arrependimento e reembolso
 
 7.1. O Anfitrião escolhe uma política (**Flexível, Moderada ou Rígida**) e **aceita as regras que valem para todas**, descritas na Política de cancelamento:
-- (a) **direito de arrependimento**: reembolso de **100%** se o hóspede cancelar **em até 7 dias a partir da reserva, desde que antes do check-in**, mesmo com check-in em menos de 7 dias (CDC, art. 49; parecer J35);
+- (a) **direito de arrependimento**: reembolso de **100%** se o hóspede cancelar **em até 7 dias contados da confirmação da reserva, desde que antes do check-in**, mesmo com check-in em menos de 7 dias (CDC, art. 49; parecer J35);
 - (b) a limpeza e a taxa de serviço não usadas são sempre devolvidas;
 - (c) o cancelamento antes do pagamento é gratuito.
 
@@ -121,10 +130,9 @@ As reservas do piloto seguem as regras do piloto.
 - (a) abre-se **disputa automática**;
 - (b) os anúncios do Anfitrião **deixam de aceitar reservas novas**;
 - (c) o proprietário **perde o pagamento por fora**;
-- (d) **a comissão continua devida**;
-- (e) o hóspede recebe orientação sobre o Procon e uma **declaração da casalivre com o histórico da reserva** (dados da reserva, mensagens relevantes, status, datas e valores; do Anfitrião, só o nome e os dados do anúncio).
+- (d) o hóspede recebe orientação sobre o Procon e uma **declaração da casalivre com o histórico da reserva** (dados da reserva, mensagens relevantes, status, datas e valores; do Anfitrião, só o nome e os dados do anúncio).
 
-[CONFERIR: conflito entre "a comissão continua devida" (spec-09, seção 4) e a regra da fatura de que reservas canceladas antes do check-in não entram (spec-05, Apêndice A, P9-3).]
+O atraso gera **só essas penalidades**. Ele não aumenta a comissão: a comissão segue a cláusula 9.1-A e não incide sobre o valor que deveria ter sido devolvido.
 
 7.4. **Regresso.** Se a casalivre for condenada ou fizer acordo para indenizar hóspede por reembolso não feito, golpe, anúncio falso ou outro ato do Anfitrião, ela **tem direito de regresso** contra o Anfitrião pelo valor pago, com correção e despesas.
 
@@ -148,23 +156,30 @@ A tela mostra a consequência **antes** de cada cancelamento.
 
 9.1. **Valor.** Pelas reservas confirmadas nos canais da casalivre, o Anfitrião paga comissão conforme o **modelo de split vigente** para o nó, o imóvel e o canal, mostrado no painel e no **Anexo I**. A versão aplicada fica gravada em cada reserva. Uma mudança só vale para reservas novas.
 
+9.1-A. **Base: só o valor retido.** A comissão incide **só sobre o valor das diárias efetivamente retido pelo Anfitrião**, ou seja, as diárias pagas menos o reembolso devido ao hóspede. **Reembolso total não gera comissão** (nem royalty, na franquia). A limpeza fica fora da base.
+
 9.2. **Regra geral: cada um fatura só a sua parte.** Cada parcela da comissão é cobrada **pelo seu emissor**, em NFS-e própria. O proprietário **só recebe faturas e notas de quem efetivamente o fatura**. O aluguel não gera NFS-e, porque locação de imóvel não é serviço.
 
 9.3. **Modelo direto (sem parceiro).** A casalivre fatura ao proprietário a comissão dela, em NFS-e no **item 10.05** da lista da LC 116/2003.
 
-9.4. **Modelo franquia (canal direto).**
+9.4. **Modelo franquia (canal direto).** O proprietário paga ao franqueado a **comissão da franquia**, **10% no modelo padrão**, e o franqueado fatura o valor inteiro numa só NFS-e no **item 10.05**. Desse valor, o franqueado:
+- fica com a corretagem: **4%**, ou o percentual vigente no modelo;
+- paga o **royalty** à casalivre: **3%**, ou o percentual vigente no contrato de franquia (pode ser, por exemplo, 2,5%);
+- repassa o **fundo regional**: **3%**, ou o percentual vigente no contrato de franquia.
 
-| Parcela | % | Quem fatura | Quem paga (tomador) | NFS-e |
+Os percentuais são **parâmetros do modelo de split**. O valor aplicado fica gravado em cada reserva e aparece no painel antes da reserva.
+
+| Parcela dos 10% | % | Quem fatura | Tomador | Documento |
 |---|---|---|---|---|
-| Corretagem do franqueado | 4% | Franqueado | **Proprietário** | Uma só NFS-e do franqueado, de **10%**, item 10.05 |
-| Fundo regional de propaganda | 3% | Franqueado | **Proprietário** | Na mesma NFS-e de 10% |
-| Royalty casalivre | 3% | casalivre | **Franqueado** | NFS-e da casalivre ao franqueado, **item 17.08** (franquia) |
+| Comissão total da franquia | **10% (padrão)** | Franqueado | **Proprietário** | NFS-e do franqueado, **item 10.05** |
+| ↳ fica com o franqueado (corretagem) | 4% (padrão) | — | — | (dentro da NFS-e de 10%) |
+| ↳ royalty casalivre | 3% (ou o percentual vigente no contrato de franquia) | casalivre | **Franqueado** | NFS-e da casalivre ao franqueado, **item 17.08** |
+| ↳ fundo regional de propaganda | 3% (ou o percentual vigente no contrato de franquia) | — | — | Repasse do franqueado à **conta segregada do fundo**, com extrato, **sem NFS-e** |
 
-- **O proprietário recebe só a fatura e a NFS-e do franqueado (10%).** A casalivre **não fatura o proprietário** na franquia, e **nenhuma linha de royalty aparece** para ele.
-- O **royalty** é cobrado **do franqueado** pela casalivre, numa fatura mensal casalivre → franqueado, calculada sobre as reservas da franquia no mês, conforme o contrato de franquia. Isso não faz parte deste contrato.
-- O **franqueado repassa os 3% do fundo** a uma **conta bancária segregada do fundo regional**, por obrigação do contrato de franquia, com extrato do repasse. **A casalivre não recebe, não retém nem administra** o valor do fundo, não age como mandatária do franqueado e não cobra o fundo do proprietário.
-
-[CONFERIR com o Rafael e o Negócios: (1) os números do split estão pendentes (D2 e D12); no canal OTA, o royalty e o fundo podem ser de 2%; (2) a base de cálculo são as diárias (a limpeza fica fora); confirmar se o acréscimo do canal e os descontos entram; (3) com o royalty cobrado do franqueado, **o proprietário é faturado em 7%**, e não em 10% (900/40/30/30). O cenário da D2 precisa ser revisto: ou o proprietário fica com 93%, ou a parcela do franqueado ao proprietário muda.]
+- **O proprietário recebe só a fatura e a NFS-e do franqueado (a comissão total da franquia).** A casalivre **não fatura o proprietário** na franquia, e **nenhuma linha de royalty aparece** para ele.
+- O **royalty** é pago **pelo franqueado** com a comissão que ele recebe, numa fatura mensal casalivre → franqueado. A base é a das reservas da franquia **concluídas** no mês e a dos **valores retidos em cancelamentos com reembolso parcial definitivos no mês**. **Reembolso total não gera royalty.** O royalty segue o contrato de franquia, que é separado deste.
+- O franqueado repassa o fundo por obrigação do contrato de franquia. **A casalivre não recebe, não retém nem administra** o valor do fundo, não age como mandatária do franqueado e não cobra o fundo do proprietário.
+- No canal OTA, os percentuais de royalty e de fundo dependem da D12 (Anexo I).
 
 9.5. **Modelo parceria.** O parceiro (com CRECI ativo) fatura ao proprietário a comissão dele, em NFS-e própria, item 10.05. A comissão da casalivre também é faturada em NFS-e no item 10.05, a um **tomador configurável por modelo**. **O padrão é o proprietário**: cada um fatura a sua parte a ele. Se o contrato de parceria disser que o parceiro paga a casalivre, o tomador passa a ser o parceiro, e o proprietário recebe só a fatura do parceiro.
 
@@ -178,9 +193,9 @@ A tela mostra a consequência **antes** de cada cancelamento.
 
 ## 10. Fatura mensal, vencimento e atraso (piloto)
 
-10.1. **Faturas separadas por emissor.** No fim de cada mês, **cada emissor gera só a sua fatura**, com só as parcelas que lhe cabem, das reservas pagas por fora e **concluídas** no mês. O **extrato mensal do proprietário** mostra só as cobranças **dirigidas a ele**, agrupadas por emissor: na franquia, só a do franqueado; no direto, só a da casalivre; na parceria, as do parceiro e, se ele for o tomador, a da casalivre. Reservas canceladas antes do check-in não entram (ver o [CONFERIR] da cláusula 7.3).
+10.1. **Faturas separadas por emissor.** No fim de cada mês, **cada emissor gera só a sua fatura**, com só as parcelas que lhe cabem, das reservas pagas por fora e **concluídas** no mês. O **extrato mensal do proprietário** mostra só as cobranças **dirigidas a ele**, agrupadas por emissor: na franquia, só a do franqueado; no direto, só a da casalivre; na parceria, as do parceiro e, se ele for o tomador, a da casalivre. Entram também, **no mês em que o reembolso parcial fica definitivo** (confirmado pelo hóspede, considerado feito após 72 h ou decidido em disputa), as reservas canceladas em que o Anfitrião reteve parte das diárias, com a comissão só sobre o valor retido (cláusula 9.1-A). Reservas com reembolso total não entram e não geram comissão nem royalty.
 
-10.2. **Taxa de cancelamento.** A taxa de cancelamento da cláusula 8 é cobrada pela casalivre ao Anfitrião, em fatura própria, também na franquia. [CONFERIR: a taxa é cláusula penal, não serviço; confirmar se a cobrança sai sem NFS-e, como recibo ou nota de débito.]
+10.2. **Taxa de cancelamento.** A taxa de cancelamento da cláusula 8 é **multa contratual** (cláusula penal), e não serviço. Por isso, **não tem NFS-e**. Ela é cobrada **pela casalivre** ao Anfitrião, em qualquer modelo (inclusive na franquia), **com recibo ou nota de débito**.
 
 10.3. **Vencimento:** **10 dias** depois da emissão.
 
@@ -286,17 +301,17 @@ Fica eleito o foro da comarca de **[PREENCHER: comarca]**. [CONFERIR: se o Anfit
 
 ## Anexo I: tabela de comissão por modelo e canal
 
-Por R$ 1.000 de diárias. **"Faturado ao proprietário"** é o que aparece no extrato dele. O royalty é uma relação **casalivre → franqueado** e não aparece para o proprietário.
+Por R$ 1.000 de diárias, com os **percentuais padrão** (configuráveis no modelo de split). **"Faturado ao proprietário"** é o que aparece no extrato dele. O royalty é uma relação **casalivre → franqueado** e não aparece para o proprietário.
 
 | Cenário | Faturado ao proprietário (emissor, item) | Royalty (casalivre → franqueado, 17.08) | Fundo regional | Status |
 |---|---|---|---|---|
 | Direto, sem parceiro (940/60) | R$ 60 (casalivre, 10.05) | — | — | [pendente: Rafael, D2] |
-| **Franquia, canal direto** | **R$ 70 (franqueado: 4% + 3% do fundo, 10.05)** | **R$ 30 (3%)** | R$ 30, repassados pelo franqueado à conta segregada | [pendente: Rafael, D2/D12; ver o [CONFERIR] da cláusula 9.4] |
-| Franquia via OTA | R$ 60 (franqueado: 4% + 2% do fundo, 10.05) [CONFERIR] | R$ 20 (2%) | R$ 20 | [pendente: Rafael, D12] |
+| **Franquia, canal direto** | **R$ 100 (franqueado, 10.05): franqueado 4% (R$ 40), royalty 3% (R$ 30), fundo 3% (R$ 30)** | **R$ 30 (3%), pagos pelo franqueado** | R$ 30, repassados pelo franqueado à conta segregada, sem NFS-e | padrão configurável (royalty e fundo conforme o contrato de franquia) |
+| Franquia via OTA | R$ 80 (franqueado, 10.05): franqueado 4% (R$ 40), royalty 2% (R$ 20), fundo 2% (R$ 20) | R$ 20 (2%), pagos pelo franqueado | R$ 20 | [pendente: Rafael, D12] |
 | Parceria (930/40/30 e 900/50/50) | Parceiro (10.05) e casalivre (10.05; tomador configurável, padrão proprietário) | — | — | [CONFERIR: papéis de cada parcela, spec-05] |
 | Canal manual | [PREENCHER] | [PREENCHER] | [PREENCHER] | [pendente: Rafael] |
 
-Base: diárias da reserva (snapshot). A limpeza fica fora. A taxa da OTA é cobrada pela própria OTA, fora do split.
+Base: diárias efetivamente retidas pelo Anfitrião (cláusula 9.1-A). A limpeza fica fora. A taxa da OTA é cobrada pela própria OTA, fora do split.
 
 ## Anexo II: resumo de prazos e parâmetros
 
@@ -309,7 +324,9 @@ Base: diárias da reserva (snapshot). A limpeza fica fora. A taxa da OTA é cobr
 | Prazo de pagamento do hóspede | 24 h, ou 4 h |
 | Reembolso ao hóspede | 5 dias úteis, com comprovante; 72 h para o hóspede contestar |
 | Comprovação de força maior | 7 dias |
-| Taxa de cancelamento do Anfitrião | 10%, teto de R$ 300, a partir do 2º cancelamento em 12 meses |
+| Taxa de cancelamento do Anfitrião | 10%, teto de R$ 300, a partir do 2º cancelamento em 12 meses; multa sem NFS-e, com recibo ou débito |
+| Registro de dano | até 48 h depois do check-out, com fotos; depois disso, a caução é devolvida |
+| Caução | opcional, definida pelo Anfitrião, até 3 meses de aluguel |
 | Revisão da conta | 3 ou mais cancelamentos em 90 dias |
 | Fatura | mensal, uma por emissor, só com as parcelas dele; vencimento em 10 dias; multa de 2%, juros de 1% a.m. pro rata die e IPCA |
 | Escalonamento | D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) |

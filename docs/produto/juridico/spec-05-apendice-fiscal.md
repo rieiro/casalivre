@@ -15,21 +15,28 @@ O **aluguel não gera NFS-e** (locação de bem imóvel não é serviço: Súmul
 | Direto | comissão casalivre | casalivre | proprietário | valor da comissão | 10.05 |
 | Parceria | comissão do parceiro | parceiro (CRECI ativo) | proprietário | parcela do parceiro | 10.05 |
 | Parceria | comissão casalivre | casalivre | configurável por modelo; padrão: proprietário (parceiro, se o contrato de parceria disser que ele paga a casalivre) | parcela da casalivre | 10.05 |
-| Franquia | corretor 4% + fundo 3% = 10% | franqueado | proprietário | 10% | 10.05 |
-| Franquia | royalty 3% | casalivre | **franqueado** | 3% (base do contrato de franquia) | **17.08** (franquia) |
-| Franquia | repasse do fundo 3% | — (sem NFS-e; repasse com extrato) | fundo regional | — | — |
+| Franquia | **comissão da franquia, 10% no padrão** (dela saem a corretagem de 4%, o royalty e o fundo) | franqueado | proprietário | comissão total (10% no padrão) das diárias retidas | 10.05 |
+| Franquia | royalty: 3% no padrão, ou o percentual vigente no contrato de franquia (por exemplo, 2,5%), pago pelo franqueado com a comissão que recebe | casalivre | **franqueado** | percentual do royalty (base do contrato de franquia) | **17.08** (franquia) |
+| Franquia | repasse do fundo: 3% no padrão, ou o percentual vigente no contrato de franquia | — (sem NFS-e; repasse à conta segregada, com extrato) | fundo regional | — | — |
+| Todos | **taxa de cancelamento do anfitrião** (multa contratual: 10%, teto de R$ 300, a partir do 2º cancelamento em 12 meses) | casalivre | anfitrião (proprietário) | valor da multa | **sem NFS-e** (não é serviço): recibo ou nota de débito |
 | Manual | comissão do canal manual, se houver [pendente: Rafael] | casalivre (e franqueado, se a franquia cobrar no manual) | proprietário | valor da comissão | 10.05 |
+
+**Franquia (soma):** no padrão, o proprietário paga **10%** ao franqueado, numa só NFS-e no item 10.05. Desses 10%, o franqueado fica com **4%**, paga **3%** de royalty à casalivre (NFS-e da casalivre ao franqueado, item 17.08) e repassa **3%** ao fundo (conta segregada, extrato, sem NFS-e): 4 + 3 + 3 = 10. Os percentuais são **parâmetros do modelo de split**: o royalty e o fundo seguem o percentual vigente no contrato de franquia, e a corretagem do franqueado é o que sobra da comissão total.
+
+**Base da comissão:** a comissão incide **só sobre as diárias efetivamente retidas pelo anfitrião** (diárias pagas menos o reembolso devido). Reembolso total não gera comissão nem nota. O atraso no reembolso gera só as penalidades já previstas (disputa automática, suspensão de reservas novas, perda do pagamento por fora), sem comissão sobre o valor que deveria ter sido devolvido.
+
+**Taxa de cancelamento do anfitrião:** é **multa contratual** (cláusula penal, CC arts. 408 a 416), e não serviço. Por isso, **não tem NFS-e**. Ela é cobrada **pela casalivre** ao anfitrião, em qualquer modelo (inclusive na franquia), **com recibo ou nota de débito**, e não entra na fatura do franqueado.
 
 Sem comissão no canal manual, não há nota. Mensalidade de software, se for adotada, é outro serviço (LC 116 1.03 ou 1.05) [CONFERIR com o município].
 
 ### A.3 Royalty
-- O royalty de **3%** (2% ou 3% no OTA, D12) é **cobrado do franqueado**, pela casalivre, com NFS-e no **item 17.08**. Nunca é cobrado do proprietário: cobrado dele, deixaria de ser royalty e viraria comissão 10.05, com natureza errada (CTN art. 118; risco alto).
-- Na fatura do proprietário **não aparece linha de royalty**. O royalty entra numa **fatura mensal casalivre → franqueado**, calculada sobre as reservas do mês da franquia.
+- O royalty de **3% no padrão** (ou o percentual vigente no contrato de franquia, que pode cair para 2,5%; no OTA, conforme a D12) é **cobrado do franqueado**, que o paga com a comissão da franquia recebida do proprietário, pela casalivre, com NFS-e no **item 17.08**. Nunca é cobrado do proprietário: cobrado dele, deixaria de ser royalty e viraria comissão 10.05, com natureza errada (CTN art. 118; risco alto).
+- Na fatura do proprietário **não aparece linha de royalty**. O royalty entra numa **fatura mensal casalivre → franqueado**, calculada sobre as reservas da franquia concluídas no mês e sobre os valores retidos em cancelamentos com reembolso parcial definitivos no mês. Reembolso total não gera royalty (critério 13).
 - ISS sobre franquia: STF, RE 603.136 (Tema 300, 2020) [CONFERIR].
 - Contrato de franquia e COF (Lei 13.966/2019 art. 2º): royalty, base, vencimento e emissão da NFS-e pela casalivre [CONFERIR o texto do art. 2º].
 
 ### A.4 Fundo regional
-- O franqueado fatura os **3% do fundo dentro dos 10%** da NFS-e dele (o fundo integra o preço do serviço do franqueado) e **repassa ao fundo** por obrigação do contrato de franquia.
+- O franqueado fatura o fundo **dentro da comissão total da franquia (10% no padrão)** na NFS-e dele (o fundo integra o preço do serviço do franqueado) e **repassa ao fundo** o percentual vigente no contrato de franquia (3% no padrão), por obrigação desse contrato.
 - O repasse vai para uma **conta bancária segregada do fundo**, e o **extrato do repasse** alimenta o extrato do fundo regional (UC-A21; prestação de contas trimestral, formato [pendente: Negócios]).
 - A casalivre **não retém** o fundo, não atua como mandatária e não cobra o fundo do proprietário (rejeitado; parecer item 51).
 - O tratamento contábil do repasse no franqueado é dele [CONFERIR com o contador do franqueado].
@@ -56,7 +63,7 @@ Sem comissão no canal manual, não há nota. Mensalidade de software, se for ad
   - **Dados exigidos na locação:** locador e **locatário** com nome e **CPF/CNPJ** (CPF obrigatório; "NDP" só para estrangeiro não domiciliado; P&R nº 28 a 31), número e data do contrato (o número é opcional), e, **por mês**, o rendimento bruto pago pelo locatário, a comissão e o imposto retido (P&R nº 20 a 23, 33). Um imóvel com vários locadores gera uma linha por locador.
   - **Prazo:** último dia útil de fevereiro do ano seguinte. A multa por informação omitida ou inexata é de 3% do valor, com mínimo de R$ 100 (MP 2.158-35/2001 art. 57 III; redução de 70% no Simples, §1º).
   - **Fontes:** gov.br/receitafederal (DIMOB, Perguntas e Respostas; acesso em 16/10/2026): https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/declaracoes-e-demonstrativos/dimob/perguntas-e-respostas ; serviço "Declarar atividades imobiliárias": https://www.gov.br/pt-br/servicos/declarar-atividades-imobiliarias ; IN RFB 2.218/2024 (texto reproduzido em ibet.com.br e cenofisco.com.br; o normas.receita.fazenda.gov.br não carregou pelo fetch) [CONFERIR o texto consolidado no normas.receita.fazenda.gov.br].
-- **Consequência:** é preciso coletar o **CPF do hóspede que reserva** (base: LGPD art. 7º II, obrigação legal) e guardar em `fiscal_parties` com o mesmo prazo. O valor do aluguel, as datas e a comissão saem do ledger.
+- **Consequência:** a modelagem continua valendo: o **CPF do hóspede que reserva** é coletado e guardado em `fiscal_parties`, com o mesmo prazo (base: LGPD art. 7º II, obrigação legal). **A entrega da DIMOB segue pendente do Rafael** (A.10) [CONFERIR]. O valor do aluguel, as datas e a comissão saem do ledger.
 
 ### A.7b NFS-e Nacional: identificação do tomador (verificado em 16/10/2026)
 - Leiaute em produção: DPS v1.01 (esquemas XSD v1.01). Atualização da Reforma: **NT SE/CGNFS-e nº 009 v1.01 (01/10/2026)** com o Anexo VI de leiaute v1.04.01, oficializada pelo Ato Técnico Conjunto RFB/SUFIS/CGIBS nº 7 (28/09/2026), e a NT 010 (Evento de Manifestação do Adquirente). Fonte: https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc (atualizada em 02/10/2026); NT 009 v1.01: https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc/nota-tecnica-009-se-cgnfs-e-v-1-01.pdf .
@@ -71,7 +78,9 @@ Sem comissão no canal manual, não há nota. Mensalidade de software, se for ad
 ### A.9 Critérios de aceite (fiscais)
 11. Cada fatura e NFS-e tem um único emissor e contém só as parcelas dele; a NFS-e da casalivre ao proprietário nunca traz parcela de fundo, franqueado ou royalty.
 12. A NFS-e da comissão sai com o item 10.05; a do royalty, com 17.08 e o franqueado como tomador. Uma regra que configure royalty com tomador proprietário é recusada ao salvar o modelo de split.
-13. O royalty do mês é igual à soma de 3% (ou o percentual da D12) das reservas `fora` concluídas da franquia no mês, numa fatura casalivre → franqueado.
+13. O royalty do mês é de **3% (ou o percentual vigente no contrato de franquia; no OTA, o da D12)** sobre (a) as reservas `fora` da franquia **concluídas** no mês e (b) os **valores retidos em cancelamentos com reembolso parcial que ficaram definitivos no mês** (reembolso confirmado, considerado feito após 72 h ou decidido em disputa), numa fatura casalivre → franqueado. **Reembolso total não gera royalty** (regra da P9). A NFS-e do franqueado ao proprietário é da comissão total da franquia (10% no padrão).
+13a. Uma reserva com reembolso total não gera comissão, royalty nem nota. Na reserva cancelada com retenção parcial, as parcelas incidem só sobre o valor retido.
+13b. A taxa de cancelamento do anfitrião sai como recibo ou nota de débito da casalivre, sem NFS-e, e nunca entra na fatura do franqueado.
 14. O extrato do fundo mostra cada repasse do franqueado com data, valor e referência do extrato bancário; não existe lançamento de fundo recebido pela casalivre.
 15. Um recebedor franqueado ou parceiro sem CRECI ativo não pode ser salvo como emissor; quando a consulta periódica mostra CRECI inativo, novas reservas do nó são bloqueadas e o aviso é registrado no log.
 16. O CPF/CNPJ do tomador e do locatário só existe em `fiscal_parties`; não aparece em claro em log, export (exceto DIMOB e informe de IR do próprio titular) nem fatura.
@@ -79,7 +88,7 @@ Sem comissão no canal manual, não há nota. Mensalidade de software, se for ad
 18. NFS-e, espelho e baixa ficam disponíveis por 6 anos corridos e não podem ser alterados nem apagados pelo usuário da aplicação.
 19. O ledger permite exportar, por ano e por anfitrião, documento, valor bruto, parcelas e datas (LC 214 art. 22 e DIMOB).
 20. Mês sem reservas `fora`: nenhuma NFS-e é emitida e nenhuma fatura é gerada.
-21. A reserva confirmada tem o CPF do hóspede que reservou em `fiscal_parties`, e o export DIMOB do ano gera, por locador × locatário, o rendimento bruto e a comissão por mês.
+21. A reserva confirmada tem o CPF do hóspede que reservou em `fiscal_parties` (modelagem decidida). O export DIMOB do ano, por locador × locatário, com o rendimento bruto e a comissão por mês, fica **[pendente: Rafael]**: só é ativado se ele aceitar a obrigação da DIMOB (A.7, A.10) [CONFERIR].
 22. Toda NFS-e da casalivre identifica o tomador por CPF/CNPJ com o município do cadastro na Receita.
 
 ### A.10 Pendências do apêndice (substituem a anterior)
