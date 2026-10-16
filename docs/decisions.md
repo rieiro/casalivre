@@ -18,7 +18,7 @@ One line per decision in force, newest first within each area. Superseded decisi
 - activity_log moves to PostgreSQL; the Mongo driver is removed.
 - Valkey ACL as merged in #112: default user off; `cl_app` limited to `~cl:* &cl:* -@all` plus allowlist (no streams/Lua); separate `cl_admin`; aclfile 0600, password files 0440, socket 0660.
 - Queues must be able to move to Valkey in production.
-- Security logs go to PostgreSQL via an INSERT-only app role (separate purge role), in their own transaction; on PG failure fall back to local Fluent Bit JSON with an alert.
+- Security logs go to PostgreSQL via an INSERT-only app role (separate purge role), in their own transaction; on PG failure they fall back to a local sealed JSONL buffer (dir 0750) that a runit worker loads into PG with COPY, with an alert.
 
 ## Security
 - Separate `LOG_SALT` in production.
