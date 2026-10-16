@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/SchemaDesatualizado.php';
+
 final class Db
 {
     /** Conexão compartilhada do processo (antes era um static local de pdo()). */
@@ -48,7 +50,7 @@ final class Db
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             // DEF-008: só migra quando o banco está atrás de SCHEMA_VERSION. A checagem
             // (PRAGMA user_version) é uma leitura barata, sem lock de escrita.
-            if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+            if (self::sqliteVersion($pdo) < self::SCHEMA_VERSION) {
                 try {
                     self::migrateSqlite($pdo, false);
                 } catch (Throwable $e) {
@@ -69,12 +71,7 @@ final class Db
      */
     public static function ensureSchemaCurrent(PDO $pdo): void
     {
-        try {
-            $value = $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn();
-        } catch (PDOException) {
-            $value = false;
-        }
-        $version = $value === false ? 0 : (int) $value;
+        $version = self::pgSchemaVersion($pdo);
         if ($version < self::SCHEMA_VERSION) {
             throw new SchemaDesatualizado(
                 'Banco na versão ' . $version . ', esperada ' . self::SCHEMA_VERSION . '. Rode php scripts/migrate.php antes de liberar o tráfego.'
@@ -196,7 +193,7 @@ final class Db
         }
         if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
             self::migrateSqlite($pdo, $force);
-            return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+            return self::sqliteVersion($pdo);
         }
         return self::migratePgsql($pdo, $force);
     }
@@ -213,7 +210,7 @@ final class Db
             $pdo->beginTransaction();
             try {
                 $pdo->exec(self::SCHEMA_META_DDL);
-                $current = (int) ($pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn() ?: 0);
+                $current = self::pgSchemaVersion($pdo);
                 if ($force || $current < self::SCHEMA_VERSION) {
                     self::migrate($pdo);
                     $pdo->prepare("INSERT INTO schema_meta (skey, value) VALUES ('schema_version', ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value")
@@ -229,7 +226,28 @@ final class Db
         } finally {
             $pdo->query('SELECT pg_advisory_unlock(' . self::PG_MIGRATE_LOCK . ')');
         }
-        return (int) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn();
+        return self::pgSchemaVersion($pdo);
+    }
+
+    /**
+     * Versão gravada em schema_meta (pgsql). 0 se a tabela ou a linha não existem.
+     * Atenção: no Postgres, a consulta que falha (tabela ausente) aborta a transação aberta; dentro de
+     * migratePgsql a tabela já foi criada antes, então isso não acontece lá.
+     */
+    private static function pgSchemaVersion(PDO $pdo): int
+    {
+        try {
+            $value = $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn();
+        } catch (PDOException) {
+            return 0;
+        }
+        return $value === false ? 0 : (int) $value;
+    }
+
+    /** Versão do schema SQLite (PRAGMA user_version). */
+    private static function sqliteVersion(PDO $pdo): int
+    {
+        return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
     }
 
     /** Metadados internos da migração (versão no pgsql, marcas de passos únicos como money_unit). */
@@ -356,7 +374,7 @@ final class Db
         $pdo->exec('BEGIN IMMEDIATE');
         self::$rawTransaction = true;
         try {
-            if ($force || (int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::SCHEMA_VERSION) {
+            if ($force || self::sqliteVersion($pdo) < self::SCHEMA_VERSION) {
                 self::migrate($pdo);
                 $pdo->exec('PRAGMA user_version = ' . (int) self::SCHEMA_VERSION);
             }
@@ -714,9 +732,4 @@ final class Db
 function db(): PDO
 {
     return Db::pdo();
-}
-
-/** Banco atrás de Db::SCHEMA_VERSION numa requisição pgsql: rode scripts/migrate.php (o ExceptionShield responde 503). */
-final class SchemaDesatualizado extends RuntimeException
-{
 }
