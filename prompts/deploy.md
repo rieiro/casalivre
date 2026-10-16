@@ -8,9 +8,35 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 - [ ] `verification_link` e link de redefinição fora das respostas da API e das telas em produção (PR #15).
 - [ ] Envio de e-mail funcionando, com provedor SMTP definido (PR #17). Decisão do usuário (13/10): o Mailer entra pronto e sem provedor. Até haver provedor, o cadastro e a redefinição de senha continuam fechados em produção.
 - [ ] Auditorias `CALENDAR_SYNC` e `CALENDAR_UPDATE` voltando a ser gravadas pelo cron (PR #14).
-- [ ] XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com a CSP atual (igual em todas as páginas; referência: `tests/standalone/snapshots/csp.txt` e `xss_csp_test`): `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`, mais `X-Frame-Options: DENY`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
+- [x] (Corrigido no #23, confirmado pela Segurança na develop 34a62a2.) XSS armazenado corrigido em `views/property.php`, `views/search.php` e `views/dashboard.php` (título, descrição, cidade e resumo montados em innerHTML sem escape), (confirmado ao vivo na develop 6b26252; PR #23), com a CSP atual (igual em todas as páginas; referência: `tests/standalone/snapshots/csp.txt` e `xss_csp_test`): `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`, mais `X-Frame-Options: DENY`. Nunca `unsafe-inline` nem `unsafe-eval` em scripts. Sem Google Maps (decisão do usuário, 13/10): o código e a variável `GOOGLE_MAPS_API_KEY` são removidos no #23. Tirar a `GOOGLE_MAPS_API_KEY` do `.env` do servidor, porque ela é ignorada. O nginx, o Apache ou a CDN não podem mandar outro CSP nem um X-Frame-Options. Ordem: #21 (SCHEMA 3) e depois o #23 (SCHEMA 4, com os seeds dos dois).
 - [ ] Tokens de ativação e redefinição guardados só como hash sha256, sem as colunas `*_link`.
 - [ ] Envio de e-mail fora da requisição (fila com worker ou cron) e resposta em tempo constante no esqueci-senha; mensagem "Enviamos um link" só depois de enfileirar com sucesso. Condição para abrir o cadastro e a redefinição em produção.
+
+## Postgres, migrate and dev environment (#95–#118)
+Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price sums, stopped traffic) are left out.
+
+### Clean deploy (Cori, #95/#98)
+- [ ] On a new server, `php scripts/migrate.php` creates the folders and the SQLite DB (#98). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist and update `docs/arquitetura.md` section 17 and the DB section above.
+- [ ] Install `php-bz2` for `load-ceps.php` and `refresh-settings-cache.php` (CepRepository). `python3` is the fallback (optional `CEP_PYTHON`); with neither, the scripts fail with a clear error.
+- [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
+
+### Migrate and schema (#99, #100, SCHEMA 19)
+- [ ] The DB is recreated from scratch: on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (on SQLite, `database/schema.sql`). A v18 DB cannot become 19 (migrate aborts because of the RESTRICT FK).
+- [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
+- [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
+- [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD). Record this in `docs/arquitetura.md`.
+- [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
+- [ ] Before the PG deploy, run `schema_parity_test` with `PARITY_PG_DSN` on void-musl (Arquitetura/BD).
+- [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is UTC like SQLite.
+- [ ] PG p50 must be measured; ADR 001 targets after the search PR: p50 < 150 ms and p95 < 500 ms with 10 concurrent users (final target p95 < 300 ms).
+
+### Dev environment and Valkey (#109–#118, Segurança/Arquitetura)
+- [ ] Blocking: no environment outside dev goes up before P0-4 (definitive Valkey ACL, `valkey.sock` 0660) is merged (merged in #118; confirm production parity).
+- [ ] Production parity for P0-2 (Segurança, #106): socket, Valkey ACL, `clear_env=yes`.
+- [ ] #112: in production the FPM uid needs its own `pg_ident` line (map casalivre).
+- [ ] #112 (Segurança): `valkey-admin.secret` 0400 root:root; only the app password file is root:casalivre 0440. Test: as the FPM user, `cat valkey-admin.secret` fails. In production the admin secret lives in a vault.
+- [ ] #112: PUBLISH is not allowlisted in the Valkey ACL; any pub/sub use needs Segurança review.
+- [ ] #113: photos left in failed state by the push bug must be re-uploaded.
 
 ## Servidor e PHP
 

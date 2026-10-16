@@ -187,6 +187,23 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 - [ ] A failed enqueue in the legacy migration (`PhotoStorage.php:150`) leaves orphan files and is never retried. Source: #118 (Teste). Owner: Programador.
 - [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
 
+### Older follow-ups (#99–#113)
+- [ ] Log only once when the schema is behind, and answer `/api` with a JSON 503; needed before production traffic. Source: #99 (medium). Owner: Programador.
+- [ ] Separate PR removing the legacy ALTER/CREATE IF NOT EXISTS from `migrate()`, adjusting `schema_upgrade_test` and `account_tokens_test`. Source: #99. Owner: Programador.
+- [ ] PG parity test should compare the full `pg_get_indexdef` (medium); remove dead code `byCity` (low); `I18n::all()` should not run `seed()` when `translations.json` is missing (low, I18n.php:159). Source: #100. Owner: Programador.
+- [ ] Cori to confirm in `pg_stat_statements` that translations calls dropped to ~0. Source: #100. Owner: Cori.
+- [ ] ADR 001 proposes removing `idx_properties_status` and, if unused, `idx_properties_city`. Owner: Arquitetura/BD.
+- [ ] Revisor on #100: update the `SCHEMA_VERSION` comment at Db.php:183; remove or justify the duplicated `Db::SCHEMA_META_DDL`; store `sqliteVersion` in a variable in `migrateSqlite` (Db.php:379-380). Owner: Programador.
+- [ ] Teste on #100: exit-2 message of migrate should say to recreate the DB; evaluate an FK on `image_queue`; CT-E2E-041 is flaky. Owner: Programador/Teste.
+- [ ] Void-musl findings (Cori): `run-casos-de-teste.php` uses `email GLOB` (SQLite only); `map_front` uses GLOB_BRACE (missing on musl); `incus stop` needs `--force` because runit ignores the stop signal; snapshot html-erro-413 assumes `post_max_size=8M`. Make tests environment-independent. Owner: Programador.
+- [ ] Calendar retention (period from Negócios), types (item 9), `city_id` (item 10); LGPD retention: involve Segurança. Source: BD scale review. Owner: Arquitetura/BD.
+- [ ] Cleanup: remove `views/mailbox.php` (prints raw `$mail['html']`, no route uses it). Source: Segurança. Owner: Programador.
+- [ ] Segurança caveats on #109: CI assert that the author/email HMAC is non-null and 64 hex; LogPrivacy key via `*_KEY_FILE`, 32-byte HMAC, no truncation (src/LogPrivacy.php:39), with the single spec. Owner: Programador/Segurança.
+- [ ] Revisor on #106: README still says "port block" (now one port); the "run etc log sv data" list duplicated in `up-bwrap.sh` should be a variable in `lib.sh`. Owner: Programador.
+- [ ] #112 Arquitetura low findings: `valkey-acl-check.sh:10` should use `env_alive`; in dev the app user can read the admin secret. Owner: Programador.
+- [ ] #113 optional B1/B2 (Gerente's ADR notes, revisao-pr113.md). Owner: Programador.
+- [ ] Docs: sync the Jurídico spec-05 fiscal appendix draft (line 26, merged cancellation sentence) into `docs/produto/juridico/` and the spec-05 tax part. Owner: Gerente/Jurídico.
+
 ### P1 image worker (libvips)
 - [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.
 
@@ -197,7 +214,7 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 - [ ] (Baixa, #47, já existia) `PhotoRepository::makePrimary` aceita foto que não está com status `ready`.
 - [ ] `CL.el`: passar `action`, `formaction` e `xlink:href` pelo safeHref (vai no #23).
 
-- [ ] **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
+- [x] (Feito no #23, confirmado pela Segurança na develop 34a62a2.) **ALTA, antes do próximo deploy público:** XSS armazenado em `views/property.php:38-44`, `views/search.php:~170` e `views/dashboard.php:~58` (innerHTML sem escape), mais CSP.
 - [ ] `HouseService::fromInput`: responder 422 a campo de texto enviado como array (hoje grava "Array").
 
 - [ ] **ALTA, antes de abrir o cadastro:** enviar o e-mail por fila (storage/mail ou tabela) com worker ou cron, com resposta em tempo constante no esqueci-senha (hoje o tempo revela quais e-mails têm conta).
