@@ -47,14 +47,18 @@ stateDiagram-v2
 ### 2.2 Reserva
 | De | Para | Gatilho | Quem | Condição | Prazo | Spec |
 |---|---|---|---|---|---|---|
-| — | Aguardando pagamento | Solicitação aprovada | sistema | snapshot de preço, política e termos | — | 01 §5 |
+| — | Aguardando pagamento | Solicitação aprovada | sistema | snapshot de preço, política, termos e inventário (Anexo I) | — | 01 §5 |
+| — | Aceite pendente | Lançar reserva manual | proprietário, gestor, operador | `origem = manual`; datas bloqueadas; link com OTP enviado ao hóspede | — | 06 3b |
+| Aceite pendente | Aguardando pagamento | Aceitar termos e contrato pelo link com OTP | hóspede | aceite gravado (versão, data e hora) | — | 06 3b, 09 |
+| Aceite pendente | Aceite pendente | Reenviar link | anfitrião | novo link invalida o anterior; limite de reenvios; log | — | 06 3b |
+| Aceite pendente | Cancelada | Cancelar | anfitrião | — | — | 06 3b |
 | — | Confirmada | Sincronização OTA (iCal ou parceiro) | sistema | `origem = ota`; **sem etapa de pagamento casalivre**; bloqueia o calendário na hora; **fora do funil de conversão**; o ledger registra só o que a casalivre cobra (Produto; detalhes técnicos: Arquitetura) | imediato | 06 3b |
 | Confirmada (OTA) | Cancelada | Cancelamento na OTA | sistema / anfitrião | segue a **política da OTA**, não a do snapshot casalivre | — | 06 3b, 09 §3 |
 | Aguardando pagamento | Confirmada | "Estadia recebida" + "Limpeza recebida" (piloto, `pagamento_modo = fora`) | proprietário, gestor; operador só com delegação | as duas marcações; "Desfazer" por 5 s; comissão vira conta a receber | 24 h; 4 h se check-in < 72 h | 02 §3, 06 |
 | Aguardando pagamento | Expirada | Prazo vencido | sistema | sem as duas marcações; datas liberadas; contagem antibloqueio (3 seguidas / 7 dias [E]) | idem | 01 |
 | Aguardando pagamento | Cancelada | Cancelar | hóspede ou anfitrião | — | — | 09 |
 | Confirmada | Em estadia | Data de check-in | sistema | — | — | 09 |
-| Confirmada | Cancelada | Cancelar pelo hóspede | hóspede | reembolso: CDC 7 dias da reserva e antes do check-in = 100%; senão, a política do snapshot | — | 09 §3 |
+| Confirmada | Cancelada | Cancelar pelo hóspede | hóspede | reembolso: CDC 7 dias da confirmação e antes do check-in = 100%; reembolso integral não gera comissão; senão, a política do snapshot | — | 09 §3 |
 | Confirmada | Cancelada | Cancelar pelo anfitrião | proprietário, gestor | hóspede sempre 100%; datas bloqueadas; perde destaque 90 dias; taxa a partir do 2º em 12 meses; força maior não conta | comprovação em 7 dias | 02 §5, 09 §4 |
 | Em estadia | Concluída | Data de check-out | sistema | abre avaliação por 14 dias | — | 07, 09 |
 | Confirmada / Em estadia / Concluída | em disputa (marcador) | Relatar problema | hóspede, anfitrião, sistema | ver 2.4 | — | 09 §6 |
@@ -63,6 +67,9 @@ Cancelamento com valor pago gera um **reembolso** (2.3).
 ```mermaid
 stateDiagram-v2
   [*] --> AguardandoPagamento
+  [*] --> AceitePendente: manual
+  AceitePendente --> AguardandoPagamento: aceite por OTP
+  AceitePendente --> Cancelada
   [*] --> Confirmada: OTA (origem=ota)
   AguardandoPagamento --> Confirmada: estadia + limpeza recebidas
   AguardandoPagamento --> Expirada: 24h/4h
@@ -70,6 +77,28 @@ stateDiagram-v2
   Confirmada --> EmEstadia: check-in
   Confirmada --> Cancelada: hóspede / anfitrião
   EmEstadia --> Concluida: check-out
+```
+
+### 2.2b Caução
+| De | Para | Gatilho | Quem | Condição | Prazo | Spec |
+|---|---|---|---|---|---|---|
+| — | Retida | Reserva com caução | sistema | valor definido no anúncio, no snapshot | — | 03, 09 |
+| Retida | Janela de danos | Check-out | sistema | — | 48 h | 06 §3d |
+| Janela de danos | Dano registrado | Registrar dano com fotos | proprietário, gestor | fotos obrigatórias; itens do Anexo I ou texto | até check-out + 48 h | 06 §3d |
+| Janela de danos | A devolver | Prazo vencido sem registro | sistema | — | 48 h | 06, 09 |
+| Dano registrado | A devolver (parcial ou total) | Hóspede aceita | hóspede | — | — | 09 |
+| Dano registrado | em disputa | Hóspede contesta | hóspede | vai para 2.4 | — | 09 §6 |
+| A devolver | Devolvida | Anfitrião marca devolução | proprietário, gestor | — | — | 06 |
+
+```mermaid
+stateDiagram-v2
+  [*] --> Retida
+  Retida --> JanelaDeDanos: check-out
+  JanelaDeDanos --> DanoRegistrado: registro com fotos (≤48h)
+  JanelaDeDanos --> ADevolver: 48h sem registro
+  DanoRegistrado --> ADevolver: hóspede aceita
+  DanoRegistrado --> EmDisputa: hóspede contesta
+  ADevolver --> Devolvida
 ```
 
 ### 2.3 Reembolso (piloto, pagamento por fora)
@@ -80,7 +109,7 @@ stateDiagram-v2
 | Comprovante enviado | Reembolsado | Confirmar | hóspede | — | — | 09 |
 | Comprovante enviado | Reembolsado | Silêncio do hóspede | sistema | — | 72 h | 09 |
 | Comprovante enviado | Contestado → disputa | Contestar | hóspede | — | antes das 72 h | 09 |
-| Devido | Vencido → disputa automática | Prazo vencido | sistema | anúncios param de aceitar reservas; comissão continua devida; o proprietário perde o pagamento por fora; hóspede recebe orientação Procon e declaração da plataforma (parecer item 22) | 5 dias úteis | 09, 10 §2.3 |
+| Devido | Vencido → disputa automática | Prazo vencido | sistema | anúncios param de aceitar reservas; o atraso não gera comissão (penalidades existentes); o proprietário perde o pagamento por fora; hóspede recebe orientação Procon e declaração da plataforma (parecer item 22) | 5 dias úteis | 09, 10 §2.3 |
 
 ```mermaid
 stateDiagram-v2
@@ -175,7 +204,7 @@ stateDiagram-v2
 | Telefone direto | 48 h antes do check-in (a partir da P6) | global | [E] | 08 |
 | Convite | uso único, 72 h, revogável | global | decidido | 04 |
 | Política Flexível / Moderada / Rígida | 24 h / 5 dias 50% / 14–7 dias 50% | imóvel | decidido | 03, 09 |
-| Arrependimento CDC | 100% em 7 dias da reserva e antes do check-in | global | decidido (J35); custo [pendente: Rafael] | 01, 03, 09 |
+| Arrependimento CDC | 100% em 7 dias da confirmação da reserva e antes do check-in | global | decidido (J35); custo [pendente: Rafael] | 01, 03, 09 |
 | Reembolso do piloto | anfitrião 5 dias úteis; hóspede 72 h | global | [E]; decidido (parecer item 20) | 09 |
 | Disputa | 14 dias após check-out; check-in 24 h com fotos; 10 dias úteis | global | [E] | 09, 10 |
 | Cancelamento pelo anfitrião | perde destaque 90 dias; taxa 10% teto R$ 300 a partir do 2º em 12 meses; 3+ em 90 dias → revisão | global | [E]; taxa decidida (parecer item 21) | 09 |
@@ -198,10 +227,10 @@ stateDiagram-v2
 | Pedido de exclusão | registro 5 anos | global | decidido (J23) | 02 |
 | Favoritos anônimos | só IDs públicos, até 100 | dispositivo | [E] | 08 |
 | Comparação | até 4 no desktop, 2 por tela no mobile | global | decidido (Produto) | 08 |
-| Split franquia, canal direto | 900 proprietário / 40 corretor / 30 royalty / 30 fundo (‰) | modelo de split | [pendente: Rafael, D2] | 05 |
+| Split franquia, canal direto | proprietário 900; franqueado 100 (NFS-e 10.05), que se dividem em 40 de corretagem, 30 para o fundo e 30 de royalty, este faturado pela casalivre ao franqueado no item 17.08 (‰; percentuais configuráveis) | modelo de split | [pendente: Rafael, D2] | 05 |
 | Emissor da cobrança | por parcela: casalivre, franqueado/parceiro, outro recebedor | modelo de split | decidido | 05 §2 |
-| Cobrança do franqueado (franquia) | 7% = 4% corretor + 3% fundo; NFS-e do franqueado; o franqueado repassa o fundo | modelo | decidido | 05 Ap. A |
-| Royalty casalivre | 3% (2% ou 3% no OTA), emissor casalivre | modelo | [pendente: Rafael, D12] | 05 |
+| Cobrança do franqueado (franquia) | 10% = 4% corretagem + 3% fundo + 3% royalty (parâmetros); NFS-e do franqueado (10.05); o franqueado repassa o fundo e paga o royalty | modelo | decidido | 05 Ap. A |
+| Royalty casalivre | 3% (2% no OTA; base OTA: diárias brutas, sem limpeza, taxas/comissões da OTA e impostos ou taxas municipais), emissor casalivre, tomador franqueado (17.08); base: reservas concluídas + valores retidos em cancelamentos com reembolso parcial definitivos no mês; reembolso total não gera royalty; reembolso definitivo conforme 05 critério 13 | modelo | decidido 2026-10-16 (D12) | 05 |
 | Fundo regional | sem retenção pela casalivre (sem subconta, sem mandato); extrato alimentado pelo repasse do franqueado; extrato em tempo real por franqueado; trimestral PDF/CSV (saldos, entradas por franqueado e por reserva, mídia com notas, resultado de campanhas); anual consolidado; S8+ | organização | decidido (Negócios) | 05 §4 |
 | Extrato do proprietário | mensal, agrupado por emissor: nome, valor, link da fatura; sem royalty (royalty só no extrato do franqueado) | global | decidido | 05 Ap. A |
 | Fatura P9 | vencimento 10 dias; multa 2% + juros 1% a.m. pro rata + IPCA; D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) | global | [E]; encargos decididos (item 15) | 05 Ap. A |
@@ -209,6 +238,15 @@ stateDiagram-v2
 | Regras municipais | entidade `regra_municipal`; seeds: Cabo Frio cadastro voluntário sem taxa; Búzios R$ 14,60/hóspede 20/12–Carnaval+5, não confirmada, inativa; Arraial sem regra; taxa no checkout = porta futura; S8+ | município | decidido (Negócios); Búzios [pendente: Jurídico e Tributário] | 03, 04 2b |
 | CRECI no cadastro | status Verificado, Em verificação, Não verificado, Inativo; só Verificado permite operar como franqueado ou parceiro | — | decidido (Produto) | 04, 05 |
 | Reverificação de regra municipal | campo "reverificar em"; Cabo Frio e Arraial do Cabo: 01/12/2026 | município | decidido (Produto) | 04 2b |
+| Inventário de móveis e utensílios | por cômodo, item + quantidade, foto opcional; obrigatório para publicar; Anexo I do contrato; no snapshot | imóvel | decidido (Produto; bloqueio do piloto) | 03, 09 |
+| Caução | opcional, valor do anfitrião | imóvel | decidido (Produto) | 03, 06, 09 |
+| Janela de danos | 48 h após o check-out, com fotos; depois a caução é devolvida | global | decidido (Produto) | 06, 09 |
+| Saída antecipada | diárias não usadas não voltam, salvo a política | imóvel (pela política) | decidido (Produto) | 03, 09 |
+| Escopo da limpeza | texto do termo de limpeza | imóvel | decidido (Produto) | 03 |
+| Aceite da reserva manual | link com OTP; estado "Aceite pendente"; reenvio | global | decidido (Produto) | 06, 09 |
+| Meus documentos | termos aceitos com versão, data/hora e PDF | anfitrião e hóspede | decidido (Produto) | 02, 06, 09 |
+| Assistente automatizado | aviso fixo + "Falar com uma pessoa"; só dados do anúncio | global | decidido (Produto) | 08 |
+| Comissão no cancelamento | só sobre o valor que o anfitrião fica; reembolso integral = sem linha na fatura; reembolso parcial: valor retido entra na P9 do mês em que o cancelamento fica definitivo (reembolso concluído, sem disputa aberta); atraso no reembolso não gera comissão | global | decidido (Produto) | 05 Ap. A, 09 |
 | Comissão do canal manual | — | modelo | [pendente: Rafael] | 06 3b |
 | Acréscimo por canal | % sobre o preço único | canal → imóvel | [E] | 03, 07 |
 | Bloqueios de publicação no piloto | recebedor KYC Aprovado + chave Pix vinculada a ele; denúncia visível no checkout e no detalhe | global | decidido (item 17); abertura do piloto [pendente: Rafael + Jurídico e Tributário] | 01, 03, 05, 09 |
@@ -216,7 +254,7 @@ stateDiagram-v2
 ## 6. Contradições corrigidas
 | # | Onde | Antes | Depois |
 |---|---|---|---|
-| 1 | 05 Ap. A, §2, §4 | Fundo de 3% retido pela casalivre como mandatária, subconta segregada, "repasse em nome do franqueado" | Fundo dentro dos 7% do franqueado (NFS-e dele), que repassa ao fundo; emissor por parcela |
+| 1 | 05 Ap. A, §2, §4 | Fundo de 3% retido pela casalivre como mandatária, subconta segregada, "repasse em nome do franqueado" | Fundo dentro dos 10% do franqueado (NFS-e dele), que repassa ao fundo; emissor por parcela |
 | 2 | 05 Ap. A | Fatura com "comissão por destino" (todas as parcelas) | Cada emissor fatura só as próprias parcelas |
 | 3 | 02 §3, 06 | "Diária recebida" | "Estadia recebida" (como em 01 e 09) |
 | 4 | 02 §2 | "O hóspede tem 24 h para pagar" | Prazo real com a regra 24 h / 4 h |
@@ -234,11 +272,14 @@ stateDiagram-v2
 | 16 | todas | Donos "OAB" / "CRC" | "Jurídico e Tributário" (Rafael decidiu não usar profissional externo) |
 | 17 | 02 | Indicador "1 cancelamento em 90 dias" com fórmula de 12 meses | Rótulo de 12 meses; 90 dias só como gatilho |
 | 18 | 05 | Exemplo do extrato do proprietário com "casalivre: R$ 30" (royalty) | Royalty só no extrato do franqueado |
+| 19 | 01, 03, 09, 00 | Arrependimento de 7 dias "a partir da reserva" | A partir da confirmação da reserva |
+| 20 | 09, 00 | "A comissão continua devida" quando o reembolso atrasa (conflita com o P9-3) | Atraso não gera comissão; aplica as penalidades existentes; reembolso integral não gera comissão |
+| 21 | 05 Ap. A | P9 "só reservas concluídas" e cancelada antes do check-in sempre fora | "Reservas concluídas e valores retidos em cancelamentos"; reembolso integral sem linha |
 
 ## 7. Pendências
 | # | Decisão | Dono |
 |---|---|---|
-| 1 | Números do split e royalty OTA (D2, D12) | Rafael |
+| 1 | Números do split (D2); royalty e fundo OTA de 2% (D12) decidido 2026-10-16 | Rafael |
 | 2 | Comissão do canal manual | Rafael |
 | 3 | Aceitar o custo do arrependimento até o check-in e pôr no contrato do anfitrião (J35) | Rafael |
 | 4 | Abrir o piloto só com KYC + Pix vinculado + denúncia (item 17, risco alto) | Rafael + Jurídico e Tributário |

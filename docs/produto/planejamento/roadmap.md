@@ -56,7 +56,7 @@ Regra de escopo: **modelar as portas, não construí-las.** Cada estrutura já a
 |---|---|---|---|---|
 | Árvore de gestão | plataforma > imóvel | plataforma > rede > imóvel (sem corretor) | plataforma > rede (franqueado) > imóvel | plataforma > parceiro > imóvel |
 | Split canal direto | 940 proprietário / 60 casalivre | 930 / 40 casalivre / 30 fundo regional | 900 / 40 corretor / 30 royalty / 30 fundo | 900 / 50 parceiro (configurável 0–20%) / 50 casalivre; fundo opcional |
-| Split canal OTA | pendente | pendente | 4% corretor + royalty **2% ou 3% (pendente)** + 2% fundo, além da taxa da OTA | pendente |
+| Split canal OTA | pendente | pendente | 4% corretor + royalty **2% (D12, decidido 2026-10-16)** + 2% fundo, além da taxa da OTA | pendente |
 | Limpeza | hóspede → prestador direto (contrato e nota próprios); fora do split da diária | idem | idem | idem |
 | Quem aprova a reserva | dono | dono | dono ou franqueado (delegável) | dono ou parceiro (delegável) |
 | Canais | marketplace; site próprio opcional | marketplace + site regional | marketplace + site regional | marketplace + site do parceiro opcional |

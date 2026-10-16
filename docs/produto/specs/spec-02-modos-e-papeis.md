@@ -14,6 +14,8 @@ O escopo segue a árvore de gestão, que tem **profundidade livre** (`parent_id`
 | proprietário (nó do imóvel) | Hoje | ✓ | ✓ se a aprovação não foi delegada | ✓ | ✓ | ✓ | ✓ | coanfitrião | — | — | ✓ imóveis dele |
 | hóspede (sem escopo) | Explorar | modo Viajar: Explorar, Favoritos, Viagens, Mensagens, Perfil | | | | | | | | | |
 
+**Meus documentos** *(Produto, requisito de tela)*: no menu do modo Gerenciar (anfitrião) e no Perfil do hóspede (spec-09), lista **cada termo aceito**, com a **versão**, a **data e hora do aceite** e o **download em PDF**. Telas na spec-06 §3c e na spec-09 §1b.
+
 \* É aqui que vale a regra **oculto × desabilitado**: o item fica **oculto** quando o papel nunca terá acesso (o operador não vê Anúncios). Fica **desabilitado com explicação** quando o acesso depende de outra pessoa ou de outra configuração, com o texto "Só o admin_org do nó dono do canal edita canais. Fale com [nome]" ou "A aprovação deste imóvel foi delegada a [org]". O item desabilitado continua focável (`aria-disabled`) e mostra a explicação. Os admins **só visualizam** reservas e pagamentos, e veem a chave Pix mascarada (só os últimos dígitos). Uma pessoa pode ter vários papéis em vários nós. *(provisório)* As permissões são verificadas no servidor (403), e esconder o item não basta.
 
 ## 0b. E-mail de conta em exclusão (carência de 30 dias) *(Produto; controles de Segurança C-1 a C-6)*
