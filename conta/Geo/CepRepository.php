@@ -86,64 +86,65 @@ final class CepRepository
         if (!is_file($source)) {
             return 0;
         }
-        $pipes = [];
-        $proc = proc_open(
-            ['python3', '-c', 'import bz2,sys
-for line in bz2.open(sys.argv[1], "rt", encoding="utf-8", errors="replace"):
-    sys.stdout.write(line)
-', $source],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-            $pipes
-        );
-        if (!is_resource($proc)) {
-            return 0;
-        }
+        [$stream, $proc, $pipes] = self::openSource($source);
         $pdo = db();
         $insert = $pdo->prepare('INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES (?, ?, ?, ?, ?) ON CONFLICT(cep) DO NOTHING');
         $pdo->beginTransaction();
         $loaded = 0;
-        $batch = 0;
-        $header = true;
-        $withTipo = false;
-        while (($row = fgetcsv($pipes[1], null, ',', '"', '')) !== false) {
-            if ($header) {
-                $header = false;
-                $withTipo = str_contains(strtolower(implode(',', $row)), 'tipo');
-                continue;
+        try {
+            $batch = 0;
+            $header = true;
+            $withTipo = false;
+            while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+                if ($header) {
+                    $header = false;
+                    $withTipo = str_contains(strtolower(implode(',', $row)), 'tipo');
+                    continue;
+                }
+                if (count($row) < ($withTipo ? 6 : 5)) {
+                    continue;
+                }
+                $cep = str_pad(preg_replace('/\D/', '', (string) $row[0]) ?? '', 8, '0', STR_PAD_LEFT);
+                if (strlen($cep) !== 8) {
+                    continue;
+                }
+                if ($withTipo) {
+                    $street = trim(trim((string) $row[4]) . ' ' . trim((string) $row[3]));
+                    $neighborhood = trim((string) $row[5]);
+                } else {
+                    $street = trim((string) $row[3]);
+                    $neighborhood = trim((string) $row[4]);
+                }
+                $insert->execute([
+                    $cep,
+                    $street,
+                    $neighborhood,
+                    trim((string) $row[2]),
+                    strtoupper(trim((string) $row[1])),
+                ]);
+                $loaded++;
+                $batch++;
+                if ($batch >= 5000) {
+                    $pdo->commit();
+                    $pdo->beginTransaction();
+                    $batch = 0;
+                }
             }
-            if (count($row) < ($withTipo ? 6 : 5)) {
-                continue;
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
             }
-            $cep = str_pad(preg_replace('/\D/', '', (string) $row[0]) ?? '', 8, '0', STR_PAD_LEFT);
-            if (strlen($cep) !== 8) {
-                continue;
-            }
-            if ($withTipo) {
-                $street = trim(trim((string) $row[4]) . ' ' . trim((string) $row[3]));
-                $neighborhood = trim((string) $row[5]);
-            } else {
-                $street = trim((string) $row[3]);
-                $neighborhood = trim((string) $row[4]);
-            }
-            $insert->execute([
-                $cep,
-                $street,
-                $neighborhood,
-                trim((string) $row[2]),
-                strtoupper(trim((string) $row[1])),
-            ]);
-            $loaded++;
-            $batch++;
-            if ($batch >= 5000) {
-                $pdo->commit();
-                $pdo->beginTransaction();
-                $batch = 0;
-            }
+            self::closeSource($stream, $proc, $pipes);
+            throw $e;
         }
-        $pdo->commit();
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($proc);
+        $error = self::closeSource($stream, $proc, $pipes);
+        if ($error !== '') {
+            throw new RuntimeException("Falha ao descompactar $source: $error (importados $loaded CEPs antes do erro).");
+        }
+        if ($loaded === 0) {
+            throw new RuntimeException("Nenhum CEP importado de $source: arquivo vazio ou em formato inesperado.");
+        }
         if ($loaded > 0 && $expected !== '') {
             $stamp = dirname(__DIR__, 2) . '/storage/db/cep.version';
             if (!is_dir(dirname($stamp))) {
@@ -152,6 +153,83 @@ for line in bz2.open(sys.argv[1], "rt", encoding="utf-8", errors="replace"):
             file_put_contents($stamp, $expected);
         }
         return $loaded;
+    }
+
+    /**
+     * Abre o cep.csv.bz2 para leitura linha a linha. Usa a extensão bz2 do PHP; sem ela, cai para o python3.
+     * Sem nenhum dos dois, lança erro claro (antes falhava em silêncio e importava 0 CEPs).
+     *
+     * @return array{0: resource, 1: resource|null, 2: array<int, resource>}
+     */
+    private static function openSource(string $source): array
+    {
+        if (function_exists('bzopen')) {
+            $stream = bzopen($source, 'r');
+            if ($stream === false) {
+                throw new RuntimeException("Não foi possível abrir $source com a extensão bz2 do PHP.");
+            }
+            return [$stream, null, []];
+        }
+        $python = self::findPython();
+        if ($python === null) {
+            throw new RuntimeException(
+                "Não foi possível descompactar $source: o PHP não tem a extensão bz2 e o python3 não foi encontrado. "
+                . 'Instale uma delas (ex.: php-bz2 ou python3) e rode de novo scripts/load-ceps.php.'
+            );
+        }
+        $pipes = [];
+        $proc = proc_open(
+            [$python, '-c', 'import bz2,sys
+for line in bz2.open(sys.argv[1], "rt", encoding="utf-8", errors="replace"):
+    sys.stdout.write(line)
+', $source],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if (!is_resource($proc)) {
+            throw new RuntimeException("Não foi possível executar $python para descompactar $source.");
+        }
+        return [$pipes[1], $proc, $pipes];
+    }
+
+    /** Fecha a fonte; devolve a mensagem de erro do descompactador ('' se tudo certo). */
+    private static function closeSource(mixed $stream, mixed $proc, array $pipes): string
+    {
+        if ($proc === null) {
+            if (is_resource($stream)) {
+                $err = bzerrno($stream) !== 0 ? (string) bzerrstr($stream) : '';
+                bzclose($stream);
+                return $err;
+            }
+            return '';
+        }
+        if (is_resource($pipes[1] ?? null)) {
+            stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+        }
+        $stderr = is_resource($pipes[2] ?? null) ? trim((string) stream_get_contents($pipes[2])) : '';
+        if (is_resource($pipes[2] ?? null)) {
+            fclose($pipes[2]);
+        }
+        $code = proc_close($proc);
+        if ($code !== 0) {
+            return 'python3 saiu com código ' . $code . ($stderr !== '' ? ': ' . $stderr : '');
+        }
+        return '';
+    }
+
+    private static function findPython(): ?string
+    {
+        $override = getenv('CEP_PYTHON');
+        if (is_string($override) && $override !== '') {
+            return is_executable($override) ? $override : null;
+        }
+        foreach (explode(PATH_SEPARATOR, (string) getenv('PATH')) as $dir) {
+            if ($dir !== '' && is_executable($dir . '/python3')) {
+                return $dir . '/python3';
+            }
+        }
+        return null;
     }
 
     private static function datasetVersion(): string
