@@ -10,4 +10,9 @@ if (getenv('T_RATELIMIT_DIR')) {
     require_once __DIR__ . '/../../src/IpRateLimiter.php';
     IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
 }
+// Teste pode pedir os avisos/erros do PHP num arquivo (ex.: provar que não há "Array to string conversion").
+if (getenv('T_PHP_ERROR_LOG')) {
+    ini_set('log_errors', '1');
+    ini_set('error_log', (string) getenv('T_PHP_ERROR_LOG'));
+}
 return require __DIR__ . '/../../public/index.php';

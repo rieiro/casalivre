@@ -8,7 +8,7 @@ require_once __DIR__ . '/Resultado.php';
  * Cadastro + primeira importação de um feed iCal (web POST /imoveis/{hash}/ical/importar e
  * API POST /api/imoveis/{hash}/ical/importar). Mesma regra e mesmos logs nos dois canais.
  *
- * Desfechos (tipo): vazio | url (não-https, não-texto) | title | limit (422) | duplicate (409) | ok | nok.
+ * Desfechos (tipo): vazio | tipo (não-texto: err.field_type) | url (não-https) | title | limit (422) | duplicate (409) | ok | nok.
  * url e título chegam BRUTOS (POST/JSON): array ou outro não-texto recusa (422), em vez de virar "Array".
  * Só https:// com host (javascript:, ftp:, file:, http: e afins -> 422 em external_ical_url, nada gravado). dados: importadas (int) e,
  * nas recusas, erros = [campo => mensagem] (campos external_ical_url / feed_title).
@@ -20,11 +20,12 @@ final class ICalImport
     public static function run(array $property, int $userId, mixed $url, mixed $feedTitle): Resultado
     {
         $propertyId = (int) $property['id'];
+        // Tipo errado (array, número, bool): mensagem de campo inválido, não a de https/título.
         if ($url !== null && !is_string($url)) {
-            return self::recusa('url', 'external_ical_url', t('cal.url_https'));
+            return self::recusa('tipo', 'external_ical_url', t('err.field_type'));
         }
         if ($feedTitle !== null && !is_string($feedTitle)) {
-            return self::recusa('title', 'feed_title', t('cal.feed_title_required'));
+            return self::recusa('tipo', 'feed_title', t('err.field_type'));
         }
         $url = trim((string) $url);
         $feedTitle = trim((string) $feedTitle);

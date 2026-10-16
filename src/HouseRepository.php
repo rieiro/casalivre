@@ -95,12 +95,6 @@ final class HouseRepository
             ->execute([$checkin, $checkout, $minNights, $id]);
     }
 
-    public static function setExternalCalendar(int $id, int $userId, string $url): void
-    {
-        db()->prepare('UPDATE properties SET external_ical_url = ? WHERE id = ? AND user_id = ?')
-            ->execute([$url, $id, $userId]);
-    }
-
     public static function find(int $id): ?array
     {
         $stmt = db()->prepare('SELECT * FROM properties WHERE id = ?');

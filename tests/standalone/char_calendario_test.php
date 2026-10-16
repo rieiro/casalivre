@@ -11,6 +11,8 @@ $owner = t_seed_owner();
 $srcWeb = t_seed_owner();
 $srcApi = t_seed_owner();
 $act = c_activity_file();
+$phpLog = tempnam(sys_get_temp_dir(), 'phplog');
+putenv('T_PHP_ERROR_LOG=' . $phpLog);
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
@@ -232,12 +234,12 @@ foreach ($bad as $u) {
 }
 foreach ([['https://x.test/a.ics'], ['u' => 'https://x.test/a.ics'], 123, true] as $u) {
     $r = c_api('POST', $base, $api, ['external_ical_url' => $u, 'feed_title' => 'Ruim'], $csrf, $jar);
-    t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json']['erros'] ?? null], 'API: external_ical_url ' . json_encode($u) . ' -> 422 (não vira "Array")');
+    t_eq([422, ['external_ical_url' => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], 'API: external_ical_url ' . json_encode($u) . ' -> 422 campo inválido (não vira "Array", não é a mensagem de https)');
 }
 $w = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => ['https://x.test/a.ics'], 'feed_title' => 'Ruim'], $jar);
-t_ok(str_contains($w['body'], e(t('cal.url_https'))), 'web: external_ical_url[] (array) -> erro na tela');
+t_ok(str_contains($w['body'], e(t('err.field_type'))), 'web: external_ical_url[] (array) -> erro de campo inválido na tela');
 $r = c_api('POST', $base, $api, ['external_ical_url' => 'https://x.test/t.ics', 'feed_title' => ['x']], $csrf, $jar);
-t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: feed_title array -> 422 erros.feed_title');
+t_eq([422, ['feed_title' => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], 'API: feed_title array -> 422 erros.feed_title (campo inválido)');
 t_eq([], c_codes($act, $m), 'URLs recusadas (web e API): nada no activity_log');
 t_eq($antes, count($feeds()), 'DB: nenhum feed criado (nem "Array")');
 t_eq(0, $byUrl('Array'), 'DB: nenhum feed com URL "Array"');
@@ -250,5 +252,50 @@ c_form($base, '/imoveis/' . $owner['hash'] . '/ical/999999/excluir', ['_csrf' =>
 t_eq($antesProp, $prop(), 'web: feed inexistente não muda external_ical_url (NULL fica NULL) nem audit_hold');
 c_api('DELETE', $base, '/api/imoveis/' . $owner['hash'] . '/ical/999999', null, $csrf, $jar);
 t_eq($antesProp, $prop(), 'API: idem');
+
+echo "ajustes 2: CalendarSave valida o tipo bruto (b, e)\n";
+$m = c_mark($act);
+$apiCal = '/api' . $cal;
+foreach (['inicio' => [$day(5)], 'fim' => ['x' => 1], 'acao' => ['bloquear'], 'price' => [300], 'min_nights' => [2], 'day' => [$day(5)]] as $campo => $v) {
+    $body = ['acao' => 'bloquear', 'inicio' => $day(5), 'fim' => $day(5)];
+    $body[$campo] = $v;
+    $r = c_api('POST', $base, $apiCal, $body, $csrf, $jar);
+    t_eq([422, [$campo => t('err.field_type')]], [$r['status'], $r['json']['erros'] ?? null], "API calendário: $campo array -> 422 erros.$campo");
+}
+foreach ([true, false] as $v) {
+    $r = c_api('POST', $base, $apiCal, ['acao' => $v, 'inicio' => $day(5), 'fim' => $day(5)], $csrf, $jar);
+    t_eq(422, $r['status'], 'API calendário: acao ' . json_encode($v) . ' -> 422');
+}
+foreach (['inicio', 'fim', 'acao', 'price'] as $campo) {
+    $form = ['_csrf' => $csrf, 'acao' => 'bloquear', 'inicio' => $day(5), 'fim' => $day(5)];
+    $form[$campo] = ['x'];
+    $w = c_form($base, $cal, $form, $jar);
+    t_ok(str_contains($w['body'], 'class="alert error"') && str_contains($w['body'], e(t('err.field_type'))), "web calendário: {$campo}[] -> erro de campo inválido na tela");
+}
+t_eq([], c_codes($act, $m), 'tipo inválido (web e API): nada gravado no activity_log');
+$r = c_api('POST', $base, $apiCal, ['acao' => 'preco', 'inicio' => $day(45), 'fim' => $day(45), 'price' => 300], $csrf, $jar);
+t_eq(200, $r['status'], 'API calendário: price numérico (int) continua aceito');
+
+echo "ajustes 2: setExternalCalendar removido (f)\n";
+t_ok(!method_exists(HouseRepository::class, 'setExternalCalendar'), 'HouseRepository::setExternalCalendar não existe mais');
+
+echo "D1 #91: web com acao[] / inicio[] só mostra o erro (sem aviso do PHP, nada gravado)\n";
+$m = c_mark($act);
+file_put_contents($phpLog, '');
+$casos = [
+    'acao[]' => ['_csrf' => $csrf, 'acao' => ['bloquear'], 'inicio' => $day(50), 'fim' => $day(50)],
+    'acao=salvar + inicio[]' => ['_csrf' => $csrf, 'acao' => 'salvar', 'inicio' => [$day(50)], 'fim' => $day(50), 'price' => '300'],
+    'acao=salvar + fim[]' => ['_csrf' => $csrf, 'acao' => 'salvar', 'inicio' => $day(50), 'fim' => [$day(50)]],
+    'cal_view[]' => ['_csrf' => $csrf, 'acao' => 'salvar', 'inicio' => $day(50), 'fim' => $day(50), 'cal_view' => ['day']],
+];
+foreach ($casos as $label => $form) {
+    $w = c_form($base, $cal, $form, $jar);
+    t_ok($w['status'] === 200 && str_contains($w['body'], 'class="alert error"') && str_contains($w['body'], e(t('err.field_type'))), "web $label: erro de campo inválido na tela");
+    t_ok(!str_contains($w['body'], 'Array to string') && !str_contains($w['body'], 'data-cal-restore'), "web $label: sem aviso no corpo e sem restaurar o formulário");
+}
+$log = (string) file_get_contents($phpLog);
+t_ok(!str_contains($log, 'Array to string conversion') && !preg_match('/PHP (Warning|Notice|Deprecated)/', $log), 'log do PHP sem avisos nos casos com array' . ($log !== '' ? ': ' . substr($log, 0, 300) : ''));
+t_eq([], c_codes($act, $m), 'nada gravado no activity_log');
+t_ok(!isset($blocked($hid)[$day(50)]), 'DB: noite não bloqueada');
 
 t_done();

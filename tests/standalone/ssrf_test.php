@@ -18,13 +18,21 @@ foreach (['8.8.8.8', '1.1.1.1', '2606:4700:4700::1111', '2a00:1450:4001::1'] as 
 echo "resolveTarget\n";
 foreach (['http://127.0.0.1/a.ics', 'http://[::1]/a.ics', 'http://localhost/a.ics', 'http://x.localhost/a.ics',
     'file:///etc/passwd', 'gopher://8.8.8.8/', 'ftp://8.8.8.8/a', 'http://user:pw@8.8.8.8/a.ics',
-    'http://169.254.169.254/latest/meta-data', 'http://[64:ff9b::a9fe:a9fe]/', 'http://2130706433/', 'nada'] as $u) {
+    'http://169.254.169.254/latest/meta-data', 'http://[64:ff9b::a9fe:a9fe]/', 'http://2130706433/', 'nada',
+    'http://8.8.8.8/cal.ics', 'HTTP://8.8.8.8/cal.ics', 'http://[2606:4700:4700::1111]/x'] as $u) { // http público também: só https
     t_eq(null, CalendarSync::resolveTarget($u), "recusa $u");
 }
 $t = CalendarSync::resolveTarget('https://8.8.8.8/cal.ics');
 t_eq(['host' => '8.8.8.8', 'port' => 443, 'ip' => '8.8.8.8'], $t, 'aceita https://8.8.8.8 (porta 443)');
-$t = CalendarSync::resolveTarget('http://[2606:4700:4700::1111]:8080/x');
+$t = CalendarSync::resolveTarget('https://[2606:4700:4700::1111]:8080/x');
 t_eq(8080, $t['port'] ?? null, 'aceita IPv6 público com porta');
+
+echo "fetch só https\n";
+foreach (['http://8.8.8.8/cal.ics', 'ftp://8.8.8.8/a', 'javascript:alert(1)', ''] as $u) {
+    t_eq(null, CalendarSync::fetch($u, 1), "fetch recusa '$u' antes de qualquer rede (feed antigo http não baixa)");
+}
+$src = (string) file_get_contents(CL_ROOT . '/src/CalendarSync.php');
+t_ok(str_contains($src, "PROTOCOLS_STR] = 'https';") && !str_contains($src, 'CURLPROTO_HTTP |'), 'curl restrito a https');
 
 echo "logRef\n";
 $ref = CalendarSync::logRef('https://www.airbnb.com/calendar/ical/123.ics?s=SEGREDO');

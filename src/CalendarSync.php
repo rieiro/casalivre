@@ -152,6 +152,10 @@ final class CalendarSync
      */
     public static function fetch(string $url, int $timeout = 20): ?string
     {
+        // Só https, inclusive para feeds antigos gravados com http (sem exceção; integridade contra MITM).
+        if (strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+            return null;
+        }
         if (function_exists('exported_calendar_body')) {
             $local = exported_calendar_body($url);
             if (is_string($local) && $local !== '') {
@@ -198,13 +202,13 @@ final class CalendarSync
         }
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $host = strtolower(trim((string) ($parts['host'] ?? ''), '[]'));
-        if (!in_array($scheme, ['http', 'https'], true) || $host === '' || isset($parts['user']) || isset($parts['pass'])) {
+        if ($scheme !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass'])) {
             return null;
         }
         if ($host === 'localhost' || str_ends_with($host, '.localhost')) {
             return null;
         }
-        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+        $port = (int) ($parts['port'] ?? 443);
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             $ips = [$host];
         } else {
@@ -324,9 +328,9 @@ final class CalendarSync
             },
         ];
         if (defined('CURLOPT_PROTOCOLS_STR')) {
-            $options[CURLOPT_PROTOCOLS_STR] = 'http,https';
+            $options[CURLOPT_PROTOCOLS_STR] = 'https';
         } elseif (defined('CURLPROTO_HTTP')) {
-            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTP | CURLPROTO_HTTPS;
+            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS;
         }
         if (defined('CURLOPT_MAXFILESIZE')) {
             $options[CURLOPT_MAXFILESIZE] = self::MAX_BYTES;
