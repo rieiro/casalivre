@@ -38,8 +38,13 @@ final class ExceptionShield
                 } catch (Throwable) {
                 }
             }
-            http_response_code(500);
+            // Schema atrás do código (deploy sem migrate.php no pgsql): 503 temporário, não 500.
+            $unavailable = $e instanceof SchemaDesatualizado;
+            http_response_code($unavailable ? 503 : 500);
             if (!headers_sent()) {
+                if ($unavailable) {
+                    header('Retry-After: 60');
+                }
                 header('Content-Type: text/html; charset=utf-8');
                 if (!preg_grep('/^cache-control:/i', headers_list())) {
                     header('Cache-Control: private, no-cache');
