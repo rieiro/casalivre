@@ -107,7 +107,7 @@ function t_temp_pg(string $adminDsn): string
     $user = getenv('TEST_PG_USER') ?: null;
     $pass = getenv('TEST_PG_PASSWORD') ?: null;
     $name = 'casalivre_t_' . getmypid() . '_' . bin2hex(random_bytes(3));
-    $admin = new PDO($adminDsn, $user, $pass, $opts);
+    $admin = t_pg_admin($adminDsn);
     $admin->exec("CREATE DATABASE $name");
     $dsn = preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
     register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
