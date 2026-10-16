@@ -31,18 +31,7 @@ for pm in "$CL_HOME"/data/*/postmaster.pid; do
 	rm -f "$pm"
 done
 
-# Templates: envsubst do próprio rootfs, só com as variáveis listadas (não
-# toca em $uri, $args etc. do nginx).
-# shellcheck disable=SC2016  # literal de propósito: lista para o envsubst
-vars='${CL_HOME} ${CL_REPO} ${CL_PORT_HTTP}'
-for t in "$CL_DEVENV_DIR"/templates/*.in; do
-	out=$CL_HOME/etc/$(basename "${t%.in}")
-	bwrap_base_args ro-bind
-	bwrap "${BW_BASE[@]}" --unshare-net -- \
-		/usr/bin/envsubst "$vars" <"$t" >"$out.tmp"
-	mv "$out.tmp" "$out"
-done
-
+render_templates bwrap
 "$CL_DEVENV_DIR/services.sh"  # P0-2: sv/ e env dos serviços
 
 # Runtime com rootfs somente leitura (serviço comprometido não altera os

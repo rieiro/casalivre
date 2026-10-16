@@ -5,6 +5,20 @@
 refuse_root
 cl_defaults
 
+# P0-5: env brought up by up-incus.sh: clean PG stop, then incus stop.
+if [ -f "$CL_RUN/incus.name" ]; then
+	name=$(cat "$CL_RUN/incus.name")
+	[ "$name" = "$(incus_name)" ] || die "$CL_RUN/incus.name does not match this CL_HOME"
+	if [ "$(incus list "$name" --format csv --columns s 2>/dev/null || true)" = RUNNING ]; then
+		incus exec "$name" --user "$(id -u)" --group "$(id -g)" --cwd "$CL_HOME" -- \
+			sv -w 30 stop "$CL_HOME/sv/postgresql" || true
+		incus stop --timeout 30 "$name" || incus stop --force "$name"
+	fi
+	rm -f "$CL_RUN/incus.name"
+	log "down (incus $name)"
+	exit 0
+fi
+
 read -r bw child init _ < <(read_pids; echo) || true
 if ! env_alive "${bw:-}" "${init:-}"; then
 	log "não está no ar (CL_HOME=$CL_HOME)"

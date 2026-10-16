@@ -114,3 +114,28 @@ in_env() {
 	local child=$1; shift
 	nsenter --preserve-credentials -U -m -p -i -r -w -t "$child" -- "$@"
 }
+
+# Renders templates/*.in into $CL_HOME/etc with the rootfs's own envsubst (in a throwaway bwrap
+# without network), only for the listed variables ($uri, $args etc. of nginx stay untouched).
+# $1 = bwrap (up-bwrap.sh) | host (up-incus.sh: the Incus host may not have bwrap; uses the host envsubst).
+render_templates() {
+	local t out mode=$1
+	# shellcheck disable=SC2016  # literal on purpose: list for envsubst
+	local vars='${CL_HOME} ${CL_REPO} ${CL_PORT_HTTP}'
+	for t in "$CL_DEVENV_DIR"/templates/*.in; do
+		out=$CL_HOME/etc/$(basename "${t%.in}")
+		if [ "$mode" = bwrap ]; then
+			bwrap_base_args ro-bind
+			bwrap "${BW_BASE[@]}" --unshare-net -- /usr/bin/envsubst "$vars" <"$t" >"$out.tmp"
+		else
+			command -v envsubst >/dev/null 2>&1 || die "envsubst (gettext) is needed on the host"
+			envsubst "$vars" <"$t" >"$out.tmp"
+		fi
+		mv "$out.tmp" "$out"
+	done
+}
+
+# Incus container name for this uid + CL_HOME (one env per CL_HOME, like env.pid).
+incus_name() {
+	printf 'cl-dev-%s-%s\n' "$(id -u)" "$(printf '%s' "$CL_HOME" | sha256sum | cut -c1-8)"
+}
