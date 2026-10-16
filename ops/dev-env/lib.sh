@@ -84,7 +84,7 @@ runsvdir_ok() {
 # uid puder ler: logs, sockets e dados ficam aqui).
 ensure_dirs() {
 	local d
-	for d in "$CL_HOME" "$CL_RUN" "$CL_HOME/etc" "$CL_HOME/log" "$CL_HOME/sv" "$CL_HOME/data" "$CL_CACHE"; do
+	for d in "$CL_HOME" "$CL_RUN" "$CL_HOME/etc" "$CL_HOME/admin" "$CL_HOME/log" "$CL_HOME/sv" "$CL_HOME/data" "$CL_CACHE"; do
 		mkdir -p "$d"
 		chmod 700 "$d"
 		[ "$(stat -c %a "$d")" = 700 ] || die "$d precisa ser 0700"

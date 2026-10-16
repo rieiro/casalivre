@@ -6,8 +6,17 @@
 refuse_root
 cl_defaults
 
-read -r bw child _ < <(read_pids; echo) || true
-pid_is_ours "${bw:-}" && runsvdir_ok "${child:-}" || die "ambiente fora do ar: rode up-bwrap.sh -d"
+read -r bw _ init _ < <(read_pids; echo) || true
+env_alive "${bw:-}" "${init:-}" || die "env is down: run up-bwrap.sh -d"
+child=$init  # namespace init: same namespaces as runsvdir, alive even if the outer bwrap died
+
+# S1: socket 0660. #112 L2: the cl_admin secret is not visible inside the env.
+sock_mode=$(in_env "$child" stat -c %a "$CL_RUN/valkey.sock")
+[ "$sock_mode" = 660 ] && echo "  ok   valkey.sock mode $sock_mode" || { echo "  FALHA valkey.sock mode $sock_mode (expected 660)"; exit 1; }
+if in_env "$child" /bin/sh -c "cat '$CL_HOME/admin/valkey-admin.secret' || cat '$CL_HOME/etc/valkey-admin.secret'" >/dev/null 2>&1; then
+	echo "  FALHA cl_admin secret readable inside the env"; exit 1
+fi
+echo "  ok   cl_admin secret not readable inside the env"
 
 in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && exec php8.4 -r '
 \$fail = 0;

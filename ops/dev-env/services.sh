@@ -9,7 +9,8 @@ cl_defaults
 umask 077
 
 etc=$CL_HOME/etc
-mkdir -p "$etc" "$CL_HOME/sv" "$CL_HOME/log" "$CL_HOME/data" "$CL_RUN"
+admin=$CL_HOME/admin
+mkdir -p "$etc" "$admin" "$CL_HOME/sv" "$CL_HOME/log" "$CL_HOME/data" "$CL_RUN"
 # PG: o app, os testes e o db-setup conectam como casalivre_dev (peer + map).
 # O FPM roda com o mesmo uid do bot (ambiente de usuário único).
 pg_user=$(id -un)
@@ -26,7 +27,12 @@ gen_secret() {
 }
 secret=$etc/valkey-app.secret
 app_hash=$(gen_secret "$secret")
-admin_hash=$(gen_secret "$etc/valkey-admin.secret")
+# cl_admin secret (#112 L2): in $CL_HOME/admin (0700, 0400 file), which up-bwrap.sh never binds into
+# the runtime, so the FPM, the worker and anything else inside the env cannot read it (single uid in dev).
+chmod 700 "$admin"
+[ ! -f "$etc/valkey-admin.secret" ] || mv -f "$etc/valkey-admin.secret" "$admin/valkey-admin.secret"
+admin_hash=$(gen_secret "$admin/valkey-admin.secret")
+chmod 0400 "$admin/valkey-admin.secret"
 app_cmds='+get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incrby +decr +mget +mset
 +hget +hset +hdel +hmget +hgetall +hincrby
 +lpush +rpush +lpop +rpop +blpop +brpop +lmove +blmove +llen +lrange +lrem
@@ -50,7 +56,7 @@ export CL_HOME='$CL_HOME' CL_REPO='$CL_REPO' CL_RUN='$CL_RUN' CL_PG_USER='$pg_us
 export HOME='$CL_HOME' PATH=/usr/bin:/usr/sbin LANG=C.UTF-8
 export PGHOST='$CL_RUN' PGUSER=casalivre_dev PGDATABASE=casalivre
 export APP_ENV=dev DB_DRIVER=pgsql DB_DSN='$dsn'
-export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=cl_app VALKEY_PASSWORD_FILE='$secret'
+export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=cl_app VALKEY_PASSWORD_FILE='$secret' QUEUE_DRIVER=valkey
 ENV
 mv "$etc/dev-env.env.tmp" "$etc/dev-env.env"
 
@@ -65,6 +71,7 @@ env[DB_DSN] = "$dsn"
 env[VALKEY_SOCKET] = $CL_RUN/valkey.sock
 env[VALKEY_USER] = cl_app
 env[VALKEY_PASSWORD_FILE] = $secret
+env[QUEUE_DRIVER] = valkey
 ENV
 mv "$etc/php-fpm-env.conf.tmp" "$etc/php-fpm-env.conf"
 

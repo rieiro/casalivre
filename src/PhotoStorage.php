@@ -39,7 +39,6 @@ final class PhotoStorage
         if (!is_array($names)) {
             return 0;
         }
-        $queue = null;
         foreach ($names as $i => $name) {
             if (($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 continue;
@@ -66,9 +65,8 @@ final class PhotoStorage
             }
             @chmod($dir . '/' . $original, 0600);
             $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $existing === 0 && $saved === 0 ? 1 : 0, $existing + $saved);
-            $queue ??= ImageQueues::make();
-            $queue->push((int) ($row['id'] ?? 0));
-            $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => 'processing', 'capa' => (int) ($row['is_primary'] ?? 0)];
+            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0));
+            $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => $queued ? 'processing' : 'failed', 'capa' => (int) ($row['is_primary'] ?? 0)];
             $saved++;
         }
         return $saved;
@@ -92,7 +90,9 @@ final class PhotoStorage
         }
         @chmod($dir . '/' . $original, 0600);
         $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $primary, $sort);
-        ImageQueues::make()->push((int) ($row['id'] ?? 0));
+        if (!self::enqueueOrFail((int) ($row['id'] ?? 0))) {
+            $row['status'] = 'failed';
+        }
         return $row;
     }
 
@@ -101,6 +101,22 @@ final class PhotoStorage
      * seguro com workers concorrentes), o arquivo vai para os originais (fora do public/), sai do public/ e
      * entra na ImageQueue. Arquivo ausente/inválido: foto failed. Devolve quantas foram enfileiradas.
      */
+    /**
+     * Pushes the photo to the ImageQueue. If the queue errors (e.g. Valkey down), the photo is marked failed
+     * instead of staying in processing forever with no job; the error is logged without personal data.
+     */
+    public static function enqueueOrFail(int $photoId): bool
+    {
+        try {
+            ImageQueues::make()->push($photoId);
+            return true;
+        } catch (Throwable $e) {
+            error_log('image_queue: push failed for photo #' . $photoId . ' (' . $e::class . ')');
+            db()->prepare("UPDATE photos SET status = 'failed' WHERE id = ? AND status = 'processing'")->execute([$photoId]);
+            return false;
+        }
+    }
+
     public static function migrateLegacy(int $limit = 100): int
     {
         $rows = db()->query("SELECT id, path FROM photos WHERE status = 'ready' AND path LIKE '/uploads/users/%' ORDER BY id LIMIT " . max(1, $limit))->fetchAll();
@@ -131,7 +147,9 @@ final class PhotoStorage
                 @unlink($dir . '/' . $original); // outro worker já pegou
                 continue;
             }
-            ImageQueues::make()->push((int) $row['id']);
+            if (!self::enqueueOrFail((int) $row['id'])) {
+                continue; // photo failed; the legacy file stays where it was
+            }
             @unlink($full);
             $done++;
         }

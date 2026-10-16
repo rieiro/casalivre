@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/JobQueue.php';
+require_once __DIR__ . '/ValkeyJobQueue.php';
 require_once dirname(__DIR__) . '/conta/Account/Email.php';
 
 /**
@@ -32,6 +33,7 @@ final class MailQueues
     {
         return match (Queues::driver()) {
             'sqlite' => new SqliteMailQueue(db()),
+            'valkey' => new ValkeyMailQueue(Valkey::connect()),
         };
     }
 
@@ -92,6 +94,45 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
             return false;
         }
         $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient), 'cooldown_key' => $key]);
+        return true;
+    }
+}
+
+/** Mail queue on Valkey (cl:q:mail:*). Same payload (type, e-mail) and cooldown as the SQL queue. */
+final class ValkeyMailQueue extends ValkeyJobQueue implements MailQueue
+{
+    protected function name(): string
+    {
+        return 'mail';
+    }
+
+    protected function dataFields(): array
+    {
+        return ['type', 'recipient'];
+    }
+
+    protected function clearOnDone(): array
+    {
+        return ['recipient'];
+    }
+
+    public function push(string $type, string $recipient): bool
+    {
+        if (!in_array($type, self::TYPES, true)) {
+            throw new InvalidArgumentException('Tipo de e-mail inválido.');
+        }
+        // Cooldown: atomic SET NX EX on the HMAC key (no address in the key) before the insert, so concurrent
+        // pushes cannot both pass. If the insert fails, the key is removed so a retry is accepted.
+        $cd = $this->key('cd:' . SqliteMailQueue::cooldownKey($type, $recipient));
+        if ($this->r->set($cd, '1', ['nx', 'ex' => MailQueues::cooldownSeconds($type)]) !== true) {
+            return false;
+        }
+        try {
+            $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient)]);
+        } catch (Throwable $e) {
+            $this->r->del($cd);
+            throw $e;
+        }
         return true;
     }
 }

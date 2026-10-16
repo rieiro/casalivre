@@ -138,17 +138,23 @@ ops/dev-env/db-setup.sh --no-seed
   liga o uid do bot a `postgres` (admin) e o do bot/FPM (mesmo uid aqui) a
   `casalivre_dev`.
 - **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
-  `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER` e `VALKEY_PASSWORD_FILE` via `etc/php-fpm-env.conf` (0600).
+  `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER`, `VALKEY_PASSWORD_FILE` e `QUEUE_DRIVER=valkey` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
 - **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
   fora do `valkey.conf`), ACL de `programador-notas/p0-4-valkey-acl.md`:
   `default` off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings,
   hash, listas, zset, set, multi, ping/hello/auth/select 0), sem streams e sem
-  Lua; `cl_admin` separado. Senhas geradas uma vez em `etc/valkey-app.secret`
-  e `etc/valkey-admin.secret`, modo 0440 (produção `root:casalivre`; aqui, sem
-  root, o próprio uid), nunca em env: o app (`VALKEY_USER=cl_app`) lê
-  `VALKEY_PASSWORD_FILE`. `valkey-acl-check.sh` confere que `cl_app` faz
-  LPUSH/RPOP em `cl:*` e não roda `keys *`, `config get *` nem `get x`.
+  Lua; `cl_admin` separado. Passwords are generated once, never in env:
+  `etc/valkey-app.secret` (0440; production `root:casalivre`), read by the app
+  (`VALKEY_USER=cl_app`) via `VALKEY_PASSWORD_FILE`; `admin/valkey-admin.secret`
+  (0400, dir 0700). `admin/` is never bound into the runtime, so the FPM and the
+  worker (same uid in dev) cannot read the cl_admin secret (P0-4). The socket is
+  0660. `valkey-acl-check.sh` checks the socket mode, that the admin secret is
+  not visible inside the env, that `cl_app` does LPUSH/RPOP on `cl:*`, and that
+  `keys *`, `config get *`, `get x`, XADD and EVAL fail.
+- **queue-worker** (P0-4): `scripts/queue-worker.php` in a loop, with
+  `QUEUE_DRIVER=valkey` (lists under `cl:q:mail:*`/`cl:q:image:*`, phpredis,
+  `cl_app` allowlist only); runit restarts it if it dies.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
   `php.ini` não muda.
