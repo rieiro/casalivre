@@ -1,0 +1,24 @@
+# Corpo do run (o services.sh prefixa shebang e o '. $CL_HOME/etc/dev-env.env').
+# initdb no primeiro start com bootstrap 'postgres'; papéis e banco no db-setup.sh.
+pgdata=$CL_HOME/data/pg
+if [ ! -f "$pgdata/PG_VERSION" ]; then
+	initdb -D "$pgdata" -U postgres --auth-local=peer --auth-host=reject -E UTF8 --locale=C.UTF-8 >>"$CL_HOME/log/initdb.log" 2>&1 || exit 1
+	echo "include '$CL_HOME/etc/postgresql.conf'" >>"$pgdata/postgresql.conf"
+fi
+# Autenticação (reescrita a cada start, idempotente): só socket local, peer.
+# Sem root não existe o usuário do SO 'postgres': o mapa 'admin' liga o uid do
+# bot a postgres; o mapa 'casalivre' liga o bot e o FPM (mesmo uid aqui) a casalivre_dev.
+cat >"$pgdata/pg_hba.conf" <<HBA
+local all postgres peer map=admin
+local all casalivre_dev peer map=casalivre
+local all all reject
+host all all all reject
+HBA
+cat >"$pgdata/pg_ident.conf" <<IDENT
+admin $CL_PG_USER postgres
+casalivre $CL_PG_USER casalivre_dev
+IDENT
+# Só socket Unix (listen_addresses vazio); port=5432 só nomeia o socket
+# .s.PGSQL.5432. Socket 0770 com o grupo comum, em $CL_RUN (0700).
+exec postgres -D "$pgdata" -c listen_addresses='' -c port=5432 \
+	-c unix_socket_permissions=0770 -c unix_socket_group="$CL_PG_GROUP" -c timezone=UTC

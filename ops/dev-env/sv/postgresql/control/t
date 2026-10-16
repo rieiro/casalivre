@@ -1,0 +1,3 @@
+# sv stop / sv term: parada rápida esperando terminar (sem recovery na próxima subida).
+# Saída 0 = o runsv não manda o TERM (que seria o "smart shutdown").
+exec pg_ctl -D "$CL_HOME/data/pg" stop -m fast -w -t 30

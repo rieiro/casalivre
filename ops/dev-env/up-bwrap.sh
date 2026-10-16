@@ -43,6 +43,8 @@ for t in "$CL_DEVENV_DIR"/templates/*.in; do
 	mv "$out.tmp" "$out"
 done
 
+"$CL_DEVENV_DIR/services.sh"  # P0-2: sv/ e env dos serviços
+
 # Runtime com rootfs somente leitura (serviço comprometido não altera os
 # binários); /tmp em tmpfs 1777; graváveis só os diretórios do CL_HOME e o repo.
 bwrap_base_args ro-bind
