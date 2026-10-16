@@ -80,6 +80,9 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 
 ## 3b. Origem da reserva e "Lançar reserva manual"
 **Toda reserva nasce de uma solicitação** com a **origem** registrada: **Pedido** (aprovação manual), **Imediata** (reserva instantânea), **OTA** (iCal ou parceiro) ou **Manual** (lançada pelo anfitrião). A origem aparece como **rótulo** ("Origem: Manual") no painel Hoje, na fila, no detalhe da reserva (aqui e na spec-09) e no calendário.
+**Reservas OTA** (Produto; detalhes técnicos: Arquitetura): entram direto como **Confirmada**, com `origem = ota` e o rótulo **"Origem: OTA"** no painel Hoje, no detalhe e no calendário; **sem etapa de pagamento casalivre** (não aparecem em Aguardando pagamento nem na fila de aprovação); **bloqueiam o calendário na hora**; **ficam fora do funil de conversão**; o **cancelamento segue a política da OTA**; o ledger registra **só o que a casalivre cobra**.
+**Critérios OTA:** (a) uma reserva OTA sincronizada aparece Confirmada e bloqueia as datas no mesmo ciclo de sincronização; (b) ela não gera os botões "Estadia recebida"/"Limpeza recebida"; (c) o funil (P1) não a conta; (d) o ledger não lança diária nem limpeza dela.
+
 **Lançar reserva manual** (para os clientes fiéis do anfitrião): o botão fica no calendário ("+ Reserva manual") ou aparece depois de selecionar um intervalo. Campos:
 - **datas**;
 - **hóspede** (nome, e-mail e celular; a identificação por OTP segue a spec-01 quando o hóspede acessar);
@@ -135,4 +138,4 @@ Fonte: relatório de Segurança (`/workspace/casalivre-seguranca-evidence/specs-
 Os itens pendentes não bloqueiam o restante da spec.
 1. [pendente: Rafael] Valor da comissão do canal manual [E].
 2. [pendente: Rafael] D3, o provedor de WhatsApp, SMS e e-mail. Bloqueia a S7 (OTP), os avisos de nova solicitação e os lembretes da portaria. Até lá, tudo aparece só no painel.
-3. [pendente: Negócios] Conferir as normas municipais (cadastro do imóvel de temporada, taxa de turismo) em Cabo Frio, Búzios e Arraial do Cabo (parecer J10).
+3. [pendente: Jurídico e Tributário] Confirmar a taxa de turismo de Búzios (R$ 14,60 por hóspede, 20/12 ao Carnaval + 5 dias) para ativar a regra (spec-04 2b).

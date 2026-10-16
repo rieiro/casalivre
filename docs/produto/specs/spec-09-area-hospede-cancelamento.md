@@ -39,6 +39,7 @@ Quando o imóvel exige (spec-03), aparece o formulário com a **finalidade** (sp
 **Entrada:** "Cancelar reserva" abre uma tela (não um modal pequeno) com a **simulação do reembolso** pela **política gravada na reserva** (snapshot), e não pela política atual do imóvel.
 **Regras (pagamentos.md §6, spec-03):**
 - **Aguardando aprovação ou pagamento:** sem custo, e as datas são liberadas.
+- **Reserva com origem OTA:** o cancelamento e o reembolso seguem a **política da OTA** e são feitos na OTA; a tela mostra "Reserva feita em [OTA]. Cancele por lá." (spec-06 3b).
 - **CDC, 7 dias a partir da reserva:** reembolso de 100% **se o cancelamento for em até 7 dias da reserva E antes do check-in**, sem exceção para check-in próximo ([decidido, parecer J35]). Depois do início da estadia, não se aplica.
 - Depois disso, vale a política: **Flexível** (100% até 24 h antes; depois, a 1ª diária não volta), **Moderada** (100% até 5 dias antes; depois, 50%) ou **Rígida** (100% até 14 dias antes, 50% entre 14 e 7 dias, 0% com menos de 7 dias).
 - **Sempre:** a limpeza e a taxa não usadas são devolvidas.
