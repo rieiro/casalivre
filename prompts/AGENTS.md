@@ -1,2 +1,4 @@
-1. por uma questão de economia de recursos, apenas atualize o zip do pacote [casalivre-atual.zip](http://casalivre-atual.zip) quando eu pedir especificamente.
-2. por uma questao de economia de recursos, apenas atualize a documentação técnica quando for explicitamente pedido.
+Read [team.md](team.md) and [../docs/decisions.md](../docs/decisions.md) before each task.
+
+1. To save resources, only update the casalivre-atual.zip package when explicitly asked.
+2. To save resources, only update the technical documentation when explicitly asked.
