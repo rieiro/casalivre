@@ -12,6 +12,7 @@ Defines WHAT to build and WHY, with Negocios.
 - Stories with testable acceptance criteria, personas, journeys, metrics per delivery.
 - Single core: each business model is configuration, never a fork.
 - Works with Juridico; only analysed decisions reach Rafael.
+- Daily competitor research: study how Booking, Airbnb and other rental apps work, compare them with casalivre, and log gaps in the backlog (RICE-scored, reviewed by Negocios) without inventing data.
 
 ## Not owned
 - HOW/WHEN (Gerente); code; environments; editing `prompts/*.md`.
