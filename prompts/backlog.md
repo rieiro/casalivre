@@ -152,6 +152,44 @@ Itens aprovados pelo usuário (15/10), a partir do diagnóstico do Bot Arquitetu
 
 Descartado: medição de concorrência de escrita no SQLite. O usuário decidiu que não é necessária, porque a migração de banco será feita de qualquer forma no futuro.
 
+## Review follow-ups
+
+Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.
+
+### P0-3b (dev environment)
+- [ ] Test that fails if the app connects to PG as a superuser. Source: #111 (Arquitetura). Owner: Programador.
+- [ ] Test that the nginx photo-route regex matches `public/index.php`. Source: #111 (Arquitetura). Owner: Programador.
+- [ ] Temp PG test DB cleanup: retry DROP without FORCE, plus cleanup in `run.php`. The retry in `t_pg_drop()` has never been exercised. Source: #111 (Arquitetura), #116 (Teste). Owner: Programador.
+- [ ] `provision.sh:143-145`: build the bwrap binds with `BW_BASE` in ro-bind mode; drop the dead if/else at `provision.sh:141,147-148`. Source: #111 (Revisor). Owner: Programador.
+- [ ] `up-bwrap.sh:55-57` creates the repo mount-point dirs inside the rootfs: document it or move it to `provision.sh`. Source: #111 (Arquitetura). Owner: Programador.
+
+### Test helpers cleanup
+- [ ] `t_seed_cep()` in `lib.php` for the 10 tests and 2 e2e seeds. Source: #111 (Revisor). Owner: Programador.
+- [ ] Parameterize `t_fail_trigger` in `groups_test:397-402`. Source: #111 (Revisor). Owner: Programador.
+- [ ] `t_temp_db` and `run.php:10-12` should use `t_is_pg()`. Source: #111, #116 (Revisor). Owner: Programador.
+- [ ] Parity test should fall back to `TEST_PG_*` (drop the copy in `test-pg.sh:13,17`). Source: #111 (Revisor). Owner: Programador.
+- [ ] `check-test-deps.sh` should require `url.php` `ini_bytes()`. Source: #111 (Revisor). Owner: Programador.
+- [ ] `char_snapshot_test`: change the "dev 8M" comment to 20M (dev now matches production). Source: #111 (Segurança). Owner: Programador.
+- [ ] Add a `t_pg_connect(string $dsn)` helper so `t_temp_pg` and `t_pg_admin` set `TEST_PG_USER`/`PASSWORD` and ERRMODE in one place (`lib.php:106-108,114`). Source: #116 (Revisor). Owner: Programador.
+- [ ] Move the shared runtime bwrap args and the /tmp mount-point rule from `test-pg.sh` and `up-bwrap.sh` into `lib.sh` helpers. Source: #116 (Revisor). Owner: Programador.
+- [ ] Add `Db::close()` instead of the ReflectionProperty write at `lib.php:146`. Source: #116 (Revisor). Owner: Programador.
+
+### Docs
+- [ ] tests/README: `test-pg.sh` defaults to the host PHP; run with `CL_PHP=php8.4`. With `CL_PHP=php` it stops at the 16M upload-limit dependency check by design. Source: #111, #116 (Teste). Owner: Gerente.
+- [ ] `prompts/team.md`: add `docs/decisions.md` to the Gerente-only list at :22; at :25, say Gerente also adds ready-to-merge when it sets the last approver label for a bot without GitHub writes. Source: #114 (Revisor). Owner: Gerente.
+
+### Fluent Bit removal
+- [x] Fluent Bit was dropped from the stack; removed from this backlog (Infra e dados) in this PR. Owner: Gerente.
+- [ ] Remove Fluent Bit from the `src/RequestLog.php` comments or code. Owner: Programador.
+
+### Queue worker (#118)
+- [ ] Move the `migrateLegacy` doc comment at `PhotoStorage.php:104` back to its method. Source: #118 (Teste). Owner: Programador.
+- [ ] A failed enqueue in the legacy migration (`PhotoStorage.php:150`) leaves orphan files and is never retried. Source: #118 (Teste). Owner: Programador.
+- [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
+
+### P1 image worker (libvips)
+- [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.
+
 ## Segurança e LGPD
 
 - [x] ~~(Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.~~ Descartada: sem troca de e-mail (decisão do usuário, #59).
@@ -209,7 +247,7 @@ Descartado: medição de concorrência de escrita no SQLite. O usuário decidiu 
 - [ ] Migrar `activity_log.actor_id` para `actor_ref TEXT`.
 - [ ] `LogRetention::run` incluir arquivos `*.ret-*` remanescentes.
 - [ ] `applyRange`/`applyMinNights` com o mesmo risco de lock do DEF-008.
-- [ ] Fluent Bit, banco de log separado e outbox de auditoria.
+- [ ] Banco de log separado e outbox de auditoria (Fluent Bit saiu da stack).
 
 ## Redução de dados enviados
 Origem: análise do Bot Segurança e Arquitetura (develop e425cbd). Hoje a busca, o detalhe, o painel e a edição baixam cerca de 13,4 MB, e 98% disso são fotos originais.
