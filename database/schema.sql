@@ -72,8 +72,6 @@ CREATE TABLE IF NOT EXISTS properties (
     inactivated_at TEXT,
     audit_hold TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    rating_sum INTEGER NOT NULL DEFAULT 0 CHECK (rating_sum >= 0),
-    rating_count INTEGER NOT NULL DEFAULT 0 CHECK (rating_count >= 0),
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
@@ -199,10 +197,6 @@ CREATE TABLE IF NOT EXISTS image_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_image_queue_ready ON image_queue(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(property_id, status);
-
--- Busca (ADR 001)
-CREATE INDEX IF NOT EXISTS idx_prop_status_city ON properties(status, city);
-CREATE INDEX IF NOT EXISTS idx_prop_latlng ON properties(lat, lng);
 
 -- Antes só via migrate() (src/Db.php)
 CREATE TABLE IF NOT EXISTS settings (skey TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT NOT NULL);

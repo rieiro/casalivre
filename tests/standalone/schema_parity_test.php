@@ -2,7 +2,7 @@
 // Paridade schema.sql (SQLite) x schema.pgsql.sql (PG), v19:
 // - SQLite (sempre): banco do zero; migrate() depois não muda o schema (zero DDL); FK properties.user_id RESTRICT;
 //   sem idx_ceps_cep/idx_photos_property (inclusive após CepRepository); EXPLAIN usa idx_photos_cover e o UNIQUE de ceps;
-//   rating_sum/rating_count com CHECK >= 0; tokens parciais; as 7 tabelas que vinham do migrate() estão no schema.
+//   tokens parciais; as 7 tabelas que vinham do migrate() estão no schema.
 // - PG (só com PARITY_PG_DSN, ex.: pgsql:host=127.0.0.1;dbname=postgres): cria o banco temporário
 //   casalivre_parity_<pid>, carrega schema.pgsql.sql, compara com o SQLite e apaga SÓ esse banco.
 // Exceções de tipo documentadas no topo de database/schema.pgsql.sql.
@@ -17,12 +17,7 @@ const TYPE_MAP = [
     'double precision' => 'REAL', 'timestamp without time zone' => 'TEXT', 'date' => 'TEXT',
 ];
 const DEFAULT_MAP = ['CURRENT_TIMESTAMP' => "datetime('now')", 'now()' => "datetime('now')"];
-const IDX_EXCEPTIONS = [
-    'idx_prop_city_active' => 'PG: INCLUDE + parcial; no SQLite é idx_prop_status_city',
-    'idx_prop_status_city' => 'idem',
-    'idx_prop_latlng_active' => 'PG: parcial; no SQLite é idx_prop_latlng',
-    'idx_prop_latlng' => 'idem',
-];
+const IDX_EXCEPTIONS = []; // nenhuma diferença de índice aceita hoje (índices da busca voltam no PR do ADR 001)
 const SEVEN = ['settings', 'languages', 'translations', 'cities', 'activity_actions', 'login_rate_limit', 'ceps'];
 
 function normDefault(?string $d): ?string
@@ -121,9 +116,6 @@ foreach (['photos', 'calendar_days', 'calendar_feeds', 'reviews', 'group_propert
 t_ok(!isset($a['idx']['idx_photos_property']) && !isset($a['idx']['idx_ceps_cep']), 'sem idx_photos_property e idx_ceps_cep');
 t_eq(true, $a['idx']['idx_users_activation_token'][3] ?? null, 'idx_users_activation_token parcial');
 t_eq(true, $a['idx']['idx_users_reset_token'][3] ?? null, 'idx_users_reset_token parcial');
-t_ok(isset($a['idx']['idx_prop_status_city'], $a['idx']['idx_prop_latlng']), 'índices da busca (ADR 001)');
-t_eq(['INTEGER', true, '0'], $a['col']['properties']['rating_sum'] ?? null, 'rating_sum INTEGER NOT NULL DEFAULT 0');
-t_eq(['INTEGER', true, '0'], $a['col']['properties']['rating_count'] ?? null, 'rating_count INTEGER NOT NULL DEFAULT 0');
 
 echo "zero DDL: migrate() e CepRepository depois do schema não mudam nada\n";
 $v = Db::migrateNow(true);
@@ -151,12 +143,6 @@ try {
     t_ok(false, 'DELETE de dono com imóvel deveria falhar');
 } catch (PDOException $e) {
     t_eq('23000', (string) $e->getCode(), 'DELETE de dono com imóvel: 23000 (RESTRICT)');
-}
-try {
-    $lite->exec("UPDATE properties SET rating_count = -1 WHERE id = $pid");
-    t_ok(false, 'rating_count negativo deveria falhar');
-} catch (PDOException) {
-    t_ok(true, 'CHECK rating_count >= 0');
 }
 $lite->exec("DELETE FROM properties WHERE id = $pid");
 t_eq(0, (int) $lite->query("SELECT COUNT(*) FROM photos WHERE property_id = $pid")->fetchColumn(), 'DELETE do imóvel leva as fotos (CASCADE)');
@@ -204,7 +190,7 @@ try {
     ksort($b['fk']);
     t_eq($a['fk'], $b['fk'], 'FKs e ON DELETE');
     foreach (array_unique([...array_keys($a['idx']), ...array_keys($b['idx'])]) as $n) {
-        if (isset(IDX_EXCEPTIONS[$n])) {
+        if (array_key_exists($n, IDX_EXCEPTIONS)) {
             continue;
         }
         t_eq($a['idx'][$n] ?? null, $b['idx'][$n] ?? null, "índice $n (colunas/unique/parcial)");

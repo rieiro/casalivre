@@ -8,8 +8,6 @@
 --   lat/lng: DOUBLE PRECISION (PG) x REAL (SQLite)
 --   mail_queue/image_queue (next_attempt_at, created_at, updated_at) e login_rate_limit.locked_until: TEXT nos dois, de propósito
 --   PRAGMA foreign_keys = ON só no SQLite
---   Busca (ADR 001): PG idx_prop_city_active (INCLUDE + parcial) e idx_prop_latlng_active (parcial);
---     SQLite idx_prop_status_city e idx_prop_latlng (sem INCLUDE)
 --   schema_meta: só no PG, criada pelo scripts/migrate.php (versão do schema; o SQLite usa PRAGMA user_version)
 
 CREATE TABLE IF NOT EXISTS users (
@@ -84,8 +82,6 @@ CREATE TABLE IF NOT EXISTS properties (
     inactivated_at TIMESTAMP,
     audit_hold TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    rating_sum INTEGER NOT NULL DEFAULT 0 CHECK (rating_sum >= 0),
-    rating_count INTEGER NOT NULL DEFAULT 0 CHECK (rating_count >= 0),
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
@@ -211,10 +207,6 @@ CREATE TABLE IF NOT EXISTS image_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_image_queue_ready ON image_queue(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(property_id, status);
-
--- Busca (ADR 001)
-CREATE INDEX IF NOT EXISTS idx_prop_city_active ON properties (city, id) INCLUDE (max_guests) WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS idx_prop_latlng_active ON properties (lat, lng) WHERE status = 'active';
 
 -- Antes só via migrate() (src/Db.php)
 CREATE TABLE IF NOT EXISTS settings (skey TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT NOT NULL);
