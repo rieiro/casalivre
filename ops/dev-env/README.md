@@ -24,7 +24,9 @@ entry layer changes; the rootfs, configs and `sv/` are the ones `up-bwrap.sh` us
   rootfs changes);
 - mounts: the repo and `$CL_HOME/{run,etc,log,sv,data}`, the same as bwrap. `$CL_HOME/admin` (cl_admin
   secret) is never mounted;
-- `raw.idmap` maps your uid/gid 1:1 and init is `runsvdir -P $CL_HOME/sv` as your uid; PG, Valkey
+- `raw.idmap` maps your uid/gid 1:1; PID 1 is `incus-init.sh` (brings `lo` up, runs
+  `runsvdir -P $CL_HOME/sv` as your uid, and on SIGPWR from `incus stop` stops PG first and then the
+  rest); PG, Valkey
   and FPM stay on sockets in `$CL_RUN`; the only port is a proxy device on `127.0.0.1:$CL_PORT_HTTP`;
 - `down.sh` stops PG cleanly and then the container (`$CL_RUN/incus.name`).
 
