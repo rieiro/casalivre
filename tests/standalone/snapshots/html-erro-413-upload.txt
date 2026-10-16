@@ -6,4 +6,4 @@ Referrer-Policy: same-origin
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 
-<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="/assets/app.css?v=b510075a90f1"><body class="err-page err-pad"><h1>Envio grande demais</h1><p>Este envio tem 8,0 MB e o limite do sistema é 8 MB. Escolha menos fotos ou arquivos menores.</p><p><a href="/">Voltar ao início</a></p></body></html>
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Envio grande demais</title><link rel="stylesheet" href="/assets/app.css?v=b510075a90f1"><body class="err-page err-pad"><h1>Envio grande demais</h1><p><a href="/">Voltar ao início</a></p></body></html>

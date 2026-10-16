@@ -564,7 +564,7 @@ final class HouseRepository
     {
         $driver = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME);
         $series = $driver === 'pgsql'
-            ? "WITH RECURSIVE days(day) AS (SELECT CAST(? AS text) UNION ALL SELECT to_char(CAST(day AS date) + INTERVAL '1 day', 'YYYY-MM-DD') FROM days WHERE day < CAST(? AS text))"
+            ? "WITH RECURSIVE days(day) AS (SELECT CAST(? AS date) UNION ALL SELECT CAST(day + 1 AS date) FROM days WHERE day < CAST(? AS date))" // calendar_days.day é DATE no PG
             : "WITH RECURSIVE days(day) AS (SELECT ? UNION ALL SELECT date(day, '+1 day') FROM days WHERE day < ?)";
         $guardSql = $guard
             ? " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva'))"

@@ -4,7 +4,7 @@
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 $csrf = t_login($base, $jar, $owner['email'], $owner['password']);

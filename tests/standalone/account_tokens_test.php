@@ -3,10 +3,10 @@
 // e-mail novo e existente recebem a mesma resposta; existente gera só o aviso 'exists' (24 h por destinatário; conta pendente
 // recebe a ativação de novo). Uso único atômico dos tokens, session_version, índices, ON CONFLICT e limite por IP na web.
 require __DIR__ . '/lib.php';
-t_temp_db();
+t_temp_sqlite();
 require_once CL_ROOT . '/src/MailWorker.php';
 $owner = t_seed_owner();
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 putenv('APP_ENV=dev');
 putenv('APP_URL=http://127.0.0.1:8080');
 putenv('SMTP_HOST');

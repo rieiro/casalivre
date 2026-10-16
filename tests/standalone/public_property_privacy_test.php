@@ -4,7 +4,7 @@
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88000000', 'Rua A', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 db()->prepare("INSERT INTO photos (property_id, path, is_primary, sort_order, audit_hold) VALUES (?, '/uploads/a.jpg', 1, 0, 'retido')")->execute([$owner['house_id']]);
 // Foto do pipeline do #39 ainda em processamento: não pode aparecer no público (só status = ready).
 db()->prepare("INSERT INTO photos (property_id, path, is_primary, sort_order, status, uuid, original) VALUES (?, '/uploads/fotos/proc-uuid-1280.webp', 0, 1, 'processing', 'proc-uuid', 'orig-secreto.jpg')")->execute([$owner['house_id']]);

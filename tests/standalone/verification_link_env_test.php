@@ -5,7 +5,7 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/helpers.php';
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 
 function csrf_of(string $base, string $jar, string $page = '/entrar'): string
 {

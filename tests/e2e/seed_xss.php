@@ -19,7 +19,7 @@ require_once $root . '/src/UserRepository.php';
 require_once $root . '/src/HouseRepository.php';
 require_once $root . '/src/helpers.php';
 require_once $root . '/src/Rooms.php';
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $email = 'dono.xss@casalivre.test';
 $password = 'Casa#Xss';
 $userId = UserRepository::insert([
