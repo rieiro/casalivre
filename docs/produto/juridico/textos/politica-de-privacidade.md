@@ -1,7 +1,7 @@
 # Política de privacidade da casalivre
 
 > **MINUTA, versão 0.1, de 16/10/2026. Não publicar.**
-> Primeira versão escrita pelo redator jurídico (bot) com base em `juridico/recomendacoes-sem-orientacao-externa.md` (seção 5, item E, e seção 6) e `juridico/parecer-J1-J35.md` (J1 a J35 e itens 47 a 49), conferida com as specs 01 a 10. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver `juridico/recomendacoes-sem-orientacao-externa.md`).**
+> Primeira versão escrita pelo redator jurídico (bot) com base em [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md) (seção 5, item E, e seção 6) e [../parecer-J1-J35.md](../parecer-J1-J35.md) (J1 a J35 e itens 47 a 49), conferida com as specs 01 a 10. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md)).**
 > Antes de publicar: preencher os campos **[PREENCHER]**, resolver os pontos **[CONFERIR]**, concluir o RIPD da selfie (LGPD, art. 38) e os testes de legítimo interesse (LIA, art. 10) da lista de bloqueio, da avaliação de hóspedes e da moderação, e obter o "ok" do Rafael.
 
 **Versão:** [PREENCHER] · **Vigente a partir de:** [PREENCHER] · **Última atualização:** [PREENCHER]
@@ -54,6 +54,7 @@ As bases legais são as do art. 7º da LGPD (dados pessoais) e do art. 11 (dados
 |---|---|---|---|
 | **Registro de acesso**: data, hora, endereço IP e porta de origem, inclusive de acessos sem login | Cumprir o Marco Civil e permitir a identificação por ordem judicial | Obrigação legal (art. 7º, II; Marco Civil, art. 15) | **6 meses**, com o IP e a porta **cifrados de forma reversível**; mais tempo só por pedido de autoridade (art. 15, § 2º), ordem judicial ou legal hold de um caso concreto |
 | Buscas e páginas vistas (cidade, raio, filtros, imóvel visto, canal de origem) | Funcionar a busca, segurança e métricas do produto | Legítimo interesse (art. 7º, IX) | Métricas **sem dado pessoal**. [CONFERIR: o log de atividades atual (`storage/logs/activity.sqlite`) grava cidade e raio da busca e o e-mail no login; definir se entra na classe "acesso" (6 meses).] |
+| **Busca**: termos buscados sem resultado | Melhorar a oferta de imóveis | Legítimo interesse (art. 7º, IX; art. 10) | Termos buscados sem resultado são registrados de forma agregada e sem identificação (sem conta, IP ou sessão), apenas quando repetidos por pelo menos 5 buscas no dia, para melhorar a oferta de imóveis. Base: legítimo interesse. Guarda: **12 meses**. Antes da agregação, o termo (já sem e-mail, telefone, CPF/CNPJ ou links) fica até 48 horas em contagem temporária |
 | Favoritos sem login | Salvar imóveis | Armazenado **só no seu dispositivo**, com os códigos dos imóveis | Até você apagar ou entrar na conta |
 | Cookies de sessão e segurança | Manter o login e proteger contra ataques (CSRF) | Execução de contrato e legítimo interesse (art. 7º, V e IX) | Pelo tempo da sessão. [CONFERIR: inventário de cookies e uso de ferramentas de análise; as specs não preveem cookies de publicidade.] |
 
