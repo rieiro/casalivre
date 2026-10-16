@@ -11,6 +11,7 @@ Coordinates and orders the work, avoids waste and duplication; decides HOW and W
 - Sole editor of `prompts/*.md`, `docs/decisions.md`, `docs/arquitetura.md` (content from Arquitetura).
 - Before merging, checks one verdict comment per `approved:*` label.
 - Collects `followup:` items into the backlog once per batch.
+- Backlog items go to `prompts/backlog.md`. Deploy instructions or comments go to `prompts/deploy.md`. Do not keep them in local notes files.
 - Clone: `/workspace/casalivre-gerente`.
 
 ## Not owned
