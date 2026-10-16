@@ -152,6 +152,16 @@ Itens aprovados pelo usuário (15/10), a partir do diagnóstico do Bot Arquitetu
 
 Descartado: medição de concorrência de escrita no SQLite. O usuário decidiu que não é necessária, porque a migração de banco será feita de qualquer forma no futuro.
 
+## ADR 001 search implementation
+Source: ADR 001 (incl. §11) and `docs/produto/specs/spec-busca-localidade-resolvida.md`.
+- [ ] Implement ADR 001 search: SQL search with pagination, `places` and `place_search_keys` (SCHEMA 20), search only on a resolved place or map bbox, free-text full scan removed, total-price sort guard (5,000 candidates), demand log with Segurança conditions 1–7. Owner: Programador. Starts after P0-5 (#120) and the `cl_app` ACL PR below are merged.
+- [ ] Valkey ACL PR: add `+hlen +hexists` to `cl_app` (`ops/dev-env/services.sh:37`) and the prod ACL; add `hlen cl:x` → ok and `hlen x` → NOPERM cases to `ops/dev-env/valkey-acl-check.sh`. Owner: Programador; Segurança informed.
+
+Blockers before the demand log ships (Jurídico, ADR 001 §11 P7 legal verdict):
+- [ ] Privacy notice: add a "Busca" row to `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text: "Termos buscados sem resultado são registrados de forma agregada e sem identificação (sem conta, IP ou sessão), apenas quando repetidos por pelo menos 5 buscas no dia, para melhorar a oferta de imóveis. Base: legítimo interesse. Guarda: 12 meses." Do not promise "anonymous" for the transient phase. Owner: Jurídico.
+- [ ] LIA at docs/lgpd/lia-demand-log.md (to be created) (LGPD art. 10 §3): purpose (search coverage and inventory), necessity, balancing (no profiling, no user link, low impact on expectations), safeguards. Check the current version of the ANPD legitimate-interest guide. Owner: Jurídico.
+- Acceptance (Jurídico): both files exist; Segurança items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place. If a frequent term names a third party, delete it manually.
+
 ## Review follow-ups
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.

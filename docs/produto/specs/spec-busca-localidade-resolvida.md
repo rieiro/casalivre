@@ -65,3 +65,29 @@ Source: UI review of this spec. Applies to home and search (spec-01 §1–2) and
 10. **Regional channel.** A regional channel's field starts with the region as a removable chip ("Região dos Lagos ×"). Removing it searches the whole marketplace only if the channel allows it.
 
 Sources: W3C APG Combobox Pattern (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/) and its list autocomplete example (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-autocomplete-list/); WCAG 2.2 4.1.3 (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) and 2.5.8 (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html); NN/g, Site Search Suggestions (https://www.nngroup.com/articles/site-search-suggestions/) and "No Results" pages (https://www.nngroup.com/articles/search-no-results-serp/); Baymard, Autocomplete Suggestions (https://baymard.com/blog/autocomplete-design).
+
+## Implementation notes (ADR 001 §11, Arquitetura, 2026-10-16)
+Source: ADR 001 §11.2 and §11.3 (Gerente's ADR notes). The UX side of matching (word start, aliases, 9+ matches) is in item 2 above; this section only adds the data and privacy rules.
+
+### Search keys (§11.2)
+- A `place_search_keys` table (`place_id`, `key`, `kind` name/alias, `popularity`; primary key `(key, place_id)`) serves the prefix lookup on PostgreSQL and SQLite.
+- Keys are **word suffixes** of the folded name, one per word start, running to the end of the name: "praia do forte" gives `praia do forte` and `forte`. A multi-word prefix such as "praia do f" therefore still matches.
+- Stopwords (`de, da, do, das, dos, e`) never start a key but stay inside keys.
+- Keys are generated in PHP with the same `fold()` on both engines when a place is written or seeded. The query uses a key range, not `LIKE`.
+- Measured on synthetic data (not production): every tested prefix p95 < 30 ms, under the 50 ms target.
+
+### Demand log (§11.3)
+Approved by Segurança (with the 7 conditions below) and by Jurídico (conditional on them).
+1. Redact before counting: fold, trim, cap at 64 characters. Drop the term entirely if it looks like an email, URL, phone or CPF/CNPJ, or has 6 or more digits in total.
+2. Persist only terms with a daily count of at least 5; discard the rest.
+3. No hashing: store the redacted text plus the threshold.
+4. No user id, IP, session, user location, or time finer than a day. Zero-result entries store `place_id` only.
+5. Retention: Valkey daily key expires after 48 hours; PostgreSQL rows kept 12 months, then deleted or rolled up to a monthly top-N.
+6. The same redaction applies to search parameters in `activity_log`. The query string never goes into any log kept longer than nginx's 14-day access log.
+7. The PostgreSQL table is readable only by the BI/admin role, not by the app web role; only the flush worker writes to it.
+
+- **Design rule (Jurídico, LGPD art. 12):** the daily table (`day`, `kind` unresolved/zero_result, `term`, `place_id`, `count`) has no user, session or IP columns and no foreign key to any table that has them. Joining it with identifying data is forbidden.
+- **Legal basis** for the transient phase (raw text, Valkey up to 48 h, activity_log, nginx logs): legitimate interest (LGPD art. 7 IX and art. 10). Do not call this phase "anonymous".
+- **Field cap:** at most 20,000 terms per daily hash. Once the cap is reached, existing terms keep counting and new terms go to an overflow counter, which raises a spam alert at flush.
+- **Valkey ACL:** `cl_app` needs `+hlen` and `+hexists` (separate PR, Segurança informed through the Gerente).
+- **Before shipping:** a short LIA at docs/lgpd/lia-demand-log.md (to be created) and the "Busca" row in `docs/produto/juridico/textos/politica-de-privacidade.md` (see `prompts/backlog.md`, "ADR 001 search implementation").
