@@ -3,6 +3,7 @@
 One line per decision in force, newest first within each area. Superseded decisions are removed. Only Gerente edits this file.
 
 ## Process
+- 2026-10-16: Work order: XSS -> P0 -> ADR 001 -> schema spec.
 - 2026-10-16: Team protocol in [prompts/team.md](../prompts/team.md) (PR labels as state machine, fixed verdict format), approved by Rafael; replaces `prompts/regrasbots.md`.
 - 2026-10-16: English everywhere (bots, Rafael, PRs).
 - 2026-10-14: No staging/homologation per batch while there is no production; it returns once, before the first go-live. Focused QA per PR, one full regression per batch.
@@ -12,6 +13,7 @@ One line per decision in force, newest first within each area. Superseded decisi
 - 2026-10-16: Production-like dev env: Void Linux musl container with nginx, PHP-FPM 8.4, PostgreSQL and Valkey, no Docker; recipe in `ops/dev-env/` (#112). Rafael's Incus container is only for his own tests. Production: ValueHost bare-metal in Brazil.
 - 2026-10-16: SQLite must keep working; optimization, index tuning and performance measurement happen only on PostgreSQL.
 - 2026-10-14: The DB is recreated from scratch during sprints (no data migration or backfill); `Db::SCHEMA_VERSION` still bumps on schema change.
+- No DROP, TRUNCATE, DELETE without WHERE, or use of production data without Rafael's explicit approval.
 - `RESTRICT` on `properties.user_id`.
 - activity_log moves to PostgreSQL; the Mongo driver is removed.
 - Valkey ACL as merged in #112: default user off; `cl_app` limited to `~cl:* &cl:* -@all` plus allowlist (no streams/Lua); separate `cl_admin`; aclfile 0600, password files 0440, socket 0660.
@@ -22,7 +24,6 @@ One line per decision in force, newest first within each area. Superseded decisi
 - Separate `LOG_SALT` in production.
 - iCal feeds: https only; a failed download returns 502.
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
-- Changes to CSP or error-page snapshots require Seguranca review.
 
 ## Product
 - Email (signup, password reset): code ready but off, with no provider; both stay closed in production until a provider is chosen.
