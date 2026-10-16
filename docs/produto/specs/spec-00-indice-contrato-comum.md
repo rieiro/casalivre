@@ -227,10 +227,10 @@ stateDiagram-v2
 | Pedido de exclusão | registro 5 anos | global | decidido (J23) | 02 |
 | Favoritos anônimos | só IDs públicos, até 100 | dispositivo | [E] | 08 |
 | Comparação | até 4 no desktop, 2 por tela no mobile | global | decidido (Produto) | 08 |
-| Split franquia, canal direto | 900 proprietário / 40 corretor / 30 royalty / 30 fundo (‰) | modelo de split | [pendente: Rafael, D2] | 05 |
+| Split franquia, canal direto | proprietário 900; franqueado 100 (NFS-e 10.05), que se dividem em 40 de corretagem, 30 para o fundo e 30 de royalty, este faturado pela casalivre ao franqueado no item 17.08 (‰; percentuais configuráveis) | modelo de split | [pendente: Rafael, D2] | 05 |
 | Emissor da cobrança | por parcela: casalivre, franqueado/parceiro, outro recebedor | modelo de split | decidido | 05 §2 |
-| Cobrança do franqueado (franquia) | 7% = 4% corretor + 3% fundo; NFS-e do franqueado; o franqueado repassa o fundo | modelo | decidido | 05 Ap. A |
-| Royalty casalivre | 3% (2% ou 3% no OTA), emissor casalivre | modelo | [pendente: Rafael, D12] | 05 |
+| Cobrança do franqueado (franquia) | 10% = 4% corretagem + 3% fundo + 3% royalty (parâmetros); NFS-e do franqueado (10.05); o franqueado repassa o fundo e paga o royalty | modelo | decidido | 05 Ap. A |
+| Royalty casalivre | 3% (2% ou 3% no OTA), emissor casalivre, tomador franqueado (17.08); base: reservas concluídas + valores retidos em cancelamentos com reembolso parcial definitivos no mês; reembolso total não gera royalty | modelo | [pendente: Rafael, D12] | 05 |
 | Fundo regional | sem retenção pela casalivre (sem subconta, sem mandato); extrato alimentado pelo repasse do franqueado; extrato em tempo real por franqueado; trimestral PDF/CSV (saldos, entradas por franqueado e por reserva, mídia com notas, resultado de campanhas); anual consolidado; S8+ | organização | decidido (Negócios) | 05 §4 |
 | Extrato do proprietário | mensal, agrupado por emissor: nome, valor, link da fatura; sem royalty (royalty só no extrato do franqueado) | global | decidido | 05 Ap. A |
 | Fatura P9 | vencimento 10 dias; multa 2% + juros 1% a.m. pro rata + IPCA; D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) | global | [E]; encargos decididos (item 15) | 05 Ap. A |
@@ -254,7 +254,7 @@ stateDiagram-v2
 ## 6. Contradições corrigidas
 | # | Onde | Antes | Depois |
 |---|---|---|---|
-| 1 | 05 Ap. A, §2, §4 | Fundo de 3% retido pela casalivre como mandatária, subconta segregada, "repasse em nome do franqueado" | Fundo dentro dos 7% do franqueado (NFS-e dele), que repassa ao fundo; emissor por parcela |
+| 1 | 05 Ap. A, §2, §4 | Fundo de 3% retido pela casalivre como mandatária, subconta segregada, "repasse em nome do franqueado" | Fundo dentro dos 10% do franqueado (NFS-e dele), que repassa ao fundo; emissor por parcela |
 | 2 | 05 Ap. A | Fatura com "comissão por destino" (todas as parcelas) | Cada emissor fatura só as próprias parcelas |
 | 3 | 02 §3, 06 | "Diária recebida" | "Estadia recebida" (como em 01 e 09) |
 | 4 | 02 §2 | "O hóspede tem 24 h para pagar" | Prazo real com a regra 24 h / 4 h |
