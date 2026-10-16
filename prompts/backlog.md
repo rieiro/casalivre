@@ -210,10 +210,25 @@ Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is
 - [ ] Calendar retention (period from Negócios), types (item 9), `city_id` (item 10); LGPD retention: involve Segurança. Source: BD scale review. Owner: Arquitetura/BD.
 - [ ] Cleanup: remove `views/mailbox.php` (prints raw `$mail['html']`, no route uses it). Source: Segurança. Owner: Programador.
 - [ ] Segurança caveats on #109: CI assert that the author/email HMAC is non-null and 64 hex; LogPrivacy key via `*_KEY_FILE`, 32-byte HMAC, no truncation (src/LogPrivacy.php:39), with the single spec. Owner: Programador/Segurança.
-- [ ] Revisor on #106: README still says "port block" (now one port); the "run etc log sv data" list duplicated in `up-bwrap.sh` should be a variable in `lib.sh`. Owner: Programador.
+- [ ] Revisor on #106: README still says "port block" (now one port); the "run etc log sv data" list duplicated in `up-bwrap.sh` (and `up-incus.sh` since #120) should be `CL_MOUNT_DIRS` in `lib.sh` (Revisor, again on #120). Owner: Programador.
 - [ ] #112 Arquitetura low findings: `valkey-acl-check.sh:10` should use `env_alive`; in dev the app user can read the admin secret. Owner: Programador.
 - [ ] #113 optional B1/B2 (Gerente's ADR notes, revisao-pr113.md). Owner: Programador.
 - [ ] Docs: sync the Jurídico spec-05 fiscal appendix draft (line 26, merged cancellation sentence) into `docs/produto/juridico/` and the spec-05 tax part. Owner: Gerente/Jurídico.
+
+### P0-5 Incus path (#120)
+- [ ] `down.sh:12`: with no incus client, a RUNNING container is treated as stale; warn when `command -v incus` fails. Source: Teste. Owner: Programador.
+- [ ] `incus-init.sh`: `exec` the `as_user` runsvdir so only PID 1 runs as root. Source: Teste. Owner: Programador.
+- [ ] `incus-init.sh` worst-case stop is longer than the 30 s stop timeout; align them. Source: Teste. Owner: Programador.
+- [ ] `down.sh` leaves the instance STOPPED and the `cl-rootfs` image behind; prune old `cl-rootfs-*` images. Source: Teste, Arquitetura. Owner: Programador.
+- [ ] Preflight order: the subid check and the STOPPED-delete run before `refuse_running`. Source: Teste, Arquitetura. Owner: Programador.
+- [ ] `ops/dev-env/sv/postgresql/run`: send the PG log to the CL_HOME log dir so a fast shutdown can be checked. Source: Teste. Owner: Programador.
+- [ ] `incus-init.sh` runs as container root from the writable repo mount: copy it into the image at import, or ro-bind `ops/dev-env` (Low-Med, dev only). Source: Segurança. Owner: Programador; Segurança reviews.
+- [ ] Container root is writable and the default NIC gives outbound network (Low, dev only). Source: Segurança. Owner: Arquitetura/Segurança to decide.
+- [ ] `down.sh:14-15`: PG is stopped twice (explicit `incus exec sv stop`, then SIGPWR in `incus-init.sh:20`); drop the explicit stop. Source: Revisor. Owner: Programador.
+- [ ] Add `incus_exec()` to `lib.sh` for the repeated `incus exec --user --group --cwd` pattern (`db-setup.sh:22-25`, `down.sh:13`). Source: Revisor. Owner: Programador.
+- [ ] `up.sh:15`: use `lib.sh` `die` instead of the hand-rolled error/exit. Source: Revisor. Owner: Programador.
+- [ ] README: a change to `incus-init.sh` takes effect only when the container is recreated. Source: Arquitetura. Owner: Programador.
+- [ ] `test-pg.sh` and `valkey-acl-check.sh` are bwrap-only; support the Incus path. Source: Arquitetura. Owner: Programador.
 
 ### P1 image worker (libvips)
 - [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.
