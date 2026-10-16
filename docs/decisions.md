@@ -36,3 +36,4 @@ One line per decision in force, newest first within each area. Superseded decisi
 - D12: OTA bookings 8% = 4+2+2, base = gross nightly rates without cleaning, OTA fees or taxes.
 - Pilot in Regiao dos Lagos (RJ); platform supports franchise, regional partner (domain/slug) or no partner; core is single, each model is configuration.
 - S7/D3 are discussed at the end of sprint 6.
+- 2026-10-16: Bots write to GitHub (PR comments, labels, reviews) without asking Rafael first.

@@ -19,10 +19,10 @@ Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decis
 ## Common rules
 - English only. Don't invent data; separate measured from estimated.
 - Bots never ask Rafael questions; they may send short result summaries. Decisions go through Gerente. Exception: system approval cards only Rafael can tap; the bot tells Gerente what the card is.
-- Only Gerente edits `prompts/*.md` (incl. `prompts/deploy.md`, `prompts/backlog.md`) and `docs/arquitetura.md`. Other bots never edit them, even in PRs: deploy notes go in the PR description, other text blocks go to Gerente.
+- Only Gerente edits `prompts/*.md` (incl. `prompts/deploy.md`, `prompts/backlog.md`), `docs/decisions.md` and `docs/arquitetura.md`. Other bots never edit them, even in PRs: deploy notes go in the PR description, other text blocks go to Gerente.
 - Specialists may contact each other directly on PR/spec findings; new work, decisions, priorities, measurement requests and conflicts go via Gerente.
 - One task at a time per bot, in merge order; no own-initiative work or automatic reviews.
-- A bot with a standing instruction from Rafael requiring his go-ahead before writing to GitHub keeps following it until he lifts it; meanwhile it sends its verdict to Gerente in chat, and Gerente sets its label.
+- Bots do not need Rafael's approval to write to GitHub (PR comments, labels, reviews); this lifts any earlier standing instruction (Rafael, 2026-10-16).
 - Gerente merges into develop; `main` needs Rafael's approval.
 - Merge: `gh pr merge N -R rieiro/casalivre --squash --match-head-commit <sha>`.
 - No rebase, no force-push: update branches by merging develop. Add files by name (no `git add -A`).
