@@ -158,8 +158,8 @@ Source: ADR 001 (incl. §11) and `docs/produto/specs/spec-busca-localidade-resol
 - [ ] Valkey ACL PR: add `+hlen +hexists` to `cl_app` (`ops/dev-env/services.sh:37`) and the prod ACL; add `hlen cl:x` → ok and `hlen x` → NOPERM cases to `ops/dev-env/valkey-acl-check.sh`. Owner: Programador; Segurança informed.
 
 Blockers before the demand log ships (Jurídico, ADR 001 §11 P7 legal verdict):
-- [ ] Privacy notice: add a "Busca" row to `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text: "Termos buscados sem resultado são registrados de forma agregada e sem identificação (sem conta, IP ou sessão), apenas quando repetidos por pelo menos 5 buscas no dia, para melhorar a oferta de imóveis. Base: legítimo interesse. Guarda: 12 meses." Do not promise "anonymous" for the transient phase. Owner: Jurídico.
-- [ ] LIA at docs/lgpd/lia-demand-log.md (to be created) (LGPD art. 10 §3): purpose (search coverage and inventory), necessity, balancing (no profiling, no user link, low impact on expectations), safeguards. Check the current version of the ANPD legitimate-interest guide. Owner: Jurídico.
+- [x] (Done in #131.) Privacy notice: add a "Busca" row to `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text: "Termos buscados sem resultado são registrados de forma agregada e sem identificação (sem conta, IP ou sessão), apenas quando repetidos por pelo menos 5 buscas no dia, para melhorar a oferta de imóveis. Base: legítimo interesse. Guarda: 12 meses." Do not promise "anonymous" for the transient phase. Owner: Jurídico.
+- [x] (Done in #131; ANPD guide v1.0, Feb 2024, verified.) LIA at `docs/lgpd/lia-demand-log.md` (LGPD art. 10 §3): purpose (search coverage and inventory), necessity, balancing (no profiling, no user link, low impact on expectations), safeguards. Check the current version of the ANPD legitimate-interest guide. Owner: Jurídico.
 - Acceptance (Jurídico): both files exist; Segurança items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place. If a frequent term names a third party, delete it manually.
 
 ## Review follow-ups
