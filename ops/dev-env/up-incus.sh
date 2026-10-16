@@ -27,9 +27,7 @@ if [ "$status" = RUNNING ]; then
 fi
 [ -z "$status" ] || incus delete --force "$name"
 
-ensure_dirs
-render_templates host
-"$CL_DEVENV_DIR/services.sh"
+prestart incus
 
 # Image from the same rootfs dir (packed, not rebuilt).
 tag=$(cat "$CL_DEVENV_DIR/versions.lock" "$CL_HOME/.provisioned" | sha256sum | cut -c1-12)

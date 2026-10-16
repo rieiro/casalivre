@@ -23,6 +23,8 @@ mkdir("$home/rootfs/usr/bin", 0700, true);
 mkdir($bin, 0700, true);
 file_put_contents("$home/rootfs/usr/bin/marker", 'rootfs');
 touch("$home/.provisioned");
+mkdir("$home/data/pg18", 0700, true);
+file_put_contents("$home/data/pg18/postmaster.pid", "999999\n");
 // Stub incus: logs argv (one line, args separated by " | "); `list` prints the state file (status).
 file_put_contents("$bin/incus", <<<SH
 #!/bin/bash
@@ -52,6 +54,8 @@ $calls = static fn (): array => file_exists($log) ? file($log, FILE_IGNORE_NEW_L
 echo "up-incus.sh\n";
 [$code, $out] = $run("/bin/bash $dev/up-incus.sh");
 t_eq(0, $code, 'up-incus.sh ok' . ($code ? ": $out" : ''));
+t_ok(!file_exists("$home/data/pg18/postmaster.pid"), 'stale postmaster.pid removed (shared prestart)');
+t_ok(str_contains($out, 'removing') && str_contains($out, 'postmaster.pid'), 'removal is logged');
 $c = $calls();
 $all = implode("\n", $c);
 $import = array_values(array_filter($c, static fn ($l) => str_starts_with($l, 'image | import')));
@@ -100,6 +104,13 @@ $n = count($calls());
 $tail = implode("\n", array_slice($calls(), $n));
 t_ok($code === 0 && str_contains($tail, 'delete | --force') && str_contains($tail, "\ninit | ") && !str_contains($tail, 'image | import'), 'delete + init, no re-import');
 $run("/bin/bash $dev/down.sh");
+
+echo "shared prestart\n";
+foreach (['up-bwrap.sh', 'up-incus.sh'] as $f) {
+    $src = (string) file_get_contents("$dev/$f");
+    t_eq(1, substr_count($src, 'prestart '), "$f calls prestart once");
+    t_ok(!str_contains($src, 'postmaster.pid') && !str_contains($src, 'ensure_dirs') && !str_contains($src, 'render_templates'), "$f has no copy of the pre-start steps");
+}
 
 echo "up.sh dispatch\n";
 $stubDev = "$base/dev";

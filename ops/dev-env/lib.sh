@@ -139,3 +139,23 @@ render_templates() {
 incus_name() {
 	printf 'cl-dev-%s-%s\n' "$(id -u)" "$(printf '%s' "$CL_HOME" | sha256sum | cut -c1-8)"
 }
+
+# Pre-start shared by up-bwrap.sh and up-incus.sh: CL_HOME dirs (0700), stale postmaster.pid cleanup,
+# templates and services.sh (sv/ and the services' env). $1 = bwrap | incus.
+prestart() {
+	local mode=$1 pm
+	case $mode in bwrap | incus) ;; *) die "prestart: mode must be bwrap or incus" ;; esac
+	ensure_dirs
+	# A leftover postmaster.pid would collide with PIDs reused in the new namespace/container. The PID in
+	# it belongs to the old one (not checkable from the host), so it is removed only if no live postgres
+	# uses that PGDATA; otherwise abort.
+	for pm in "$CL_HOME"/data/*/postmaster.pid; do
+		[ -f "$pm" ] || continue
+		pgdata_in_use "$(dirname "$pm")" && die "live postgres in $(dirname "$pm"); run down.sh"
+		log "removing $pm (dead postmaster)"
+		rm -f "$pm"
+	done
+	# The Incus host may not have bwrap: templates use the host envsubst there.
+	if [ "$mode" = bwrap ]; then render_templates bwrap; else render_templates host; fi
+	"$CL_DEVENV_DIR/services.sh"
+}

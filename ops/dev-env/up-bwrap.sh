@@ -19,20 +19,7 @@ if env_alive "${bw:-}" "${init:-}"; then
 fi
 rm -f "$CL_PIDFILE"
 
-ensure_dirs
-
-# postmaster.pid que sobrou colidiria com PIDs reusados no namespace novo. O
-# PID gravado é do namespace antigo (não dá para olhar no host), então só
-# remove se nenhum postgres vivo usa esse PGDATA; senão aborta.
-for pm in "$CL_HOME"/data/*/postmaster.pid; do
-	[ -f "$pm" ] || continue
-	pgdata_in_use "$(dirname "$pm")" && die "há postgres vivo em $(dirname "$pm"); rode down.sh"
-	log "removendo $pm (postmaster morto)"
-	rm -f "$pm"
-done
-
-render_templates bwrap
-"$CL_DEVENV_DIR/services.sh"  # P0-2: sv/ e env dos serviços
+prestart bwrap
 
 # Runtime com rootfs somente leitura (serviço comprometido não altera os
 # binários); /tmp em tmpfs 1777; graváveis só os diretórios do CL_HOME e o repo.
