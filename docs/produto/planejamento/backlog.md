@@ -234,6 +234,12 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
 
 ## Itens adiados
 - Hóspede estrangeiro sem CPF: document_type/document_country (passaporte) e hmac por tipo/país, depois do J40 com o Jurídico (decisão do Rafael: deixar para depois). Por enquanto o CPF é obrigatório (guest_fiscal_party_id NOT NULL).
+  - **Critérios de aceite** (para depois do piloto, com o J40 respondido pelo Jurídico):
+    1. Com document_type=passport, o cadastro exige o país emissor.
+    2. A DIMOB sai com "NDP" no lugar do CPF.
+    3. A NFS-e preenche o NIF do país de origem ou o motivo da ausência.
+    4. Nenhum pagamento aceita moeda estrangeira fora do PSP.
+    5. O passaporte segue a mesma retenção dos outros documentos.
 
 ## Pauta do Rafael (decisões pendentes, 16/10)
 - Dados da empresa para os termos: razão social, CNPJ, endereço e DPO (encarregado).
