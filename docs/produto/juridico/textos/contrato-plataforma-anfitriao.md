@@ -2,7 +2,7 @@
 
 > **MINUTA, versão 0.1, de 16/10/2026. Não publicar nem assinar.**
 > Primeira versão escrita pelo redator jurídico (bot) com base em `juridico/recomendacoes-sem-orientacao-externa.md` (seções 1, 2, 4 e 5, item D) e `juridico/parecer-J1-J35.md` (J4 a J8, itens 13 a 22, J35), conferida com as specs 00, 02, 03, 05, 06 e 09 e, na parte fiscal, com `juridico/spec-05-apendice-fiscal.md`, que prevalece sobre a spec-05 e a spec-00. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver `juridico/recomendacoes-sem-orientacao-externa.md`).**
-> Antes de usar: preencher os campos **[PREENCHER]**, resolver os pontos **[CONFERIR]**, decidir os números pendentes do split (D2; a D12 foi decidida em 2026-10-16: 2% no OTA) e obter o "ok" do Rafael.
+> Antes de usar: preencher os campos **[PREENCHER]**, resolver os pontos **[CONFERIR]**, decidir os números pendentes do split (D2; a D12 foi decidida em 2026-10-16) e obter o "ok" do Rafael.
 > Este contrato **não é** o contrato de franquia nem a Circular de Oferta de Franquia (COF) do corretor franqueado, que são documentos separados (Lei 13.966/2019).
 
 **Versão:** [PREENCHER] · **Vigente a partir de:** [PREENCHER] · **Aceite eletrônico:** versão, hash, data, hora e IP registrados pelo sistema.
@@ -179,7 +179,7 @@ Os percentuais são **parâmetros do modelo de split**. O valor aplicado fica gr
 - **O proprietário recebe só a fatura e a NFS-e do franqueado (a comissão total da franquia).** A casalivre **não fatura o proprietário** na franquia, e **nenhuma linha de royalty aparece** para ele.
 - O **royalty** é pago **pelo franqueado** com a comissão que ele recebe, numa fatura mensal casalivre → franqueado. A base é a das reservas da franquia **concluídas** no mês e a dos **valores retidos em cancelamentos com reembolso parcial definitivos no mês**. **Reembolso total não gera royalty.** O royalty segue o contrato de franquia, que é separado deste.
 - O franqueado repassa o fundo por obrigação do contrato de franquia. **A casalivre não recebe, não retém nem administra** o valor do fundo, não age como mandatária do franqueado e não cobra o fundo do proprietário.
-- No canal OTA, os percentuais de royalty e de fundo são de 2% (D12, decidido 2026-10-16; Anexo I).
+- No canal OTA, o royalty e o fundo são de **2%** (D12, decidido 2026-10-16; Anexo I). A base são as **diárias brutas da reserva OTA**, excluídas a taxa de limpeza, as taxas e comissões da OTA e os impostos ou taxas municipais. Se a OTA cancelar com reembolso parcial, vale a regra do valor retido (cláusula 9.1-A).
 
 9.5. **Modelo parceria.** O parceiro (com CRECI ativo) fatura ao proprietário a comissão dele, em NFS-e própria, item 10.05. A comissão da casalivre também é faturada em NFS-e no item 10.05, a um **tomador configurável por modelo**. **O padrão é o proprietário**: cada um fatura a sua parte a ele. Se o contrato de parceria disser que o parceiro paga a casalivre, o tomador passa a ser o parceiro, e o proprietário recebe só a fatura do parceiro.
 
@@ -193,7 +193,7 @@ Os percentuais são **parâmetros do modelo de split**. O valor aplicado fica gr
 
 ## 10. Fatura mensal, vencimento e atraso (piloto)
 
-10.1. **Faturas separadas por emissor.** No fim de cada mês, **cada emissor gera só a sua fatura**, com só as parcelas que lhe cabem, das reservas pagas por fora e **concluídas** no mês. O **extrato mensal do proprietário** mostra só as cobranças **dirigidas a ele**, agrupadas por emissor: na franquia, só a do franqueado; no direto, só a da casalivre; na parceria, as do parceiro e, se ele for o tomador, a da casalivre. Entram também, **no mês em que o reembolso parcial fica definitivo** (confirmado pelo hóspede, considerado feito após 72 h ou decidido em disputa), as reservas canceladas em que o Anfitrião reteve parte das diárias, com a comissão só sobre o valor retido (cláusula 9.1-A). Reservas com reembolso total não entram e não geram comissão nem royalty.
+10.1. **Faturas separadas por emissor.** No fim de cada mês, **cada emissor gera só a sua fatura**, com só as parcelas que lhe cabem, das reservas pagas por fora e **concluídas** no mês. O **extrato mensal do proprietário** mostra só as cobranças **dirigidas a ele**, agrupadas por emissor: na franquia, só a do franqueado; no direto, só a da casalivre; na parceria, as do parceiro e, se ele for o tomador, a da casalivre. Entram também, **no mês em que o cancelamento fica definitivo**, as reservas canceladas em que o Anfitrião reteve parte ou todas as diárias (reembolso parcial ou nenhum reembolso devido pela política), com a comissão só sobre o valor retido (cláusula 9.1-A). Reservas com reembolso total não entram e não geram comissão nem royalty. Um reembolso é **definitivo** no primeiro destes eventos: (i) o hóspede confirma que recebeu; (ii) passam 72 h sem contestação depois de o Anfitrião enviar o comprovante; ou (iii) a disputa é decidida. Um cancelamento sem reembolso devido pela política é definitivo na data do cancelamento, desde que não haja disputa aberta. **Enquanto houver disputa aberta, nada é definitivo.**
 
 10.2. **Taxa de cancelamento.** A taxa de cancelamento da cláusula 8 é **multa contratual** (cláusula penal), e não serviço. Por isso, **não tem NFS-e**. Ela é cobrada **pela casalivre** ao Anfitrião, em qualquer modelo (inclusive na franquia), **com recibo ou nota de débito**.
 
@@ -311,7 +311,7 @@ Por R$ 1.000 de diárias, com os **percentuais padrão** (configuráveis no mode
 | Parceria (930/40/30 e 900/50/50) | Parceiro (10.05) e casalivre (10.05; tomador configurável, padrão proprietário) | — | — | [CONFERIR: papéis de cada parcela, spec-05] |
 | Canal manual | [PREENCHER] | [PREENCHER] | [PREENCHER] | [pendente: Rafael] |
 
-Base: diárias efetivamente retidas pelo Anfitrião (cláusula 9.1-A). A limpeza fica fora. A taxa da OTA é cobrada pela própria OTA, fora do split.
+Base: diárias efetivamente retidas pelo Anfitrião (cláusula 9.1-A). A limpeza fica fora. A taxa da OTA é cobrada pela própria OTA, fora do split. No OTA, a base são as diárias brutas da reserva OTA, excluídas a taxa de limpeza, as taxas e comissões da OTA e os impostos ou taxas municipais.
 
 ## Anexo II: resumo de prazos e parâmetros
 
