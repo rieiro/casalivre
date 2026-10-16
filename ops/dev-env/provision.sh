@@ -61,10 +61,16 @@ check_keys() {
 xbps_install() { as_root xbps-install "$@"; check_keys; }
 
 echo "repository=$repo" >"$CL_ROOTFS/etc/xbps.d/00-repository-main.conf"
-log "atualizando xbps e base"
 check_keys
-xbps_install -Suy xbps
-xbps_install -Suy
+# -Su só no primeiro provision (sem o marcador .provisioned): num re-provision
+# a base fica como está e os travados não se movem (além do hold).
+if [ ! -f "$CL_HOME/.provisioned" ]; then
+	log "primeiro provision: atualizando xbps e base"
+	xbps_install -Suy xbps
+	xbps_install -Suy
+else
+	log "re-provision: sem -Su (remova $CL_HOME/.provisioned para atualizar a base)"
+fi
 pkgname() { printf '%s\n' "${1%-*}"; }
 installed() { as_root xbps-query -p pkgver "$1" 2>/dev/null || true; }
 # ca-certificates: https de dentro do ambiente (critério 13); gettext: envsubst
