@@ -786,7 +786,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
     $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
     $res->registrar();
-    if ($res->mensagem !== null) {
+    // Erro (nada salvo: erros.fotos) ou aviso (parcial) na tela de edição, como a capa.
+    if (isset($res->dados['erros'])) {
+        $_SESSION['upload_notice'] = $res->dados['erros']['fotos'];
+    } elseif ($res->mensagem !== null) {
         $_SESSION['upload_notice'] = $res->mensagem;
     }
     redirect('/imoveis/' . $m[1] . '/editar');
@@ -947,7 +950,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
-    $res = CoverSet::run($propertyId, [(int) $m[2]]);
+    // Valor bruto da rota (só dígitos pela regex): CoverSet valida (InteiroBruto) e confere o dono.
+    $res = CoverSet::run($propertyId, [$m[2]]);
     $res->registrar();
     if ($res->tipo !== 'ok') {
         $_SESSION['upload_notice'] = $res->mensagem;

@@ -13,6 +13,14 @@ final class PhotoRepository
         return $stmt->fetchAll();
     }
 
+    /** A foto é deste imóvel? Uma consulta pontual (sem carregar a lista inteira). */
+    public static function belongsTo(int $propertyId, int $photoId): bool
+    {
+        $stmt = db()->prepare('SELECT 1 FROM photos WHERE id = ? AND property_id = ?');
+        $stmt->execute([$photoId, $propertyId]);
+        return $stmt->fetchColumn() !== false;
+    }
+
     /** Só fotos prontas (público). */
     public static function listReady(int $propertyId): array
     {
