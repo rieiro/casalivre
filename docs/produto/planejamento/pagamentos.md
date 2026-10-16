@@ -18,7 +18,7 @@ Por R$ 1.000 de diária, canal direto:
 | Franquia (M13) | 900 | 40 (corretor) | 30 (royalty) | 30 |
 | Parceria simples | 900 | 50 (configurável 0–20%) | 50 | opcional |
 
-- **Canal é dimensão do split:** OTA na franquia = 4% corretor + royalty 2% ou 3% (D12) + 2% fundo, além da taxa da OTA. Os outros modelos no OTA estão pendentes.
+- **Canal é dimensão do split:** OTA na franquia = 4% corretor + royalty 2% (D12, decidido 2026-10-16) + 2% fundo, além da taxa da OTA. Os outros modelos no OTA estão pendentes.
 - **Limpeza:** o hóspede paga direto ao prestador, com contrato e nota próprios (aprovado pelo Rafael). Fica fora do split da diária. Na P6 o prestador é um recebedor com cobrança própria.
 - **Termos no checkout:** locação, limpeza e plataforma, versionados, com o aceite gravado na reserva.
 - O fundo regional tem saldo próprio no ledger agora; a subconta real só na P6.
@@ -180,7 +180,7 @@ Critérios de aceite:
 1. PSP do piloto (Asaas + Pagar.me?) e cotação formal (as taxas são promocionais [F1][F5]).
 2. Percentual do sinal (o Negócios sugere 20–30% [E]) e a data do saldo (D-30 ou D-45).
 3. Chargeback/MED: proposta de 5% de reserva técnica por 60 dias após o check-out + proprietário `liable` [E] (D6; o jurídico valida).
-4. Split dos modelos: proposta do Negócios em D2; royalty OTA de 2% ou 3% em D12.
+4. Split dos modelos: proposta do Negócios em D2; royalty OTA de 2% (D12, decidido 2026-10-16).
 5. Repassar o MDR do cartão ao hóspede ou absorvê-lo; parcelamento até 6x.
 6. Boleto entra no piloto?
 7. Parecer jurídico: arranjo/Voto BCB 111/2025, CDC art. 49, tributação da limpeza MEI.

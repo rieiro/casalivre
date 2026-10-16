@@ -230,7 +230,7 @@ stateDiagram-v2
 | Split franquia, canal direto | proprietário 900; franqueado 100 (NFS-e 10.05), que se dividem em 40 de corretagem, 30 para o fundo e 30 de royalty, este faturado pela casalivre ao franqueado no item 17.08 (‰; percentuais configuráveis) | modelo de split | [pendente: Rafael, D2] | 05 |
 | Emissor da cobrança | por parcela: casalivre, franqueado/parceiro, outro recebedor | modelo de split | decidido | 05 §2 |
 | Cobrança do franqueado (franquia) | 10% = 4% corretagem + 3% fundo + 3% royalty (parâmetros); NFS-e do franqueado (10.05); o franqueado repassa o fundo e paga o royalty | modelo | decidido | 05 Ap. A |
-| Royalty casalivre | 3% (2% ou 3% no OTA), emissor casalivre, tomador franqueado (17.08); base: reservas concluídas + valores retidos em cancelamentos com reembolso parcial definitivos no mês; reembolso total não gera royalty | modelo | [pendente: Rafael, D12] | 05 |
+| Royalty casalivre | 3% (2% no OTA, D12), emissor casalivre, tomador franqueado (17.08); base: reservas concluídas + valores retidos em cancelamentos com reembolso parcial definitivos no mês; reembolso total não gera royalty | modelo | decidido 2026-10-16 (D12) | 05 |
 | Fundo regional | sem retenção pela casalivre (sem subconta, sem mandato); extrato alimentado pelo repasse do franqueado; extrato em tempo real por franqueado; trimestral PDF/CSV (saldos, entradas por franqueado e por reserva, mídia com notas, resultado de campanhas); anual consolidado; S8+ | organização | decidido (Negócios) | 05 §4 |
 | Extrato do proprietário | mensal, agrupado por emissor: nome, valor, link da fatura; sem royalty (royalty só no extrato do franqueado) | global | decidido | 05 Ap. A |
 | Fatura P9 | vencimento 10 dias; multa 2% + juros 1% a.m. pro rata + IPCA; D+1, D+5, D+15 (sem reservas novas), D+30 (sem pagamento por fora) | global | [E]; encargos decididos (item 15) | 05 Ap. A |
@@ -279,7 +279,7 @@ stateDiagram-v2
 ## 7. Pendências
 | # | Decisão | Dono |
 |---|---|---|
-| 1 | Números do split e royalty OTA (D2, D12) | Rafael |
+| 1 | Números do split (D2); royalty e fundo OTA de 2% (D12) decidido 2026-10-16 | Rafael |
 | 2 | Comissão do canal manual | Rafael |
 | 3 | Aceitar o custo do arrependimento até o check-in e pôr no contrato do anfitrião (J35) | Rafael |
 | 4 | Abrir o piloto só com KYC + Pix vinculado + denúncia (item 17, risco alto) | Rafael + Jurídico e Tributário |
