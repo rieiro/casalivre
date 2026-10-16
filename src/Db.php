@@ -12,10 +12,7 @@ final class Db
         }
         self::loadEnv();
         $driver = getenv('DB_DRIVER') ?: 'sqlite';
-        $dsn = getenv('DB_DSN') ?: '';
-        if ($dsn === '' && $driver === 'sqlite') {
-            $dsn = 'sqlite:' . dirname(__DIR__) . '/storage/db/casalivre.sqlite';
-        }
+        $dsn = self::dsn();
         $user = getenv('DB_USER') ?: null;
         $password = getenv('DB_PASSWORD');
         $password = ($password === false || $password === '') ? null : $password;
@@ -55,6 +52,66 @@ final class Db
             self::migrate($pdo);
         }
         return $pdo;
+    }
+
+    /** DSN efetivo: DB_DSN ou, no driver sqlite, storage/db/casalivre.sqlite. */
+    public static function dsn(): string
+    {
+        self::loadEnv();
+        $dsn = getenv('DB_DSN') ?: '';
+        if ($dsn === '' && (getenv('DB_DRIVER') ?: 'sqlite') === 'sqlite') {
+            $dsn = 'sqlite:' . dirname(__DIR__) . '/storage/db/casalivre.sqlite';
+        }
+        return $dsn;
+    }
+
+    /** Pastas de runtime que o deploy precisa (usado por scripts/migrate.php e scripts/setup.sh). */
+    public const STORAGE_DIRS = ['storage/db', 'storage/logs', 'storage/mail', 'storage/sessions', 'public/uploads/users'];
+
+    /** Cria as pastas de STORAGE_DIRS que faltarem. */
+    public static function ensureStorageDirs(): void
+    {
+        foreach (self::STORAGE_DIRS as $dir) {
+            $path = dirname(__DIR__) . '/' . $dir;
+            if (!is_dir($path) && !mkdir($path, 0775, true) && !is_dir($path)) {
+                throw new RuntimeException("Não foi possível criar $path");
+            }
+        }
+    }
+
+    /**
+     * Deploy limpo: se o banco SQLite não existe (ou está vazio, sem tabelas), cria-o a partir de
+     * database/schema.sql. Não faz nada em pgsql, :memory: ou banco já populado.
+     * Retorna o caminho do arquivo criado, ou null se nada foi feito.
+     */
+    public static function ensureSqliteFromSchema(): ?string
+    {
+        $dsn = self::dsn();
+        if (!str_starts_with($dsn, 'sqlite:')) {
+            return null;
+        }
+        $file = substr($dsn, 7);
+        if ($file === '' || $file === ':memory:') {
+            return null;
+        }
+        $opts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+        if (is_file($file) && filesize($file) > 0) {
+            $check = new PDO('sqlite:' . $file, null, null, $opts);
+            if ((int) $check->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")->fetchColumn() > 0) {
+                return null;
+            }
+            $check = null;
+        }
+        $schema = file_get_contents(dirname(__DIR__) . '/database/schema.sql');
+        if ($schema === false) {
+            throw new RuntimeException('Não foi possível ler database/schema.sql');
+        }
+        if (!is_dir(dirname($file)) && !mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
+            throw new RuntimeException('Não foi possível criar ' . dirname($file));
+        }
+        $boot = new PDO('sqlite:' . $file, null, null, $opts);
+        $boot->exec($schema);
+        return $file;
     }
 
     public static function loadEnv(): void
