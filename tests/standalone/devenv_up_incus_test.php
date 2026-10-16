@@ -33,6 +33,7 @@ case "\$(sed -n '\$p' '$log' | cut -d' ' -f1)" in
 list) cat '$state' 2>/dev/null ;;
 image) [ "\$1" != info ] || [ -f '$state.img' ] || exit 1; [ "\$1" != import ] || { tar -tzf "\$3" | grep -q marker && touch '$state.img'; } ;;
 start) echo RUNNING >'$state' ;;
+exec) c="\${@: -1}"; case \$c in *rolsuper*) echo falsetrue ;; *"FROM users"*) echo 1 ;; esac ;;
 stop) echo STOPPED >'$state' ;;
 esac
 exit 0
@@ -42,14 +43,28 @@ file_put_contents("$bin/envsubst", "#!/bin/bash\nsed -e \"s|\\\${CL_HOME}|\$CL_H
 chmod("$bin/incus", 0700);
 chmod("$bin/envsubst", 0700);
 $run = static function (string $cmd, array $env = []) use ($bin, $home, $base): array {
-    $e = 'env -i PATH=' . escapeshellarg("$bin:/usr/bin:/bin") . ' HOME=' . escapeshellarg($base) . ' CL_HOME=' . escapeshellarg($home) . ' CL_PORT_HTTP=34567';
+    $e = 'env -i PATH=' . escapeshellarg("$bin:/usr/bin:/bin") . ' HOME=' . escapeshellarg($base) . ' CL_HOME=' . escapeshellarg($home) . ' CL_PORT_HTTP=34567'
+        . ' CL_SUBUID_FILE=' . escapeshellarg("$base/subuid") . ' CL_SUBGID_FILE=' . escapeshellarg("$base/subgid");
     foreach ($env as $k => $v) {
         $e .= ' ' . $k . '=' . escapeshellarg($v);
     }
     exec("$e $cmd 2>&1", $out, $code);
     return [$code, implode("\n", $out)];
 };
+file_put_contents("$base/subuid", "root:100000:65536\nroot:" . posix_getuid() . ":1\n");
+file_put_contents("$base/subgid", "root:100000:65536\nroot:" . posix_getgid() . ":1\n");
 $calls = static fn (): array => file_exists($log) ? file($log, FILE_IGNORE_NEW_LINES) : [];
+
+echo "subuid/subgid preflight\n";
+file_put_contents("$base/subuid", "root:100000:65536\n");
+[$code, $out] = $run("/bin/bash $dev/up-incus.sh");
+t_ok($code !== 0 && str_contains($out, 'root:' . posix_getuid() . ':1') && str_contains($out, 'Fix (as root)'), 'missing root:<uid>:1 in subuid -> dies with the fix');
+t_eq([], $calls(), 'nothing sent to incus before the preflight passes');
+file_put_contents("$base/subuid", "root:100000:65536\nroot:" . posix_getuid() . ":1\n");
+file_put_contents("$base/subgid", "root:100000:65536\n");
+[$code, $out] = $run("/bin/bash $dev/up-incus.sh");
+t_ok($code !== 0 && str_contains($out, 'root:' . posix_getgid() . ':1'), 'missing root:<gid>:1 in subgid -> dies');
+file_put_contents("$base/subgid", "root:100000:65536\nroot:" . posix_getgid() . ":1\n");
 
 echo "up-incus.sh\n";
 [$code, $out] = $run("/bin/bash $dev/up-incus.sh");
@@ -64,6 +79,7 @@ t_ok(is_file("$state.img"), 'imported rootfs tarball is $CL_ROOTFS (marker file 
 t_ok(!str_contains($all, 'launch') && !str_contains($all, 'remote') && !str_contains($all, 'images:'), 'no remote image, no separate build');
 $init = (string) (array_values(array_filter($c, static fn ($l) => str_starts_with($l, 'init | ')))[0] ?? '');
 t_ok(str_contains($init, 'security.privileged=false'), 'unprivileged container');
+t_ok(str_contains($init, ' | -s | default | '), 'own root disk on pool "default" (init -s), not the profile');
 $uid = (string) posix_getuid();
 t_ok(str_contains($init, "raw.idmap=uid $uid $uid"), 'idmap 1:1 for this uid');
 t_ok(str_contains($all, "lxc.init.cmd = /usr/bin/runsvdir -P $home/sv") && str_contains($all, "lxc.init.uid = $uid"), 'init: runsvdir -P CL_HOME/sv as this uid');
@@ -100,10 +116,25 @@ t_ok(!file_exists("$home/run/incus.name"), 'incus.name removed');
 
 echo "stopped container is recreated, image reused\n";
 $n = count($calls());
-[$code] = $run("/bin/bash $dev/up-incus.sh");
+[$code] = $run("/bin/bash $dev/up-incus.sh", ['CL_INCUS_POOL' => 'fastpool']);
 $tail = implode("\n", array_slice($calls(), $n));
 t_ok($code === 0 && str_contains($tail, 'delete | --force') && str_contains($tail, "\ninit | ") && !str_contains($tail, 'image | import'), 'delete + init, no re-import');
+t_ok(str_contains($tail, ' | -s | fastpool | '), 'CL_INCUS_POOL picks the root disk pool');
+
+echo "db-setup.sh (incus path)\n";
+$n = count($calls());
+[$code, $out] = $run("/bin/bash $dev/db-setup.sh");
+$tail = array_slice($calls(), $n);
+$execs = array_values(array_filter($tail, static fn ($l) => str_starts_with($l, 'exec | ')));
+$cname = trim((string) @file_get_contents("$home/run/incus.name"));
+t_eq(0, $code, 'db-setup.sh ok on incus (detected: container RUNNING)' . ($code ? ": $out" : ''));
+t_ok(count($execs) > 5 && $execs === array_values(array_filter($execs, static fn ($l) => str_starts_with($l, "exec | $cname | --user | " . posix_getuid() . ' | --group | ' . posix_getgid()))), 'every step runs via incus exec as this uid/gid');
+$joined = implode("\n", $execs);
+t_ok(str_contains($joined, "$home/etc/dev-env.env") && str_contains($joined, 'pg-roles.sql') && str_contains($joined, 'scripts/migrate.php'), 'same steps as bwrap (env file, roles, migrate)');
+t_ok(!str_contains(implode("\n", $tail), 'nsenter'), 'no nsenter on the incus path');
 $run("/bin/bash $dev/down.sh");
+[$code, $out] = $run("/bin/bash $dev/db-setup.sh", ['CL_RUNTIME' => 'incus']);
+t_ok($code !== 0 && str_contains($out, 'incus env is down'), 'CL_RUNTIME=incus with the container down -> clear error');
 
 echo "shared prestart\n";
 foreach (['up-bwrap.sh', 'up-incus.sh'] as $f) {

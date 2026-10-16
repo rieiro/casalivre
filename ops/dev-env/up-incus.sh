@@ -11,13 +11,21 @@
 #     127.0.0.1:$CL_PORT_HTTP.
 # Idempotent: a running container for this CL_HOME is left alone; a stopped one is recreated (state lives
 # in the mounted CL_HOME dirs). down.sh stops it. Needs the incus client and a daemon that allows raw.idmap
-# for this uid (subuid/subgid "root:<uid>:1"). Usage: up-incus.sh  (always detached)
+# for this uid (subuid/subgid "root:<uid>:1", checked before init; CL_SUBUID_FILE/CL_SUBGID_FILE override
+# the paths). The root disk is added on CL_INCUS_POOL (default "default"). Usage: up-incus.sh  (always detached)
 . "$(dirname "$0")/lib.sh"
 refuse_root
 cl_defaults
 [ $# -eq 0 ] || die "usage: $0"
 command -v incus >/dev/null 2>&1 || die "incus client not found"
 [ -f "$CL_HOME/.provisioned" ] || die "run provision.sh first (CL_HOME=$CL_HOME)"
+: "${CL_INCUS_POOL:=default}"
+uid=$(id -u) gid=$(id -g)
+# raw.idmap (uid/gid 1:1) needs the Incus daemon (root) to be allowed to map them.
+subid_ok() { awk -F: -v id="$2" '$1 == "root" && $2 <= id && id < $2 + $3 { ok = 1 } END { exit !ok }' "$1" 2>/dev/null; }
+if ! subid_ok "${CL_SUBUID_FILE:-/etc/subuid}" "$uid" || ! subid_ok "${CL_SUBGID_FILE:-/etc/subgid}" "$gid"; then
+	die "raw.idmap needs root:$uid:1 in ${CL_SUBUID_FILE:-/etc/subuid} and root:$gid:1 in ${CL_SUBGID_FILE:-/etc/subgid}. Fix (as root): echo root:$uid:1 >>/etc/subuid; echo root:$gid:1 >>/etc/subgid; systemctl restart incus"
+fi
 
 name=$(incus_name)
 status=$(incus_status)
@@ -43,8 +51,9 @@ if ! incus image info "$alias" >/dev/null 2>&1; then
 	log "incus image $alias imported from $CL_ROOTFS"
 fi
 
-uid=$(id -u) gid=$(id -g)
-incus init "$alias" "$name" \
+# Own root disk: -s adds a root disk device on $CL_INCUS_POOL (default "default") to the instance, so it
+# does not rely on the default profile having one ("No root device could be found").
+incus init "$alias" "$name" -s "$CL_INCUS_POOL" \
 	-c security.privileged=false -c security.nesting=false \
 	-c raw.idmap="$(printf 'uid %s %s\ngid %s %s' "$uid" "$uid" "$gid" "$gid")" \
 	-c raw.lxc="$(printf 'lxc.init.cmd = /usr/bin/runsvdir -P %s/sv\nlxc.init.uid = %s\nlxc.init.gid = %s' "$CL_HOME" "$uid" "$gid")" \
