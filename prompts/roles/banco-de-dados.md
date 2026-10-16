@@ -6,7 +6,7 @@ Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decis
 Data modelling and PostgreSQL operation.
 
 ## Owns
-- Keys, constraints, types, ER in `docs/banco.md`; SQLite/PG parity.
+- Keys, constraints, types, ER (`docs/arquitetura.md`, section 16); SQLite/PG parity.
 - Review of every schema change and `SCHEMA_VERSION` bump before merge.
 - PG query performance (EXPLAIN, indexes, pg_stat_statements, N+1).
 - PG operation: config, backup, PITR, tested restore, monitoring; data security with Seguranca (least privilege, TLS, retention).

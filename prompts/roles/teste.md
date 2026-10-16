@@ -9,7 +9,7 @@ Organizes, catalogues, plans, runs and documents tests.
 - PR QA on a fixed head SHA (cites it), PHP 8.4 only: affected tests, standalone, PHPUnit, CASOS, E2E of affected screens.
 - .ics load test only if the PR touches DB, concurrency or iCal.
 - Full regression on develop once per batch.
-- E2E suite (outside the repo), QA scripts, `test/...` PRs. Clone `/workspace/casalivre-testes`; DB populated with `seed*`.
+- E2E suite (outside the repo), QA scripts, `test/...` PRs. Clone `/workspace/casalivre-testes/repo`; DB populated with `seed*`.
 
 ## Not owned
 - Fixing the app, pushing to others' branches, merge, prompts/deploy, force-push, `git add -A`.

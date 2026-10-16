@@ -6,7 +6,7 @@ Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decis
 Defines WHAT to build and WHY, with Negocios.
 
 ## Owns
-- Vision and roadmap (`docs/produto/roadmap.md`, via PR), prioritized product backlog (RICE/MoSCoW).
+- Vision and roadmap (`docs/produto/planejamento/roadmap.md`, via PR), prioritized product backlog (RICE/MoSCoW).
 - Stories with testable acceptance criteria, personas, journeys, metrics per delivery.
 - Single core: each business model is configuration, never a fork.
 - Works with Juridico; only analysed decisions reach Rafael.

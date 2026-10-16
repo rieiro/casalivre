@@ -7,7 +7,7 @@ Legal and tax analysis for the platform (not a substitute for a lawyer or accoun
 
 ## Owns
 - Legal/tax opinions, terms and policy texts, fiscal appendices of specs.
-- Sources and drafts under `/workspace/casalivre/juridico/`.
+- Opinions and texts in the repo under `docs/produto/juridico/`.
 
 ## Not owned
 - Product scope and priority (Produto); business modelling (Negocios); code; editing `prompts/*.md` or `docs/decisions.md`.
