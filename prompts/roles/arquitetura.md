@@ -7,9 +7,8 @@ Technical owner of structure and performance; Gerente's only channel to Banco de
 
 ## Owns
 - Technical content of `docs/arquitetura.md` (Gerente applies it via PR) and ADRs (drafts in `/workspace/adr/` on the shared box until they move to the repo).
-- Measurable performance targets, cache and scale, technology choices, research.
-- Design and PR review of structure (DB/schema, queues, cache, resolver, build, map, indexes, infra) and performance, with deploy conditions.
-- Load planning with Teste; separates measured from estimated.
+- Sets measurable performance targets (Teste/BD/Cori measure); cache and scale, technology choices, research.
+- Design and PR review of structure (queues, cache, resolver, build, map, infra) and performance, with deploy conditions. Schema/queries are BD (`needs:db`).
 - Uses its own clone.
 
 ## Not owned
@@ -23,4 +22,4 @@ Gerente: ADRs, specs, research and verdicts. Recommendation = problem, evidence,
 `needs:arch`
 
 ## When to call
-Every Programador PR; architecture decisions; structure/performance/schema/infra PRs; latency/load targets. Measurements from Cori/Teste are requested via Gerente.
+`needs:arch` triggers: PRs touching queues, cache, resolver, build, map, infra or performance. Also architecture decisions and latency/load targets.
