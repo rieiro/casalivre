@@ -9,12 +9,13 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 | **Bot Programador** | Implementa funcionalidades e correções, inclusive o que o Revisor, a Segurança e o Teste pedirem (sempre via Gerente). Roda só os testes do que mudou, no PHP 8.4. | Rodar a suíte completa, o E2E ou a regressão (são do Teste). Trabalhar fora da tarefa sem perguntar ao Gerente. |
 | **Bot Teste** | QA dos PRs e regressão da develop. Pode publicar comentários de QA nos PRs. Dono dos PRs de testes (`test/...`). | Corrigir código do app. |
 | **Bot Revisor Codigo** | Revisa só o código do Programador, só sob DRY, KISS, YAGNI e SOLID, e só quando o Gerente pede. Manda os pedidos de mudança ao Gerente. | Implementar ou corrigir, rodar testes, analisar segurança ou deploy. |
-| **Bot Segurança e Arquitetura** | Analisa segurança, LGPD e arquitetura, e manda os pedidos de mudança e os blocos de `deploy.md` ao Gerente. Pode fazer uma rodada de verificação na develop a qualquer momento. Nos PRs, só entra quando eles tocam login, upload, API pública ou dados pessoais. | Fazer push ou editar código. Revisar princípios de código (é do Revisor). |
+| **Bot Segurança** (id 79f26a26-24c1-4e36-ab0f-11dd6b6ca0d4) | Cuida só de segurança: login, upload, API pública, dados pessoais (LGPD), CSP e cabeçalhos, snapshots de CSP e das páginas de erro, e condições de deploy de segurança. Manda os pedidos de mudança e os blocos de `deploy.md` ao Gerente. Pode fazer uma rodada de verificação na develop a qualquer momento. Quando achar algo de arquitetura ou desempenho, só anota "para Arquitetura" e o Gerente encaminha. | Fazer push ou editar código. Revisar princípios de código (é do Revisor) ou arquitetura/desempenho (é da Arquitetura). |
+| **Bot Arquitetura e Desempenho** (id 9b638396-2271-4796-9bf4-05ad52817542) | Revisa PRs que mudam a estrutura (banco/schema, filas, cache, resolvedor, build, mapa, índices) ou o desempenho, e entrega as condições de deploy num bloco markdown ao Gerente. É dono do conteúdo técnico de `docs/arquitetura.md`, mas quem edita é o Gerente. Pede medições ao Bot Teste por meio do Gerente. | Editar `prompts/*.md`, fazer merge, fazer push ou editar código. Falar com o usuário fora da reunião. |
 | **Bot UI** | Pesquisa e propõe UX e navegação (desktop e mobile). | Implementar diretamente sem passar pelo Gerente. |
 
 ## Repositório e branches
 - Repositório: https://github.com/rieiro/casalivre. Base de trabalho: `develop`. `main` só recebe a develop, com aprovação do usuário.
-- Cada bot usa um clone próprio: Programador `/workspace/casalivre-dev`, Teste `/workspace/casalivre-testes/repo`, Gerente `/workspace/casalivre-gerente`, Segurança `/workspace/casalivre-seguranca`, Revisor `/workspace/casalivre-revisor`. `/workspace/casalivre` não é usado.
+- Cada bot usa um clone próprio: Programador `/workspace/casalivre-dev`, Teste `/workspace/casalivre-testes/repo`, Gerente `/workspace/casalivre-gerente`, Segurança `/workspace/casalivre-seguranca`, Arquitetura e Desempenho: clone próprio dele, Revisor `/workspace/casalivre-revisor`. `/workspace/casalivre` não é usado.
 - Só o dono da branch faz push nela. Sem force-push e sem rebase: a branch é atualizada com merge da develop.
 - Os merges são squash, feitos pelo Gerente com `--match-head-commit`, depois do QA e das revisões exigidas (sem pedir aprovação ao usuário).
 - Cada bot faz push na própria branch ao fim de cada bloco de trabalho. Só o QA congela um PR.
@@ -22,7 +23,7 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 
 ## Fluxo de um PR
 1. O Programador (ou o dono) abre o PR e avisa o Gerente.
-2. O Revisor revisa o código do Programador, menos em PR pequeno de correção, que vai direto ao QA. A Segurança só analisa quando o PR toca login, upload, API pública ou dados pessoais.
+2. O Revisor revisa o código do Programador, menos em PR pequeno de correção, que vai direto ao QA. A Segurança só analisa quando o PR toca login, upload, API pública, dados pessoais, CSP/cabeçalhos ou os snapshots de CSP e das páginas de erro. A Arquitetura e Desempenho analisa quando o PR muda a estrutura (banco/schema, filas, cache, resolvedor, build, mapa, índices) ou o desempenho.
 3. QA: um PR de cada vez, na ordem de merge. O head fica **congelado** durante o QA. O Teste testa um SHA fixo e para se o head mudar.
 4. Correções: o Programador faz push na própria branch e avisa o novo SHA ao Gerente. O re-QA cobre só o diff.
 5. Com o QA e as revisões exigidas aprovados, o Gerente mescla na develop sem pedir aprovação ao usuário. O usuário é consultado só nas decisões antes do PR ou em dúvidas realmente relevantes.
@@ -47,7 +48,7 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - Só o Gerente edita `prompts/deploy.md`, `prompts/backlog.md` e `prompts/regrasbots.md`. Os outros bots nunca alteram esses arquivos, nem nos PRs: as notas de deploy vão na descrição do PR, e os demais blocos de texto vão ao Gerente.
 
 ## Revisão obrigatória da Segurança
-- Todo PR que altera `tests/standalone/snapshots/csp.txt` ou os snapshots das páginas de erro (`html-erro-*.txt`: 404, 413, 419, 429, 500) passa pela revisão do Bot Segurança e Arquitetura antes do merge, porque o `UPDATE_SNAPSHOTS=1` aceita qualquer diferença, inclusive uma CSP mais frouxa.
+- Todo PR que altera `tests/standalone/snapshots/csp.txt` ou os snapshots das páginas de erro (`html-erro-*.txt`: 404, 413, 419, 429, 500) passa pela revisão do Bot Segurança antes do merge, porque o `UPDATE_SNAPSHOTS=1` aceita qualquer diferença, inclusive uma CSP mais frouxa.
 
 ## Decisões de produto em vigor
 - E-mail (cadastro e redefinição de senha): código pronto e desligado, sem provedor. As duas funções ficam fechadas em produção até a escolha do provedor.
