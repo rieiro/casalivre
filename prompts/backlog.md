@@ -133,6 +133,16 @@ Relatório: `/workspace/casalivre-seguranca-evidence/tema/relatorio.md`.
   - #66 (`retencao-concorrente.php`): `$appDb` muda de string para PDO (:71/:79); PDO aberto à mão em :73 em vez de `pdo()`; código do filho num `-r` de uma linha (:98-103); fallback `/ical/000…` (:108) e ramo `$icsPaths ? … : $icsPath` só servem ao caso sem imóveis. Resolver junto com o arquivo comum de testes.
 - [ ] Tentar de novo o WAL ao criar activity log novo (deploy novo com pedidos simultâneos).
 
+### Pendências pós-paridade (#83–#94)
+- [ ] (Segurança #93) Chamar `CalendarSync::isHttpsUrl` dentro de `resolveTarget` (`CalendarSync.php:212`), para a mesma regra de https valer em cada redirecionamento.
+- [ ] (Segurança #85/#88) Limitador de taxa compartilhado (tabela no banco com UPSERT ou Redis com INCR+EXPIRE) antes do segundo servidor de aplicação.
+- [ ] (baixa, Segurança #87) A API lista as fotos com `SELECT *` (`src/PhotoRepository.php:11`) e mostra ao dono colunas internas (`original`, `uuid`, `status`). Trocar por uma lista fixa de campos.
+- [ ] (Teste, #87) A resposta para um id de foto inexistente deve ser igual à de uma foto de outro imóvel (travar com teste).
+- [ ] (baixa, Segurança #88) Tornar atômico o intervalo da `mail_queue` (`src/MailQueue.php:80-95`, hoje SELECT e depois INSERT): transação `BEGIN IMMEDIATE`, INSERT condicionado ou `UNIQUE` em `cooldown_key` por janela.
+- [ ] (baixa, Segurança #88) `IpRateLimiter`: `peek` lê sem `flock`; o retorno do `flock()` não é conferido; `purge()` pode apagar um arquivo no instante em que outro processo o abre.
+- [ ] (Segurança #93) Se algum worker CLI passar a rodar em laço, chamar `GrupoResolvedor::limparCache()` a cada iteração.
+- [ ] WAL: tentar de novo ao criar um activity log novo (deploy novo com pedidos simultâneos). Mesmo item da seção de qualidade acima.
+
 ## Segurança e LGPD
 
 - [x] ~~(Média, #47, já existia) Troca de e-mail não pede a senha atual, não confirma o novo endereço com token de uso único, não avisa o e-mail antigo e não aumenta o `session_version`.~~ Descartada: sem troca de e-mail (decisão do usuário, #59).

@@ -1,7 +1,7 @@
 # Arquitetura do CasaLivre
 
 > Documento didático, escrito para quem está começando em TI (estágio, faculdade, primeiro emprego).
-> Estado: `develop` ao fim da Sprint 3 (até o PR #69), `SCHEMA_VERSION = 13`.
+> Estado: `develop` em `63892c4` (até o PR #94), `SCHEMA_VERSION = 17`.
 > Toda rota, código de resposta e limite citado aqui foi conferido no código (`public/index.php`, `src/Api.php`,
 > `seguranca/`, `src/Acoes/`, `src/*RateLimit*`). Onde algo depende do servidor (nginx, DNS) e não está no repositório,
 > o texto marca **[não verificado no código]**.
@@ -11,10 +11,12 @@
 1. [Visão geral](#1-visão-geral)
 2. [Como uma requisição atravessa o sistema](#2-como-uma-requisição-atravessa-o-sistema)
 3. [Segurança: o pipeline e os cabeçalhos](#3-segurança-o-pipeline-e-os-cabeçalhos)
+   (inclui 3.3 HEAD, 3.4 ativação em dois passos e 3.5 domínio de grupo só vitrine)
 4. [Quem faz o quê: ações por ator](#4-quem-faz-o-quê-ações-por-ator)
 5. [Rotas web](#5-rotas-web)
 6. [Rotas da API](#6-rotas-da-api)
 7. [Limites de taxa (rate limit)](#7-limites-de-taxa-rate-limit)
+7a. [Consistência entre web e API](#7a-consistência-entre-web-e-api)
 8. [Temas](#8-temas)
 9. [Grupos, papéis e convites](#9-grupos-papéis-e-convites)
 10. [Domínios próprios e verificação por DNS](#10-domínios-próprios-e-verificação-por-dns)
@@ -148,6 +150,57 @@ pôr uma rota nova na lista, a checagem da própria rota ainda segura (defesa em
 A sessão usa cookie `SameSite` vindo de `SESSION_SAMESITE` (padrão `Lax`; `None` sem HTTPS volta para `Lax`, porque
 `None` exige `Secure`).
 
+### 3.3 HEAD só em páginas públicas somente leitura (#73) — **regra que não deve ser desfeita**
+
+`HEAD` é um GET sem corpo. Robôs, monitores e pré-visualizadores de link usam muito. O perigo é uma rota que, num GET,
+faz algo além de ler (consome um token, grava auditoria): um `HEAD` "inocente" faria a mesma coisa.
+
+Por isso `public/index.php` (função `head_permitido`) tem uma **lista explícita** das rotas que aceitam HEAD. Só nelas o
+`HEAD` é tratado como `GET`:
+
+- `/`, `/busca`, `/busca/mapa`, `/imoveis/<h>`;
+- `/g/<slug>`, `/g/<slug>/`, `/g/<slug>/busca`, `/g/<slug>/busca/mapa`, `/g/<slug>/imoveis/<h>`;
+- `/entrar`, `/cadastro`, `/senha/esqueci`;
+- `/api/busca`, `/api/cidades`, `/api/ceps`, `/api/imoveis/<h>`.
+
+Qualquer outra rota responde **405** com `Allow: GET`, sem chamar o código da rota. Requisições HEAD não gravam
+`activity_log`. Monitores e health checks devem usar GET, ou HEAD em `/`.
+
+> **Por que lista de permitidos e não de proibidos?** Uma rota nova fica bloqueada para HEAD até alguém decidir que ela
+> é segura. Esquecer de incluir só causa um 405; esquecer de excluir causaria um efeito colateral.
+
+### 3.4 Ativação da conta em dois passos (#73) — **regra que não deve ser desfeita**
+
+O link do e-mail continua `/verificar?token=…`, mas abri-lo **não ativa** a conta:
+
+```mermaid
+sequenceDiagram
+    actor U as Usuário
+    participant S as CasaLivre
+    U->>S: GET /verificar?token=... (link do e-mail)
+    S-->>U: página com o botão "Ativar conta" (token num campo do formulário)
+    U->>S: POST /verificar com token e _csrf
+    S->>S: AccountFlow::activate consome o token, log EMAIL_VERIFY
+    S-->>U: "conta ativada" ou "link inválido"
+```
+
+Filtros antispam e pré-visualizadores de link abrem os links dos e-mails com GET ou HEAD. Se o GET ativasse, o token
+seria queimado por um robô, sem o usuário estar lá. Com o POST + CSRF, só um clique de verdade ativa. Na API, a
+ativação é `POST /api/auth/verificar`.
+
+### 3.5 Domínio de grupo é só vitrine (#72, `seguranca/SomenteVitrine.php`)
+
+Quem controla o DNS de um domínio verificado pode manter o TXT e apontar o domínio para outro servidor. Por isso nada
+que envolva senha, sessão ou conta funciona num domínio de grupo. Lá vale uma lista de permitidos:
+
+- web, GET/HEAD: `/`, `/busca`, `/busca/mapa`, `/imoveis/<h>`, `/g/*`, `/ical/<32hex>`, `/tiles/brasil.pmtiles`;
+- web, POST: `/idioma` e `/imoveis/<h>/avaliar` (públicos, com CSRF, sem credencial);
+- API, GET/HEAD: `/api/busca`, `/api/cidades`, `/api/ceps`, `/api/imoveis/<h>`, `/api/ical/<32hex>(.ics)`.
+
+O resto: GET/HEAD da web → **302** para o mesmo caminho no `APP_URL` (nunca no `Host`); POST da web → **404** (um 307
+reenviaria a senha digitada no domínio do grupo); API → **404** JSON. Essa checagem roda antes da sessão, então uma
+rota recusada não manda `Set-Cookie`. No domínio de um grupo, o iCal de imóvel de outro grupo (ou sem grupo) dá 404.
+
 ---
 
 ## 4. Quem faz o quê: ações por ator
@@ -190,12 +243,14 @@ flowchart TB
 - Buscar (`/busca`, `/busca/mapa`, `/api/busca`), autocompletar cidade (`/api/cidades`) e CEP (`/api/ceps`).
 - Ver um imóvel ativo (`/imoveis/<h>`) e avaliá-lo (`POST /imoveis/<h>/avaliar`; precisa de CSRF, não de login).
 - Navegar na vitrine de um grupo (`/g/<slug>/`) ou no domínio próprio do grupo.
-- Cadastrar-se, confirmar o e-mail (`/verificar`), entrar, pedir e redefinir senha.
+- Cadastrar-se, ativar a conta pelo link do e-mail (`/verificar`, em dois passos: seção 3.4), entrar, pedir e redefinir senha.
 - Trocar o idioma (`POST /idioma`).
 - Assinar o calendário público de um imóvel (`/ical/<32hex>`).
 
 ### Usuário logado
-- Painel (`/painel`), conta (`/conta`: nome, e-mail, senha), excluir a conta (`/conta/excluir`), sair (`/sair`).
+- Painel (`/painel`), conta (`/conta`: nome, CPF, CEP, endereço e telefone), excluir a conta (`/conta/excluir`), sair (`/sair`).
+- **Não existe troca de e-mail** (decisão do usuário, #59): o e-mail não é editável nem pela web nem pela API; um campo
+  `email` enviado é ignorado.
 - Ver os próprios grupos (`/grupos`).
 
 ### Dono de imóvel
@@ -237,12 +292,15 @@ Nas telas de grupo, `Resultado` inválido → 422, outro erro → 409 (a tela é
 | GET | `/imoveis/<h>/calendario.ics` | — | sempre 404 (endereço antigo desativado) |
 | POST | `/idioma` | C | 302 para o Referer do mesmo host, senão `/` |
 | GET/POST | `/cadastro` | C no POST, RL | POST → tela "verifique seu e-mail" (mesma resposta para e-mail novo ou existente) |
-| GET | `/verificar` | — | 200 |
+| GET | `/verificar` | — | 200: página com o botão "Ativar conta"; **não** ativa (seção 3.4) |
+| POST | `/verificar` | C | 200: "conta ativada" ou "link inválido" (consome o token) |
 | GET/POST | `/entrar` | C no POST, RL login | sucesso → 302 `/painel`; pendente → tela de verificação; bloqueado → 429 |
 | GET/POST | `/senha/esqueci` | C no POST, RL | sempre a mesma mensagem (anti-enumeração) |
 | GET/POST | `/senha/redefinir` | C no POST | 200 / 302 |
 | GET | `/tiles/brasil.pmtiles` | — | só quando `MapTiles::devRouteEnabled` (em produção quem serve é o nginx) |
 | * | qualquer outra | — | 404 |
+
+HEAD: só nas rotas da seção 3.3; nas demais, 405. Num domínio de grupo, valem as regras da seção 3.5.
 
 ### 5.2 Usuário logado e dono
 
@@ -329,6 +387,8 @@ Sem sessão, o 401 de `/api/painel` e de `/api/imoveis/<h>/(calendario|editar|fo
 | GET | `/api/imoveis/<h>/calendario.ics` | — | sempre 404 |
 | * | outra | — | 404 "Rota não encontrada." |
 
+HEAD na API: só `/api/busca`, `/api/cidades`, `/api/ceps` e `/api/imoveis/<h>`; nas demais, 405.
+
 Grupos, domínios e temas **não** têm API: só as telas web. A busca da API respeita o domínio (seção 12).
 
 ---
@@ -353,6 +413,62 @@ Contagem por IP (IPv6 agrupado por /64, porque um único cliente costuma ter um 
 
 Além do IP, a conta tem bloqueio próprio (`login_max_failures`, 5), que vira 423 na API.
 
+**Um limitador compartilhado entre web e API.** Os limites ficam na camada `ApiRateLimit` do pipeline, configurada numa
+lista só (`api_limites` em `public/index.php`), e não dentro de cada rota. Assim a rota web e a rota da API da mesma
+ação usam o mesmo balde (coluna "Balde" acima).
+
+**Onde os contadores moram e o que acontece se der errado.** `IpRateLimiter` guarda um arquivo por balde em
+`storage/cache/ratelimit` (pasta `0700`) e usa `flock` para contar sem corrida (conferir, agir e contar sob a mesma trava).
+Consequências, que o deploy precisa respeitar:
+
+- **Disco local, servidor único.** `flock` não é confiável em NFS. Com dois servidores, cada um contaria à parte e os
+  limites dobrariam. Antes do segundo servidor, o limitador precisa ir para um armazenamento compartilhado (banco ou
+  Redis), item do backlog.
+- **Fail-open.** Se a pasta não puder ser gravada, o limitador libera. Foi uma escolha consciente: um disco cheio não
+  derruba o login do site inteiro. O preço é que a permissão da pasta vira item obrigatório do deploy.
+
+---
+
+## 7a. Consistência entre web e API
+
+Até a Sprint 3, algumas ações tinham regras diferentes na tela e na API: uma validava algo que a outra não validava, ou
+só uma gravava o log de auditoria. Os PRs de paridade (#83, #85 a #93) fecharam essas diferenças com uma regra simples:
+
+> **Uma função por ação.** A regra de negócio, a validação e os eventos de auditoria ficam numa classe em `src/Acoes/`.
+> A rota web e a rota da API só traduzem o resultado para HTML ou JSON.
+
+```mermaid
+flowchart LR
+    W["Rota web<br/>public/index.php"] --> A["Ação em src/Acoes/<br/>valida e monta eventos"]
+    API["Rota da API<br/>src/Api.php"] --> A
+    A --> R["Resultado<br/>tipo, mensagem, dados, eventos"]
+    R --> W2["Web: mensagem visível na tela<br/>ou 302 com aviso"]
+    R --> J["API: 200/201, 422, 409, 404 ou 502<br/>com {error, erros}"]
+    R --> L["registrar(): activity_log igual nos dois canais"]
+```
+
+Ações compartilhadas: `LoginAttempt`, `AccountUpdate`, `CalendarSave`, `ICalImport`, `ICalFeedRemove`, `PhotoAdd`,
+`CoverSet`, `ReviewAdd`, `ThemeSet`, `GrupoAdmin`, `GrupoGestor` e `GrupoDono`. Onde web e API divergem de propósito, a
+ação recebe o `Canal` (`Web` ou `Api`).
+
+Como cada canal mostra o erro:
+
+| Desfecho | API | Web |
+|---|---|---|
+| Entrada inválida (inclui campo de tipo errado, como um array onde se espera texto: `err.field_type`) | 422 `{error, erros: {campo: mensagem}}` | a mesma mensagem na tela, sem aviso do PHP e sem gravar nada |
+| Conflito (ex.: noites travadas pela sincronização, feed duplicado) | 409 | mensagem de erro na tela |
+| Falha ao baixar um feed iCal | 502 `{error, status: NOK, feeds}` | mensagem de erro na tela do calendário |
+| Nenhuma foto salva no upload | 422 `{error, erros: {fotos}, salvas: 0, enviadas}` | o mesmo aviso na tela |
+| Recurso alheio ou inexistente | 404 | 404 |
+
+Os códigos exatos de cada rota estão nas tabelas das seções 5 e 6.
+
+**Por que isso importa?** Se a validação mora na rota, basta esquecer uma linha numa das duas portas para abrir uma
+brecha (um atacante usa a porta mais frouxa). Com a regra num lugar só, as duas portas mudam juntas, e o log de
+auditoria registra o mesmo evento, venha a ação de onde vier. Os helpers `TextoBruto` e `InteiroBruto` leem o valor
+bruto e recusam tipos errados antes de qualquer conversão, e `CalendarSync::isHttpsUrl` é a regra única de "só https"
+usada no cadastro do feed e no download.
+
 ---
 
 ## 8. Temas
@@ -374,6 +490,8 @@ flowchart LR
 - O admin troca o tema em `/admin/tema` (`ThemeSet`): atualização condicional ("só troca se ainda for o anterior");
   troca concorrente ou banco ocupado → 409, nunca 500. Log 32 (`THEME_CHANGE`).
 - O CSS do tema é um arquivo estático: a CSP continua `style-src 'self'`, sem estilo inline.
+- O `brand.php` é código PHP executado no build. Por isso `themes/` é só leitura para o php-fpm e não existe upload nem
+  edição de tema pela web: um tema novo entra por PR.
 
 ---
 
@@ -479,6 +597,8 @@ flowchart TD
 - Só o cabeçalho `Host` (nunca `X-Forwarded-Host`, que o cliente forja à vontade). Host normalizado por
   `GrupoValidacao::host` (minúsculas, sem porta, sem ponto final; IP e IDN unicode → nada).
 - Host desconhecido → plataforma, sem redirecionar.
+- **Cache por requisição** (#93): `doDominio` guarda o resultado (inclusive "não achou") num cache estático do processo,
+  com a chave já normalizada por `GrupoValidacao::host` (nunca o `Host` bruto). Numa requisição web (php-fpm) o PHP zera as variáveis `static` ao fim de cada requisição, então o cache nunca passa de uma requisição para outra. Um worker CLI que rodasse em laço precisaria chamar `limparCache()` a cada volta.
 - "Plataforma" = host do `APP_URL` sem `www.` e, se definido, `PLATFORM_ROOT_DOMAIN`, incluindo subdomínios.
 - **Isolamento**: no domínio verificado do grupo X, `/g/<Y>/` responde 404 (`grupoDoSlugNoHost`). Senão o domínio de
   um grupo poderia exibir outro grupo com o endereço dele.
@@ -493,6 +613,9 @@ A vitrine é a busca do site filtrada por um grupo, com o tema dele.
 - O JS chama `/api/busca?grupo=<slug>`; o filtro é feito **no SQL** (`GroupRepository::searchSource`, só imóveis
   ativos), não depois, para a paginação e as contagens baterem.
 - No domínio verificado do grupo X: sem `grupo`, a API devolve só os imóveis de X; com `?grupo=<Y>`, devolve lista vazia.
+- Para testar em desenvolvimento: `APP_ENV=dev php scripts/seed-grupo-teste.php` cria o grupo `teste` (tema `contraste`,
+  até 3 imóveis aceitos) e a vitrine `/g/teste/`. O script recusa rodar fora de `dev`/`local`, nunca cria admin e pode
+  rodar duas vezes sem duplicar nada (#94).
 - Redirecionamentos (`Redirect::withQuery`) são sempre **relativos** e mantêm a query: não há redirecionamento aberto
   para outro site.
 
@@ -557,7 +680,7 @@ Filas no banco (`JobQueue`): job "preso" há mais de `STALE_SECONDS = 600` volta
 
 ## 16. Banco de dados e `SCHEMA_VERSION`
 
-`Db::SCHEMA_VERSION = 13`. A cada requisição o app compara a versão gravada no banco (`PRAGMA user_version` no SQLite)
+`Db::SCHEMA_VERSION = 17`. A cada requisição o app compara a versão gravada no banco (`PRAGMA user_version` no SQLite)
 com a do código e só migra quando o banco está atrás; `scripts/migrate.php` força a migração no deploy.
 Histórico recente (comentário em `src/Db.php`):
 
@@ -570,6 +693,10 @@ Histórico recente (comentário em `src/Db.php`):
 | 11 | Grupos: `groups`, `group_members`, `group_domains`, `group_property_invites`, `properties.group_id` |
 | 12 | `group_domains.verify_token` + `verified_at` (verificação DNS TXT) |
 | 13 | `group_domains.last_check_at` + `fail_count` (reverificação pelo cron) |
+| 14 | Textos da ativação por POST (`auth.verify_title/hint/button`) |
+| 15 | `cal.url_required` + `cal.feed_missing` (paridade calendário/iCal) |
+| 16 | `photo.*` e `review.*` (paridade capa, avaliação e fotos) |
+| 17 | `cal.feed_removed` + `cal.url_https` (feeds só https) |
 
 > **Dica de deploy**: faça backup do arquivo SQLite antes de subir uma versão com `SCHEMA_VERSION` maior.
 
@@ -610,7 +737,11 @@ Para definir o primeiro admin: `php scripts/set-admin.php <email>`.
 - Não sobrescrever o `Cache-Control` do HTML vindo do PHP; só `/assets/` (immutable) e `/tiles/` têm cache próprio.
 - TLS por domínio de grupo só depois de verificado; parar de renovar quando perde a verificação (log 46).
 - DNS de saída confiável para o cron de domínios (`resolv.conf` sem `search`, `options timeout:3 attempts:2`).
-- `storage/` gravável pelo usuário do php-fpm e do cron (locks, rate limit, `login_dummy_hash.json`).
+- `storage/` gravável pelo usuário do php-fpm e do cron (locks, rate limit, `login_dummy_hash.json`); rate limit em disco
+  local e servidor único (seção 7).
+- `session.cookie_domain` vazio: o app não define o `Domain` do cookie, então o cookie fica só no host do `APP_URL`.
+- `display_errors=Off`; o proxy não troca as respostas 5xx de `/api/` (o 502 do iCal leva JSON).
+- Checklist completo: `prompts/deploy.md`.
 
 ---
 

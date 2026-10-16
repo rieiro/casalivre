@@ -46,6 +46,9 @@ Decisões do usuário (Rafael/rieiro). Em caso de dúvida, vale a decisão mais 
 - `prompts/regrasbots.md`: este arquivo.
 - Só o Gerente edita `prompts/deploy.md`, `prompts/backlog.md` e `prompts/regrasbots.md`. Os outros bots nunca alteram esses arquivos, nem nos PRs: as notas de deploy vão na descrição do PR, e os demais blocos de texto vão ao Gerente.
 
+## Revisão obrigatória da Segurança
+- Todo PR que altera `tests/standalone/snapshots/csp.txt` ou os snapshots das páginas de erro (`html-erro-*.txt`: 404, 413, 419, 429, 500) passa pela revisão do Bot Segurança e Arquitetura antes do merge, porque o `UPDATE_SNAPSHOTS=1` aceita qualquer diferença, inclusive uma CSP mais frouxa.
+
 ## Decisões de produto em vigor
 - E-mail (cadastro e redefinição de senha): código pronto e desligado, sem provedor. As duas funções ficam fechadas em produção até a escolha do provedor.
 - Mapas: sem Google Maps. Hoje são os tiles do OSM; o backlog aponta PMTiles do Brasil (Protomaps) com MapLibre GL.
