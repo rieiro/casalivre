@@ -112,6 +112,32 @@ foreach (['up-bwrap.sh', 'up-incus.sh'] as $f) {
     t_ok(!str_contains($src, 'postmaster.pid') && !str_contains($src, 'ensure_dirs') && !str_contains($src, 'render_templates'), "$f has no copy of the pre-start steps");
 }
 
+echo "one runtime per CL_HOME (refuse_running)\n";
+$check = static fn (string $mode) => $run('/bin/bash -c ' . escapeshellarg(". $dev/lib.sh; cl_defaults; refuse_running $mode"));
+@unlink("$home/run/env.pid");
+file_put_contents($state, "RUNNING\n");
+[$code, $out] = $run("/bin/bash $dev/up-bwrap.sh -d");
+t_ok($code !== 0 && str_contains($out, 'incus env') && str_contains($out, 'already up'), 'incus running -> up-bwrap.sh refuses with a clear message');
+t_ok(!file_exists("$home/run/env.pid"), 'up-bwrap.sh started nothing');
+file_put_contents($state, "STOPPED\n");
+t_eq(0, $check('bwrap')[0], 'incus stopped -> bwrap may start');
+// Live fake bwrap: a process whose cmdline is "bwrap ... --ro-bind $CL_ROOTFS / ..." (what pid_is_ours checks).
+$fake = proc_open(['/bin/bash', '-c', 'exec -a bwrap python3 -c "import time; time.sleep(60)" --ro-bind ' . "$home/rootfs" . ' / x'], [], $pipes);
+$pid = (int) proc_get_status($fake)['pid'];
+usleep(300000);
+file_put_contents("$home/run/env.pid", "$pid 1 $pid\n");
+[$code, $out] = $check('incus');
+t_ok($code !== 0 && str_contains($out, 'bwrap env is already up'), 'live env.pid -> refused with a clear message');
+[$code, $out] = $run("/bin/bash $dev/up-incus.sh");
+t_ok($code !== 0 && str_contains($out, 'bwrap env is already up'), 'live env.pid -> up-incus.sh refuses');
+proc_terminate($fake, 9);
+proc_close($fake);
+file_put_contents("$home/run/env.pid", "999999 999998 999997\n");
+t_eq(0, $check('incus')[0], 'stale env.pid -> incus may start');
+@unlink("$home/run/env.pid");
+@unlink($state);
+t_eq(0, $check('incus')[0], 'nothing up -> proceeds');
+
 echo "up.sh dispatch\n";
 $stubDev = "$base/dev";
 mkdir($stubDev);

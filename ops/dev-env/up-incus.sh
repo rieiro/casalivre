@@ -20,7 +20,7 @@ command -v incus >/dev/null 2>&1 || die "incus client not found"
 [ -f "$CL_HOME/.provisioned" ] || die "run provision.sh first (CL_HOME=$CL_HOME)"
 
 name=$(incus_name)
-status=$(incus list "$name" --format csv --columns s 2>/dev/null || true)
+status=$(incus_status)
 if [ "$status" = RUNNING ]; then
 	log "already up (incus $name)"
 	exit 0

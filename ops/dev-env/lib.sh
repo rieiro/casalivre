@@ -140,11 +140,32 @@ incus_name() {
 	printf 'cl-dev-%s-%s\n' "$(id -u)" "$(printf '%s' "$CL_HOME" | sha256sum | cut -c1-8)"
 }
 
+# Status of this CL_HOME's Incus container (RUNNING, STOPPED...; empty if absent or no incus client).
+incus_status() {
+	command -v incus >/dev/null 2>&1 || return 0
+	incus list "$(incus_name)" --format csv --columns s 2>/dev/null || true
+}
+
+# One runtime per CL_HOME: PG/Valkey of two runtimes would share data and sockets. Dies if the bwrap
+# env (env.pid alive) or the Incus container (RUNNING) of this CL_HOME is up. Called by prestart, after
+# each up script's own "already up" check. $1 = the runtime about to start (for the message).
+refuse_running() {
+	local bw init
+	read -r bw _ init _ < <(read_pids; echo) || true
+	if env_alive "${bw:-}" "${init:-}"; then
+		die "the bwrap env is already up on CL_HOME=$CL_HOME (bwrap ${bw:-}, init ${init:-}); run down.sh before starting $1"
+	fi
+	if [ "$(incus_status)" = RUNNING ]; then
+		die "the incus env $(incus_name) is already up on CL_HOME=$CL_HOME; run down.sh before starting $1"
+	fi
+}
+
 # Pre-start shared by up-bwrap.sh and up-incus.sh: CL_HOME dirs (0700), stale postmaster.pid cleanup,
 # templates and services.sh (sv/ and the services' env). $1 = bwrap | incus.
 prestart() {
 	local mode=$1 pm
 	case $mode in bwrap | incus) ;; *) die "prestart: mode must be bwrap or incus" ;; esac
+	refuse_running "$mode"
 	ensure_dirs
 	# A leftover postmaster.pid would collide with PIDs reused in the new namespace/container. The PID in
 	# it belongs to the old one (not checkable from the host), so it is removed only if no live postgres

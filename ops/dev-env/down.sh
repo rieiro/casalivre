@@ -9,7 +9,7 @@ cl_defaults
 if [ -f "$CL_RUN/incus.name" ]; then
 	name=$(cat "$CL_RUN/incus.name")
 	[ "$name" = "$(incus_name)" ] || die "$CL_RUN/incus.name does not match this CL_HOME"
-	if [ "$(incus list "$name" --format csv --columns s 2>/dev/null || true)" = RUNNING ]; then
+	if [ "$(incus_status)" = RUNNING ]; then
 		incus exec "$name" --user "$(id -u)" --group "$(id -g)" --cwd "$CL_HOME" -- \
 			sv -w 30 stop "$CL_HOME/sv/postgresql" || true
 		incus stop --timeout 30 "$name" || incus stop --force "$name"
