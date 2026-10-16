@@ -26,7 +26,6 @@ final class CepRepository
                 uf TEXT NOT NULL DEFAULT ''
             )");
         }
-        db()->exec('CREATE INDEX IF NOT EXISTS idx_ceps_cep ON ceps(cep)');
     }
 
     public static function count(): int

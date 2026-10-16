@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS groups (
 
 CREATE TABLE IF NOT EXISTS properties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     summary TEXT NOT NULL,
@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS properties (
     inactivated_at TEXT,
     audit_hold TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    rating_sum INTEGER NOT NULL DEFAULT 0 CHECK (rating_sum >= 0),
+    rating_count INTEGER NOT NULL DEFAULT 0 CHECK (rating_count >= 0),
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
@@ -124,13 +126,12 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token);
-CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token);
+CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token) WHERE activation_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_properties_city ON properties(city);
 CREATE INDEX IF NOT EXISTS idx_properties_user ON properties(user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);
 CREATE INDEX IF NOT EXISTS idx_properties_group ON properties(group_id);
-CREATE INDEX IF NOT EXISTS idx_photos_property ON photos(property_id);
 CREATE INDEX IF NOT EXISTS idx_photos_cover ON photos(property_id, is_primary, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_reviews_property ON reviews(property_id);
 
@@ -198,3 +199,28 @@ CREATE TABLE IF NOT EXISTS image_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_image_queue_ready ON image_queue(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(property_id, status);
+
+-- Busca (ADR 001)
+CREATE INDEX IF NOT EXISTS idx_prop_status_city ON properties(status, city);
+CREATE INDEX IF NOT EXISTS idx_prop_latlng ON properties(lat, lng);
+
+-- Antes só via migrate() (src/Db.php)
+CREATE TABLE IF NOT EXISTS settings (skey TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS languages (code TEXT PRIMARY KEY, label TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS translations (lang TEXT NOT NULL, tkey TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (lang, tkey));
+CREATE TABLE IF NOT EXISTS cities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL, uf TEXT NOT NULL, label TEXT NOT NULL,
+    lat REAL NOT NULL, lng REAL NOT NULL,
+    name_fold TEXT NOT NULL, label_fold TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cities_name_fold ON cities(name_fold);
+CREATE INDEX IF NOT EXISTS idx_cities_label_fold ON cities(label_fold);
+CREATE TABLE IF NOT EXISTS activity_actions (code INTEGER PRIMARY KEY, description TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS login_rate_limit (ip TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, locked_until TEXT);
+CREATE TABLE IF NOT EXISTS ceps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cep TEXT NOT NULL UNIQUE,
+    street TEXT NOT NULL DEFAULT '', neighborhood TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '', uf TEXT NOT NULL DEFAULT ''
+);
