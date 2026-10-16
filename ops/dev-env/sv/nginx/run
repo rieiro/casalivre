@@ -1,0 +1,3 @@
+# Espera o socket do FPM para não servir 502 na subida.
+[ -S "$CL_HOME/run/php-fpm.sock" ] || { sleep 0.2; exit 1; }
+exec nginx -e "$CL_HOME/log/nginx-error.log" -c "$CL_HOME/etc/nginx.conf"

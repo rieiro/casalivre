@@ -1,0 +1,8 @@
+# Corpo do run (o services.sh prefixa shebang e o '. $CL_HOME/etc/dev-env.env').
+# initdb no primeiro start; PG só por socket Unix (listen_addresses vazio).
+pgdata=$CL_HOME/data/pg
+if [ ! -f "$pgdata/PG_VERSION" ]; then
+	initdb -D "$pgdata" -U "$CL_PG_USER" --auth-local=peer --auth-host=reject -E UTF8 --locale=C.UTF-8 >>"$CL_HOME/log/initdb.log" 2>&1 || exit 1
+	echo "include '$CL_HOME/etc/postgresql.conf'" >>"$pgdata/postgresql.conf"
+fi
+exec postgres -D "$pgdata" -c listen_addresses=''

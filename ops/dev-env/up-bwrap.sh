@@ -40,6 +40,8 @@ for t in "$CL_DEVENV_DIR"/templates/*.in; do
 	mv "$out.tmp" "$out"
 done
 
+"$CL_DEVENV_DIR/services.sh"  # P0-2: sv/ e env dos serviços
+
 args=(
 	--bind "$CL_ROOTFS" / --dev /dev --proc /proc
 	--ro-bind /etc/resolv.conf /etc/resolv.conf

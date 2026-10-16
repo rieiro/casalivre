@@ -82,3 +82,28 @@ atualizar o `versions.lock` (PR) ou apontar `repo=` para um espelho/arquivo.
 - Usuário único: todos os serviços rodam com o seu uid (não há usuários
   `postgres`, `nginx` etc.).
 - DNS e CA: `resolv.conf` vem do host; CAs vêm do pacote do Void.
+
+## Serviços e banco (P0-2)
+
+```sh
+ops/dev-env/up-bwrap.sh -d     # instala $CL_HOME/sv (services.sh) e sobe
+ops/dev-env/db-setup.sh        # createdb, schema.pgsql.sql, migrate, CEPs e seed
+ops/dev-env/db-setup.sh --no-seed
+```
+
+- `sv/` (versionado): corpo dos `run`; o `services.sh` copia para
+  `$CL_HOME/sv/` com um cabeçalho que carrega `$CL_HOME/etc/dev-env.env`
+  (0600). Os serviços não herdam o env do host.
+- **postgresql**: `initdb` no primeiro start (`--auth-local=peer`,
+  `--auth-host=reject`), só socket Unix (`listen_addresses=''`). `sv stop`
+  usa `control/t` = `pg_ctl stop -m fast -w`; o `finish` repete se sobrar
+  processo. Duas subidas seguidas sem "not properly shut down".
+- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
+  `DB_DSN` (socket) e `VALKEY_*` via `etc/php-fpm-env.conf` (0600).
+- **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
+- **valkey**: `--port 0` (só socket), ACL `user default off` + usuário
+  `casalivre` com senha gerada uma vez em `etc/valkey.secret` (0600; a ACL
+  guarda só o sha256).
+- Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
+  sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
+  `php.ini` não muda.

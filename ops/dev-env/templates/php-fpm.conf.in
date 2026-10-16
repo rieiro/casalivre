@@ -9,4 +9,5 @@ listen = ${CL_HOME}/run/php-fpm.sock
 ; TCP opcional em CL_PORT_FPM (127.0.0.1:${CL_PORT_FPM}) se algum cliente precisar.
 pm = ondemand
 pm.max_children = 4
-clear_env = no
+clear_env = yes
+include = ${CL_HOME}/etc/php-fpm-env.conf
