@@ -80,7 +80,7 @@ require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/UserRepository.php';
 require_once CL_ROOT . '/src/HouseRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
-db()->exec("INSERT OR IGNORE INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC')");
+db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $senha = 'Casa#Snap2026';
 $userId = UserRepository::insert([
     'name' => 'Dona Snapshot', 'cpf' => '52998224725', 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',

@@ -7,7 +7,7 @@ require_once CL_ROOT . '/src/Theme.php';
 
 $tmp = sys_get_temp_dir() . '/cl-build-' . bin2hex(random_bytes(6));
 $rm = static function (string $d) use (&$rm): void {
-    foreach (glob("$d/{,.}[!.]*", GLOB_BRACE) ?: [] as $f) {
+    foreach (array_merge(glob("$d/[!.]*") ?: [], glob("$d/.[!.]*") ?: []) as $f) { // sem flag de chaves no glob (indisponível no musl)
         is_dir($f) && !is_link($f) ? $rm($f) : unlink($f);
     }
     @rmdir($d);

@@ -23,4 +23,9 @@ Nunca use `APP_ENV=dev` em produção.
 - Unitários: `vendor/bin/phpunit --testsuite Unit`
 - Completo (com servidor no ar): `APP_URL=http://127.0.0.1:8080 vendor/bin/phpunit`
 - Standalone: `php tests/standalone/<arquivo>_test.php`
+- Standalone em PostgreSQL (P0-3): `TEST_PG_DSN='pgsql:host=<socket>;port=<porta>;dbname=postgres' php tests/standalone/run.php`.
+  Cada teste cria um banco `casalivre_t_<pid>_<rand>`, carrega `database/schema.pgsql.sql`, migra e apaga só esse banco
+  (o usuário precisa de `CREATEDB`). No ambiente dev: `ops/dev-env/test-pg.sh` (usa o PG do ambiente, liga o
+  `PARITY_PG_DSN` e roda antes `ops/dev-env/check-test-deps.sh`: sem `GLOB_BRACE`, exif, node, `post_max_size`/`upload_max_filesize` >= 16M).
+  Testes do caminho SQLite (PRAGMA, arquivo, sqlite_master) usam `t_temp_sqlite()` e rodam em SQLite mesmo assim.
 - Casos de ponta a ponta via HTTP: comando acima (`CASOS=novos|todos`).

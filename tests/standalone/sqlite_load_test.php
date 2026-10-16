@@ -3,7 +3,7 @@
 // Usa php -S com PHP_CLI_SERVER_WORKERS=8 (processos paralelos) e 200 requisições simultâneas.
 require __DIR__ . '/lib.php';
 putenv('PHP_CLI_SERVER_WORKERS=8');
-t_temp_db();
+t_temp_sqlite();
 $owner = t_seed_owner();
 $base = t_server();
 $errLog = CL_ROOT . '/storage/error.log';

@@ -14,7 +14,7 @@ $migrate = static function (array $args = []): array {
 $master = static fn (PDO $p): array => $p->query("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")->fetchAll(PDO::FETCH_ASSOC);
 
 echo "banco novo (versão 0, vindo do schema.sql)\n";
-$file = t_temp_db();
+$file = t_temp_sqlite();
 [$code, $text] = $migrate();
 t_eq(0, $code, "versão 0: migrate.php sai com 0 ($text)");
 $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -30,7 +30,7 @@ t_eq(0, $code, 'v19: migrate.php --force sai com 0');
 
 foreach ([1, 2, 4, 11, 12, 17, 18] as $from) {
     echo "banco antigo v$from\n";
-    $file = t_temp_db();
+    $file = t_temp_sqlite();
     $migrate();
     $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     $pdo->exec('PRAGMA user_version = ' . $from);

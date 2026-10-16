@@ -15,7 +15,7 @@ foreach (['php8.2', 'php8.3'] as $b) {
 echo "scripts/migrate.php em banco novo\n";
 foreach ($bins as $bin) {
     $ver = trim((string) shell_exec(escapeshellarg($bin) . ' -r "echo PHP_VERSION;"'));
-    $file = t_temp_db();
+    $file = t_temp_sqlite();
     exec(escapeshellarg($bin) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' 2>&1', $out, $code);
     $text = implode("\n", $out);
     $out = [];
@@ -27,7 +27,7 @@ foreach ($bins as $bin) {
 }
 
 echo "Db::pdo() em banco novo (mesmo processo)\n";
-$file = t_temp_db();
+$file = t_temp_sqlite();
 $pdo = Db::pdo();
 t_eq(Db::SCHEMA_VERSION, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'Db::pdo() migra banco novo');
 t_ok(!Db::inTransaction($pdo), 'nenhuma transação pendente após a migração');

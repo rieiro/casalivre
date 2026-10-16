@@ -130,7 +130,7 @@ function insertRow(PDO $db, string $table, array $values): int
 $masterSql = static fn (PDO $db): array => $db->query("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name")->fetchAll(PDO::FETCH_ASSOC);
 
 echo "SQLite do zero (schema.sql)\n";
-$file = t_temp_db();
+$file = t_temp_sqlite();
 $lite = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
 $lite->exec('PRAGMA foreign_keys = ON');
 $a = sqliteSnapshot($lite);
