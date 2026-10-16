@@ -5,8 +5,11 @@ Sistema de aluguel por temporada. O backend PHP não renderiza HTML: repositóri
 O banco padrão é SQLite. Para Postgres, crie o schema e aponte o DSN. O código da aplicação não usa SQL específico de um deles.
 
 ```bash
-psql -d casalivre -f database/schema.pgsql.sql
+psql -d casalivre -f database/schema.pgsql.sql   # Postgres novo: carregue o schema PRIMEIRO
+php scripts/migrate.php                          # depois migre (a cada deploy, antes do tráfego)
 ```
+
+No Postgres, a requisição web não migra: só confere `schema_meta.schema_version` (uma consulta) e responde 503 se o banco estiver atrás do código. A migração roda só no `scripts/migrate.php`, sob `pg_advisory_lock` (execuções simultâneas esperam uma pela outra). O `migrate.php` sai com 0 (ok), 1 (versão abaixo da esperada) ou 2 (falha, com a mensagem no STDERR). No SQLite nada muda: o banco migra sozinho na conexão.
 
 No `.env` ficam o banco e as chaves de serviço. Nada disso é escrito em arquivo PHP.
 

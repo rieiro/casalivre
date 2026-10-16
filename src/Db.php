@@ -180,7 +180,7 @@ final class Db
      * cidades, catálogo de ações). AUMENTE este número sempre que mudar migrate(), o schema
      * ou os seeds; senão os bancos existentes não recebem a mudança.
      */
-    public const SCHEMA_VERSION = 18; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário); 18: schema_meta (versão no pgsql + marca única do money_unit)
+    public const SCHEMA_VERSION = 18; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário); 18: schema_meta (versão no pgsql) e fim da conversão money_unit (bancos recriados do zero, já em reais)
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
     public static function migrateNow(bool $force = false): int
@@ -238,10 +238,22 @@ final class Db
     {
         try {
             $value = $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn();
-        } catch (PDOException) {
-            return 0;
+        } catch (PDOException $e) {
+            // Só "tabela não existe" vale como versão 0 (42P01 no Postgres; "no such table" no SQLite,
+            // usado nos testes). Rede, permissão (falta GRANT SELECT ON schema_meta), timeout: relança.
+            if (self::isUndefinedTable($e)) {
+                return 0;
+            }
+            throw $e;
         }
         return $value === false ? 0 : (int) $value;
+    }
+
+    public static function isUndefinedTable(PDOException $e): bool
+    {
+        return (string) $e->getCode() === '42P01'
+            || (($e->errorInfo[0] ?? null) === '42P01')
+            || str_contains($e->getMessage(), 'no such table');
     }
 
     /** Versão do schema SQLite (PRAGMA user_version). */
@@ -250,7 +262,7 @@ final class Db
         return (int) $pdo->query('PRAGMA user_version')->fetchColumn();
     }
 
-    /** Metadados internos da migração (versão no pgsql, marcas de passos únicos como money_unit). */
+    /** Metadados internos da migração (versão do schema no pgsql). */
     private const SCHEMA_META_DDL = 'CREATE TABLE IF NOT EXISTS schema_meta (skey TEXT PRIMARY KEY, value TEXT NOT NULL)';
 
     /**
@@ -339,34 +351,6 @@ final class Db
             }
             throw $e;
         }
-    }
-
-    /**
-     * Passo único (preços em centavos -> reais). Guarda: a marca schema_meta.money_unit, gravada na MESMA
-     * transação da conversão. Ela só existe para isso (nada a apaga), então sumir a setting money_unit
-     * não faz dividir de novo. Bancos que já têm a setting = 'reais' (convertidos antes desta marca)
-     * só recebem a marca, sem converter. Roda só dentro da migração (migrate()).
-     */
-    public static function convertMoneyUnitOnce(PDO $pdo): bool
-    {
-        $pdo->exec(self::SCHEMA_META_DDL);
-        $marker = $pdo->prepare("SELECT value FROM schema_meta WHERE skey = 'money_unit'");
-        $marker->execute();
-        if ($marker->fetchColumn() !== false) {
-            return false;
-        }
-        $unit = $pdo->prepare('SELECT value FROM settings WHERE skey = ?');
-        $unit->execute(['money_unit']);
-        $converted = false;
-        if ($unit->fetchColumn() !== 'reais') {
-            $pdo->exec('UPDATE properties SET nightly_price = CAST(ROUND(nightly_price / 100.0) AS INTEGER)');
-            $pdo->exec('UPDATE calendar_days SET price = CAST(ROUND(price / 100.0) AS INTEGER) WHERE price IS NOT NULL');
-            $pdo->prepare('INSERT INTO settings (skey, value, description) VALUES (?, ?, ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value')
-                ->execute(['money_unit', 'reais', 'Diária gravada como número inteiro, sem centavos']);
-            $converted = true;
-        }
-        $pdo->exec("INSERT INTO schema_meta (skey, value) VALUES ('money_unit', 'reais')");
-        return $converted;
     }
 
     private static function migrateSqlite(PDO $pdo, bool $force): void
@@ -646,7 +630,6 @@ final class Db
         require_once __DIR__ . '/I18n.php';
         require_once __DIR__ . '/CityRepository.php';
         require_once __DIR__ . '/ActivityLog.php';
-        self::convertMoneyUnitOnce($pdo);
         Settings::seed($pdo);
         I18n::seed($pdo);
         CityRepository::ensure($pdo);
