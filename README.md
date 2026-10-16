@@ -85,6 +85,14 @@ bash scripts/seed-users.sh
 
 `php scripts/seed.php` faz o mesmo. E-mail e senha saem no terminal e em `storage/seed-users.txt`. O login é em `/entrar`.
 
+Grupo de exemplo (opcional, só desenvolvimento): depois do seed acima,
+
+```bash
+APP_ENV=dev php scripts/seed-grupo-teste.php
+```
+
+cria o grupo `teste` (tema contraste) com 3 imóveis ativos de seed já aceitos, e a vitrine `/g/teste/` funciona na hora. Só roda com `APP_ENV=dev` ou `local`; em qualquer outro caso recusa sem tocar no banco. Não torna ninguém admin: se já houver admin (via `php scripts/set-admin.php <email>`), ele vira gestor do grupo; sem admin, o grupo nasce sem gestor e o script avisa. Rodar de novo não duplica nada (só completa o que faltar).
+
 Temas: cada tema é uma pasta `themes/<nome>/` com um `brand.php` (marca, logo, favicon, tokens CSS). `php scripts/build-assets.php` gera `public/assets/themes/` e o manifesto; só os temas do manifesto podem ser escolhidos. A troca é em `/admin/tema`, só para admin. Para tornar uma conta admin, use `php scripts/set-admin.php <email>` (e `--remover` para tirar).
 
 A API, com a sessão autenticada e o token CSRF, expõe o CRUD:
