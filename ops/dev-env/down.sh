@@ -5,7 +5,8 @@
 refuse_root
 cl_defaults
 
-# P0-5: env brought up by up-incus.sh: clean PG stop, then incus stop.
+# P0-5: env brought up by up-incus.sh: clean PG stop, then incus stop. A stale incus.name (instance not
+# running or absent) is cleared and falls through to the bwrap path, which may still be up.
 if [ -f "$CL_RUN/incus.name" ]; then
 	name=$(cat "$CL_RUN/incus.name")
 	[ "$name" = "$(incus_name)" ] || die "$CL_RUN/incus.name does not match this CL_HOME"
@@ -14,11 +15,13 @@ if [ -f "$CL_RUN/incus.name" ]; then
 			sv -w 30 stop "$CL_HOME/sv/postgresql" || true
 		# SIGPWR -> incus-init.sh stops the rest cleanly; --force only if that times out.
 		incus stop --timeout 30 "$name" || incus stop --force "$name"
+		[ "$(incus_status)" != RUNNING ] || die "incus $name still running; $CL_RUN/incus.name kept"
+		rm -f "$CL_RUN/incus.name"
+		log "down (incus $name)"
+		exit 0
 	fi
-	[ "$(incus_status)" != RUNNING ] || die "incus $name still running; $CL_RUN/incus.name kept"
+	log "stale $CL_RUN/incus.name ($name not running): cleared"
 	rm -f "$CL_RUN/incus.name"
-	log "down (incus $name)"
-	exit 0
 fi
 
 read -r bw child init _ < <(read_pids; echo) || true

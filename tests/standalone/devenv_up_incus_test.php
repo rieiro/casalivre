@@ -210,6 +210,33 @@ if ($st['running']) {
 }
 proc_close($init);
 
+echo "stale incus.name (Teste #120)\n";
+@unlink($state);
+$cname = trim((string) shell_exec('env -i PATH=/usr/bin:/bin CL_HOME=' . escapeshellarg($home) . ' /bin/bash -c ' . escapeshellarg(". $dev/lib.sh; cl_defaults; incus_name")));
+file_put_contents("$home/run/incus.name", "$cname\n");
+$fake = proc_open(['/bin/bash', '-c', 'exec -a bwrap python3 -c "import time; time.sleep(60)" --ro-bind ' . "$home/rootfs" . ' / x'], [], $pipes);
+$fpid = (int) proc_get_status($fake)['pid'];
+usleep(300000);
+file_put_contents("$home/run/env.pid", "$fpid 1 $fpid\n");
+[$code, $out] = $run("/bin/bash $dev/down.sh");
+usleep(200000);
+$st = proc_get_status($fake);
+t_eq(0, $code, 'down.sh ok' . ($code ? ": $out" : ''));
+t_ok(str_contains($out, 'stale') && !file_exists("$home/run/incus.name"), 'stale incus.name cleared');
+t_ok(!$st['running'], 'falls through and stops the live bwrap env');
+t_ok(!file_exists("$home/run/env.pid"), 'env.pid removed');
+if ($st['running']) {
+    proc_terminate($fake, 9);
+}
+proc_close($fake);
+file_put_contents("$home/run/incus.name", "$cname\n");
+[$code, $out] = $run("/bin/bash $dev/down.sh");
+t_ok($code === 0 && !file_exists("$home/run/incus.name") && !file_exists("$home/run/env.pid"), 'both absent: clean exit, incus.name cleared');
+file_put_contents("$home/run/incus.name", "$cname\n");
+$run("/bin/bash $dev/up-bwrap.sh -d");
+t_ok(!file_exists("$home/run/incus.name"), 'up-bwrap.sh clears a stale incus.name on start');
+@unlink("$home/run/env.pid");
+
 echo "up.sh dispatch\n";
 $stubDev = "$base/dev";
 mkdir($stubDev);

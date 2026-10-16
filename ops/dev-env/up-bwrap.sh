@@ -18,6 +18,9 @@ if env_alive "${bw:-}" "${init:-}"; then
 	exit 0
 fi
 rm -f "$CL_PIDFILE"
+# Stale incus.name (container not running; refuse_running dies later if it is): clear it so
+# down.sh takes the bwrap path.
+[ ! -f "$CL_RUN/incus.name" ] || [ "$(incus_status)" = RUNNING ] || rm -f "$CL_RUN/incus.name"
 
 prestart bwrap
 
