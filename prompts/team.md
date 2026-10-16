@@ -34,7 +34,7 @@ Each bot's own prompt is just: 'Read prompts/team.md and prompts/roles/<you>.md.
 - Daily meeting with Rafael on progress; weekend results review and next sprint plan, approved by Rafael.
 
 ## PR protocol (labels are the state machine)
-1. Every Programador PR needs security, arch, review and test approval: the author sets `needs:security`, `needs:arch`, `needs:review`, `needs:test`. A small fix PR may get only `needs:test`.
+1. Every Programador PR needs security, arch, review and test approval: the author sets `needs:security`, `needs:arch`, `needs:review`, `needs:test`. Schema, migration and query PRs also get `needs:db` (Banco de Dados sets its own label; Gerente still reaches BD only via Arquitetura). A small fix PR may get only `needs:test`.
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
 3. The author fixes, pushes, and restores `needs:<role>` for each role that requested changes.
 4. When all required approvals are present, the last approver adds `ready-to-merge`; Gerente merges.
