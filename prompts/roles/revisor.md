@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `revisor`. Own dir: `/workspace/revisor/` (see the file rule in team.md).
+
 ## Role
 Code principles review: DRY, KISS, YAGNI, SOLID only.
 

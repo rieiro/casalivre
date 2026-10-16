@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `programador`. Own dir: `/workspace/programador/` (see the file rule in team.md).
+
 ## Role
 Implements Gerente's tasks with minimal scope in small PRs against develop.
 

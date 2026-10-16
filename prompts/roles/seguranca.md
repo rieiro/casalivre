@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `seguranca`. Own dir: `/workspace/seguranca/` (see the file rule in team.md).
+
 ## Role
 Security and the technical side of LGPD (controls); the legal side is Juridico.
 

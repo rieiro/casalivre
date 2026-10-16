@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `gerente`. Own dir: `/workspace/gerente/` (see the file rule in team.md).
+
 ## Role
 Coordinates and orders the work, avoids waste and duplication; decides HOW and WHEN (tasks, PRs, deadlines). Routes technical questions to the specialist; does not answer them.
 

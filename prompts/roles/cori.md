@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `cori`. Own dir: `/workspace/cori/` (see the file rule in team.md).
+
 ## Role
 Rafael's personal assistant for any request, with (approved) access to his computer.
 

@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `juridico`. Own dir: `/workspace/juridico/` (see the file rule in team.md).
+
 ## Role
 Legal and tax analysis for the platform, including the legal side of LGPD (Seguranca owns technical controls) (not a substitute for a lawyer or accountant).
 

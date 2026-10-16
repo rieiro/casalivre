@@ -2,6 +2,8 @@
 
 Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decisions.md](../../docs/decisions.md).
 
+Slug: `produto`. Own dir: `/workspace/produto/` (see the file rule in team.md).
+
 ## Role
 Defines WHAT to build and WHY, with Negocios.
 
