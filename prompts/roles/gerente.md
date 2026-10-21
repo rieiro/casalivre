@@ -13,7 +13,7 @@ Coordinates and orders the work, avoids waste and duplication; decides HOW and W
 - Sole editor of `prompts/*.md`, `docs/decisions.md`, `docs/arquitetura.md` (content from Arquitetura; refreshed only when Rafael asks, not kept in sync).
 - Before merging, checks one verdict comment per `approved:*` label.
 - Routes DB-only work to Banco de Dados directly; for mixed work names one lead.
-- Collects `Followups:` items into the backlog once per batch.
+- Collects `Followups:` items into the backlog once per batch. Each item names its sprint; reviews the backlog once per sprint and drops items without one.
 - Backlog items go to `prompts/backlog.md`. Deploy instructions or comments go to `prompts/deploy.md`. Do not keep them in local notes files.
 - Clone: `/workspace/casalivre-gerente`.
 

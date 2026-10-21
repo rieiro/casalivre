@@ -67,4 +67,4 @@ One line each for Blockers and Followups, every reviewer role (db and arch inclu
 Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Run only what the diff needs; full regression once per batch on develop (Teste).
 
 ## Docs
-- `prompts/backlog.md`: development tracking. `prompts/deploy.md`: production go-live items only.
+- `prompts/backlog.md`: development tracking. Every new item names its sprint or it is dropped; each sprint clears the items touching its code plus about 20% of its effort on the rest (decisions.md). `prompts/deploy.md`: production go-live items only.
