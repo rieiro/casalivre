@@ -2,18 +2,19 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/LogPrivacy.php';
+
 /**
- * Retenção de logs locais (padrão 14 dias). Rodar diariamente via cron:
+ * Retenção de logs locais em arquivo (padrão 14 dias). Rodar diariamente via cron:
  *   15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
  *
  * Cobre:
  * - storage/logs/api/api-*        -> apaga arquivos com mtime anterior ao corte
- * - storage/logs/activity.sqlite  -> DELETE de linhas antigas + VACUUM
- * - MongoDB activity_log (LOG_DRIVER=mongodb) -> deleteMany created_at < corte (sem extensão: ignora e avisa)
  * - storage/error.log, storage/logs/calendar-sync.log, storage/php.log, storage/logs/php.log
  *   -> reescreve mantendo só entradas recentes (linhas sem data herdam a da entrada anterior)
  *
- * Política de 14 dias: PENDENTE de confirmação do Gerente Geral.
+ * O log de atividades está no PostgreSQL (audit.activity_log): partições diárias removidas por DROP pela função
+ * DEFINER audit.activity_retention_step (ver pgStep() e scripts/log-retention.php), nunca DELETE + VACUUM.
  */
 final class LogRetention
 {
@@ -34,11 +35,6 @@ final class LogRetention
         }
         $report['api_arquivos_removidos'] = $removed;
 
-        $sqlite = $root . '/storage/logs/activity.sqlite';
-        $report['activity_linhas_removidas'] = is_file($sqlite) ? self::pruneActivity($sqlite, $cutoff) : 0;
-
-        $report['activity_mongo'] = self::pruneMongoFromEnv($cutoff);
-
         foreach (['storage/error.log', 'storage/logs/calendar-sync.log', 'storage/php.log', 'storage/logs/php.log'] as $rel) {
             $file = $root . '/' . $rel;
             if (is_file($file)) {
@@ -48,47 +44,60 @@ final class LogRetention
         return $report;
     }
 
-    /** Filtro de documentos antigos no Mongo (created_at é string 'Y-m-d H:i:s', então a comparação lexicográfica vale). */
-    public static function mongoFilter(int $cutoff): array
+    /**
+     * PG activity-log retention (spec §6), as a login with casalivre_log_job (SET ROLE): creates the partitions
+     * (activity: today..+7 days; audit: this and next year), then drops one eligible leaf per call until none is
+     * left. $heldRefs: actor_ref of every open user hold (heldRefs()). Dry-run by default: the first real DROP in
+     * production needs Rafael's approval.
+     * @return array<string, int|string>
+     */
+    public static function pgStep(PDO $pdo, array $heldRefs, bool $dryRun = true): array
     {
-        return ['created_at' => ['$lt' => date('Y-m-d H:i:s', $cutoff)]];
+        $pdo->exec('SET ROLE casalivre_log_job');
+        try {
+            $report = [
+                'activity_particoes_criadas' => (int) $pdo->query('SELECT audit.activity_partitions_ensure(7)')->fetchColumn(),
+                'audit_particoes_criadas' => (int) $pdo->query('SELECT audit.audit_partitions_ensure()')->fetchColumn(),
+            ];
+            $refs = '{' . implode(',', array_map(static fn (string $r): string => '"\\\\x' . bin2hex($r) . '"', $heldRefs)) . '}';
+            $step = $pdo->prepare('SELECT leaf, held, dropped FROM audit.activity_retention_step(?::bytea[], ?)');
+            $dropped = [];
+            $held = 0;
+            for ($i = 0; $i < 1000; $i++) {
+                $step->bindValue(1, $refs);
+                $step->bindValue(2, $dryRun, PDO::PARAM_BOOL);
+                $step->execute();
+                $row = $step->fetch(PDO::FETCH_ASSOC);
+                $step->closeCursor();
+                if (!is_array($row) || $row['leaf'] === null) {
+                    break;
+                }
+                $dropped[] = (string) $row['leaf'];
+                $held += (int) $row['held'];
+                if ($dryRun) {
+                    break; // dry-run only reports the next leaf
+                }
+            }
+            $report[$dryRun ? 'activity_proxima_particao' : 'activity_particoes_removidas'] = $dryRun ? ($dropped[0] ?? '-') : count($dropped);
+            $report['activity_linhas_retidas'] = $held;
+            return $report;
+        } finally {
+            $pdo->exec('RESET ROLE');
+        }
     }
 
     /**
-     * Retenção do activity_log no MongoDB (LOG_DRIVER=mongodb) via deleteMany.
-     * Não usamos índice TTL porque created_at é string, e TTL exige campo Date.
-     * @return int|string documentos removidos, ou 'nao_configurado' / 'extensao_ausente' / 'erro'
+     * actor_ref (32 bytes) of every open legal hold on a user, for the current LOG_SALT version (other active
+     * versions come with the key files of PR-LOG-2). Without LOG_SALT: throws, so the step never runs with no refs.
+     * @return list<string>
      */
-    public static function pruneMongoFromEnv(int $cutoff): int|string
+    public static function heldRefs(PDO $pdo): array
     {
-        if ((getenv('LOG_DRIVER') ?: 'sqlite') !== 'mongodb') {
-            return 'nao_configurado';
+        $ids = $pdo->query("SELECT DISTINCT subject_id FROM legal_holds WHERE subject_type = 'user' AND closed_at IS NULL ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN);
+        if ($ids !== [] && LogPrivacy::salt() === null) {
+            throw new RuntimeException('LOG_SALT missing: cannot compute the actor_ref of open legal holds.');
         }
-        if (!class_exists(\MongoDB\Driver\Manager::class)) {
-            error_log('CasaLivre: retenção Mongo ignorada; extensão mongodb ausente.');
-            return 'extensao_ausente';
-        }
-        try {
-            $manager = new \MongoDB\Driver\Manager(getenv('LOG_MONGO_URI') ?: 'mongodb://127.0.0.1:27017');
-            $bulk = new \MongoDB\Driver\BulkWrite();
-            $bulk->delete(self::mongoFilter($cutoff), ['limit' => 0]);
-            $result = $manager->executeBulkWrite((getenv('LOG_MONGO_DB') ?: 'casalivre') . '.activity_log', $bulk);
-            return (int) $result->getDeletedCount();
-        } catch (Throwable $e) {
-            error_log('CasaLivre: retenção Mongo falhou (' . $e::class . ').');
-            return 'erro';
-        }
-    }
-
-    public static function pruneActivity(string $path, int $cutoff): int
-    {
-        $pdo = new PDO('sqlite:' . $path, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        $pdo->exec('PRAGMA busy_timeout = 8000');
-        $stmt = $pdo->prepare('DELETE FROM activity_log WHERE created_at < ?');
-        $stmt->execute([date('Y-m-d H:i:s', $cutoff)]);
-        $count = $stmt->rowCount();
-        $pdo->exec('VACUUM');
-        return $count;
+        return array_values(array_map(static fn ($id): string => (string) LogPrivacy::userRef((int) $id), $ids));
     }
 
     /** Timestamp de início de entrada (ISO 8601, "Y-m-d H:i:s" ou "[d-M-Y H:i:s TZ]" do PHP); null se a linha não inicia entrada. */

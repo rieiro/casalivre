@@ -30,6 +30,7 @@ require_once __DIR__ . '/../src/Amenities.php';
 require_once __DIR__ . '/../src/CalendarSync.php';
 require_once __DIR__ . '/../src/Api.php';
 require_once __DIR__ . '/../src/ActivityLog.php';
+ActivityLog::beginRequest();
 require_once __DIR__ . '/../src/SecureSession.php';
 require_once __DIR__ . '/../src/ExceptionShield.php';
 

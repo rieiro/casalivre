@@ -30,10 +30,10 @@ final class ExceptionShield
                         'rota' => $route,
                         'metodo' => $methodName,
                         'tipo' => $e::class,
-                        'mensagem' => substr(Redact::secrets($e->getMessage()), 0, 500),
-                        'arquivo' => $e->getFile(),
+                        'mensagem' => self::message($e),
+                        'arquivo' => self::relative($e->getFile()),
                         'linha' => $e->getLine(),
-                        'rastreio' => substr(Redact::secrets($e->getTraceAsString()), 0, 4000),
+                        'rastreio' => self::frames($e),
                     ]);
                 } catch (Throwable) {
                 }
@@ -55,5 +55,37 @@ final class ExceptionShield
             $css = function_exists('asset_url') ? asset_url('/assets/app.css') : '/assets/app.css';
             echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Algo deu errado</title><link rel="stylesheet" href="' . $safe($css) . '"></head><body class="err-shield"><main><h1>Não foi possível concluir agora</h1><p>O problema foi registrado. Passe estes dados ao suporte:</p><ul><li>Código: <strong>' . $safe($ref) . '</strong></li><li>Quando: ' . $safe($when) . '</li><li>Página: ' . $safe($route === '' ? '/' : $route) . '</li><li>Método: ' . $safe($methodName) . '</li></ul><p><a href="/">Voltar ao início</a></p></main></body></html>';
         });
+    }
+
+    /** Activity-log message (spec §13 Q7): class + masked message, at most 200 chars. Full detail: storage/error.log. */
+    public static function message(Throwable $e): string
+    {
+        return mb_substr($e::class . ': ' . Redact::logMessage($e->getMessage()), 0, 200);
+    }
+
+    /**
+     * Activity-log trace (spec §13 Q7): at most 10 repo-relative file:line frames, never args; frames outside the
+     * repo are skipped.
+     * @return list<string>
+     */
+    public static function frames(Throwable $e): array
+    {
+        $out = [];
+        foreach ([['file' => $e->getFile(), 'line' => $e->getLine()], ...$e->getTrace()] as $frame) {
+            $file = isset($frame['file']) ? self::relative((string) $frame['file']) : null;
+            if ($file === null || count($out) >= 10) {
+                continue;
+            }
+            $out[] = $file . ':' . (int) ($frame['line'] ?? 0);
+        }
+        return $out;
+    }
+
+    /** Path relative to the repo root; null outside it. */
+    public static function relative(string $file): ?string
+    {
+        $root = dirname(__DIR__) . '/';
+        $real = realpath($file) ?: $file;
+        return str_starts_with($real, $root) ? substr($real, strlen($root)) : null;
     }
 }

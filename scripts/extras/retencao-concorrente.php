@@ -2,6 +2,8 @@
 <?php
 // CT-RET-006..010: retenção rodando em paralelo com escritores de log.
 // Uso: APP_URL=http://127.0.0.1:PORT php scripts/extras/retencao-concorrente.php [rodadas] [requisicoes] [paralelo]
+// PostgreSQL only: DB_DSN/DB_USER do .env (dev env: casalivre_dev). A contagem do audit.activity_log usa
+// SET ROLE casalivre_retention (dono do schema audit; só no dev/teste, o app não tem SELECT).
 declare(strict_types=1);
 
 /** PR #32: o link de ativação não volta mais na API; roda o worker (APP_ENV=dev) e lê o último link do e-mail no mail-dev.log. */
@@ -56,11 +58,11 @@ function csrf(string $jar, string $page): string
     if ($t === '') { fwrite(STDERR, "sem _csrf em $page (HTTP $st)\n"); }
     return $t;
 }
-function pdo(string $file): PDO
+require_once $root . '/src/Db.php';
+Db::loadEnv();
+function pdo(): PDO
 {
-    $p = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $p->setAttribute(PDO::ATTR_TIMEOUT, 20);
-    return $p;
+    return new PDO(Db::dsn(), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 
 // Limpa sobras do limite por IP deixadas pelo CASOS/standalone (storage/cache/ratelimit), para o login abaixo não cair em 429.
@@ -68,15 +70,12 @@ function pdo(string $file): PDO
 foreach (glob(dirname(__DIR__, 2) . '/storage/cache/ratelimit/*') ?: [] as $f) {
     @unlink($f);
 }
-$appDb = dirname(__DIR__, 2) . '/storage/db/casalivre.sqlite';
-if (is_file($appDb)) {
-    (new PDO('sqlite:' . $appDb))->exec("DELETE FROM login_rate_limit WHERE ip IN ('127.0.0.1', '::1')");
-}
+pdo()->exec("DELETE FROM login_rate_limit WHERE ip IN ('127.0.0.1', '::1')");
 
 // Preparação (sem criar imóvel): usa a massa dos seeds.
 // 1) Sessão + CSRF: conta própria do teste, cadastrada pela API, ativada pelo link do mail-dev.log (mail-worker)
 //    e logada com o mesmo cookie; confere /api/users/eu = 200 (o 419 antigo vinha de token lido de um redirect).
-$appDb = pdo("$root/storage/db/casalivre.sqlite");
+$appDb = pdo();
 $jar = tempnam(sys_get_temp_dir(), 'conc');
 $email = 'conc' . bin2hex(random_bytes(3)) . '@casalivre.test';
 $cep = (string) ($appDb->query("SELECT cep FROM ceps WHERE street <> '' AND city LIKE 'Florian%' ORDER BY cep LIMIT 1")->fetchColumn() ?: '88010000');
@@ -113,13 +112,25 @@ echo "    (info) export .ics (token /ical/{hash32}) de " . count($icsPaths) . " 
 $icsGeraAtividade = $stIcs === 200;
 
 $apiDir = "$root/storage/logs/api";
-$actDb = "$root/storage/logs/activity.sqlite";
 $phpLog = "$root/storage/logs/php.log";
 $errLog = "$root/storage/error.log";
-$countAct = static function () use ($actDb): int {
-    $pdo = pdo($actDb);
-    // CALENDAR_EXPORT = 15 (src/ActivityLog.php): gravado por /ical/{hash} (public/index.php) e pelo export da API.
-    return (int) $pdo->query('SELECT COUNT(*) FROM activity_log WHERE action_code = 15')->fetchColumn();
+$countAct = static function (): int {
+    $pdo = pdo();
+    $pdo->exec('SET ROLE casalivre_retention');
+    // CALENDAR_EXPORT = 15 (src/ActivityLog.php, classe other): gravado por /ical/{hash} e pelo export da API.
+    return (int) $pdo->query('SELECT COUNT(*) FROM audit.activity_log WHERE code = 15')->fetchColumn();
+};
+$apiLines = static function () use (&$apiDir): array {
+    $lines = []; $bad = 0;
+    foreach (glob("$apiDir/api-*") ?: [] as $f) {
+        foreach (file($f, FILE_IGNORE_NEW_LINES) ?: [] as $l) {
+            if ($l === '') { continue; }
+            $jj = json_decode($l, true);
+            if (!is_array($jj)) { $bad++; continue; }
+            $lines[] = $jj;
+        }
+    }
+    return [$lines, $bad];
 };
 
 for ($r = 1; $r <= $rounds; $r++) {
@@ -129,6 +140,7 @@ for ($r = 1; $r <= $rounds; $r++) {
     $oldStamp = '[' . date('d-M-Y H:i:s', time() - 30 * 86400) . ' UTC]';
     foreach ([$phpLog, $errLog] as $f) { file_put_contents($f, "$oldStamp ANTIGA-$r\n", FILE_APPEND); }
     $actBefore = $countAct();
+    $idsBefore = array_flip(array_map(static fn ($x) => (string) ($x['request_id'] ?? ''), $apiLines()[0]));
 
     $tag = "conc$r" . bin2hex(random_bytes(3));
     $stop = "$root/storage/.conc-stop";
@@ -154,6 +166,7 @@ for ($r = 1; $r <= $rounds; $r++) {
         // RequestLog só cobre rotas /api (public/index.php: str_starts_with($path, '/api')); /ical/{hash} não entra nele.
         if (str_starts_with($p, '/api')) { $apiIds["$tag-req-$i"] = true; }
         $ch = curl_init($base . $p);
+        // X-Request-Id do cliente é ignorado (o request_id é o UUIDv7 do servidor); enviado para provar isso.
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ["X-Request-Id: $tag-req-$i"]]);
         return $ch;
     };
@@ -166,7 +179,6 @@ for ($r = 1; $r <= $rounds; $r++) {
             if (str_contains((string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL), '/ical/')) {
                 $bodyX = (string) curl_multi_getcontent($ch);
                 if ($c === 200 && (!str_starts_with($bodyX, 'BEGIN:VCALENDAR') || !str_contains($bodyX, 'END:VCALENDAR'))) { $icsBad++; }
-                if ($c === 500 && str_contains((string) @file_get_contents("$root/storage/error.log"), 'database is locked')) { $locked = true; }
             }
             curl_multi_remove_handle($mh, $ch); unset($active[(int) $ch]);
         }
@@ -179,24 +191,17 @@ for ($r = 1; $r <= $rounds; $r++) {
     usleep(300000);
 
     // Verificação 1: log de requisições — 1 linha por requisição, JSON íntegro
-    $lines = []; $bad = 0;
-    foreach (glob("$apiDir/api-*") ?: [] as $f) {
-        foreach (file($f, FILE_IGNORE_NEW_LINES) ?: [] as $l) {
-            if ($l === '') { continue; }
-            $jj = json_decode($l, true);
-            if (!is_array($jj)) { $bad++; continue; }
-            $lines[] = $jj;
-        }
-    }
-    $ids = array_count_values(array_filter(array_map(static fn ($x) => (string) ($x['request_id'] ?? ''), $lines), static fn ($id) => str_starts_with($id, "$tag-req-")));
+    [$lines, $bad] = $apiLines();
+    $new = array_values(array_filter(array_map(static fn ($x) => (string) ($x['request_id'] ?? ''), $lines), static fn ($id) => !isset($idsBefore[$id])));
+    $ids = array_count_values($new);
     $nApi = count($apiIds);
-    $missing = count(array_diff_key($apiIds, $ids)); $extra = count(array_diff_key($ids, $apiIds));
     $dups = count(array_filter($ids, static fn ($n) => $n > 1));
+    $foreign = count(array_filter($new, static fn ($id) => str_starts_with($id, "$tag-req-")));
     ok($bad === 0, "rodada $r: todas as linhas do log de API são JSON válidos ($bad inválidas/truncadas/intercaladas)");
-    ok($missing === 0 && $extra === 0 && $dups === 0, "rodada $r: RequestLog com 1 linha por requisição /api ($nApi enviadas a /api, " . (count($ids) - $extra) . " registradas, $missing faltando, $extra de fora de /api, $dups duplicadas)");
+    ok(count($ids) === $nApi && $dups === 0 && $foreign === 0, "rodada $r: RequestLog com 1 linha por requisição /api ($nApi enviadas a /api, " . count($ids) . " registradas, $dups duplicadas, $foreign com X-Request-Id do cliente)");
     $leak = array_filter($lines, static fn ($x) => str_contains(json_encode($x), $tag . '"') || str_contains((string) json_encode($x['query'] ?? []), $tag));
     ok($leak === [], "rodada $r: valor ?t= ausente das linhas sob concorrência");
-    // Verificação 2: activity_log — nenhuma inserção perdida durante DELETE/VACUUM
+    // Verificação 2: audit.activity_log — nenhuma inserção perdida durante a retenção (DROP de partição)
     $actAfter = $countAct();
     // Exatamente 1 linha CALENDAR_EXPORT no ActivityLog por requisição .ics (nem perdida, nem duplicada).
     ok($icsGeraAtividade, "rodada $r: export .ics (" . count($icsPaths) . " imóveis da massa) responde 200 na preparação");
