@@ -164,9 +164,10 @@ ops/dev-env/db-setup.sh --no-seed
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
 - **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
   fora do `valkey.conf`), ACL de `programador-notas/p0-4-valkey-acl.md`:
-  `default` off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings incl. RENAME,
-  hash incl. HLEN/HEXISTS (ADR 001 §11), listas, zset, set, multi, ping/hello/auth/select 0), sem streams e sem
-  Lua; `cl_admin` separado. Passwords are generated once, never in env:
+  `default` off; `cl_app` só `~cl:*`/`&cl:*`, `-@all` + allowlist (strings,
+  hash, listas, zset, set, multi, ping/hello/auth/select 0), sem streams e sem
+  Lua; `cl_admin` separado. The allowlist includes RENAME, HLEN and HEXISTS
+  (ADR 001 §11, demand-log flush), still limited to `cl:*` keys. Passwords are generated once, never in env:
   `etc/valkey-app.secret` (0440; production `root:casalivre`), read by the app
   (`VALKEY_USER=cl_app`) via `VALKEY_PASSWORD_FILE`; `admin/valkey-admin.secret`
   (0400, dir 0700). `admin/` is never bound into the runtime, so the FPM and the
