@@ -18,6 +18,8 @@ After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP 
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
 - [ ] `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
 - [ ] `Valkey::connect()` from web requests (queue producers) has no tight timeout: with Valkey frozen it took over 20 s, so an FPM worker would hang up to `default_socket_timeout`. Give producers about 0.5 s and keep the long timeout only for the workers. Estimate 1 h. Source: Arquitetura #160. Sprint: Priority now. Owner: Programador.
+- [ ] Queue worker restarts about once a second during a PG outage: sleep 5-30 s before `exit(1)` when the DB is lost, and alert on the `DB connection lost` log line. Estimate 0.5 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador.
+- [ ] Worker tests: a lost ack after a successful send (the email goes out again after 10 min, possibly with a second activation or reset token), and a Valkey outage (today the worker crashes with exit 255 and dumps a stack trace into the runit log; catch it and log one line). Estimate 1 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador; Teste; Segurança.
 
 ## Em andamento
 
@@ -281,7 +283,7 @@ Removed 2026-10-21: SQLite removal. Items moved to PostgreSQL only.
 
 - [ ] `LogRetention::run` incluir arquivos `*.ret-*` remanescentes.
 - [ ] Add the CI gate for money paths (PHPStan max + php-cs-fixer + coverage check) before the first money PR ([docs/money-standards.md](../docs/money-standards.md)). Owner: Programador; Teste.
-- [ ] JobQueue: claim jobs with a single `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING`, add a lease token, make `fail()` atomic, and make BD's queue-table changes in the same separate PR. Estimate 0.5 d. Source: Arquitetura #148. Owner: Programador; BD.
+- [ ] JobQueue: claim jobs with a single `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING`, add a lease token, make `fail()` atomic, and make BD's queue-table changes in the same separate PR. The lease token also lets a reserved job be reclaimed sooner than 10 min (Arquitetura #167). Estimate 0.5 d. Source: Arquitetura #148. Sprint: Priority now. Owner: Programador; BD.
 - [ ] Add a Valkey service to CI; `valkey_queue_test` is still skipped there. Estimate 1 h. Source: Arquitetura #148. Owner: Programador.
 - [ ] After a Valkey failure, skip Valkey for about 5 s per worker so rate-limited routes don't each pay the 100 ms connect timeout. Estimate 1 h. Source: Arquitetura #160. Sprint: ADR 001. Owner: Programador.
 - [ ] Add a production `valkey.conf` to the repo: `maxmemory` with `noeviction` or `volatile-ttl` (never `allkeys-*`), `appendonly yes` + `appendfsync everysec`, and require Valkey 7 or later (`EXPIRE NX`). Estimate 1 h. Source: Arquitetura #160. Sprint: ADR 001. Owner: Programador; Segurança.
