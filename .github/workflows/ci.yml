@@ -22,13 +22,29 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo, pdo_sqlite, sqlite3, curl, mbstring, fileinfo, gd
+          extensions: pdo, pdo_sqlite, sqlite3, curl, mbstring, fileinfo, gd, redis
           tools: none
           coverage: none
       - name: php -l
         run: |
           find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l > /tmp/lint.txt || { grep -v '^No syntax errors' /tmp/lint.txt; exit 1; }
+      # IpRateLimiter (#158) counts on Valkey: unix socket only and the cl_app ACL of ops/dev-env/services.sh
+      # (same command allowlist, ~cl:* only); without it the limiter would fail closed on signup/reset.
+      - name: Valkey (cl_app ACL)
+        run: |
+          mkdir -p /tmp/vk && chmod 777 /tmp/vk
+          od -An -tx1 -N32 /dev/urandom | tr -d ' \n' > /tmp/vk/app.secret
+          cmds=$(sed -n "/^app_cmds='/,/'\$/p" ops/dev-env/services.sh | sed "s/^app_cmds='//; s/'\$//" | tr '\n' ' ')
+          { echo 'user default off resetkeys resetchannels -@all'
+            echo "user cl_app on >$(cat /tmp/vk/app.secret) resetkeys ~cl:* resetchannels &cl:* -@all $cmds"; } > /tmp/vk/valkey.acl
+          chmod 644 /tmp/vk/valkey.acl
+          docker run -d --name valkey -v /tmp/vk:/vk valkey/valkey:9 valkey-server --port 0 --unixsocket /vk/valkey.sock --unixsocketperm 777 --aclfile /vk/valkey.acl
+          for i in $(seq 50); do [ -S /tmp/vk/valkey.sock ] && break; sleep 0.2; done
+          [ -S /tmp/vk/valkey.sock ] || { docker logs valkey; exit 1; }
       - name: Testes standalone
         env:
           LOG_SALT: ci-salt-nao-usar-em-producao-0123456789abcdef
+          VALKEY_SOCKET: /tmp/vk/valkey.sock
+          VALKEY_USER: cl_app
+          VALKEY_PASSWORD_FILE: /tmp/vk/app.secret
         run: php tests/standalone/run.php

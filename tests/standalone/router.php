@@ -6,9 +6,9 @@ if (($_SERVER['REQUEST_URI'] ?? '') === '/__t_server_nonce') {
     echo (string) getenv('T_SERVER_NONCE');
     return true;
 }
-if (getenv('T_RATELIMIT_DIR')) {
+if (getenv('T_RATELIMIT_NS_FILE')) {
     require_once __DIR__ . '/../../src/IpRateLimiter.php';
-    IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
+    IpRateLimiter::$namespace = (string) @file_get_contents((string) getenv('T_RATELIMIT_NS_FILE'));
 }
 // Teste pode pedir os avisos/erros do PHP num arquivo (ex.: provar que não há "Array to string conversion").
 if (getenv('T_PHP_ERROR_LOG')) {

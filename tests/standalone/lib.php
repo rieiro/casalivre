@@ -18,20 +18,29 @@ if (getenv('CASALIVRE_ENV_FILE') === false) {
     register_shutdown_function(static fn () => @unlink($__tEnv));
 }
 
-// Estado do limite por IP (IpRateLimiter) numa pasta temporária por execução, herdada por php -S
-// (tests/standalone/router.php aplica): rodadas seguidas não acumulam 429 em storage/cache/ratelimit.
-if (getenv('T_RATELIMIT_DIR') === false) {
-    $__tRl = sys_get_temp_dir() . '/cl-rl-' . bin2hex(random_bytes(6));
-    putenv('T_RATELIMIT_DIR=' . $__tRl);
-    register_shutdown_function(static fn () => @exec('rm -rf ' . escapeshellarg($__tRl)));
+// Limite por IP (IpRateLimiter, Valkey): cada execução usa um namespace próprio de chaves (cl:rl:t<hex>:...),
+// gravado em T_RATELIMIT_NS_FILE (herdado por php -S e subprocessos; tests/standalone/router.php relê a cada
+// requisição). t_ratelimit_reset() troca o namespace: rodadas seguidas não acumulam 429 e as chaves antigas
+// expiram pelo TTL da janela. Sem Valkey (VALKEY_SOCKET) o limitador cai no modo de falha de cada balde.
+// LOG_SALT de teste quando não vier do ambiente (a CI define o seu): a chave do limitador é HMAC com ele.
+if (getenv('LOG_SALT') === false) {
+    putenv('LOG_SALT=salt-de-teste-standalone-0123456789abcdef');
 }
 require_once CL_ROOT . '/src/IpRateLimiter.php';
-IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
+if (getenv('T_RATELIMIT_NS_FILE') === false) {
+    $__tRl = (string) tempnam(sys_get_temp_dir(), 'clrl');
+    putenv('T_RATELIMIT_NS_FILE=' . $__tRl);
+    register_shutdown_function(static fn () => @unlink($__tRl));
+    t_ratelimit_reset();
+} else {
+    IpRateLimiter::$namespace = (string) @file_get_contents((string) getenv('T_RATELIMIT_NS_FILE'));
+}
 
-/** Zera o estado do limite por IP desta execução. */
+/** Zera o estado do limite por IP desta execução (namespace novo para este processo e para os servidores). */
 function t_ratelimit_reset(): void
 {
-    @exec('rm -rf ' . escapeshellarg((string) getenv('T_RATELIMIT_DIR')));
+    IpRateLimiter::$namespace = 't' . bin2hex(random_bytes(6)) . ':';
+    file_put_contents((string) getenv('T_RATELIMIT_NS_FILE'), IpRateLimiter::$namespace);
 }
 
 $GLOBALS['__t_fail'] = 0;

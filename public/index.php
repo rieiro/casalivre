@@ -117,24 +117,8 @@ return Seguranca::pipeline(
             ['POST', '/entrar'],
             ['POST', '/api/sessao'],
         ],
-        // [método, caminho, máximo, janela (s), balde] por IP (IPv6 por /64).
-        'api_limites' => [
-            ['GET', '#^/api/cidades$#', 60, 60, '/api/cidades'],
-            ['GET', '#^/api/ceps$#', 60, 60, '/api/ceps'],
-            ['GET', '#^/api/busca$#', 60, 60, '/api/busca'],
-            // Esqueci a senha e cadastro: um balde por IP somando web e API (como fotos e avaliação).
-            ['POST', '#^/api/auth/senha/esqueci$#', 5, 900, '/senha/esqueci'],
-            ['POST', '#^/api/users$#', 10, 3600, '/cadastro'],
-            ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
-            ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
-            // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
-            ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
-            // Avaliação pelo formulário web: mesmo balde da API (10 por hora por IP, somando os dois).
-            ['POST', '#^/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
-            // Formulários web (mesma camada e mesmos baldes da API). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
-            ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
-            ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
-        ],
+        // [método, caminho, máximo, janela (s), balde] por IP (IPv6 por /64); lista em seguranca/api_limites.php.
+        'api_limites' => require __DIR__ . '/../seguranca/api_limites.php',
         'bloqueado' => static fn (): bool => LoginRateLimiter::blocked(),
         'privado' => static fn (string $path, string $method): bool => casa_privado($path, $method),
         'recusar' => static function (string $code, string $path): never {
