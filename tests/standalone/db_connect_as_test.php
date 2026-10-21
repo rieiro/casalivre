@@ -30,7 +30,7 @@ t_eq(['x' => 1], $p->query('SELECT 1 AS x')->fetch(), 'fetch() devolve só as ch
 
 echo "variável de usuário preenchida\n";
 putenv('T_CA_USER=t_ca_papel_inexistente');
-putenv('T_CA_PASS');
+putenv('T_CA_PASS=qualquer'); // com senha, o erro do servidor traz o nome do login (sem senha: fe_sendauth)
 $err = $state(static fn () => Db::connectAs('T_CA_USER', 'T_CA_PASS'));
 t_ok($err !== null && str_contains($err, 't_ca_papel_inexistente'), 'usa o login da variável (papel inexistente: erro com o nome dele)');
 putenv("T_CA_USER=$mainUser");
