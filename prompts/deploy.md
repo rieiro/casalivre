@@ -21,7 +21,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
 
 ### Migrate and schema (#99, #100, SCHEMA 19)
-- [ ] The DB is recreated from scratch: on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php`. A v18 DB cannot become 19 (migrate aborts because of the RESTRICT FK).
+- [ ] No data migration (docs/decisions.md, 2026-10-21): on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (seeds and version only), then the seeds.
 - [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
 - [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
 - [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD). Record this in `docs/arquitetura.md`.
@@ -108,8 +108,6 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] **`MAP_TILES_FILE`** não definido em produção.
 
 ### Banco e tokens (#35, #39)
-- [ ] Recriar o banco com `scripts/setup.sh` (SCHEMA_VERSION 7; sem script de migração).
-- [ ] Tokens de ativação e redefinição já emitidos deixam de valer; quem tiver link pendente pede outro.
 - [ ] Redefinir a senha desconecta o usuário em todos os dispositivos.
 
 ### Fotos (#39)
@@ -117,7 +115,6 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] `storage/fotos/originais` com permissão `0700`, dono do php-fpm, fora do webroot; lock do worker `0600`; WebP em `public/uploads/fotos/` com `0644`.
 - [ ] nginx: `location /uploads/` sem execução de PHP e com `add_header X-Content-Type-Options nosniff`.
 - [ ] Cron do worker a cada minuto, com o usuário do php-fpm: `* * * * * php /srv/casalivre/scripts/image-worker.php`, com `memory_limit` de pelo menos `256M` no PHP CLI.
-- [ ] Depois do deploy, o worker migra as fotos antigas de `/uploads/users/%` em lotes de 100 por minuto e apaga cada original antigo depois de copiar; ao final, a pasta `public/uploads/users/` pode ser removida.
 - [ ] Limite de 25 MP por imagem (`MAX_PIXELS`). GIF não é mais aceito.
 
 ### Mapa PMTiles (#40)
@@ -147,7 +144,6 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 **Ordem do deploy**
 - [ ] Código → `php scripts/build-assets.php && php scripts/build-assets.php --check` (manifesto, `public/assets/themes/<tema>.css`, `map-style.json`; sai com 1 se algum `brand.php` for inválido) → pré-compressão (brotli/gzip, sem o .pmtiles) → `systemctl reload php8.4-fpm`.
-- [ ] Banco em SCHEMA 13 (11: grupos; 12: verify_token/verified_at; 13: last_check_at/fail_count). Recriar com seeds, como nas versões anteriores, ou `php scripts/migrate.php`. Backup do PostgreSQL antes.
 - [ ] `php scripts/refresh-settings-cache.php` e, para o primeiro admin, `php scripts/set-admin.php <email>`. Tema da plataforma em /admin/tema.
 
 **.env**
@@ -201,20 +197,18 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## #72 e #73: vitrine, ativação em duas etapas e HEAD (SCHEMA_VERSION 14)
 - [ ] (#72) nginx: o limite das locations de fotos (`20m`) também cobre o multipart chunked, que o BodyLimit deixa passar nessas rotas.
 - [ ] (#72) `APP_URL` de produção absoluto e `https://`: o 302 da vitrine depende dele (sem ele, 404).
-- [ ] (#73) SCHEMA_VERSION 14: recriar o banco com `setup.sh` + seeds (sem migração).
 - [ ] (#73) O link de ativação do e-mail não mudou (`/verificar?token=…`), mas abre uma página de confirmação; a conta só é ativada ao clicar em "Ativar conta" (POST com CSRF).
 - [ ] (#73) HEAD só é aceito em páginas públicas somente leitura; as demais rotas respondem 405. Monitores e health checks devem usar GET, ou HEAD em `/`.
 - [ ] (#73) Requisições HEAD não gravam `activity_log`.
 - [ ] (#73) iCal (`/ical/…`, `/api/ical/…`) em domínio de grupo responde 404 para imóvel de outro grupo ou sem grupo.
-- [ ] (#73) nginx: `autoindex off` em `/uploads/`. Assim que o `migrateLegacy` do image-worker terminar (100 fotos por execução; as fotos antigas usam ids sequenciais), negar a pasta antiga com `location ^~ /uploads/users/ { deny all; }`.
+- [ ] (#73) nginx: `autoindex off` em `/uploads/`.
 
 ## Paridade web/API, calendário e grupo de teste (#83–#94, SCHEMA_VERSION 17)
-- [ ] Banco em SCHEMA 17 (15: `cal.url_required` e `cal.feed_missing`; 16: chaves `photo.*`/`review.*`; 17: `cal.feed_removed` e `cal.url_https`). As três versões só mudam seeds de tradução: recriar o banco com `setup.sh` + seeds, sem migração.
 - [ ] (#86) API do iCal aceita só `external_ical_url` e `feed_title`; download que falha dá 502; calendário inválido dá 422 ou 409. (#90) Upload pela API sem nenhuma foto salva dá 422.
 - [ ] (#86, Segurança) Proxy (nginx/CDN): **não substituir as respostas 5xx da aplicação em `/api/`** (sem `proxy_intercept_errors on` nem `error_page 502` nesse location). O `POST /api/imoveis/<h>/ical/importar` devolve 502 com JSON (`error`, `status: NOK`, `feeds`) quando o download do feed falha.
-- [ ] (#89/#91) Feeds só `https://`, sem exceção. Nesta fase o banco é recriado do zero (decisão do usuário): não há feeds `http://` antigos nem migração. Feed `http://` que existir é recusado no cadastro e não sincroniza (NOK).
+- [ ] (#89/#91) Feeds só `https://`, sem exceção. Feed `http://` que existir é recusado no cadastro e não sincroniza (NOK).
 - [ ] (#85) O limite de reenvio de ativação (3 por hora por conta) usa o e-mail como chave; isso funciona porque o e-mail de uma conta não pode ser trocado (não existe troca de e-mail).
-- [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. Se algum worker CLI virar processo de longa duração (laço), chamar `GrupoResolvedor::limparCache()` a cada iteração. Hoje o mail-worker processa um lote e sai (no máximo um lote com link antigo; aceito pela Segurança).
+- [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. The `scripts/queue-worker.php` runit service (#118) already loops and does not yet call `GrupoResolvedor::limparCache()`; the fix is in `prompts/backlog.md`, "Priority now". Until it ships, restart the queue-worker after a domain loses verification.
 - [ ] (#94) `scripts/seed-grupo-teste.php` é **só para dev**: recusa rodar se `APP_ENV` não for `dev`/`local` e nunca entra em scripts de setup ou deploy de produção.
 
 ## Limitador de taxa (#85, #88; nota final)
@@ -233,11 +227,9 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Banco de dados (PostgreSQL)
 
 - [ ] **Preparação de ambiente novo**: `psql -f database/schema.pgsql.sql` → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio, sem o schema carregado. Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
-- [ ] **Banco em desenvolvimento** (decisão do usuário, 14/10): sem scripts de migração. Se o schema mudar, recriar o banco (`setup.sh` + seeds). Continua obrigatório aumentar `Db::SCHEMA_VERSION`.
-- [ ] **Migração a cada deploy** (só depois da primeira subida) (SCHEMA_VERSION 3 com o #21 e 4 com o #23: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). A requisição web não migra: só confere `schema_meta.schema_version` e responde 503 se o banco estiver atrás do código.
+- [ ] **No data migration** (docs/decisions.md, 2026-10-21): if the schema changes, recreate the DB (schema + seeds). `Db::SCHEMA_VERSION` still bumps.
 - [ ] **Backup**: plano de backup do PostgreSQL (dump, PITR e restauração testada) definido pelo Banco de Dados.
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
-- [ ] **Dados de auditoria**: `activity_log.actor_id` passa a guardar HMAC; registros antigos mantêm o id numérico até a limpeza única abaixo ou a retenção.
 
 ## Fila de e-mail (PR #32)
 - [ ] Cron do worker a cada minuto, com o usuário do serviço: `* * * * * php /srv/casalivre/scripts/mail-worker.php` (a saída vai para o log do serviço e tem só contadores).
@@ -252,7 +244,6 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, o `activity_log` no PostgreSQL, `error.log`, `calendar-sync.log` e `php.log`. Confirmar a primeira execução (`sv status` e saída do script).
 - [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity_log`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
 - [ ] **Limpeza do rate limit (opcional):** com o #34 o diretório se limpa sozinho; se quiser, `find storage/cache/ratelimit -mmin +120 -delete` no cron.
-- [ ] **Limpeza única**: apagar o histórico já existente no `activity_log` (dados pessoais em `valor_anterior`/`valor_atual` gravados antes da allowlist).
 
 ## Permissões e arquivos
 

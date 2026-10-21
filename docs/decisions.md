@@ -10,10 +10,13 @@ One line per decision in force, newest first within each area. A superseded deci
 - Tests run only on PHP 8.4 (local and CI), no per-version runs.
 
 ## Infrastructure and database
+- 2026-10-21: No data migration. All data is created from scratch (DB recreated, seeds). No migration code, legacy-data conversion, backfills or migration deploy steps; schema changes update the schema and seeds only (`Db::SCHEMA_VERSION` still bumps). Data migration comes only later, by explicit Rafael decision.
+- 2026-10-21: The rate limiter (`IpRateLimiter`) moves to Valkey now, replacing the files in `storage/cache/ratelimit`.
+- 2026-10-21: Accepted dev-only risk: Rafael's Incus dev container has a writable container root and outbound network through the default NIC. Not for production.
 - 2026-10-16: Production-like dev env: Void Linux musl container with nginx, PHP-FPM 8.4, PostgreSQL and Valkey, no Docker; recipe in `ops/dev-env/` (#112). Rafael's Incus container is only for his own tests. Production: ValueHost bare-metal in Brazil.
 - 2026-10-21: PostgreSQL only. SQLite and MongoDB are dropped (Rafael, 2026-10-21).
 - ~~2026-10-16: SQLite must keep working; optimization, index tuning and performance measurement happen only on PostgreSQL.~~ Superseded by "2026-10-21: PostgreSQL only".
-- 2026-10-14: The DB is recreated from scratch during sprints (no data migration or backfill); `Db::SCHEMA_VERSION` still bumps on schema change.
+- ~~2026-10-14: The DB is recreated from scratch during sprints (no data migration or backfill); `Db::SCHEMA_VERSION` still bumps on schema change.~~ Superseded by "2026-10-21: No data migration".
 - No DROP, TRUNCATE, DELETE without WHERE, or use of production data without Rafael's explicit approval.
 - `RESTRICT` on `properties.user_id`.
 - ~~activity_log moves to PostgreSQL; the Mongo driver is removed.~~ Superseded by "2026-10-21: PostgreSQL only", which covers it.
@@ -27,6 +30,10 @@ One line per decision in force, newest first within each area. A superseded deci
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
 
 ## Product
+- 2026-10-21: D1 approved: management tree of free depth plus separate storefront channels (Group -> Organization + Channel), Sprint 5 (P2a); group domains and themes move to the channel.
+- 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent.
+- 2026-10-21: Themes stay repo-only (`themes/<name>/`, prepared by the team, contrast checked when prepared); no in-app theme editor or logo upload for now.
+- 2026-10-21: No blanket move of forms to fetch/API: the P10 listing wizard decides its own approach, and no-JS forms stay where they work.
 - Email (signup, password reset): code ready but off, with no provider; both stay closed in production until a provider is chosen.
 - Maps: no Google Maps; OSM tiles today, PMTiles Brazil (Protomaps) + MapLibre GL in backlog.
 - Property rating screen frozen for redesign.
