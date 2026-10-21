@@ -232,6 +232,179 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - campo no anúncio para cadastro e taxa municipais.
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
+## Competitor gaps (reviewed 2026-10-21)
+Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 21/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
+
+| # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| G9 | Bloqueio das datas enquanto a solicitação aguarda aprovação | 10 | 2 | 80% | 0,5 | 32 | Should | S7 | aprovado com mudanças |
+| G7 | Forma de check-in | 6 | 1 | 80% | 0,25 | 19,2 | Should | S7 (P10) | aprovado com mudança |
+| G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga pendente do Rafael |
+| G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
+| G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
+| G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
+| G10 | Consequência para o anfitrião que deixa expirar | 6 | 1 | 80% | 0,5 | 9,6 | Should | S7 | aprovado com mudança |
+| G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
+| G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
+| G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
+| G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto) + P6 | pendente da decisão do Rafael |
+| G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
+| G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
+| G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
+| G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
+| G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
+| G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
+
+### G9 — Bloqueio durante a aprovação (S7)
+- **Problema:** nenhuma regra diz se uma solicitação `solicitada` bloqueia as datas; a disponibilidade do ADR 001 §4 lê só `calendar_days.blocked`, e o antibloqueio (spec-01 §5b) não cobre solicitações, então um hóspede pode segurar várias casas por 24 h. Uma OTA pode vender as mesmas noites na janela de 24 h / 4 h.
+- **Solução:** a solicitação bloqueia as noites do envio até aprovar, recusar, desistir ou expirar; a liberação é atômica com a mudança de estado (formaliza o critério 2 da P2). O bloqueio também sai nos **feeds iCal** do imóvel. Limite por hóspede no parâmetro `max_pending_requests_overlapping` (padrão da plataforma 2 [E], sobrescrito por canal), reaproveitando o contador "N expirações e bloqueio" da §5b. Modo do bloqueio como parâmetro de canal/organização (`hard` padrão; `none` reservado); só `hard` entra na S7.
+- **Critérios de aceite:**
+  1. Depois do envio, as noites somem da busca e não aceitam outra solicitação, até a decisão ou a expiração.
+  2. Aprovar, recusar, desistir ou expirar libera ou confirma as noites na mesma transação; decisões concorrentes recebem 409.
+  3. O feed iCal do imóvel exporta o bloqueio enquanto a solicitação está pendente e o remove ao liberar.
+  4. Com `max_pending_requests_overlapping` = 2, a 3ª solicitação do mesmo hóspede com datas sobrepostas é recusada com a mensagem; o canal pode sobrescrever o valor.
+  5. Um canal com o modo `hard` bloqueia; nenhum outro modo é oferecido na S7.
+- **Prioridade:** Should, S7, junto com G10. Fonte: competitors.md G9 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G10 — Expiração pelo anfitrião (S7)
+- **Problema:** o hóspede é penalizado por expirações de pagamento e o anfitrião por cancelamentos, mas o anfitrião que ignora solicitações não sofre nada, enquanto cada solicitação segura datas (G9).
+- **Solução:** N expirações seguidas = parâmetro de nó/canal (padrão 2 [E]). Na primeira, aviso ao anfitrião e ao nó acima (suporte do franqueado); ao atingir N, o anúncio é **pausado da busca** até reativar, nunca excluído nem oculto da plataforma (coerente com a decisão de canais). A contagem vale para quem tem a delegação de aprovar. Banner no painel Hoje.
+- **Critérios de aceite:**
+  1. Na 1ª expiração, o anfitrião e o nó acima recebem o aviso.
+  2. Com N = 2, a 2ª expiração seguida pausa o anúncio da busca, com o banner e o botão "Reativar"; o anúncio continua acessível na plataforma.
+  3. A expiração conta para quem tem a delegação de aprovar, e cada pausa fica no log.
+- **Prioridade:** Should, S7. Fonte: competitors.md G10 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G14 — Cancelamento causado pelo anfitrião (antes da S7)
+- **Problema:** se o anfitrião não pode receber e pede ao hóspede para cancelar, o cancelamento segue a política do hóspede, o anfitrião escapa da taxa e da métrica, e o hóspede não tem canal antes do check-in.
+- **Solução:** (1) motivo do hóspede "O anfitrião não pode receber / pediu para eu cancelar", que não aplica a política e abre uma revisão antes do check-in; (2) aviso curto na tela de cancelar e em Mensagens; (3) troca de imóvel só por pedido de alteração que o hóspede pode recusar, preferindo imóveis do mesmo nó/canal. O cancelamento guarda `initiated_by` e `responsible` separados; taxa, métrica de confiabilidade, reembolso e comissão leem `responsible`. Quem revisa é o nó acima do imóvel na árvore (na franquia M13, o franqueado como suporte nível 1, com permissão predefinida), com recurso ao `admin_plataforma`; o papel é parâmetro da árvore. Jurídico só consultado no texto ao hóspede.
+- **Critérios de aceite:**
+  1. Com o motivo escolhido, a política não é aplicada e a revisão é aberta para o nó acima do imóvel, com recurso ao `admin_plataforma`.
+  2. Confirmado como do anfitrião: reembolso de 100%, nenhuma comissão devida, a regra de taxa de cancelamento do anfitrião se aplica e o cancelamento conta na métrica dele.
+  3. O registro tem `initiated_by` = hóspede e `responsible` = anfitrião; taxa, métrica, reembolso e comissão leem `responsible`.
+  4. Uma troca de imóvel só acontece por pedido de alteração; se o hóspede recusa, o anfitrião precisa cancelar.
+- **Prioridade:** Should, antes da S7. Fonte: competitors.md G14 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G6 — Câmeras e monitores de ruído (S7, P10)
+- **Problema:** spec-03 e spec-01 não falam de câmeras, gravação nem monitores de ruído; o hóspede não sabe o que há no imóvel, e sem a proibição de câmeras internas o risco de responsabilidade solidária da casalivre é alto (Jurídico).
+- **Solução (orientação do Jurídico):** campos estruturados no bloco de regras da spec-03 §3. **Câmeras externas** permitidas com divulgação (tipo e local, área externa, se grava). **Monitores de ruído** só de decibéis, sem guardar áudio. **Câmeras internas, gravação de áudio e reconhecimento facial são proibidos pela casalivre**; esse piso vale em todos os canais, que podem apertar mas nunca afrouxar. A divulgação aparece **antes da reserva** (detalhe e resumo) e fica no registro da reserva; mudança depois da reserva é avisada aos hóspedes com reserva. O anfitrião é o controlador das imagens e guarda **no máximo 30 dias** (mais só por incidente concreto); a **casalivre não guarda nenhuma imagem nem áudio**, só os campos de divulgação (enquanto o anúncio existir), salvo material entregue num registro de disputa.
+- **Critérios de aceite (spec-03 §3, Jurídico):**
+  1. Campos estruturados: câmera externa (sim/não + local) e monitor de ruído (sim/não + "só decibéis"); não existe opção só em texto livre.
+  2. A publicação fica bloqueada até o anfitrião confirmar: sem câmeras internas, sem gravação de áudio, sem reconhecimento facial.
+  3. A divulgação aparece antes da reserva (página de detalhe + resumo) e no registro da reserva.
+  4. O hóspede tem a denúncia "dispositivo não informado"; a denúncia gera um registro no log e coloca o anúncio em revisão.
+  5. A casalivre não guarda imagens nem áudio dos anfitriões fora de um registro de disputa.
+- **Prioridade:** Should, S7 com o cadastro de anúncio (P10). A regra entra como insumo da revisão final do contrato (sem texto agora). Fontes: competitors.md G6 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`), orientação do Jurídico (`/workspace/juridico/g6-cameras.md`).
+
+### G7 — Forma de check-in (S7, P10)
+- **Problema:** só há horários de check-in e check-out; o hóspede não sabe se é presencial, portaria, cofre de chave ou fechadura eletrônica, e o filtro de self check-in (G3) não tem dado.
+- **Solução:** enum na spec-03 §3: `portaria` (ligado à lista de hóspedes da portaria), cofre de chave, fechadura eletrônica, presencial, prestador local; uma linha na spec-01 §3; alimenta o filtro de self check-in (G3). Oportunidade (Negócios): check-in presencial por prestador local como item com preço no split (regra por item).
+- **Critérios de aceite:**
+  1. O anúncio exige uma forma de check-in da lista; a página de detalhe mostra a forma antes da reserva.
+  2. Com `portaria`, o anúncio fica ligado à lista de hóspedes da portaria (spec-06).
+  3. O filtro de self check-in lista só cofre de chave e fechadura eletrônica.
+- **Prioridade:** Should (impacto elevado pelo Negócios: a franquia M13 depende de 90% de operação remota), S7 com P10. Fonte: competitors.md G7 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G1 — Relevância (antes da frente do ADR 001, T7)
+- **Problema:** "Relevância" é a ordenação padrão, mas nenhuma spec a define; o keyset do ADR 001 ordena por `id`, então hoje relevância = ordem de inserção.
+- **Solução:** nota guardada e indexável = fatores ponderados, com os **pesos como parâmetro do canal** (cada vitrine ajusta; por exemplo, uma franquia favorece reserva instantânea ou tempo de resposta) e padrões da plataforma. Sem impulso pago agora.
+- **Critérios de aceite:**
+  1. A nota é uma coluna guardada e indexada, atualizada quando o anúncio ou as avaliações mudam; o cursor versionado aceita a ordenação.
+  2. Mudar os pesos de um canal muda só a ordem nesse canal.
+  3. Nenhum fator pago entra na nota enquanto o Rafael não decidir.
+- **Prioridade:** Should, antes da frente do ADR 001 (T7). **Pendente da decisão do Rafael** sobre posição paga e preferência da rede (ver "Decisões para o Rafael"). Fonte: competitors.md G1 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G2 — Confiabilidade de "Melhor avaliação" (com G1)
+- **Problema:** um 5,0 com 3 avaliações passa à frente de um 4,9 com 200.
+- **Solução:** média bayesiana com parâmetro de prior / contagem mínima, guardada junto com a nota do G1.
+- **Critérios de aceite:**
+  1. Um imóvel com 3 avaliações 5,0 não passa à frente de um com 200 avaliações e 4,9, com o parâmetro padrão.
+  2. O parâmetro muda sem deploy e a nota é recalculada a cada nova avaliação.
+- **Prioridade:** Should, com G1. Fonte: competitors.md G2 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G3 — Painel de filtros (ADR 001)
+- **Problema:** o UC-H04 lista filtros (tipo, quartos, pets, acessibilidade, reserva instantânea, cancelamento), mas a spec-01 §2 não tem o painel e o ADR 001 filtra só parte.
+- **Solução:** especificar agora como colunas exatas no mesmo construtor SQL do ADR 001: tipo, quartos, camas, banheiros, tipo de reserva, política de cancelamento, pets, e "reembolso total até <data>" calculado da política e das datas.
+- **Critérios de aceite:**
+  1. Cada filtro é uma condição SQL de coluna exata; nenhum filtro roda em PHP.
+  2. "Reembolso total até <data>" lista só anúncios cuja política dá 100% até a data mostrada, para as datas buscadas.
+- **Prioridade:** Should, com o construtor SQL do ADR 001. Fonte: competitors.md G3 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G4 — Datas flexíveis (piloto)
+- **Problema:** "Datas flexíveis" aparece no calendário e no estado vazio sem comportamento definido.
+- **Solução:** no piloto, limpa as datas e mostra a diária; ±N dias fica para depois.
+- **Critérios de aceite:** ao escolher "Datas flexíveis", a busca roda sem datas e os cards mostram a diária, não o total.
+- **Prioridade:** Could. Fonte: competitors.md G4 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G5 — Camas por quarto (spec de schema)
+- **Problema:** a capacidade é só contagem; a página não diz quem dorme onde.
+- **Solução (restrição de schema):** quartos como linhas (tipo de quarto + tipo e quantidade de camas); "camas" é derivado, não uma segunda fonte.
+- **Critérios de aceite:** o total de camas do anúncio é sempre a soma dos quartos; não existe campo `camas` editável à parte.
+- **Prioridade:** Should, na spec de schema. Fonte: competitors.md G5 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G8 — Tempo de resposta medido (restrição)
+- **Problema:** a página mostra o prazo configurado, não quanto o anfitrião de fato demora.
+- **Solução:** só restrição agora: guardar recebido / respondido / expirado em cada solicitação; calcular por imóvel e por nó depois do piloto. Oportunidade: KPI de franqueado/parceiro na M13.
+- **Critérios de aceite:** cada solicitação guarda os três timestamps na própria linha.
+- **Prioridade:** Could. Fonte: competitors.md G8 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G11 — Oferta personalizada (restrição)
+- **Problema:** o anfitrião conversa antes da reserva, mas não transforma a conversa numa oferta que o hóspede reserva pela própria conta.
+- **Solução:** só restrição agora: a oferta é uma solicitação pré-aprovada (caminho "Aceite pendente" da spec-06 §3b) que leva o **canal de origem**, para o split segui-lo (hóspede vindo da plataforma paga a tarifa cheia, regra do canal manual).
+- **Critérios de aceite:** uma oferta guarda o canal de origem, e o split da reserva usa esse canal.
+- **Prioridade:** Could, depois do piloto (utilidade para corretores a validar em entrevistas). Fonte: competitors.md G11 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G12 — Saldo agendado (restrição; P6)
+- **Problema:** a P6.4 cobra o saldo em D-30..45 sem lembrete, sem "pagar antes" e sem trocar a forma de pagamento.
+- **Solução:** pagamentos como linhas por reserva (vencimento, valor, forma, status); lembretes pelo provedor da D3.
+- **Critérios de aceite:** uma reserva tem N linhas de pagamento; o "marcar como pago" do piloto grava uma linha, não um campo na reserva.
+- **Prioridade:** Could na P6; a restrição vale já na S7. Fonte: competitors.md G12 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G13 — Estadia longa × repasse
+- **Problema:** a spec-03 não limita as noites máximas, e a P6 libera tudo em check-in + 24 h, com escrow do PSP de no máximo 45 dias; o reembolso na saída antecipada fica indefinido.
+- **Solução (Negócios: decidir as duas):** (a) agora, teto `max_nights` da plataforma como parâmetro (padrão 90 [E], pendente do Jurídico sobre a Lei 8.245/1991 art. 48), gravado no snapshot; (b) na P6, estadias acima de 30 noites [E] com linhas de pagamento mensais (G12). No piloto (D11, pagamento por fora), a comissão sai mensal na fatura da P9.
+- **Critérios de aceite:**
+  1. O anúncio não aceita noites máximas acima do teto da plataforma.
+  2. O snapshot da reserva guarda as noites máximas e o teto em vigor; mudar o teto não altera reservas existentes.
+- **Prioridade:** Could. **Pendente da decisão do Rafael** (ver abaixo). Fonte: competitors.md G13 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G15 — Evento disruptivo (restrição)
+- **Problema:** força maior é decidida reserva por reserva; um evento regional (evacuação, estrada bloqueada) exige N provas e N decisões.
+- **Solução:** registro de evento ligado aos dados por cidade (regras municipais) mais um período; um nó (por exemplo, franqueado) pode propor, só o `admin_plataforma` ativa. As reservas referenciam o evento como motivo; métrica e calculadora de reembolso o leem. Cenários da Região dos Lagos a confirmar, sem dado.
+- **Critérios de aceite:**
+  1. Só o `admin_plataforma` ativa um evento; um nó só propõe.
+  2. Um cancelamento pode referenciar o evento ativo da cidade e do período, sem prova individual.
+- **Prioridade:** Should, restrição agora e tela depois. Fonte: competitors.md G15 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G16 — Política sazonal (restrição)
+- **Problema:** uma política por anúncio; o anfitrião de praia usa a mais rígida o ano todo.
+- **Solução:** a política é resolvida por (imóvel, **canal**, data de check-in) no snapshot, reaproveitando os períodos de exceção de preço sazonal da S7. Oportunidade: política mais rígida na OTA e mais flexível no canal direto (incentivo à reserva direta, M2).
+- **Critérios de aceite:** o snapshot guarda a política resolvida para o canal e a data de check-in da reserva, não um ponteiro para a política atual do anúncio.
+- **Prioridade:** Could depois do piloto; a restrição vale já na S7. Fonte: competitors.md G16 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G17 — Tarifa não reembolsável
+- **Rejeitado por ora** (RICE 0,5): o direito de 7 dias do CDC (J35) provavelmente anula o desconto; rever depois do Jurídico sobre o CDC art. 49.
+
+### Restrições para a S7
+- O cancelamento guarda `initiated_by` e `responsible` em campos separados; taxa, métrica, reembolso e comissão leem `responsible` (G14), com referência opcional a um evento disruptivo (G15).
+- O bloqueio de solicitação pendente é visível para a disponibilidade do ADR 001 e sai nos feeds iCal do imóvel; a expiração libera na mesma transação (G9).
+- O limite de solicitações pendentes é o parâmetro `max_pending_requests_overlapping` (padrão 2 [E], por canal), e o modo de bloqueio é parâmetro (`hard` só) (G9).
+- N expirações seguidas do anfitrião é parâmetro de nó/canal (padrão 2 [E]) (G10).
+- Cada solicitação guarda recebido / respondido / expirado na própria linha (G8, G10).
+- Pagamentos como N linhas por reserva, não um `paid_at` (G12, G13).
+- O snapshot guarda as noites máximas e o teto em vigor (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
+- Uma oferta ou solicitação pré-aprovada leva o canal de origem (G11).
+- Cadastro de anúncio (P10): campos estruturados de divulgação de câmera externa (sim/não + local) e monitor de ruído (sim/não + só decibéis), com a confirmação obrigatória de "sem câmeras internas, sem gravação de áudio, sem reconhecimento facial" para publicar (G6); forma de check-in como enum (G7).
+
+### Decisões para o Rafael (via Gerente)
+- **G13:** "Qual é a estadia máxima da plataforma para o piloto e a P6 (90 noites [E] ou menos), e estadias longas são um segmento-alvo?"
+  - (a) Agora: teto `max_nights` da plataforma, padrão 90 noites [E] (pendente do Jurídico sobre a Lei 8.245/1991 art. 48), gravado no snapshot.
+  - (a') Agora: o mesmo teto com valor menor que 90 noites.
+  - (b) Na P6: estadias acima de 30 noites [E] com linhas de pagamento mensais (G12), porque o escrow da Asaas vai até 45 dias. O Negócios recomenda decidir (a) e (b).
+- **G1:** "O ranking pode, algum dia, incluir posição paga ou preferência pelos imóveis da própria rede?"
+  - Não (padrão atual do Negócios): ranking só com fatores ponderados por canal, sem impulso pago.
+  - Sim: alavanca de receita, com rótulo visível ao hóspede e checagem do Jurídico antes.
+
 ## Itens adiados
 - Hóspede estrangeiro sem CPF: document_type/document_country (passaporte) e hmac por tipo/país, depois do J40 com o Jurídico (decisão do Rafael: deixar para depois). Por enquanto o CPF é obrigatório (guest_fiscal_party_id NOT NULL).
   - **Critérios de aceite** (para depois do piloto, com o J40 respondido pelo Jurídico):
@@ -249,3 +422,4 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
 - Inscrição da casalivre no CRECI-RJ com corretor responsável (risco médio no canal direto enquanto não decidir).
 - Comissão do canal manual.
 - DIMOB (IN RFB 1.115/2010): aceitar a obrigação ou fazer consulta formal à Receita (em aberto); a modelagem com o CPF do hóspede em fiscal_parties continua.
+- G13 (estadia máxima) e G1 (posição paga ou preferência da rede no ranking): ver "Competitor gaps", "Decisões para o Rafael".
