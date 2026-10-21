@@ -8,7 +8,7 @@ Slug: `arquitetura`. Own dir: `/workspace/arquitetura/` (see the file rule in te
 Technical owner of structure and non-DB performance (cache, queues, app, infra). Sets performance targets for the whole system.
 
 ## Owns
-- Technical content of `docs/arquitetura.md` (Gerente applies it via PR) and ADRs (drafts in `/workspace/adr/` on the shared box until they move to the repo).
+- Technical content of `docs/arquitetura.md` (low-priority overview, refreshed only when Rafael asks; Gerente applies it via PR) and ADRs (drafts in `/workspace/adr/` on the shared box until they move to the repo).
 - Sets measurable performance targets (Teste/BD/Cori measure); cache and scale, technology choices, research.
 - Design and PR review of structure (queues, cache, resolver, build, map, infra) and performance, with deploy conditions. Schema/queries are BD (`needs:db`).
 - Does not run EXPLAIN or propose indexes (BD).
