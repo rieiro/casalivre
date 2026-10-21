@@ -3,6 +3,7 @@
 # cl_app faz LPUSH/RPOP em cl:*, e 'keys *', 'config get *' e 'get x' falham;
 # HLEN/HEXISTS/RENAME (ADR 001 §11) work inside cl:* and are refused (NOPERM)
 # on keys outside cl:*, including RENAME into or out of cl:*;
+# IpRateLimiter (#158): MULTI INCR + EXPIRE NX + TTL, GET, DECR, DEL work on cl:rl:* and are refused outside cl:*;
 # default sem acesso. Sai 1 se algo divergir.
 . "$(dirname "$0")/lib.sh"
 refuse_root
@@ -46,6 +47,10 @@ in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && exec php8.4 -r '
 	\"rename cl:a cl:b\" => [\"ok\", fn () => \$app->set(\"cl:a\", \"1\") && \$app->rawCommand(\"RENAME\", \"cl:a\", \"cl:b\") && \$app->del(\"cl:b\") !== false],
 	\"rename cl:a x\" => [\"NOPERM\", fn () => \$app->set(\"cl:a\", \"1\") && \$app->rawCommand(\"RENAME\", \"cl:a\", \"x\")],
 	\"rename x cl:a\" => [\"NOPERM\", fn () => \$app->rawCommand(\"RENAME\", \"x\", \"cl:a\")],
+	\"multi incr+expire nx+ttl cl:rl:x\" => [\"ok\", fn () => is_array(\$o = \$app->multi()->incr(\"cl:rl:x\")->expire(\"cl:rl:x\", 60, \"NX\")->ttl(\"cl:rl:x\")->exec()) && !in_array(false, \$o, true) && \$o[2] > 0],
+	\"get+decr+del cl:rl:x\" => [\"ok\", fn () => \$app->get(\"cl:rl:x\") !== false && \$app->decr(\"cl:rl:x\") !== false && \$app->del(\"cl:rl:x\") !== false],
+	\"incr rl:x\" => [\"NOPERM\", fn () => \$app->rawCommand(\"INCR\", \"rl:x\")],
+	\"expire rl:x nx\" => [\"NOPERM\", fn () => \$app->rawCommand(\"EXPIRE\", \"rl:x\", \"60\", \"NX\")],
 	\"keys *\" => [\"falhou\", fn () => \$app->rawCommand(\"KEYS\", \"*\")],
 	\"config get *\" => [\"falhou\", fn () => \$app->rawCommand(\"CONFIG\", \"GET\", \"*\")],
 	\"get x\" => [\"falhou\", fn () => \$app->rawCommand(\"GET\", \"x\")],

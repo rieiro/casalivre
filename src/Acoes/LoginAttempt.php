@@ -62,9 +62,10 @@ final class LoginAttempt
         if ($result['status'] === 'pending') {
             // Limite por conta (não por IP), para ninguém usar o login para lotar a caixa da vítima.
             $key = 'conta:' . hash('sha256', Email::normalize((string) $result['user']['email']));
-            // Conferir o limite, enfileirar e contar sob o mesmo flock do arquivo do balde (IpRateLimiter::reserve):
-            // logins paralelos da mesma conta ficam em fila no lock, então no máximo RESEND_MAX e-mails por janela.
-            // Só conta quando o e-mail entrou de fato na fila (cooldown de 5 min ou falha de envio não gastam o limite).
+            // Conferir o limite, enfileirar e contar sem corrida (IpRateLimiter::reserve: vaga atômica por INCR no Valkey):
+            // logins paralelos da mesma conta recebem vagas distintas, então no máximo RESEND_MAX e-mails por janela.
+            // Só conta quando o e-mail entrou de fato na fila (cooldown de 5 min ou falha de envio devolvem a vaga).
+            // Valkey fora do ar: balde fail-closed (IpRateLimiter::FAIL_CLOSED_BUCKETS), nenhum reenvio.
             $pending = null;
             IpRateLimiter::reserve(
                 self::RESEND_BUCKET,
