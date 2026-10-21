@@ -54,7 +54,7 @@ Abra http://127.0.0.1:8080 neste computador. O `start.sh` escuta em todas as int
 
 - Depois do login o proprietário cai em `/painel`, com a lista dos próprios imóveis.
 - Dá para adicionar, editar e remover imóvel, adicionar fotos e apagar fotos.
-- Fotos ficam em `public/uploads/users/{id}/imoveis/{id}/`.
+- Fotos: o original fica fora do `public/` (`storage/fotos/originais/<uuid>.<ext>`) e os WebP públicos em `public/uploads/fotos/<uuid>-<largura>.webp`, gerados pelo `scripts/image-worker.php`.
 - Datas na interface usam dia/mês/ano (dd/mm/aaaa).
 - No celular o menu abre em "Menu" e os formulários, a busca e o painel continuam disponíveis.
 - O idioma fica no canto superior (português, inglês, espanhol). Data, hora e moeda seguem o idioma. Os textos estão na tabela `translations`.

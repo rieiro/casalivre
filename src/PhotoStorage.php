@@ -97,11 +97,6 @@ final class PhotoStorage
     }
 
     /**
-     * Fotos antigas em /uploads/users/<id>/imoveis/<id>/...: cada uma é reivindicada (UPDATE condicionado,
-     * seguro com workers concorrentes), o arquivo vai para os originais (fora do public/), sai do public/ e
-     * entra na ImageQueue. Arquivo ausente/inválido: foto failed. Devolve quantas foram enfileiradas.
-     */
-    /**
      * Pushes the photo to the ImageQueue. If the queue errors (e.g. Valkey down), the photo is marked failed
      * instead of staying in processing forever with no job; the error is logged without personal data.
      */
@@ -116,53 +111,6 @@ final class PhotoStorage
             return false;
         }
     }
-
-    public static function migrateLegacy(int $limit = 100): int
-    {
-        $rows = db()->query("SELECT id, path FROM photos WHERE status = 'ready' AND path LIKE '/uploads/users/%' ORDER BY id LIMIT " . max(1, $limit))->fetchAll();
-        $root = realpath(self::legacyRoot());
-        $dir = self::originalsDir();
-        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
-            return 0;
-        }
-        $claim = db()->prepare("UPDATE photos SET status = 'processing', path = '', uuid = ?, original = ? WHERE id = ? AND status = 'ready' AND path = ?");
-        $fail = db()->prepare("UPDATE photos SET status = 'failed', path = '', original = NULL WHERE id = ? AND status = 'ready' AND path = ?");
-        $done = 0;
-        foreach ($rows as $row) {
-            $path = (string) $row['path'];
-            $full = $root === false ? false : realpath($root . '/' . substr($path, strlen('/uploads/users/')));
-            $ext = $full !== false && str_starts_with($full, $root . DIRECTORY_SEPARATOR) && is_file($full) ? self::imageExtension($full) : null;
-            if ($ext === null) {
-                $fail->execute([(int) $row['id'], $path]);
-                continue;
-            }
-            $uuid = self::randomId();
-            $original = $uuid . '.' . $ext;
-            if (!@copy($full, $dir . '/' . $original)) {
-                continue;
-            }
-            @chmod($dir . '/' . $original, 0600);
-            $claim->execute([$uuid, $original, (int) $row['id'], $path]);
-            if ($claim->rowCount() !== 1) {
-                @unlink($dir . '/' . $original); // outro worker já pegou
-                continue;
-            }
-            if (!self::enqueueOrFail((int) $row['id'])) {
-                continue; // photo failed; the legacy file stays where it was
-            }
-            @unlink($full);
-            $done++;
-        }
-        return $done;
-    }
-
-    /** Raiz das fotos antigas (public/uploads/users). */
-    public static function legacyRoot(): string
-    {
-        return self::$legacy ?? dirname(__DIR__) . '/public/uploads/users';
-    }
-
-    public static ?string $legacy = null;
 
     /**
      * Imóvel inativado: apaga os WebP públicos e originais de todas as fotos e marca-as como removed
