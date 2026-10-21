@@ -274,6 +274,39 @@ final class Db
             || str_contains($e->getMessage(), 'no such table');
     }
 
+    /**
+     * Long-running worker liveness (QueueWorkerLoop::tick): one SELECT 1 on the shared connection. Throws when the
+     * connection is gone (e.g. after a PG restart); the shared connection is never reopened in-process, the
+     * worker exits and runit restarts it with a fresh one.
+     */
+    public static function ping(): void
+    {
+        self::pdo()->query('SELECT 1');
+    }
+
+    /**
+     * Lost or unreachable DB connection (not a query/data error), anywhere in the exception chain: SQLSTATE class 08
+     * (connection exception), 57P01-57P03 (admin/crash shutdown, cannot connect now), or the pgsql driver's
+     * HY000 for a dropped session ("server closed the connection unexpectedly", "no connection to the server").
+     */
+    public static function isConnectionError(Throwable $e): bool
+    {
+        for (; $e !== null; $e = $e->getPrevious()) {
+            if (!$e instanceof PDOException) {
+                continue;
+            }
+            $state = (string) ($e->errorInfo[0] ?? $e->getCode());
+            if (str_starts_with($state, '08') || in_array($state, ['57P01', '57P02', '57P03'], true)) {
+                return true;
+            }
+            $msg = $e->getMessage();
+            if ($state === 'HY000' && (str_contains($msg, 'server closed the connection') || str_contains($msg, 'no connection to the server'))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Versão do schema SQLite (PRAGMA user_version). */
     private static function sqliteVersion(PDO $pdo): int
     {
