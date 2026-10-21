@@ -1,8 +1,8 @@
 <?php
 // Cleanup sprint #158 (Segurança #88): SqliteMailQueue::push checked the cooldown (SELECT) and then inserted, so
 // parallel requests for the same (type, e-mail) could all pass the check and queue several e-mails. N processes push
-// the same activation at once, each pausing 200 ms between check and insert: exactly one is queued. Runs on SQLite
-// and, with TEST_PG_DSN, on PG.
+// the same activation at once, each pausing 200 ms between check and insert: exactly one is queued. PG only
+// (CasaLivre is PostgreSQL only, #137).
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -13,7 +13,6 @@ putenv('QUEUE_DRIVER');
 $race = static function (string $label): void {
     $email = 'race-' . bin2hex(random_bytes(3)) . '@casalivre.test';
     $go = sys_get_temp_dir() . '/cl-mailrace-' . bin2hex(random_bytes(4));
-    db(); // opens the DB first (SQLite: WAL and migrate once), so the children only race on push()
     $procs = [];
     $all = [];
     for ($i = 0; $i < N; $i++) {
@@ -41,13 +40,10 @@ $race = static function (string $label): void {
     t_eq(true, $q->push('reset', $email), "$label: another type for the same e-mail is accepted");
 };
 
-t_temp_sqlite();
-$race('sqlite');
-if (t_is_pg()) {
-    (static fn () => Db::$conn = null)->bindTo(null, Db::class)();
-    t_temp_db();
-    $race('pgsql');
-} else {
-    echo "  SKIPPED pgsql part (set TEST_PG_DSN)\n";
+if (!t_is_pg()) {
+    echo "  SKIPPED (PG only: set TEST_PG_DSN)\n";
+    t_done();
 }
+t_temp_db();
+$race('pgsql');
 t_done();

@@ -88,11 +88,11 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
     public const PG_COOLDOWN_LOCK = 718331202;
 
     /**
-     * Check and insert are serialized per cooldown key (Segurança #88: SELECT-then-INSERT let parallel requests
-     * queue the same mail several times): one transaction with, on PG, pg_advisory_xact_lock(PG_COOLDOWN_LOCK,
-     * hashtext(key)) held until commit (READ COMMITTED: the check then sees the other request's committed row); on
-     * SQLite, BEGIN IMMEDIATE (one writer at a time). Inside a caller's transaction it joins it (savepoint) and the
-     * PG lock lasts until that transaction ends.
+     * Check and insert are serialized per cooldown key on PG (Segurança #88: SELECT-then-INSERT let parallel
+     * requests queue the same mail several times): one transaction with pg_advisory_xact_lock(PG_COOLDOWN_LOCK,
+     * hashtext(key)) held until commit (READ COMMITTED: the check then sees the other request's committed row).
+     * Inside a caller's transaction it joins it (savepoint) and the lock lasts until that transaction ends.
+     * SQLite keeps its old unserialized check-then-insert: CasaLivre is PostgreSQL only (#137; #148 removes SQLite).
      */
     public function push(string $type, string $recipient): bool
     {
@@ -100,25 +100,31 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
             throw new InvalidArgumentException('Tipo de e-mail inválido.');
         }
         $key = self::cooldownKey($type, $recipient);
+        if ((string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'pgsql') {
+            return $this->checkAndInsert($type, $recipient, $key); // PG-only fix per #137
+        }
         return (bool) Db::transactional($this->pdo, function (PDO $pdo) use ($type, $recipient, $key): bool {
-            if ((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql') {
-                $lock = $pdo->prepare('SELECT pg_advisory_xact_lock(' . self::PG_COOLDOWN_LOCK . ', hashtext(?))');
-                $lock->execute([$key]);
-                $lock->closeCursor();
-            }
-            $recent = $pdo->prepare('SELECT 1 FROM mail_queue WHERE cooldown_key = ? AND created_at > ? LIMIT 1');
-            $recent->execute([$key, self::now(-MailQueues::cooldownSeconds($type))]);
-            $hit = $recent->fetchColumn() !== false;
-            $recent->closeCursor();
-            if ($hit) {
-                return false;
-            }
-            if (self::$afterCheck !== null) {
-                (self::$afterCheck)();
-            }
-            $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient), 'cooldown_key' => $key]);
-            return true;
-        }, true);
+            $lock = $pdo->prepare('SELECT pg_advisory_xact_lock(' . self::PG_COOLDOWN_LOCK . ', hashtext(?))');
+            $lock->execute([$key]);
+            $lock->closeCursor();
+            return $this->checkAndInsert($type, $recipient, $key);
+        });
+    }
+
+    private function checkAndInsert(string $type, string $recipient, string $key): bool
+    {
+        $recent = $this->pdo->prepare('SELECT 1 FROM mail_queue WHERE cooldown_key = ? AND created_at > ? LIMIT 1');
+        $recent->execute([$key, self::now(-MailQueues::cooldownSeconds($type))]);
+        $hit = $recent->fetchColumn() !== false;
+        $recent->closeCursor();
+        if ($hit) {
+            return false;
+        }
+        if (self::$afterCheck !== null) {
+            (self::$afterCheck)();
+        }
+        $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient), 'cooldown_key' => $key]);
+        return true;
     }
 }
 
