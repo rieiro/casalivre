@@ -1,7 +1,7 @@
 # Contrato de uso da plataforma casalivre pelo anfitrião
 
 > **MINUTA, versão 0.1, de 16/10/2026. Não publicar nem assinar.**
-> Primeira versão escrita pelo redator jurídico (bot) com base em `juridico/recomendacoes-sem-orientacao-externa.md` (seções 1, 2, 4 e 5, item D) e `juridico/parecer-J1-J35.md` (J4 a J8, itens 13 a 22, J35), conferida com as specs 00, 02, 03, 05, 06 e 09 e, na parte fiscal, com `juridico/spec-05-apendice-fiscal.md`, que prevalece sobre a spec-05 e a spec-00. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver `juridico/recomendacoes-sem-orientacao-externa.md`).**
+> Primeira versão escrita pelo redator jurídico (bot) com base em [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md) (seções 1, 2, 4 e 5, item D) e [../parecer-J1-J35.md](../parecer-J1-J35.md) (J4 a J8, itens 13 a 22, J35), conferida com as specs 00, 02, 03, 05, 06 e 09 e, na parte fiscal, com [../spec-05-apendice-fiscal.md](../spec-05-apendice-fiscal.md), que prevalece sobre a spec-05 e a spec-00. **Minuta do Jurídico; Rafael optou por seguir sem revisão externa (ver [../recomendacoes-sem-orientacao-externa.md](../recomendacoes-sem-orientacao-externa.md)).**
 > Antes de usar: preencher os campos **[PREENCHER]**, resolver os pontos **[CONFERIR]**, decidir os números pendentes do split (D2; a D12 foi decidida em 2026-10-16) e obter o "ok" do Rafael.
 > Este contrato **não é** o contrato de franquia nem a Circular de Oferta de Franquia (COF) do corretor franqueado, que são documentos separados (Lei 13.966/2019).
 
@@ -83,7 +83,9 @@ Um gestor só troca a chave com delegação expressa e confirmação do propriet
 
 4.6. **Serviços de hotelaria.** O Anfitrião que oferecer serviços típicos de hospedagem (limpeza diária, recepção, café da manhã) assume as obrigações de meio de hospedagem que couberem (Lei 11.771/2008, arts. 23 e 26) e deve avisar a casalivre.
 
-4.7. **Canais.** Por padrão, o anúncio fica no marketplace casalivre e no canal da rede do imóvel. O Anfitrião pode desligar qualquer canal. Cada canal pode ter um **acréscimo percentual** sobre as diárias, mostrado antes da publicação.
+4.7. **Canais.** Por padrão, o anúncio fica só no marketplace casalivre. Os demais canais dependem da adesão do Anfitrião. Isso vale para os canais de organizações, de nós e de parceiros, e os imóveis novos de um nó não entram automaticamente em nenhum deles. O Anfitrião pode desligar qualquer canal. Cada canal pode ter um **acréscimo percentual** sobre as diárias, mostrado antes da publicação.
+
+4.7-A. **Retirada pelo gestor do canal.** O gestor de um canal pode retirar o anúncio do próprio canal sem o consentimento do Anfitrião, com aviso ao Anfitrião e registro no log de auditoria. A retirada não apaga o anúncio nem o oculta da plataforma.
 
 ## 5. Reservas e prazos
 
