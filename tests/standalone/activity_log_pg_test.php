@@ -241,30 +241,82 @@ t_eq(1, (int) $owner->query('SELECT count(*) FROM audit.activity_log_held')->fet
 t_eq(count($dropped), (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn() - $runs0, 'purge_runs: uma linha por passo');
 t_eq(1, (int) db()->query("SELECT sum(skipped_hold) FROM purge_runs WHERE job = 'activity_retention'")->fetchColumn(), 'purge_runs: skipped_hold = linhas retidas');
 
-echo "Q4: leitura auditada\n";
-$mark = t_log_mark();
-$rows = $ops->query('SELECT * FROM audit.activity_recent(NULL, 5)')->fetchAll();
-t_ok(count($rows) >= 1 && count($rows) <= 5, 'activity_recent devolve até o limite');
-$reads = array_values(array_filter(t_log_rows($mark), static fn ($r) => $r['code'] === ActivityLog::ACTIVITY_LOG_READ));
-t_eq(1, count($reads), 'uma linha ACTIVITY_LOG_READ por chamada');
-t_eq(['admin', 'activity_recent', 5, null], [$reads[0]['class'], $reads[0]['params']['function'] ?? null, $reads[0]['params']['limit'] ?? null, $reads[0]['params']['code'] ?? null], 'linha: classe admin, função, limite, código');
-t_eq((string) db()->query('SELECT session_user')->fetchColumn(), $reads[0]['params']['session_user'] ?? null, 'linha: session_user do leitor');
+echo "Q4: leitura auditada (a linha ACTIVITY_LOG_READ é gravada dentro da função DEFINER, na mesma transação)\n";
+$n47 = static fn (): int => (int) $owner->query('SELECT count(*) FROM audit.audit_log WHERE code = 47')->fetchColumn();
+$refLit = '{"\\\\x' . bin2hex($heldRef) . '"}';
+$readers = [
+    'activity_recent' => static fn (): array => $ops->query('SELECT * FROM audit.activity_recent(NULL, 5)')->fetchAll(),
+    'activity_by_actor' => static function () use ($ops, $refLit): array {
+        $st = $ops->prepare('SELECT * FROM audit.activity_by_actor(?::bytea[])');
+        $st->execute([$refLit]);
+        return $st->fetchAll();
+    },
+    'audit_recent' => static fn (): array => $ops->query('SELECT * FROM audit.audit_recent(NULL, 5)')->fetchAll(),
+];
+foreach ($readers as $fn => $read) {
+    $mark = t_log_mark();
+    $before = $n47();
+    $rows = $read();
+    t_ok(count($rows) >= 1, "$fn: devolve linhas");
+    t_eq($before + 1, $n47(), "$fn: exatamente uma linha ACTIVITY_LOG_READ no audit_log por chamada");
+    $reads = array_values(array_filter(t_log_rows($mark), static fn ($r) => $r['code'] === ActivityLog::ACTIVITY_LOG_READ));
+    t_eq([1, 'admin', 'system', $fn], [count($reads), $reads[0]['class'] ?? null, $reads[0]['actor_kind'] ?? null, $reads[0]['params']['function'] ?? null], "$fn: linha admin/system com o nome da função");
+    t_eq((string) db()->query('SELECT session_user')->fetchColumn(), $reads[0]['params']['session_user'] ?? null, "$fn: session_user do leitor");
+    // Mesma transação: antes do COMMIT outra sessão não vê a linha; ROLLBACK leva a linha junto com a leitura.
+    $ops->beginTransaction();
+    $read();
+    t_eq($before + 1, $n47(), "$fn: dentro da transação aberta, outra sessão ainda não vê a linha nova");
+    $ops->rollBack();
+    t_eq($before + 1, $n47(), "$fn: ROLLBACK da leitura desfaz a linha de auditoria (nada gravado fora da transação)");
+    $ops->beginTransaction();
+    $read();
+    $ops->commit();
+    t_eq($before + 2, $n47(), "$fn: COMMIT grava a linha");
+}
 $m4 = t_log_mark();
 $ops->query('SELECT count(*) FROM audit.activity_recent(2::smallint, 100000)')->fetchColumn();
 $capped = array_values(array_filter(t_log_rows($m4), static fn ($r) => $r['code'] === ActivityLog::ACTIVITY_LOG_READ));
 t_eq([500, 2], [$capped[0]['params']['limit'] ?? null, $capped[0]['params']['code'] ?? null], 'limite pedido 100000 vira 500 (registrado com o código)');
 $st = $ops->prepare('SELECT count(*) FROM audit.activity_by_actor(?::bytea[])');
-$st->execute(['{"\\\\x' . bin2hex($heldRef) . '"}']);
+$st->execute([$refLit]);
 t_eq(1, (int) $st->fetchColumn(), 'activity_by_actor: acha a linha retida no _held (a folha original já foi removida)');
-$last = t_log_rows($mark);
-$byActor = array_values(array_filter($last, static fn ($r) => ($r['params']['function'] ?? '') === 'activity_by_actor'));
+$byActor = array_values(array_filter(t_log_rows($m4), static fn ($r) => ($r['params']['function'] ?? '') === 'activity_by_actor'));
 t_eq(1, $byActor[0]['params']['refs'] ?? null, 'activity_by_actor registra o nº de refs');
-t_ok(!str_contains(json_encode($last), bin2hex($heldRef)), 'a ref nunca vai para o audit_log');
-$yearLeaf = 'audit_log_admin_y' . gmdate('Y');
-$owner->exec("ALTER TABLE audit.$yearLeaf ADD CONSTRAINT t_no_read CHECK (code <> 47) NOT VALID");
-t_eq('23514', t_state(static fn () => $ops->query('SELECT * FROM audit.activity_recent(NULL, 5)')->fetchAll()), 'INSERT da auditoria falha -> a leitura falha (sem tratador)');
-t_eq('23514', t_state(static fn () => $ops->query("SELECT * FROM audit.activity_by_actor('{\"\\\\x" . bin2hex($heldRef) . "\"}'::bytea[])")->fetchAll()), 'idem activity_by_actor');
-$owner->exec("ALTER TABLE audit.$yearLeaf DROP CONSTRAINT t_no_read");
+t_ok(!str_contains(json_encode(t_log_rows()), bin2hex($heldRef)), 'a ref nunca vai para o audit_log');
+$own = $ops->query('SELECT code, payload::text AS payload FROM audit.audit_recent(47::smallint, 1)')->fetch();
+t_eq([47, 'audit_recent'], [(int) $own['code'], json_decode((string) $own['payload'], true)['function'] ?? null], 'audit_recent: a linha da própria leitura vem no resultado (mesma transação)');
+$m5 = t_log_mark();
+$ops->query('SELECT count(*) FROM audit.audit_recent(NULL, 100000)')->fetchColumn();
+$cap5 = array_values(array_filter(t_log_rows($m5), static fn ($r) => $r['code'] === ActivityLog::ACTIVITY_LOG_READ));
+t_eq([1, 500], [count($cap5), $cap5[0]['params']['limit'] ?? null], 'audit_recent: limite 100000 vira 500');
+t_eq('42501', t_state(static fn () => $app->query('SELECT * FROM audit.audit_recent(NULL, 1)')), 'casalivre_app: sem EXECUTE em audit_recent');
+t_eq('42501', t_state(static fn () => $job->query('SELECT * FROM audit.audit_recent(NULL, 1)')), 'cl_retention_job: sem EXECUTE em audit_recent');
+t_eq('42501', t_state(static fn () => $ops->query('SELECT 1 FROM audit.audit_log LIMIT 1')), 'casalivre_ops_logread: SELECT direto no audit_log negado');
+
+echo "Q4: INSERT da auditoria falha -> a leitura falha e não devolve linhas\n";
+// Gatilho só de teste na folha anual do audit_log: recusa o INSERT do código 47 (as leituras gravam lá).
+$yearLeaf = 'audit.audit_log_admin_y' . gmdate('Y');
+$owner->exec("CREATE FUNCTION audit.t_fail_47() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'teste: audit_log recusa 47' USING ERRCODE = 'P0099'; END \$\$");
+$owner->exec("CREATE TRIGGER t_fail_47 BEFORE INSERT ON $yearLeaf FOR EACH ROW WHEN (NEW.code = 47) EXECUTE FUNCTION audit.t_fail_47()");
+foreach ($readers as $fn => $read) {
+    $before = $n47();
+    $got = null;
+    $state = null;
+    try {
+        $got = $read();
+    } catch (PDOException $e) {
+        $state = (string) ($e->errorInfo[0] ?? $e->getCode());
+    }
+    t_eq(['P0099', null], [$state, $got], "$fn: a leitura levanta o erro do INSERT e não devolve linhas");
+    t_eq($before, $n47(), "$fn: nenhuma linha de auditoria (nem parcial)");
+}
+$owner->exec("DROP TRIGGER t_fail_47 ON $yearLeaf");
+$owner->exec('DROP FUNCTION audit.t_fail_47()');
+// A outra via do teste anterior: CHECK na folha (23514) também derruba a leitura.
+$owner->exec("ALTER TABLE $yearLeaf ADD CONSTRAINT t_no_read CHECK (code <> 47) NOT VALID");
+t_eq('23514', t_state(static fn () => $ops->query('SELECT * FROM audit.activity_recent(NULL, 5)')->fetchAll()), 'CHECK na folha: activity_recent falha');
+$owner->exec("ALTER TABLE $yearLeaf DROP CONSTRAINT t_no_read");
+t_ok(count($readers['activity_recent']()) >= 1, 'sem o gatilho/CHECK a leitura volta a funcionar');
 
 echo "Q7: INTERNAL_ERROR redigido\n";
 try {

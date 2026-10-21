@@ -279,7 +279,8 @@ CREATE TABLE IF NOT EXISTS purge_runs (
 -- Schema audit: log de atividades (security 90 d, other 14 d) e trilha de auditoria (admin 5 anos; fin_fiscal e
 -- contrato sem códigos ainda). Dono: casalivre_retention (NOLOGIN). Retenção só por DROP de partição, por funções
 -- SECURITY DEFINER. O app (casalivre_app) e o escritor de security (casalivre_log_writer / login cl_logw) só têm
--- INSERT; ops lê por audit.activity_recent / audit.activity_by_actor, que gravam ACTIVITY_LOG_READ no audit_log.
+-- INSERT; ops lê por audit.activity_recent / audit.activity_by_actor / audit.audit_recent, que gravam
+-- ACTIVITY_LOG_READ no audit_log.
 -- Os papéis vêm de ops/dev-env/pg-roles.sql (produção: o mesmo passo de provisionamento, como postgres).
 -- ---------------------------------------------------------------------------------------------------------------
 -- Objetos do public usados pelo schema audit (como o dono do public).
@@ -494,12 +495,32 @@ BEGIN
         ) x ORDER BY x.id;
 END $$;
 
+-- Leitura de ops do audit_log (admin/fin_fiscal/contrato), mesmo contrato Q4: grava ACTIVITY_LOG_READ antes de
+-- devolver as linhas, na mesma transação e sem tratador (o INSERT falhou, a leitura falha). A linha da própria
+-- leitura entra no resultado (mesma transação).
+CREATE FUNCTION audit.audit_recent(p_code smallint DEFAULT NULL, p_limit int DEFAULT 50)
+RETURNS SETOF audit.audit_log
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+DECLARE v_limit int := least(greatest(coalesce(p_limit, 50), 1), 500);
+BEGIN
+    INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind, payload)
+    VALUES (uuidv7(), now(), 47, 'admin', 'system',
+            jsonb_build_object('session_user', session_user::text, 'function', 'audit_recent', 'code', p_code, 'limit', v_limit));
+    IF p_code IS NULL THEN
+        RETURN QUERY SELECT * FROM audit.audit_log ORDER BY id DESC LIMIT v_limit;
+    ELSE
+        RETURN QUERY SELECT * FROM audit.audit_log WHERE code = p_code ORDER BY id DESC LIMIT v_limit;
+    END IF;
+END $$;
+
 REVOKE ALL ON FUNCTION audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(),
-    audit.activity_retention_step(bytea[], boolean), audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]) FROM PUBLIC;
+    audit.activity_retention_step(bytea[], boolean), audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]),
+    audit.audit_recent(smallint, int) FROM PUBLIC;
 GRANT USAGE ON SCHEMA audit TO casalivre_app, casalivre_log_writer, casalivre_ops_logread, casalivre_log_job;
 GRANT INSERT ON audit.activity_log TO casalivre_app, casalivre_log_writer;   -- sem SELECT/UPDATE/DELETE (D7)
 GRANT INSERT ON audit.audit_log TO casalivre_app;
-GRANT EXECUTE ON FUNCTION audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]) TO casalivre_ops_logread;
+GRANT EXECUTE ON FUNCTION audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]),
+    audit.audit_recent(smallint, int) TO casalivre_ops_logread;
 GRANT EXECUTE ON FUNCTION audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(),
     audit.activity_retention_step(bytea[], boolean) TO casalivre_log_job;
 SELECT audit.activity_partitions_ensure(7);

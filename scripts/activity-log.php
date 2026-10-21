@@ -5,7 +5,8 @@ declare(strict_types=1);
 
 // Recent rows of audit.activity_log (security + other) through the DEFINER function audit.activity_recent, as a
 // login with casalivre_ops_logread (SET ROLE; OPS_DB_USER/OPS_DB_PASSWORD, empty = DB_USER). Each call writes an
-// ACTIVITY_LOG_READ row to audit.audit_log. Admin codes live in audit.audit_log (no read function yet).
+// ACTIVITY_LOG_READ row to audit.audit_log. Admin codes live in audit.audit_log: read them with the DEFINER
+// function audit.audit_recent(code, limit) (same role, same audited-read contract).
 // Uso: php scripts/activity-log.php [--codigo=N] [--limite=N]
 
 require_once dirname(__DIR__) . '/src/Db.php';
