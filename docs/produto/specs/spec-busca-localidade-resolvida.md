@@ -65,6 +65,38 @@ Source: UI review of this spec. Applies to home and search (spec-01 §1–2) and
 
 Sources: W3C APG Combobox Pattern (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/) and its list autocomplete example (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-autocomplete-list/); WCAG 2.2 4.1.3 (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) and 2.5.8 (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html); NN/g, Site Search Suggestions (https://www.nngroup.com/articles/site-search-suggestions/) and "No Results" pages (https://www.nngroup.com/articles/search-no-results-serp/); Baymard, Autocomplete Suggestions (https://baymard.com/blog/autocomplete-design).
 
+## Textos da interface (pt-BR, oficial)
+The pt-BR column is the official copy for this spec. These strings go into the i18n PT keys (`pt-BR` pack in `database/messages.php`, read by `src/I18n.php`); EN and ES follow from the English column. Place names (e.g. "Rio de Janeiro, RJ", "Região dos Lagos") are data, not copy.
+
+| English | pt-BR |
+|---|---|
+| Keep typing to narrow it down | Continue digitando para refinar |
+| 8 of many places… | 8 de muitos lugares… |
+| N places | N lugares (singular: 1 lugar) |
+| We couldn't find "X" | Não encontramos “X” |
+| Popular in <region> | Populares em <região> |
+| Search on the map | Buscar no mapa |
+| Map area | Área do mapa |
+| Zoom in to sort by total price | Aproxime o mapa para ordenar pelo preço total |
+| Zoom in | Aproximar |
+| Pick a city | Escolha uma cidade |
+| Not this place? Change | Não é este lugar? Trocar |
+| Did you mean | Você quis dizer |
+| Zoom in to see listings | Aproxime o mapa para ver os imóveis |
+| Near me | Perto de mim |
+| City / Neighborhood / Beach / Region | Cidade / Bairro / Praia / Região |
+| Point of interest | Ponto de interesse |
+| We couldn't find that place | Não encontramos esse lugar |
+| 8 of many places. Keep typing to narrow it down. | 8 de muitos lugares. Continue digitando para refinar. |
+| Search this area | Buscar nesta área |
+| Search as I move the map | Buscar ao mover o mapa |
+| Clear (accessible name of ×) | Limpar |
+| Lowest total price | Menor preço total |
+| Relevance | Relevância |
+| Sorted by relevance. Zoom in to sort by total price. | Ordenado por relevância. Aproxime o mapa para ordenar pelo preço total. |
+| Where? | Onde? |
+| Recent places | Lugares recentes |
+
 ## Implementation notes (ADR 001 §11, Arquitetura, 2026-10-16)
 Source: ADR 001 §11.2 and §11.3 (Gerente's ADR notes). The UX side of matching (word start, aliases, 9+ matches) is in item 2 above; this section only adds the data and privacy rules.
 
