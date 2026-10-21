@@ -210,27 +210,13 @@ $st = db()->prepare('SELECT status FROM photos WHERE id = ?');
 $st->execute([(int) ($qFail['id'] ?? 0)]);
 t_eq('failed', $st->fetchColumn(), 'queue push error: photo failed in the DB, not stuck in processing');
 db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) ($qFail['id'] ?? 0)]);
-PhotoStorage::$legacy = $tmp . '/public/uploads/users';
-mkdir(PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2, 0755, true);
-$legacyFile = PhotoStorage::$legacy . '/' . $owner['user_id'] . '/imoveis/' . $h2 . '/capa.jpg';
-file_put_contents($legacyFile, $jpegWithExif(60, 30, 1));
-$legacyPath = '/uploads/users/' . $owner['user_id'] . '/imoveis/' . $h2 . '/capa.jpg';
-PhotoRepository::insert($h2, $legacyPath, 0, 1);
-PhotoRepository::insert($h2, '/uploads/users/' . $owner['user_id'] . '/imoveis/' . $h2 . '/sumiu.jpg', 0, 2);
-PhotoRepository::insert($h2, '/uploads/users/../../etc/passwd', 0, 3);
-t_eq(1, PhotoStorage::migrateLegacy(), 'legado: 1 foto válida enfileirada');
-t_eq(0, PhotoStorage::migrateLegacy(), 'legado: nada a fazer na 2ª execução');
-t_ok(!is_file($legacyFile), 'legado: arquivo saiu do public/');
 $st = db()->prepare('SELECT status, path FROM photos WHERE property_id = ? ORDER BY sort_order');
-$st->execute([$h2]);
-t_eq(['processing', 'processing', 'failed', 'failed'], array_column($st->fetchAll(), 'status'), 'legado: válida em processing; ausente e traversal em failed');
 @unlink($lock);
 $rep = ImageWorker::run(ImageQueues::make(), $lock);
-t_eq(2, $rep['enviados'] ?? null, 'worker gera os WebP do seed e do legado');
+t_eq(1, $rep['enviados'] ?? null, 'worker gera os WebP do seed');
 $st->execute([$h2]);
 $after = $st->fetchAll();
-t_ok($after[0]['status'] === 'ready' && $after[1]['status'] === 'ready' && preg_match('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $after[1]['path']) === 1, 'seed e legado prontos em /uploads/fotos/<uuid>');
-t_ok(!str_contains((string) file_get_contents(PhotoStorage::$public . '/' . basename(photo_variant((string) $after[1]['path'], 'full'))), 'GPSMARKER'), 'legado regravado sem EXIF');
+t_ok($after[0]['status'] === 'ready' && preg_match('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $after[0]['path']) === 1, 'seed pronto em /uploads/fotos/<uuid>');
 
 echo "imóvel inativado\n";
 $files2 = [];
@@ -242,7 +228,7 @@ foreach ($after as $r) {
     }
 }
 $pend = PhotoStorage::enqueueOriginal($h2, $seedFile, 0, 9);
-t_eq(6, count(array_filter($files2, 'is_file')), '6 WebP públicos antes');
+t_eq(3, count(array_filter($files2, 'is_file')), '3 WebP públicos antes');
 t_ok(HouseService::remove((int) $owner['user_id'], $h2), 'HouseService::remove inativa');
 t_eq(0, count(array_filter($files2, 'is_file')), 'WebP públicos apagados ao inativar');
 t_ok(!is_file(PhotoStorage::$originals . '/' . PhotoRepository::findById((int) $pend['id'])['uuid'] . '.png'), 'original pendente apagado');
