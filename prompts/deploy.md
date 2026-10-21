@@ -240,7 +240,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Jobs agendados (usuário do php-fpm)
 
 - [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, o `activity_log` no PostgreSQL, `error.log`, `calendar-sync.log` e `php.log`. Confirmar a primeira execução (`sv status` e saída do script).
-- [ ] runit service log dirs (`svlogd`, including the queue worker's) are `0750` and keep 14 days. Worker errors are logged as one ALERT line with no DSN, host or secrets (Segurança #167, #174).
+- [ ] runit service log dirs (`svlogd`, including the queue worker's) are `0700`, owned by the service user, and keep 14 days. Worker errors are logged as one ALERT line with no DSN, host or secrets (Segurança #167, #174).
 - [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity_log`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
 
 ## Permissões e arquivos

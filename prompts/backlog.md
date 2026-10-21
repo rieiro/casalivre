@@ -21,7 +21,7 @@ After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP 
 - [ ] `Valkey::connect()` from web requests (queue producers) has no tight timeout: with Valkey frozen it took over 20 s, so an FPM worker would hang up to `default_socket_timeout`. Give producers about 0.5 s and keep the long timeout only for the workers. Estimate 1 h. Source: Arquitetura #160. Sprint: Priority now. Owner: Programador.
 - [ ] Queue worker restarts about once a second during a PG outage: sleep 5-30 s before `exit(1)` when the DB is lost, and alert on the `DB connection lost` log line. Estimate 0.5 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador.
 - [ ] Worker tests: a lost ack after a successful send (the email goes out again after 10 min, possibly with a second activation or reset token), and a Valkey outage (today the worker crashes with exit 255 and dumps a stack trace into the runit log; catch it and log one line). Estimate 1 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador; Teste; Segurança.
-- [ ] One active activation or reset token per user and purpose: two valid tokens at once is a security issue. Mint the token at enqueue and reuse it on retry, or make a new token revoke the old one; a duplicate email with the same token is fine. Ship with the worker lost-ack test (#174). Source: Segurança #167. Sprint: Priority now. Owner: Programador; Segurança.
+- [ ] Worker hardening, one PR: (a) `queue-worker.php:63-65` logs other exceptions (including the Valkey AUTH/secret-file `RuntimeException`) as one line with the class only, plus `zend.exception_ignore_args=On`, with no stack trace; (b) a stale reclaim counts as an attempt, so retries are bounded; (c) the Valkey-outage test uses its own queue instead of draining the real `cl:q:mail` in dev. Estimate 1-2 h. Source: Segurança #174. Sprint: Priority now. Owner: Programador; Segurança.
 - [ ] Limiter hardening, one PR: (a) HMAC with a derived subkey `HMAC(LOG_SALT, 'cl-ratelimit-v1')` instead of `LOG_SALT` itself; (b) move the outage-log throttle stamp from `/tmp` to a private `0700` dir (`IpRateLimiter.php:224`); (c) fold the refund `INCR` into the `MULTI` (`:171`); (d) log a dedicated `VALKEY_UNAVAILABLE` code instead of `INTERNAL_ERROR` so alerts and BI can tell it apart; (e) a Teste case that `SIGSTOP`s Valkey and proves the fail-closed buckets return 429 within about 100 ms. Source: Segurança #160. Sprint: Priority now. Owner: Programador; Teste; Segurança.
 
 ## Em andamento
@@ -190,6 +190,7 @@ Source: spec-03; `docs/produto/planejamento/sprints.md`. The wizard decides its 
 - [ ] The edit page HTML (44 KB) is slimmed down in the wizard rewrite.
 
 ## Review follow-ups
+- [ ] (low, UX only) Reuse the activation/reset token when the mail job is retried, so the first email's link keeps working. Two valid tokens never exist today: the hash column per purpose is overwritten (`AccountFlow::issueLink:192-205`). Source: Segurança #167/#174. Sprint: the next sprint that touches `AccountFlow`. Owner: Programador.
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.
 
