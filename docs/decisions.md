@@ -40,6 +40,7 @@ One line per decision in force, newest first within each area. A superseded deci
 - Maps: no Google Maps; OSM tiles today, PMTiles Brazil (Protomaps) + MapLibre GL in backlog.
 - Property rating screen frozen for redesign.
 - Foreign guest without CPF is in the backlog; CPF stays required (`guest_fiscal_party_id NOT NULL`).
+- 2026-10-21: During development Juridico does not draft or update host/owner terms or any other legal contract (terms of use, privacy and cancellation policies, rental and service contracts). It acts only as a consultant guiding Produto (legal/tax answers on specs, PR verdicts via `needs:legal`). All contracts are written at once near the end of the project, only when Rafael asks; the texts in `docs/produto/juridico/textos/` stay as they are until then (Rafael, 2026-10-21).
 
 ## Business
 - Franchise split: owner pays 10% = 4% brokerage (franchisee, NFS-e item 10.05) + 3% fund + 3% casalivre royalty (invoiced to the franchisee, item 17.08); all percentages are parameters.

@@ -18,7 +18,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 | Teste | 6d1b3782 | PR QA, regression, E2E | [roles/teste.md](roles/teste.md) |
 | UI | e15ea1c5 | screens, UX, accessibility | [roles/ui.md](roles/ui.md) |
 | Cori | 5973324b | Rafael's personal assistant | [roles/cori.md](roles/cori.md) |
-| Juridico e Tributario | 3420f385 | legal/tax, LGPD legal side, with Produto | [roles/juridico.md](roles/juridico.md) |
+| Juridico e Tributario | 3420f385 | legal/tax consultant to Produto, LGPD legal side; no contract drafting until Rafael asks | [roles/juridico.md](roles/juridico.md) |
 
 ## Common rules
 - English only. No invented data; separate measured from estimated.
@@ -42,7 +42,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
    - `needs:arch`: queues, cache, resolver, build, map, infra, performance.
    - `needs:db`: schema, migrations, queries (not `needs:arch`). BD posts its verdict on the PR directly; new DB work goes Gerente -> BD.
    - `needs:ui`: PRs that change screens.
-   - `needs:legal`: legal basis, retention, legal texts (e.g. #110), payment/contract/billing features.
+   - `needs:legal`: legal basis, retention, payment/contract/billing features.
    - `needs:money`: ledger, split, prices, payments, payouts, Pix keys; follow [money-standards](../docs/money-standards.md). Requires `approved:review` + `approved:db`, plus `approved:security` if payments, webhooks or Pix keys are touched.
    - Docs-only: no labels; `ops/tools/check-doc-links.sh` passes, then Gerente merges.
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
