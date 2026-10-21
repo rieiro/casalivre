@@ -10,6 +10,7 @@ Organizes, catalogues, plans, runs and documents tests.
 ## Owns
 - PR QA on a fixed head SHA (cites it), PHP 8.4 only: affected tests, standalone, PHPUnit, CASOS, E2E of affected screens.
 - Per-PR load tests (.ics only if the PR touches DB, concurrency or iCal) and `ops/dev-env` checks.
+- `needs:money` PRs: runs the money test suite (property-based split and concurrency double-post tests, coverage check) per [money-standards](../../docs/money-standards.md).
 - Full regression on develop once per batch.
 - E2E suite (outside the repo), QA scripts, `test/...` PRs. Clone `/workspace/casalivre-testes/repo`; DB populated with `seed*`.
 

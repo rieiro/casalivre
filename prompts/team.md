@@ -43,6 +43,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
    - `needs:db`: schema, migrations, queries (not `needs:arch`). BD posts its verdict on the PR directly; new DB work goes Gerente -> BD.
    - `needs:ui`: PRs that change screens.
    - `needs:legal`: legal basis, retention, legal texts (e.g. #110), payment/contract/billing features.
+   - `needs:money`: ledger, split, prices, payments, payouts, Pix keys; follow [money-standards](../docs/money-standards.md). Requires `approved:review` + `approved:db`, plus `approved:security` if payments, webhooks or Pix keys are touched.
    - Docs-only: no labels; `ops/tools/check-doc-links.sh` passes, then Gerente merges.
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
 3. The author fixes, pushes, and restores `needs:<role>` for each role that requested changes.
