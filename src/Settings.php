@@ -78,11 +78,19 @@ final class Settings
         return $rows;
     }
 
+    /** Per-process copy of settings.json (one read per request; the long-running queue worker clears it every tick). */
+    private static ?array $rows = null;
+
+    /** Drops the per-process copy: the next read goes back to settings.json (or the database). */
+    public static function clearCache(): void
+    {
+        self::$rows = null;
+    }
+
     private static function cached(): array
     {
-        static $rows = null;
-        if (is_array($rows)) {
-            return $rows;
+        if (is_array(self::$rows)) {
+            return self::$rows;
         }
         $decoded = JsonCache::read('settings.json');
         if (is_array($decoded)) {
@@ -94,12 +102,12 @@ final class Settings
                 }
             }
             if ($complete) {
-                $rows = $decoded;
-                return $rows;
+                self::$rows = $decoded;
+                return self::$rows;
             }
         }
-        $rows = self::refresh();
-        return $rows;
+        self::$rows = self::refresh();
+        return self::$rows;
     }
 
     private static function fromDatabase(): array

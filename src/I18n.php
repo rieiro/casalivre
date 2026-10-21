@@ -145,19 +145,27 @@ final class I18n
         return $all[$lang] ?? [];
     }
 
+    /** Per-process copy of translations.json (one read per request; the long-running queue worker clears it every tick). */
+    private static ?array $rows = null;
+
+    /** Drops the per-process copy: the next read goes back to translations.json (or the database). */
+    public static function clearCache(): void
+    {
+        self::$rows = null;
+    }
+
     private static function all(): array
     {
-        static $rows = null;
-        if (is_array($rows)) {
-            return $rows;
+        if (is_array(self::$rows)) {
+            return self::$rows;
         }
         $decoded = JsonCache::read('translations.json');
         if (is_array($decoded) && isset($decoded['pt-BR']['nav.search'])) {
-            $rows = $decoded;
-            return $rows;
+            self::$rows = $decoded;
+            return self::$rows;
         }
-        $rows = self::refresh();
-        return $rows;
+        self::$rows = self::refresh();
+        return self::$rows;
     }
 }
 
