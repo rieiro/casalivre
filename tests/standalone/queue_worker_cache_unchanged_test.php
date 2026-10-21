@@ -32,6 +32,11 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$read
     return true;
 };
 
+// Files written just now are in FileStamp's racy window (content hashed, #158): age them first, so the stamps below
+// are the plain mtime:inode:size of files that are not read on every tick.
+foreach ($files as $f) {
+    touch($f, time() - 60);
+}
 t_ok($mail->push('activation', 'u1@casalivre.test'), 'job 1 queued');
 QueueWorkerLoop::tick($mail, null, $dir);
 $first = $read[0] ?? [];
