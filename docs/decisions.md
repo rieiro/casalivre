@@ -33,7 +33,7 @@ One line per decision in force, newest first within each area. A superseded deci
 
 ## Product
 - 2026-10-21: D1 approved: management tree of free depth plus separate storefront channels (Group -> Organization + Channel), Sprint 5 (P2a); group domains and themes move to the channel.
-- 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent.
+- 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent. New properties are ON by default only in the casalivre marketplace (own storefront); every other organization's or partner's channel needs the owner's opt-in, with no automatic inclusion of a node's new properties (Rafael, 2026-10-21).
 - 2026-10-21: Themes stay repo-only (`themes/<name>/`, prepared by the team, contrast checked when prepared); no in-app theme editor or logo upload for now.
 - 2026-10-21: No blanket move of forms to fetch/API: the P10 listing wizard decides its own approach, and no-JS forms stay where they work.
 - Email (signup, password reset): code ready but off, with no provider; both stay closed in production until a provider is chosen.
