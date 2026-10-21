@@ -48,7 +48,7 @@ final class GrupoDono
             }
             $pdo->prepare('DELETE FROM group_property_invites WHERE group_id = ? AND property_id = ?')->execute([(int) $group['id'], (int) $property['id']]);
             return new Resultado('ok', null, ['mudou' => true], [[ActivityLog::GROUP_INVITE_ACCEPT, ['grupo' => $group['slug'], 'imovel_id' => (int) $property['id']], null, ['grupo' => $group['slug']]]]);
-        }, true);
+        });
     }
 
     public static function reject(array $owner, array $property, mixed $slug): Resultado

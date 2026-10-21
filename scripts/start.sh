@@ -2,14 +2,15 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-if [[ ! -f storage/db/casalivre.sqlite ]]; then
-  "$ROOT/scripts/setup.sh"
-fi
 # .env só preenche o que o ambiente não definiu (APP_ENV=dev scripts/start.sh vence APP_ENV=production do
 # .env). Leitura KEY=VALUE segura, sem executar o arquivo.
 # shellcheck source=scripts/env-lib.sh
 source "$ROOT/scripts/env-lib.sh"
 load_env_file "$ROOT/.env"
+if [[ -z "${DB_DSN:-}" ]]; then
+  echo "DB_DSN não definido (só PostgreSQL). Rode scripts/setup.sh e configure DB_DSN no .env."
+  exit 1
+fi
 PHP_BIN="${PHP_BIN:-php}"
 if ! command -v "$PHP_BIN" >/dev/null 2>&1 && [[ ! -x "$PHP_BIN" ]]; then
   echo "PHP não encontrado. Rode scripts/setup.sh"

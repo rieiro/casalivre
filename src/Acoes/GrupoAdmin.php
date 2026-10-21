@@ -173,8 +173,8 @@ final class GrupoAdmin
         }
         $uid = (int) $user['id'];
         $gid = (int) $group['id'];
-        // Leitura do papel e gravação na mesma transação (BEGIN IMMEDIATE no SQLite): dois saves simultâneos não
-        // deixam DELETE sem INSERT; corrida que ainda bata no UNIQUE (pgsql) vira 'conflito', não 500.
+        // Leitura do papel e gravação na mesma transação: dois saves simultâneos não deixam DELETE sem INSERT;
+        // corrida que ainda bata no UNIQUE (23505) vira 'conflito', não 500.
         try {
             $old = Db::transactional(db(), static function (PDO $pdo) use ($gid, $uid, $role): array {
                 $old = GroupRepository::activeRole($gid, $uid);
@@ -188,7 +188,7 @@ final class GrupoAdmin
                     $pdo->prepare('UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?')->execute([$role, $gid, $uid]);
                 }
                 return [true, $old];
-            }, true);
+            });
         } catch (PDOException $e) {
             if (!GroupRepository::isUniqueViolation($e)) {
                 throw $e;

@@ -96,7 +96,7 @@ function limpar_rodada_anterior(): void
     require_once $root . '/src/helpers.php';
     require_once $root . '/src/PhotoStorage.php';
     $pdo = db();
-    $users = "SELECT id FROM users WHERE email GLOB 'user[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]@casalivre.test'";
+    $users = "SELECT id FROM users WHERE email ~ '^user[0-9]{10}@casalivre\\.test$'";
     $photos = $pdo->query("SELECT p.* FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users)")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($photos as $photo) {
         PhotoStorage::deletePhotoFiles($photo);
@@ -111,8 +111,8 @@ function limpar_rodada_anterior(): void
         $pdo->commit();
     } catch (PDOException $e) {
         $pdo->rollBack();
-        // FK: PG 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503; SQLite 23000 (código estendido 19/787).
-        $fk = in_array((string) $e->getCode(), ['23001', '23503', '23000'], true) ? ' (violação de FK)' : '';
+        // FK: 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503.
+        $fk = in_array((string) $e->getCode(), ['23001', '23503'], true) ? ' (violação de FK)' : '';
         fwrite(STDERR, "Limpeza da massa falhou$fk: " . $e->getMessage() . "\n");
         exit(1);
     }

@@ -7,8 +7,7 @@ final class ReturningWrite
     public static function update(string $table, array $values, string $where, array $whereParams, array $keys, array $columns): array
     {
         self::check($table, [...array_keys($values), ...$columns, 'audit_hold']);
-        $driver = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $jsonFn = $driver === 'pgsql' ? 'json_build_object' : 'json_object';
+        $jsonFn = 'json_build_object';
         $jsonArgs = [];
         foreach ($columns as $column) {
             $jsonArgs[] = "'" . $column . "', " . self::q($column);

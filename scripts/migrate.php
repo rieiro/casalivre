@@ -5,27 +5,21 @@ declare(strict_types=1);
 
 // Aplica a migração do banco (rodar a cada deploy, antes de liberar o tráfego).
 // Uso: php scripts/migrate.php [--force]
-//   --force  reaplica migrate() mesmo se PRAGMA user_version já estiver em Db::SCHEMA_VERSION.
-// Deploy limpo: cria storage/mail, storage/sessions e public/uploads/users e, se o banco SQLite
-// não existir (ou estiver vazio, sem tabelas), carrega database/schema.sql como o scripts/setup.sh faz.
-// Postgres novo (vazio): carregue database/schema.pgsql.sql ANTES (psql -f; ver README); este script não cria o schema PG.
+//   --force  reaplica os seeds mesmo se schema_meta já estiver em Db::SCHEMA_VERSION.
+// PostgreSQL only, no data migration: carregue database/schema.pgsql.sql num banco NOVO antes (psql -f;
+// ops/dev-env/db-setup.sh faz isso). Este script só cria as pastas de runtime, roda os seeds e grava a versão;
+// um banco numa versão anterior aborta (recrie-o do zero).
 // Saída: 0 = banco na versão esperada; 1 = migrou mas a versão ficou abaixo da esperada;
-//        2 = falha (pastas, conexão, erro de SQL); a mensagem vai para o STDERR.
+//        2 = falha (pastas, conexão, versão antiga, erro de SQL); a mensagem vai para o STDERR.
 
 $root = dirname(__DIR__);
 require_once $root . '/src/Db.php';
 
-// Duas conexões PDO: ensureSqliteFromSchema() abre uma própria (e fecha) só para checar/criar o banco
-// pelo schema.sql; depois migrateNow() usa a conexão compartilhada de Db::pdo(), já com os PRAGMAs (WAL etc.).
 try {
     Db::ensureStorageDirs();
-    $created = Db::ensureSqliteFromSchema();
 } catch (Throwable $e) {
-    fwrite(STDERR, 'migrate.php: falha ao preparar pastas/banco: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, 'migrate.php: falha ao preparar pastas: ' . $e->getMessage() . "\n");
     exit(2);
-}
-if ($created !== null) {
-    echo "Banco criado a partir de database/schema.sql: $created\n";
 }
 
 $force = in_array('--force', $argv, true);

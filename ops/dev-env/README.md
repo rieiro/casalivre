@@ -159,7 +159,7 @@ ops/dev-env/db-setup.sh --no-seed
   o resto `reject`. Sem root não há usuário do SO `postgres`: o `pg_ident`
   liga o uid do bot a `postgres` (admin) e o do bot/FPM (mesmo uid aqui) a
   `casalivre_dev`.
-- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
+- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`,
   `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER`, `VALKEY_PASSWORD_FILE` e `QUEUE_DRIVER=valkey` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
 - **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
