@@ -216,6 +216,8 @@ Removed 2026-10-21: SQLite removal; already fixed; replaced by the libvips worke
 Removed 2026-10-21: Incus polish dropped by Rafael; the writable-root/outbound-NIC risk is accepted (docs/decisions.md).
 - [ ] `ops/dev-env/sv/postgresql/run`: send the PG log to the CL_HOME log dir so a fast shutdown can be checked. Source: Teste. Owner: Programador.
 - [ ] `incus-init.sh` runs as container root from the writable repo mount: copy it into the image at import, or ro-bind `ops/dev-env` (Low-Med, dev only). Source: Segurança. Owner: Programador; Segurança reviews.
+- [ ] `tests/standalone/devenv_up_incus_test.php` needs python3, which is not in the Void rootfs, so the full suite fails 3 cases inside the env. Use a non-Python stub, or add python3 to the rootfs. Source: Programador, found on #138. Owner: Programador.
+- [ ] The PG prestart removes a stale `postmaster.pid` but not the socket lock `.s.PGSQL.5432.lock` in the PG run dir. After an unclean stop PG refuses to start, while `up.sh` still reports up. Remove the stale lock, and make `up.sh` fail when PG is not accepting connections. Source: Programador, found on #138. Owner: Programador.
 
 ### P1 image worker (libvips)
 - [ ] Use xbps libvips, libvips-heif, php8.4-ffi and jcupitt/vips. `ffi.enable=preload` only in the CLI worker run by runit, never in FPM (needs Segurança review). Load-test with Teste on large photos (musl thread stack; tune `VIPS_CONCURRENCY` or the stack size). Source: Arquitetura. Owner: Programador, Segurança, Teste.
