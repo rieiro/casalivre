@@ -1,6 +1,7 @@
 <?php
 // #142: the long-running queue worker kept I18n's per-process copy of translations.json forever, so a changed
-// translation was never seen. Each QueueWorkerLoop::tick resets it (WorkerCaches::reset): the next tick sees the new text.
+// translation was never seen. Each QueueWorkerLoop::tick reloads it when translations.json changed
+// (WorkerCaches::refreshIfChanged): the next tick sees the new text.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';
