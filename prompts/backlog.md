@@ -2,7 +2,16 @@
 
 Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Geral edita este arquivo**; os analistas enviam os itens para consolidação. O que é necessário para subir em produção fica em `prompts/deploy.md`.
 
-## Priority now
+## Cleanup sprint (Rafael 2026-10-21, before the standard plan, about 1-2 days)
+- [x] Line-143 live bug (queue worker `limparCache`): fixed in #142 and #149.
+- [x] DROP items from the backlog review: closed in #139.
+- [ ] Remove SQLite and MongoDB (PostgreSQL only): #148, in review. Owner: Programador.
+- [ ] Move `IpRateLimiter` to Valkey now (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
+- [ ] Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
+
+After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP items that touch the code it changes, plus a fixed slice of the remaining backlog of about 20% of the sprint's effort. A new item must name its sprint or it is dropped; Gerente reviews this list once per sprint.
+
+## Priority now (right after the cleanup sprint)
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
 - [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
@@ -116,7 +125,6 @@ Removed 2026-10-21: SQLite removal (WAL retry). Search items moved to ADR 001.
 ### Pendências pós-paridade (#83–#94)
 Removed 2026-10-21: SQLite removal; moot after the Valkey rate limiter. Two items moved to Priority now.
 - [ ] (Segurança #93) Chamar `CalendarSync::isHttpsUrl` dentro de `resolveTarget` (`CalendarSync.php:212`), para a mesma regra de https valer em cada redirecionamento.
-- [ ] Move `IpRateLimiter` to Valkey now (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
 - [ ] (baixa, Segurança #87) A API lista as fotos com `SELECT *` (`src/PhotoRepository.php:11`) e mostra ao dono colunas internas (`original`, `uuid`, `status`). Trocar por uma lista fixa de campos.
 - [ ] (Teste, #87) A resposta para um id de foto inexistente deve ser igual à de uma foto de outro imóvel (travar com teste).
 
@@ -202,7 +210,6 @@ Removed 2026-10-21: already done or obsolete.
 
 ### Queue worker (#118)
 Removed 2026-10-21: no data migration (migrateLegacy goes away).
-- [ ] Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
 - [ ] Restart the queue worker on deploy, after the asset build, so `AssetManifest` and code changes are picked up; add the step to `prompts/deploy.md`. Source: Arquitetura #142. Owner: Programador.
 - [ ] Recycle the queue worker under runit after a maximum job count, memory use or uptime. Source: Arquitetura #142. Owner: Programador.
 - [ ] Dev env: give each bot its own port range (Teste's nginx held 38542 while Arquitetura used it). Source: Arquitetura #142. Owner: Programador.

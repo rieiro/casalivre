@@ -3,6 +3,7 @@
 One line per decision in force, newest first within each area. A superseded decision is struck through and points to the decision that replaces it. Only Gerente edits this file.
 
 ## Process
+- 2026-10-21: Backlog plan: a cleanup sprint first (line-143 live bug, `IpRateLimiter` to Valkey, remove `migrateLegacy`, remove SQLite, close the backlog-review DROP items; about 1-2 days), then the standard plan resumes. Each sprint clears the KEEP items touching the code it changes plus about 20% of its effort on the remaining backlog. A new backlog item must name its sprint or it is dropped; Gerente reviews the backlog once per sprint (Rafael, 2026-10-21).
 - 2026-10-21: Verdict comments are capped at about 400 chars: the `VERDICT <role> @sha7: APPROVED|CHANGES` header, one Blockers line and one Followups line ("none" if empty). Evidence goes in a linked file, gist or collapsed section. Applies to every reviewer role. No per-PR hop counts in ready-to-merge messages (Rafael, 2026-10-21).
 - 2026-10-21: `docs/arquitetura.md` is a low-priority explanatory overview and may be outdated. Don't keep it in sync, don't open PRs or backlog items just to update it, and don't block PRs on it. It is refreshed from the latest specs only when Rafael asks (Rafael, 2026-10-21).
 - 2026-10-21: Money-code standards: [docs/money-standards.md](money-standards.md) (Rafael, 2026-10-21).
