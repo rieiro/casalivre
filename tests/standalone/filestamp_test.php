@@ -27,7 +27,7 @@ $s1 = FileStamp::of($f);
 $sneaky($f, 'aaaa', 'bbbb');
 $s2 = FileStamp::of($f);
 t_ok($s1 !== $s2, "same-second same-size rewrite changes the stamp ($s1 -> $s2)");
-t_eq(4, count(explode(':', (string) $s2)), 'racy file: stamp has the content-hash field');
+t_eq(5, count(explode(':', (string) $s2)), 'racy file: stamp has the content-hash field');
 t_eq($s2, FileStamp::of($f), 'no write: same stamp');
 // Atomic replacement by rename (JsonCache::write), same size and mtime.
 $tmp = $dir . '/a.tmp';
@@ -35,18 +35,35 @@ file_put_contents($tmp, '{"v": "cccc"}');
 touch($tmp, (int) stat($f)['mtime']);
 rename($tmp, $f);
 t_ok(FileStamp::of($f) !== $s2, 'rename replacement with the same size and mtime changes the stamp');
-// Old file: outside the racy window, the stamp is mtime:inode:size only (the file is not read).
-touch($f, time() - 60);
-clearstatcache(true, $f);
-$st = stat($f);
-t_eq($st['mtime'] . ':' . $st['ino'] . ':' . $st['size'], FileStamp::of($f), 'old file: 3-field stamp, no content read');
 t_eq(null, FileStamp::of($dir . '/missing.json'), 'missing file: null');
 // A stamp taken in the racy window differs from the one taken after it: one reload, never a missed write.
 file_put_contents($f, '{"v": "dddd"}');
+touch($f, time() - 60); // old mtime, but ctime is now: still racy (newer of mtime and ctime)
 $racy = FileStamp::of($f);
+t_eq(5, count(explode(':', (string) $racy)), 'old mtime, fresh ctime: still racy (hashed)');
 sleep(FileStamp::RACY_SECONDS + 1);
 $later = FileStamp::of($f);
-t_ok($racy !== $later && count(explode(':', (string) $later)) === 3, 'after the window: 3-field stamp, different from the racy one');
+clearstatcache(true, $f);
+$st = stat($f);
+t_eq($st['mtime'] . ':' . $st['ctime'] . ':' . $st['ino'] . ':' . $st['size'], $later, 'old file: mtime:ctime:inode:size, no content read');
+t_ok($racy !== $later, 'after the window: 4-field stamp, different from the racy one');
+
+echo "ctime (Arquitetura #170)
+";
+// Restore with an old mtime, the same size and the same inode (cp -p, rsync -t, tar): mtime, inode and size all
+// repeat and the file is outside the racy window, so only ctime tells.
+$old = FileStamp::of($f);
+$sneaky($f, 'dddd', 'eeee');
+t_ok(FileStamp::of($f) !== $old, 'same-size edit, old mtime restored (touch), same inode: stamp changes (ctime)');
+sleep(FileStamp::RACY_SECONDS + 1);
+$aged = FileStamp::of($f);
+chmod($f, 0000);
+$locked = FileStamp::of($f);
+t_ok($locked !== $aged, 'chmod 000: stamp changes (ctime)');
+sleep(FileStamp::RACY_SECONDS + 1);
+$lockedAged = FileStamp::of($f);
+chmod($f, 0644);
+t_ok(FileStamp::of($f) !== $lockedAged, 'unreadable file fixed with chmod: stamp changes (ctime), so the cache reloads');
 
 echo "worker cache (Settings)\n";
 putenv('QUEUE_DRIVER');
@@ -69,6 +86,26 @@ fclose($fh);
 touch($file, $st['mtime']);
 WorkerCaches::refreshIfChanged();
 t_eq('29', Settings::get('results_per_page'), 'same-second same-size rewrite: the next tick sees the new value');
+
+echo "worker cache (AssetManifest): unreadable manifest fixed with chmod\n";
+$man = AssetManifest::file();
+$perms = fileperms($man) & 0777;
+register_shutdown_function(static fn () => @chmod($man, $perms));
+chmod($man, 0000);
+clearstatcache(true, $man);
+if (is_readable($man)) {
+    chmod($man, $perms);
+    echo "  SKIPPED (running as root: chmod 000 does not make the file unreadable)\n";
+} else {
+    AssetManifest::clearCache();
+    t_eq([], @AssetManifest::load(), 'unreadable manifest: empty map cached');
+    sleep(FileStamp::RACY_SECONDS + 1); // the stamp taken at load is no longer racy: only ctime can tell
+    WorkerCaches::refreshIfChanged();
+    t_eq([], @AssetManifest::load(), 'nothing changed: still the cached empty map');
+    chmod($man, $perms);
+    WorkerCaches::refreshIfChanged();
+    t_ok(is_string(AssetManifest::load()['/assets/app.css'] ?? null), 'after chmod: the next tick reloads the manifest (ctime)');
+}
 
 exec('rm -rf ' . escapeshellarg($dir));
 t_done();
