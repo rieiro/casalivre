@@ -2,7 +2,7 @@
 
 Base: `backlog.md` P2a (critérios 1 a 5), `sprints.md` (S5), `spec-02` (papéis, árvore de profundidade livre, permissões, auditoria) e `spec-03` (canais no cadastro, acréscimo por canal). A spec usa só tokens de tema.
 **Casos de uso:** UC-A01 a UC-A14 (`casos-de-uso-admin-proposta.md`), UC-P33, UC-C08, UC-P09 e UC-P32.
-**Layout geral:** é **desktop-first**: barra lateral do modo Gerenciar, área principal e um painel de detalhe à direita. No **mobile**, o acesso é **só de consulta** (ver a árvore, os membros, os canais e o log). Ações de criar, mover, editar tema e vincular em lote mostram "Disponível no computador".
+**Layout geral:** é **desktop-first**: barra lateral do modo Gerenciar, área principal e um painel de detalhe à direita. No **mobile**, o acesso é **só de consulta** (ver a árvore, os membros, os canais e o log). Ações de criar, mover, escolher tema e vincular em lote mostram "Disponível no computador".
 
 ## 1. Árvore de gestão
 **Objetivo:** organizar nós de profundidade livre, com papéis e configurações herdadas, sem quebrar reservas.
@@ -33,20 +33,25 @@ Base: `backlog.md` P2a (critérios 1 a 5), `sprints.md` (S5), `spec-02` (papéis
 **Cadastro de franqueado e parceiro:** o convite/ativação mostra o **campo CRECI com o status de verificação** (Verificado, Em verificação, Não verificado, Inativo; spec-05, KYC). **Só com "Verificado" a pessoa opera como franqueado ou parceiro**: com outro status, o nó fica "Aguardando CRECI verificado", as ações de franqueado/parceiro aparecem desabilitadas com o motivo ("Disponível quando o CRECI estiver verificado") e o servidor recusa a ativação.
 **Theme (Rafael, 2026-10-21; [docs/decisions.md](../../decisions.md)):** themes stay **repo-only**. Each theme is a `themes/<name>/` folder (logo, colors, fonts, map style) prepared by the team, reviewed in a PR and listed in the build manifest; AA contrast (text ≥ 4.5:1, components ≥ 3:1) is checked when the theme is prepared, not in the app. There is **no in-app theme editor and no logo upload** for now. The channel screen only **picks a theme from the manifest list**, with a read-only preview of card, button, price card, error and success. **Quem cria:** os admins e o gestor no nó dele, só com a permissão delegada **"gerenciar canais"** *(aprovado)*. Um domínio próprio precisa estar com o **DNS verificado antes de publicar**. **Who picks the theme:** the admins, and the **gestor only if the channel belongs to their node**. For everyone else the item is disabled with the explanation.
 **Imóveis no canal:**
-- Lista com **seleção em lote** ("Adicionar 12 imóveis", "Remover").
-- **Interruptor por imóvel**, o mesmo da spec-03.
-- Opção **"Incluir automaticamente novos imóveis do nó"** por canal. **Padrão para um imóvel novo:** ele entra **ligado** no marketplace casalivre e no canal da organização ou do nó dele, e **desligado** nos canais de terceiros e de parceiros. O proprietário pode desmarcar qualquer um. O padrão é configurável por organização *(Negócios)*.
+**Regra (Rafael, 2026-10-21; [docs/decisions.md](../../decisions.md)):**
+- **Incluir só com o consentimento do proprietário.** Um imóvel entra num canal de duas formas: (a) o gestor do canal envia um **pedido de inclusão** e o proprietário **aceita** ("Rede Lagos quer mostrar Casa Azul no Site Rede Lagos. Aceitar · Recusar"); ou (b) o proprietário **adere** ao canal por conta própria (interruptor da spec-03). Enquanto o pedido não é aceito, o imóvel aparece na lista do canal como **"Aguardando o proprietário"** e não é exibido no canal. Não há inclusão automática nem canal ligado por padrão.
+- **Remover sem consentimento.** O gestor do canal pode tirar um imóvel do **próprio canal** sem o consentimento do proprietário, com confirmação e motivo. O proprietário recebe um **aviso** ("Casa Azul saiu do Site Rede Lagos. Motivo: …") e a ação fica no **log de auditoria**.
+- **O imóvel nunca some da plataforma.** Remover de um canal não exclui nem oculta o imóvel: ele continua no **marketplace casalivre** e nos outros canais em que está.
+- Lista com **seleção em lote** ("Pedir inclusão de 12 imóveis", "Remover"). Na inclusão em lote, cada proprietário recebe o próprio pedido.
+- **Interruptor por imóvel**, o mesmo da spec-03: o proprietário liga (adesão) ou desliga; o gestor do canal só envia o pedido ou remove.
 **Acréscimo por canal:** um parâmetro percentual de **−20% a +30%** (desconto permitido; faixa parametrizável pela plataforma) *[estimativa; aprovado]* ("+15%"), com **prévia somente leitura** do preço resultante para alguns imóveis ("Base R$ 2.250 → canal R$ 2.587,50"). O **preço base é único** e só é editado no imóvel.
 **Publicar e despublicar:** publicar exige domínio ou slug ativo, um tema da lista do manifesto e pelo menos 1 imóvel. Despublicar tira a vitrine do ar, mantém as reservas e pede confirmação.
-**Estados:** canal sem imóveis ("Adicione imóveis para publicar"); slug inválido; DNS pendente; publicando.
+**Estados:** canal sem imóveis ("Adicione imóveis para publicar"); pedido de inclusão pendente ("Aguardando o proprietário") ou recusado; slug inválido; DNS pendente; publicando.
 **Critérios de aceite**
 1. Um slug ou domínio duplicado é recusado na hora, com a mensagem.
 2. Cada estado de DNS e SSL é exibido com texto e ação. Publicar com domínio sem HTTPS fica bloqueado com a explicação.
 3. The theme picker offers only themes from the manifest list; any other name is refused by the server (422).
-4. Um imóvel em 2 canais aparece nos dois. Removê-lo de um não afeta o outro.
+4. Um imóvel em 2 canais aparece nos dois. Removê-lo de um não afeta o outro, e ele continua no marketplace casalivre.
 5. A prévia do acréscimo é só de leitura e bate com o total que o hóspede vê naquele canal (spec-01).
 6. A gestor of another node can't change the channel's theme and sees the explanation.
 7. The seeded storefronts (`/g/...`) and verified domains work the same after the rewrite (regression). No data migration: data is recreated from schema and seeds (docs/decisions.md, 2026-10-21).
+8. Um imóvel só aparece num canal depois que o proprietário aceita o pedido ou adere. Um pedido pendente ou recusado não exibe o imóvel no canal.
+9. Quando o gestor do canal remove um imóvel, o proprietário recebe o aviso com o motivo e a remoção aparece no log (autor, canal, imóvel, motivo).
 
 ## 2b. Regras municipais *(Negócios; S8+)*
 Entidade **`regra_municipal`**, mantida pelo admin_plataforma (o admin_org vê as cidades do seu nó). Campos:

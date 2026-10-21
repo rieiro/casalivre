@@ -14,8 +14,8 @@ Marque cada caso com: [ ] não implementado · [~] parcial · [x] implementado
 
 ## Canais de vitrine (spec-04)
 - UC-A08 Criar e editar canal (slug, domínio, DNS/SSL, nó dono)
-- UC-A09 Editar tema com prévia e validação de contraste
-- UC-A10 Vincular imóveis ao canal (lote, por imóvel, padrão de inclusão)
+- UC-A09 Escolher o tema do canal entre os temas do repositório (lista do manifesto), com prévia somente leitura; sem edição de tema nem upload de logo (decisão 2026-10-21)
+- UC-A10 Vincular imóveis ao canal (lote, por imóvel) só com o consentimento do proprietário (pedido aceito ou adesão do proprietário); remover do canal sem consentimento, com aviso ao proprietário e registro no log
 - UC-A11 Definir o acréscimo percentual do canal com prévia de preço
 - UC-A12 Publicar e despublicar canal
 
