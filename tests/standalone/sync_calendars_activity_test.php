@@ -14,21 +14,7 @@ $pdo->prepare('INSERT INTO calendar_feeds (property_id, url, title) VALUES (?, ?
 $pdo->prepare("INSERT INTO calendar_days (property_id, day, blocked, origin) VALUES (?, ?, 1, 'sync')")
     ->execute([$pid, date('Y-m-d', strtotime('+6 years'))]);
 
-// Activity log em diretório temporário (não toca storage/logs/activity.sqlite real).
-$actDir = sys_get_temp_dir() . '/casalivre-activity-' . bin2hex(random_bytes(4));
-mkdir($actDir, 0700, true);
-$actFile = $actDir . '/activity.sqlite';
-putenv('ACTIVITY_DB_PATH=' . $actFile);
-putenv('LOG_DRIVER=sqlite');
-register_shutdown_function(static function () use ($actDir): void {
-    foreach (glob($actDir . '/*') ?: [] as $f) {
-        @unlink($f);
-    }
-    @rmdir($actDir);
-});
-$act = static fn () => new PDO('sqlite:' . $actFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-ActivityLog::store(); // garante que o arquivo/tabela existem
-$before = (int) $act()->query('SELECT COALESCE(MAX(id), 0) FROM activity_log')->fetchColumn();
+$before = t_log_mark();
 
 echo "executa o script do cron\n";
 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/sync-calendars.php') . ' 2>&1', $out, $code);
@@ -38,14 +24,11 @@ t_ok(str_contains($text, 'Noites além do horizonte removidas: 1'), 'trimHorizon
 t_ok(str_contains($text, '1 NOK'), 'feed processado (NOK)');
 t_ok(!str_contains($text, 'Call to undefined function'), 'sem erro de função indefinida');
 
-$rows = $act()->prepare('SELECT action_code, params FROM activity_log WHERE id > ?');
-$rows->execute([$before]);
-$mine = array_values(array_filter($rows->fetchAll(PDO::FETCH_ASSOC), static fn ($r) => (int) (json_decode((string) $r['params'], true)['imovel_id'] ?? 0) === $pid));
-$codes = array_map(static fn ($r) => (int) $r['action_code'], $mine);
+$mine = array_values(array_filter(t_log_rows($before), static fn ($r) => (int) ($r['params']['imovel_id'] ?? 0) === $pid));
+$codes = array_column($mine, 'code');
 t_ok(in_array(ActivityLog::CALENDAR_SYNC, $codes, true), 'auditoria CALENDAR_SYNC gravada');
 t_ok(in_array(ActivityLog::CALENDAR_UPDATE, $codes, true), 'auditoria CALENDAR_UPDATE (limite) gravada');
-$sync = array_values(array_filter($mine, static fn ($r) => (int) $r['action_code'] === ActivityLog::CALENDAR_SYNC));
-t_ok($sync !== [] && !str_contains((string) $sync[0]['params'], 'teste-sync.ics'), 'URL do feed não aparece crua na auditoria');
-
-t_ok(is_file($actFile), 'auditoria gravada no arquivo temporário');
+$sync = array_values(array_filter($mine, static fn ($r) => $r['code'] === ActivityLog::CALENDAR_SYNC));
+t_ok($sync !== [] && !str_contains(json_encode($sync[0]['params']), 'teste-sync.ics'), 'URL do feed não aparece crua na auditoria');
+t_eq(['other', 'system'], [$sync[0]['class'] ?? null, $sync[0]['actor_kind'] ?? null], 'CALENDAR_SYNC do cron: classe other, actor_kind system (CLI grava na hora)');
 t_done();

@@ -3,7 +3,7 @@
 // e-mail novo e existente recebem a mesma resposta; existente gera só o aviso 'exists' (24 h por destinatário; conta pendente
 // recebe a ativação de novo). Uso único atômico dos tokens, session_version, índices, ON CONFLICT e limite por IP na web.
 require __DIR__ . '/lib.php';
-t_temp_sqlite();
+t_temp_db();
 require_once CL_ROOT . '/src/MailWorker.php';
 $owner = t_seed_owner();
 db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Teste', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
@@ -134,22 +134,11 @@ t_login($base, $jar3, $owner['email'], $np);
 t_eq(200, t_http('GET', $base . '/painel', null, [], $jar3)['status'], 'login novo com a nova senha funciona');
 
 echo "índices e ON CONFLICT\n";
-$idx = array_column(db()->query('PRAGMA index_list(users)')->fetchAll(PDO::FETCH_ASSOC), 'name');
-t_ok(in_array('idx_users_activation_token', $idx, true) && in_array('idx_users_reset_token', $idx, true), 'schema.sql: índices em activation_token e reset_token');
+$idx = db()->query("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users'")->fetchAll(PDO::FETCH_COLUMN);
+t_ok(in_array('idx_users_activation_token', $idx, true) && in_array('idx_users_reset_token', $idx, true), 'banco do schema: índices em activation_token e reset_token');
 $pg = (string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql');
 t_ok(str_contains($pg, 'ON users(activation_token) WHERE activation_token IS NOT NULL') && str_contains($pg, 'ON users(reset_token) WHERE reset_token IS NOT NULL'), 'schema.pgsql.sql: índices parciais');
-$freshFile = sys_get_temp_dir() . '/cl-mig-' . bin2hex(random_bytes(3)) . '.sqlite';
-$fresh = new PDO('sqlite:' . $freshFile);
-$fresh->exec((string) file_get_contents(CL_ROOT . '/database/schema.sql'));
-$fresh->exec('DROP INDEX idx_users_activation_token');
-$fresh->exec('DROP INDEX idx_users_reset_token');
-$fresh = null;
-exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('putenv("DB_DRIVER=sqlite"); putenv("DB_DSN=sqlite:' . $freshFile . '"); require "' . CL_ROOT . '/src/Db.php"; require "' . CL_ROOT . '/src/helpers.php"; db();') . ' 2>&1', $out, $code);
-$fresh = new PDO('sqlite:' . $freshFile);
-$idx2 = array_column($fresh->query('PRAGMA index_list(users)')->fetchAll(PDO::FETCH_ASSOC), 'name');
-t_ok(in_array('idx_users_activation_token', $idx2, true) && in_array('idx_users_reset_token', $idx2, true), 'Db::migrate recria os índices' . ($code ? ' ' . implode(' ', $out) : ''));
-$fresh = null;
-@unlink($freshFile);
+// Sem migração (2026-10-21): os índices vêm só do schema; o migrate() não os recria (só seeds + versão).
 t_ok(Db::SCHEMA_VERSION >= 6, 'SCHEMA_VERSION >= 6 (tokens sha256 do #35)');
 $f = ['name' => 'X', 'cpf' => '52998224725', 'address' => 'Rua', 'phone' => '48999990000', 'email' => 'conf' . bin2hex(random_bytes(3)) . '@casalivre.test', 'password_hash' => 'h', 'status' => 'pending'];
 t_eq([true, false], [UserRepository::insertIfAbsent($f), UserRepository::insertIfAbsent($f)], 'ON CONFLICT(email) DO NOTHING: 1ª cria, 2ª não (rowCount)');

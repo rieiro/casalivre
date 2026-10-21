@@ -29,8 +29,8 @@ echo "URLs e hashes\n";
 putenv('LOG_SALT=sal-de-teste');
 $out = RequestLog::mask(['external_ical_url' => 'https://u:p@www.airbnb.com/calendar/ical/123.ics?s=SEGREDO#x',
     'url' => 'https://casalivre.test/ical/' . str_repeat('ab', 16) . '?t=1']);
-t_ok((bool) preg_match('/^www\.airbnb\.com#[0-9a-f]{16}$/', (string) $out['external_ical_url']), 'external_ical_url vira host#hmac');
-t_ok((bool) preg_match('/^casalivre\.test#[0-9a-f]{16}$/', (string) $out['url']), 'url vira host#hmac (sem caminho/hash)');
+t_ok((bool) preg_match('/^www\.airbnb\.com#[0-9a-f]{64}$/', (string) $out['external_ical_url']), 'external_ical_url vira host#hmac');
+t_ok((bool) preg_match('/^casalivre\.test#[0-9a-f]{64}$/', (string) $out['url']), 'url vira host#hmac (sem caminho/hash)');
 $txt = RequestLog::mask(['comment' => 'veja https://x.com/a?token=SEGREDO e http://y.org/b'])['comment'];
 t_ok(!str_contains($txt, 'x.com') && !str_contains($txt, 'SEGREDO') && !str_contains($txt, 'y.org'), 'URLs removidas de texto livre');
 t_eq('/api/ical/{hash}.ics', RequestLog::redactPath('/api/ical/' . str_repeat('0f', 16) . '.ics'), 'path com 32 hex vira {hash}');
@@ -48,10 +48,10 @@ t_eq('x.com#-', LogPrivacy::url('https://x.com/a?t=1'), 'sem LOG_SALT: URL vira 
 putenv('APP_KEY=');
 putenv('LOG_SALT=sal-de-teste');
 $ua = LogPrivacy::userAgent('Mozilla/5.0');
-t_ok(is_string($ua) && strlen($ua) === 16 && !str_contains($ua, 'Mozilla'), 'user agent vira HMAC');
-t_ok(LogPrivacy::email('A@B.com') === LogPrivacy::email('a@b.com ') && strlen((string) LogPrivacy::email('a@b.com')) === 16, 'e-mail vira HMAC normalizado');
+t_ok(is_string($ua) && strlen($ua) === 64 && !str_contains($ua, 'Mozilla'), 'user agent vira HMAC');
+t_ok(LogPrivacy::email('A@B.com') === LogPrivacy::email('a@b.com ') && strlen((string) LogPrivacy::email('a@b.com')) === 64, 'e-mail vira HMAC normalizado');
 $ref = RequestLog::userRef(42);
-t_ok(is_string($ref) && strlen($ref) === 16 && $ref !== '42', 'com sal: HMAC truncado');
+t_ok(is_string($ref) && strlen($ref) === 64 && $ref !== '42', 'com sal: HMAC completo (64 hex, sem truncar)');
 t_eq($ref, RequestLog::userRef(42), 'pseudônimo estável');
 t_ok($ref !== RequestLog::userRef(43), 'pseudônimos distintos por usuário');
 
@@ -103,7 +103,7 @@ require_once CL_ROOT . '/src/ActivityLog.php';
 $p = ActivityLog::safeParams(['email' => 'joao@x.com', 'ip' => '203.0.113.9', 'cpf' => '52998224725', 'password' => 'x', 'imovel_id' => 3]);
 t_eq(LogPrivacy::email('joao@x.com'), $p['email'], 'activity: e-mail vira HMAC');
 t_eq('203.0.113.0', $p['ip'], 'activity: ip truncado');
-t_ok($p['cpf'] !== '52998224725' && strlen((string) $p['cpf']) === 16, 'activity: cpf vira HMAC');
+t_ok($p['cpf'] !== '52998224725' && strlen((string) $p['cpf']) === 64, 'activity: cpf vira HMAC');
 t_ok(!isset($p['password']) && $p['imovel_id'] === 3, 'activity: senha omitida, demais mantidos');
 
 echo "corpo: allowlist (LGPD)\n";
@@ -135,7 +135,7 @@ t_ok(isset($p['autor']) && $p['autor'] !== 'Maria Souza' && $p['nota'] === 5 && 
 $p = ActivityLog::safeParams(['url' => 'https://www.airbnb.com/calendar/ical/1.ics?s=SEGREDO', 'novas' => 2, 'token' => 't'], ActivityLog::CALENDAR_SYNC);
 t_ok(!str_contains((string) json_encode($p), 'SEGREDO') && $p['novas'] === 2 && !isset($p['token']), 'CALENDAR_SYNC: URL pseudonimizada, chave fora da lista omitida');
 $p = ActivityLog::safeParams(['amenidades' => ['pool', 'bbq'], 'localidade' => 'Floripa', 'q' => 'x'], ActivityLog::SEARCH);
-t_eq(['amenidades' => ['pool', 'bbq'], 'localidade' => 'Floripa'], $p, 'SEARCH: lista permitida mantida, q omitido');
+t_eq(['amenidades' => ['pool', 'bbq'], 'localidade' => 'floripa'], $p, 'SEARCH: lista permitida mantida, q omitido');
 
 echo "ActivityLog: valor_anterior/atual por allowlist\n";
 $j = (string) ActivityLog::encodePrevious(['title' => 'Casa', 'description' => 'Fale comigo 48999990000', 'address' => 'Rua A, 1', 'cep' => '88000000',
@@ -154,25 +154,20 @@ t_eq(['name', 'phone', 'senha'], ActivityLog::changedFieldNames(
     ['name' => 'A', 'phone' => '1', 'email' => 'a@x.com', 'password_hash' => 'h1'],
     ['name' => 'B', 'phone' => '2', 'email' => 'a@x.com', 'password_hash' => 'h2']), 'changedFieldNames');
 require_once CL_ROOT . '/src/Db.php';
-$dir = sys_get_temp_dir() . '/cl-act-' . bin2hex(random_bytes(3));
-mkdir($dir, 0700);
-putenv('ACTIVITY_DB_PATH=' . $dir . '/a.sqlite');
-putenv('LOG_DRIVER=sqlite');
+t_temp_db();
 ActivityLog::record(ActivityLog::ACCOUNT_UPDATE, ['email' => 'joao@x.com', 'nome' => 'João'],
     ['name' => 'João Silva', 'cpf' => '52998224725', 'street' => 'Rua Velha'], ['name' => 'João S.', 'cpf' => '52998224725', 'street' => 'Rua Nova']);
 ActivityLog::record(ActivityLog::ACCOUNT_DELETE, ['email' => 'joao@x.com', 'ip' => '203.0.113.9'],
     ['status' => 'active', 'email' => 'joao@x.com'], ['status' => 'deleted', 'email' => 'apagado-1@x']);
-$rows = (new PDO('sqlite:' . $dir . '/a.sqlite'))->query('SELECT action_code, params, valor_anterior, valor_atual FROM activity_log ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+$rows = t_log_rows();
 $all = json_encode($rows, JSON_UNESCAPED_UNICODE);
 t_eq(2, count($rows), 'duas linhas de conta gravadas');
-t_eq(null, $rows[0]['valor_anterior'], 'ACCOUNT_UPDATE: sem valor_anterior');
-t_eq(['campos_alterados' => ['name', 'street']], json_decode((string) $rows[0]['valor_atual'], true), 'ACCOUNT_UPDATE: só nomes alterados');
-t_eq(['campos_alterados' => ['email', 'status']], json_decode((string) $rows[1]['valor_atual'], true), 'ACCOUNT_DELETE: só nomes alterados');
+t_eq(['admin', 'admin'], array_column($rows, 'class'), 'conta: classe admin (audit.audit_log)');
+t_eq(null, $rows[0]['anterior'], 'ACCOUNT_UPDATE: sem valor_anterior');
+t_eq(['campos_alterados' => ['name', 'street']], $rows[0]['atual'], 'ACCOUNT_UPDATE: só nomes alterados');
+t_eq(['campos_alterados' => ['email', 'status']], $rows[1]['atual'], 'ACCOUNT_DELETE: só nomes alterados');
 foreach (['João', 'Silva', 'Rua Velha', 'Rua Nova', '52998224725', 'joao@x.com', 'apagado-1', '203.0.113.9'] as $secret) {
     t_ok(!str_contains($all, $secret), "conta: '$secret' não aparece");
 }
-array_map('unlink', glob($dir . '/*') ?: []);
-@rmdir($dir);
-putenv('ACTIVITY_DB_PATH');
 
 t_done();

@@ -13,7 +13,7 @@ $admin = c_user('active');
 db()->exec('UPDATE users SET is_admin = 1 WHERE id = ' . (int) $admin['id']);
 $comum = c_user('active');
 $adminRow = ['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'];
-$codes = static fn (int $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
+$codes = static fn (string $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
 $dnsCalls = [];
 $dns = [];
 $fakeDns = new DomainVerification(static function (string $name) use (&$dns, &$dnsCalls): array {

@@ -84,7 +84,7 @@ final class ExceptionShield
     /** Path relative to the repo root; null outside it. */
     public static function relative(string $file): ?string
     {
-        $root = dirname(__DIR__) . '/';
+        $root = (realpath(dirname(__DIR__)) ?: dirname(__DIR__)) . '/';
         $real = realpath($file) ?: $file;
         return str_starts_with($real, $root) ? substr($real, strlen($root)) : null;
     }

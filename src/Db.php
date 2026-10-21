@@ -160,6 +160,9 @@ final class Db
      */
     private static function migratePgsql(PDO $pdo, bool $force): int
     {
+        if ($pdo->query("SELECT to_regclass('public.users') IS NULL")->fetchColumn()) {
+            throw new RuntimeException('Schema ausente: carregue database/schema.pgsql.sql num banco novo (psql -f) e rode o migrate.php de novo.');
+        }
         $pdo->query('SELECT pg_advisory_lock(' . self::PG_MIGRATE_LOCK . ')');
         try {
             $pdo->beginTransaction();
