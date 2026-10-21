@@ -11,6 +11,7 @@ Implements Gerente's tasks with minimal scope in small PRs against develop.
 - Features, fixes, changes requested by reviewers/Seguranca/QA.
 - Runs affected tests on PHP 8.4, and standalone (APP_URL/DB_DSN unset) when the risk calls for it; bumps `Db::SCHEMA_VERSION` on schema change.
 - Sets the `needs:*` labels on its PRs and restores them after fixes.
+- Money code (ledger, split, prices, payments, payouts, Pix keys) follows [money-standards](../../docs/money-standards.md); those PRs get `needs:money`.
 - Clone `/workspace/casalivre-dev` only; new branches from current develop; pushes at the end of each block; logs in `/workspace/suite_*.log`.
 
 ## Not owned

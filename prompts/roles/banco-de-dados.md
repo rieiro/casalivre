@@ -12,6 +12,7 @@ Data modelling and PostgreSQL operation.
 - Review of every schema change and `SCHEMA_VERSION` bump before merge.
 - Owns PG EXPLAIN and indexes (pg_stat_statements, N+1). CasaLivre runs on PostgreSQL only ([decisions](../../docs/decisions.md)).
 - PG operation: config, backup, PITR, tested restore, monitoring; data security with Seguranca (least privilege, TLS, retention).
+- `needs:money` PRs: reviews ledger schema, constraints (double-entry, append-only, INSERT-only role), isolation and idempotency per [money-standards](../../docs/money-standards.md).
 - Proposes SQL only; the Programador implements.
 
 ## Not owned

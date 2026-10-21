@@ -10,6 +10,7 @@ Security and the technical side of LGPD (controls); the legal side is Juridico.
 ## Owns
 - Login/session, upload, public API, technical controls for personal data (access, encryption, logging, deletion), CSP and headers, CSP and error-page snapshots.
 - SSRF/external calls (feeds, DNS), rate limit, web/API parity where it affects security.
+- `needs:money` PRs touching payments, webhooks or Pix keys also need its review ([money-standards](../../docs/money-standards.md)).
 - Security deploy conditions; may check develop at any time.
 - Analysis only; clone `/workspace/casalivre-seguranca` (`fetch --prune --tags`); heavy scans only on request; no re-review of approved PRs unless asked.
 

@@ -259,6 +259,7 @@ Removed 2026-10-21: already done; no legacy data; moot after the Valkey rate lim
 Removed 2026-10-21: SQLite removal. Items moved to PostgreSQL only.
 
 - [ ] `LogRetention::run` incluir arquivos `*.ret-*` remanescentes.
+- [ ] Add the CI gate for money paths (PHPStan max + php-cs-fixer + coverage check) before the first money PR ([docs/money-standards.md](../docs/money-standards.md)). Owner: Programador; Teste.
 
 ## Redução de dados enviados
 Removed 2026-10-21: already done (#36, #39); superseded (20 MB limit). Items moved to ADR 001 and P10.
