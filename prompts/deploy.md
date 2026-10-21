@@ -208,7 +208,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] (#86, Segurança) Proxy (nginx/CDN): **não substituir as respostas 5xx da aplicação em `/api/`** (sem `proxy_intercept_errors on` nem `error_page 502` nesse location). O `POST /api/imoveis/<h>/ical/importar` devolve 502 com JSON (`error`, `status: NOK`, `feeds`) quando o download do feed falha.
 - [ ] (#89/#91) Feeds só `https://`, sem exceção. Feed `http://` que existir é recusado no cadastro e não sincroniza (NOK).
 - [ ] (#85) O limite de reenvio de ativação (3 por hora por conta) usa o e-mail como chave; isso funciona porque o e-mail de uma conta não pode ser trocado (não existe troca de e-mail).
-- [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. The `scripts/queue-worker.php` runit service (#118) already loops and does not yet call `GrupoResolvedor::limparCache()`; the fix is in `prompts/backlog.md`, "Priority now". Until it ships, restart the queue-worker after a domain loses verification.
+- [x] (#93) `GrupoResolvedor::doDominio` has a per-process cache. Web requests are not affected. Fixed in #142 and #149: the `scripts/queue-worker.php` runit service resets the caches every tick, and resolver entries expire by TTL, so no restart is needed after a domain loses verification.
 - [ ] (#94) `scripts/seed-grupo-teste.php` é **só para dev**: recusa rodar se `APP_ENV` não for `dev`/`local` e nunca entra em scripts de setup ou deploy de produção.
 
 ## Limitador de taxa (#85, #88; nota final)

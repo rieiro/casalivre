@@ -83,7 +83,7 @@ Removed 2026-10-21: already done in Sprint 3 (#56–#69). The rest moved to the 
 ## Sprint 3: pendências (#56–#69)
 
 ### Segurança
-Moved 2026-10-21: group findings are now Sprint 5 groups rewrite requirements; the live limparCache and .ics items moved to Priority now.
+Moved 2026-10-21: group findings are now Sprint 5 groups rewrite requirements; the .ics item moved to Priority now; the live limparCache bug was fixed in #142 and #149.
 - [ ] (#56, risco aceito) `img-src 'self'` bloqueia o `blob:` do MapLibre em navegadores sem `createImageBitmap` (Safari antigo). Avaliar `img-src blob:` se aparecer reclamação.
 - [ ] (baixa, #60) Conferir no LoginAttempt se `err.deleted`/`err.inactive` aparecem antes da checagem da senha (revelaria o estado da conta).
 - [ ] (baixa, #61) Diferença de poucos ms em `/senha/esqueci` (INSERT na `mail_queue` só se o e-mail existe) e no login de conta pendente com reenvio; abaixo do ruído e coberta por rate limit.
@@ -205,6 +205,8 @@ Removed 2026-10-21: no data migration (migrateLegacy goes away).
 - [ ] Dev env: give each bot its own port range (Teste's nginx held 38542 while Arquitetura used it). Source: Arquitetura #142. Owner: Programador.
 - [ ] `FileStamp`: keep the stamp empty when a read fails, so a failed read is not cached as "unchanged". Source: Arquitetura #149. Owner: Programador.
 - [ ] `GrupoResolvedor`: cap the number of expired entries kept in the TTL cache. Source: Arquitetura #149. Owner: Programador.
+- [ ] `Settings`, `AssetManifest`, `I18n`: the same "skip if the stamp is empty or equal, else drop" check is copied 3 times and each class writes its file path twice. Move the comparison into `FileStamp` (for example, `FileStamp::changed($file, $stamp)`) and keep one file-path constant per class. Source: Revisor #149. Owner: Programador.
+- [ ] `GrupoResolvedor` (`src/GrupoResolvedor.php:55-58,70`): keep `[group, expiry]` in one array instead of the parallel `$cacheExpira`, and drop the public mutable static `$clock` test hook. Source: Revisor #149. Owner: Programador.
 - [ ] `queue_worker_manifest_cache_test` and `queue_worker_cache_unchanged_test` rewrite the tracked `public/assets/manifest.json`; use a temp copy instead. Source: Arquitetura #149. Owner: Programador.
 - [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
 
