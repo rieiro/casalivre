@@ -31,33 +31,38 @@ MailWorker::$deliver = static function (string $type, string $to) use (&$sent, &
 $rows = static fn (): array => $other->query('SELECT status, attempts, last_error FROM mail_queue ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
 
 echo "SQL queue (PG): DB connection lost between the send and the ack\n";
-$mail = MailQueues::make();
-$mail->push('activation', 'ack@casalivre.test');
-$afterSend = static function () use ($other): void {
-    $pid = (int) db()->query('SELECT pg_backend_pid()')->fetchColumn();
-    $other->query("SELECT pg_terminate_backend($pid)");
-    usleep(100000);
-};
-$err = null;
-try {
-    QueueWorkerLoop::tick($mail, null, $dir);
-} catch (Throwable $e) {
-    $err = $e;
+// pg_terminate_backend: PG only. Develop's CI still runs on SQLite (PG-only per #137, #148 removes SQLite): skipped there.
+if (!t_is_pg()) {
+    echo "  SKIPPED (PG only: set TEST_PG_DSN)\n";
+} else {
+    $mail = MailQueues::make();
+    $mail->push('activation', 'ack@casalivre.test');
+    $afterSend = static function () use ($other): void {
+        $pid = (int) db()->query('SELECT pg_backend_pid()')->fetchColumn();
+        $other->query("SELECT pg_terminate_backend($pid)");
+        usleep(100000);
+    };
+    $err = null;
+    try {
+        QueueWorkerLoop::tick($mail, null, $dir);
+    } catch (Throwable $e) {
+        $err = $e;
+    }
+    t_ok($err !== null && Db::isConnectionError($err), 'the lost ack propagates as a lost connection (worker exits, runit restarts it)');
+    t_eq(['ack@casalivre.test'], $sent, 'the email went out once');
+    (static fn () => Db::$conn = null)->bindTo(null, Db::class)(); // the restarted worker: new connection
+    $mail = MailQueues::make();
+    t_eq([['status' => 'processing', 'attempts' => 0, 'last_error' => '']], array_map(static fn ($r) => ['status' => $r['status'], 'attempts' => (int) $r['attempts'], 'last_error' => $r['last_error']], $rows()), 'still reserved, no attempt spent, no error recorded');
+    $rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+    t_eq([0, 0], [$rep['enviados'], $rep['falhas']], 'restarted worker: ticks fine (no crash loop), job not resent while reserved');
+    $other->exec("UPDATE mail_queue SET updated_at = '2000-01-01 00:00:00' WHERE status = 'processing'"); // 10 min later
+    $rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+    t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'after STALE_SECONDS: sent again and acked');
+    t_eq(['ack@casalivre.test', 'ack@casalivre.test'], $sent, 'at-least-once: the recipient got it twice');
+    t_eq(['sent', 0], [$rows()[0]['status'], (int) $rows()[0]['attempts']], 'sent, attempts still 0');
+    $rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+    t_eq(0, $rep['enviados'], 'no third send');
 }
-t_ok($err !== null && Db::isConnectionError($err), 'the lost ack propagates as a lost connection (worker exits, runit restarts it)');
-t_eq(['ack@casalivre.test'], $sent, 'the email went out once');
-(static fn () => Db::$conn = null)->bindTo(null, Db::class)(); // the restarted worker: new connection
-$mail = MailQueues::make();
-t_eq([['status' => 'processing', 'attempts' => 0, 'last_error' => '']], array_map(static fn ($r) => ['status' => $r['status'], 'attempts' => (int) $r['attempts'], 'last_error' => $r['last_error']], $rows()), 'still reserved, no attempt spent, no error recorded');
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
-t_eq([0, 0], [$rep['enviados'], $rep['falhas']], 'restarted worker: ticks fine (no crash loop), job not resent while reserved');
-$other->exec("UPDATE mail_queue SET updated_at = '2000-01-01 00:00:00' WHERE status = 'processing'"); // 10 min later
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
-t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'after STALE_SECONDS: sent again and acked');
-t_eq(['ack@casalivre.test', 'ack@casalivre.test'], $sent, 'at-least-once: the recipient got it twice');
-t_eq(['sent', 0], [$rows()[0]['status'], (int) $rows()[0]['attempts']], 'sent, attempts still 0');
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
-t_eq(0, $rep['enviados'], 'no third send');
 
 if (!extension_loaded('redis') || (string) getenv('VALKEY_SOCKET') === '') {
     echo "  SKIPPED Valkey part (needs phpredis and VALKEY_SOCKET: run via ops/dev-env/test-pg.sh)\n";
