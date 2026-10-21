@@ -5,6 +5,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 ## Priority now
 - [ ] **Do first.** Live bug: the runit queue-worker loops forever (`scripts/queue-worker.php:33-46`, #118) and renders mail through `MailHtml.php:78` → `GrupoResolvedor::doDominio`, whose per-process cache (`src/GrupoResolvedor.php:47-59`) is never cleared. A domain that loses verification keeps being linked in emails until the worker restarts. Call `GrupoResolvedor::limparCache()` on every loop iteration and add a test. Source: Segurança #93. Owner: Programador.
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
+- [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
 
 ## Em andamento
@@ -199,6 +200,9 @@ Removed 2026-10-21: already done or obsolete.
 ### Queue worker (#118)
 Removed 2026-10-21: no data migration (migrateLegacy goes away).
 - [ ] Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
+- [ ] Restart the queue worker on deploy, after the asset build, so `AssetManifest` and code changes are picked up; add the step to `prompts/deploy.md`. Source: Arquitetura #142. Owner: Programador.
+- [ ] Recycle the queue worker under runit after a maximum job count, memory use or uptime. Source: Arquitetura #142. Owner: Programador.
+- [ ] Dev env: give each bot its own port range (Teste's nginx held 38542 while Arquitetura used it). Source: Arquitetura #142. Owner: Programador.
 - [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
 
 ### Older follow-ups (#99–#113)
