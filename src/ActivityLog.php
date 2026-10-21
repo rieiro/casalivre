@@ -214,6 +214,7 @@ final class ActivityLog
 
     /**
      * Row for audit.activity_log / audit.audit_log (allowlisted payload, before/after as JSON text, no IP/UA).
+     * No created_at: the DB sets it (DEFAULT statement_timestamp(); the app roles cannot insert that column).
      * @return array<string, mixed>
      */
     public static function buildRow(int $code, array $params = [], mixed $valorAnterior = null, mixed $valorAtual = null): array
@@ -235,10 +236,8 @@ final class ActivityLog
             // The CHECK must never abort a transaction (spec §8.6).
             [$payload, $before, $after] = ['{"truncated": true}', null, null];
         }
-        $now = DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', microtime(true)));
         return [
             'id' => Uuid::v7(),
-            'created_at' => ($now ?: new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.uP'),
             'code' => $code,
             'retention_class' => self::classOf($code),
             'actor_kind' => $kind,
@@ -309,9 +308,9 @@ final class ActivityLog
             if (!in_array($row['retention_class'] ?? null, [self::SECURITY, self::OTHER], true)) {
                 throw new LogicException('audit.activity_log takes only security/other rows');
             }
-            $values[] = '(?::uuid, ?::timestamptz, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?::jsonb)';
+            $values[] = '(?::uuid, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?::jsonb)';
         }
-        $st = $pdo->prepare('INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref,
+        $st = $pdo->prepare('INSERT INTO audit.activity_log (id, code, retention_class, actor_kind, actor_ref,
             actor_key_version, access_event_id, payload, before_value, after_value) VALUES ' . implode(', ', $values));
         $i = 0;
         foreach ($rows as $row) {
@@ -327,8 +326,8 @@ final class ActivityLog
     /** INSERT of one admin row into audit.audit_log. */
     public static function insertAudit(PDO $pdo, array $row): void
     {
-        $st = $pdo->prepare('INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind, actor_ref,
-            actor_key_version, payload, before_value, after_value) VALUES (?::uuid, ?::timestamptz, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb)');
+        $st = $pdo->prepare('INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, actor_ref,
+            actor_key_version, payload, before_value, after_value) VALUES (?::uuid, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb)');
         $i = 0;
         self::bindCommon($st, $i, $row);
         $st->bindValue(++$i, $row['payload']);
@@ -340,7 +339,6 @@ final class ActivityLog
     private static function bindCommon(PDOStatement $st, int &$i, array $row): void
     {
         $st->bindValue(++$i, $row['id']);
-        $st->bindValue(++$i, $row['created_at']);
         $st->bindValue(++$i, (int) $row['code'], PDO::PARAM_INT);
         $st->bindValue(++$i, $row['retention_class']);
         $st->bindValue(++$i, $row['actor_kind']);
@@ -409,7 +407,7 @@ final class ActivityLog
         self::REGISTER => ['email'],
         self::SEARCH => ['localidade', 'place_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
         self::ACCOUNT_UPDATE => ['email'],
-        self::ACCOUNT_DELETE => ['email', 'ip'],
+        self::ACCOUNT_DELETE => ['email'],   // sem IP (nem /24) num payload de 5 anos (Segurança #148)
         self::PROPERTY_CREATE => ['titulo'],
         self::PROPERTY_UPDATE => ['titulo', 'cidade'],
         self::PROPERTY_DELETE => ['titulo', 'estado', 'inativado_em'],

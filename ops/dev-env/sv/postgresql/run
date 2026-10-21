@@ -7,16 +7,19 @@ if [ ! -f "$pgdata/PG_VERSION" ]; then
 fi
 # Autenticação (reescrita a cada start, idempotente): só socket local, peer.
 # Sem root não existe o usuário do SO 'postgres': o mapa 'admin' liga o uid do
-# bot a postgres; o mapa 'casalivre' liga o bot e o FPM (mesmo uid aqui) a casalivre_dev.
+# bot a postgres; o mapa 'casalivre' liga o bot e o FPM (mesmo uid aqui) a casalivre_dev e ao login do job de
+# retenção (cl_retention_job, serviço sv/log-retention; sem senha no dev, como casalivre_dev).
 cat >"$pgdata/pg_hba.conf" <<HBA
 local all postgres peer map=admin
 local all casalivre_dev peer map=casalivre
+local all cl_retention_job peer map=casalivre
 local all all reject
 host all all all reject
 HBA
 cat >"$pgdata/pg_ident.conf" <<IDENT
 admin $CL_PG_USER postgres
 casalivre $CL_PG_USER casalivre_dev
+casalivre $CL_PG_USER cl_retention_job
 IDENT
 # Só socket Unix (listen_addresses vazio); port=5432 só nomeia o socket
 # .s.PGSQL.5432. Socket 0770 com o grupo comum, em $CL_RUN (0700).

@@ -112,11 +112,23 @@ foreach (['audit.activity_log', 'audit.audit_log', $leaf, 'audit.activity_log_he
         t_eq('42501', t_state(static fn () => $app->exec($sql)), "casalivre_app: " . strtok($sql, ' ') . " em $t negado");
     }
 }
-t_eq(null, t_state(static fn () => $app->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now(), 5, 'other', 'anon')")), 'casalivre_app: INSERT no activity_log permitido');
-t_eq(null, t_state(static fn () => $app->exec("INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now(), 32, 'admin', 'system')")), 'casalivre_app: INSERT no audit_log permitido');
+t_eq(null, t_state(static fn () => $app->exec("INSERT INTO audit.activity_log (id, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', 5, 'other', 'anon')")), 'casalivre_app: INSERT no activity_log permitido (sem created_at)');
+t_eq(null, t_state(static fn () => $app->exec("INSERT INTO audit.audit_log (id, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', 32, 'admin', 'system')")), 'casalivre_app: INSERT no audit_log permitido (sem created_at)');
 $logw = $as('cl_logw');
-t_eq('42501', t_state(static fn () => $logw->exec("INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now(), 32, 'admin', 'system')")), 'cl_logw: INSERT no audit_log negado');
-t_eq(null, t_state(static fn () => $logw->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now(), 5, 'other', 'anon')")), 'cl_logw: INSERT no activity_log permitido');
+t_eq('42501', t_state(static fn () => $logw->exec("INSERT INTO audit.audit_log (id, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', 32, 'admin', 'system')")), 'cl_logw: INSERT no audit_log negado');
+t_eq(null, t_state(static fn () => $logw->exec("INSERT INTO audit.activity_log (id, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', 5, 'other', 'anon')")), 'cl_logw: INSERT no activity_log permitido (sem created_at)');
+echo "created_at é do banco (BD blocker 2): os papéis do app não mandam created_at nem retention_until\n";
+foreach (['casalivre_app' => $app, 'cl_logw' => $logw] as $who => $conn) {
+    t_eq('42501', t_state(static fn () => $conn->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now() + interval '30 days', 5, 'other', 'anon')")), "$who: INSERT com created_at negado (42501)");
+}
+t_eq('42501', t_state(static fn () => $app->exec("INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', now(), 32, 'admin', 'system')")), 'casalivre_app: INSERT no audit_log com created_at negado');
+t_eq('42501', t_state(static fn () => $app->exec("INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, retention_until) VALUES ('" . $uuid() . "', 32, 'admin', 'system', '2000-01-01')")), 'casalivre_app: INSERT no audit_log com retention_until negado');
+$dbNow = (string) $owner->query('SELECT clock_timestamp()')->fetchColumn();
+$idNow = $uuid();
+$app->exec("INSERT INTO audit.activity_log (id, code, retention_class, actor_kind) VALUES ('$idNow', 5, 'other', 'anon')");
+$got = $owner->query("SELECT tableoid::regclass::text AS leaf, created_at >= '$dbNow'::timestamptz AND created_at <= clock_timestamp() AS db_time FROM audit.activity_log WHERE id = '$idNow'")->fetch();
+t_eq([$leaf, true], [$got['leaf'] ?? null, (bool) ($got['db_time'] ?? false)], 'sem created_at: hora do banco (statement_timestamp) e folha de hoje');
+t_eq(['statement_timestamp()', 'statement_timestamp()'], $owner->query("SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum WHERE a.attname = 'created_at' AND d.adrelid IN ('audit.activity_log'::regclass, 'audit.audit_log'::regclass) ORDER BY d.adrelid::regclass::text")->fetchAll(PDO::FETCH_COLUMN), 'DEFAULT statement_timestamp() nas duas tabelas');
 t_eq('42501', t_state(static fn () => $logw->query('SELECT 1 FROM audit.activity_log LIMIT 1')), 'cl_logw: SELECT negado');
 $ops = $as('casalivre_ops_logread');
 t_eq('42501', t_state(static fn () => $ops->query('SELECT 1 FROM audit.activity_log LIMIT 1')), 'casalivre_ops_logread: SELECT direto negado');
@@ -133,7 +145,7 @@ echo "CHECKs e FK\n";
 $ins = static function (array $over) use ($app, $uuid): ?string {
     $r = array_merge(['code' => 5, 'class' => 'other', 'kind' => 'anon', 'ref' => null, 'kv' => null, 'aev' => null, 'payload' => '{}'], $over);
     return t_state(static function () use ($app, $r, $uuid): void {
-        $st = $app->prepare('INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id, payload) VALUES (?::uuid, now(), ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)');
+        $st = $app->prepare('INSERT INTO audit.activity_log (id, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id, payload) VALUES (?::uuid, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb)');
         $st->bindValue(1, $uuid());
         $st->bindValue(2, $r['code'], PDO::PARAM_INT);
         $st->bindValue(3, $r['class']);
@@ -160,16 +172,49 @@ t_eq(null, $ins(['payload' => json_encode(['x' => str_repeat('a', 4087)])]), 'pa
 t_eq('23514', $ins(['payload' => '[1]']), 'payload que não é objeto');
 t_eq('23503', $ins(['code' => 32]), 'código admin no activity_log (FK 23503)');
 
-echo "partições: DEFAULT, ensure e fuso\n";
-$future = gmdate('Y-m-d', time() + 8 * 86400) . ' 12:00+00';
-$app->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', '$future', 5, 'other', 'anon')");
-t_eq('audit.activity_log_other_default', (string) $owner->query("SELECT tableoid::regclass::text FROM audit.activity_log WHERE created_at = '$future'")->fetchColumn(), 'linha de hoje+8 cai na DEFAULT');
+echo "partições: DEFAULT, plano + leaf_ensure (uma folha por transação, move a DEFAULT) e fuso\n";
 $jobLike = $as('casalivre_log_job');
-t_eq('P0001', t_state(static fn () => $jobLike->query("SELECT * FROM audit.activity_retention_step('{}'::bytea[], true)")), 'DEFAULT com linha: retention_step recusa (alerta)');
-$owner->exec("DELETE FROM audit.activity_log_other_default");
-t_eq(2, (int) $jobLike->query('SELECT audit.activity_partitions_ensure(8)')->fetchColumn(), 'ensure(8) cria as duas folhas de hoje+8');
-t_eq(0, (int) $jobLike->query('SELECT audit.activity_partitions_ensure(8)')->fetchColumn(), 'ensure idempotente');
-$sp = t_pg_as('casalivre_app');
+$day = static fn (int $off): string => gmdate('Y-m-d', time() + $off * 86400);
+// Só o dono consegue datar uma linha; assim a DEFAULT ganha linha num dia sem folha (passado e futuro).
+$owner->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', '" . $day(20) . " 12:00+00', 5, 'other', 'anon')");
+$owner->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', '" . $day(-20) . " 12:00+00', 2, 'security', 'system')");
+t_eq(2, (int) $owner->query('SELECT (SELECT count(*) FROM audit.activity_log_other_default) + (SELECT count(*) FROM audit.activity_log_security_default)')->fetchColumn(), 'linhas de hoje+20 (other) e hoje-20 (security) caem na DEFAULT');
+$health = static fn (): array => array_column($jobLike->query('SELECT check_name, status FROM audit.log_partitions_health()')->fetchAll(), 'status', 'check_name');
+t_eq(['critical', 'critical'], [$health()['default_empty activity_log_other'] ?? null, $health()['default_empty activity_log_security'] ?? null], 'health: DEFAULT com linha = critical');
+t_ok(t_state(static fn () => $jobLike->query("SELECT * FROM audit.activity_retention_step('{}'::bytea[], true)")->fetchAll()) === null, 'DEFAULT com linha não para mais a retenção (step roda; o health alerta)');
+$plan = array_map(static fn ($r) => $r['class'] . ' ' . $r['day'], $jobLike->query('SELECT class, day::text AS day FROM audit.activity_leaves_plan(14)')->fetchAll());
+t_eq(['security ' . $day(-20), 'other ' . $day(20)], $plan, 'activity_leaves_plan(14): só os dias com linha na DEFAULT (hoje..+14 já existem)');
+$ensureLeaf = static function (string $class, string $d) use ($jobLike): string {
+    $st = $jobLike->prepare('SELECT audit.activity_leaf_ensure(?, ?::date)');
+    $st->execute([$class, $d]);
+    return (string) $st->fetchColumn();
+};
+$repairs0 = (int) db()->query("SELECT count(*) FROM purge_runs WHERE job = 'activity_default_repair'")->fetchColumn();
+t_eq(['moved 1', 'moved 1'], [$ensureLeaf('security', $day(-20)), $ensureLeaf('other', $day(20))], 'leaf_ensure cria a folha e move a linha da DEFAULT (uma chamada = uma transação)');
+t_eq(0, (int) $owner->query('SELECT (SELECT count(*) FROM audit.activity_log_other_default) + (SELECT count(*) FROM audit.activity_log_security_default)')->fetchColumn(), 'DEFAULT vazia depois do reparo');
+t_eq('audit.activity_log_other_p' . str_replace('-', '', $day(20)), (string) $owner->query("SELECT tableoid::regclass::text FROM audit.activity_log WHERE created_at = '" . $day(20) . " 12:00+00'")->fetchColumn(), 'a linha está na folha do dia dela');
+t_eq(2, (int) db()->query("SELECT count(*) FROM purge_runs WHERE job = 'activity_default_repair' AND status = 'ok' AND rows = 1")->fetchColumn() - $repairs0, 'purge_runs: uma linha activity_default_repair por folha reparada');
+t_eq('exists', $ensureLeaf('other', $day(20)), 'leaf_ensure idempotente (exists)');
+t_eq('P0001', t_state(static fn () => $ensureLeaf('admin', $day(1))), 'leaf_ensure: classe inválida recusada');
+t_eq([], $jobLike->query('SELECT * FROM audit.activity_leaves_plan(14)')->fetchAll(), 'plano vazio depois do reparo');
+t_eq(['ok', 'ok'], [$health()['default_empty activity_log_other'] ?? null, $health()['default_empty activity_log_security'] ?? null], 'health: DEFAULT vazia = ok');
+$owner->exec("DROP TABLE audit.activity_log_other_p" . str_replace('-', '', $day(20))); // a linha de teste no futuro sai junto
+$leaf8 = 'activity_log_other_p' . str_replace('-', '', $day(8));
+$owner->exec("DROP TABLE audit.$leaf8");
+t_eq(1, (int) $jobLike->query('SELECT audit.activity_partitions_ensure(14)')->fetchColumn(), 'wrapper da carga do schema (14 dias): recria a folha que falta');
+t_eq(0, (int) $jobLike->query('SELECT audit.activity_partitions_ensure(14)')->fetchColumn(), 'wrapper idempotente');
+echo "audit_log: plano + leaf_ensure anual\n";
+$y3 = (int) gmdate('Y') + 3;
+$owner->exec("INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', '$y3-06-01 12:00+00', 32, 'admin', 'system')");
+t_eq('critical', $health()['default_empty audit_log'] ?? null, 'health: linha na DEFAULT do audit_log = critical');
+t_eq([['admin', $y3]], array_map(static fn ($r) => [$r['class'], (int) $r['year']], $jobLike->query('SELECT class, year FROM audit.audit_leaves_plan()')->fetchAll()), 'audit_leaves_plan: o ano com linha na DEFAULT');
+$st = $jobLike->prepare('SELECT audit.audit_leaf_ensure(?, ?)');
+$st->execute(['admin', $y3]);
+t_eq('moved 1', (string) $st->fetchColumn(), 'audit_leaf_ensure: cria a folha anual e move a linha');
+t_eq(['ok', 'audit.audit_log_admin_y' . $y3], [$health()['default_empty audit_log'] ?? null, (string) $owner->query("SELECT tableoid::regclass::text FROM audit.audit_log WHERE created_at = '$y3-06-01 12:00+00'")->fetchColumn()], 'DEFAULT do audit_log vazia; linha na folha do ano');
+$owner->exec("DROP TABLE audit.audit_log_admin_y$y3");
+t_eq('ok', $health()['next_year_audit_leaf'] ?? null, 'health: folha do ano seguinte existe nas três classes');
+$sp = t_pg_as('casalivre_retention');
 $sp->exec("SET TimeZone = 'America/Sao_Paulo'");
 $localDay = (string) $sp->query("SELECT to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD')")->fetchColumn();
 $sp->exec("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', '$localDay 23:30-03', 5, 'other', 'anon')");
@@ -187,8 +232,8 @@ $sec89 = $mk('security', 89);
 $oth15 = $mk('other', 15);
 $oth13 = $mk('other', 13);
 $heldRef = (string) LogPrivacy::userRef(99);
-$put = static function (string $class, int $daysAgo, ?string $ref) use ($app, $uuid): void {
-    $st = $app->prepare("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id) VALUES (?::uuid, now() - make_interval(days => ?) - interval '1 hour', ?, ?, ?, ?, ?, ?::uuid)");
+$put = static function (string $class, int $daysAgo, ?string $ref) use ($owner, $uuid): void {
+    $st = $owner->prepare("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id) VALUES (?::uuid, now() - make_interval(days => ?) - interval '1 hour', ?, ?, ?, ?, ?, ?::uuid)");
     $st->bindValue(1, $uuid());
     $st->bindValue(2, $daysAgo, PDO::PARAM_INT);
     $st->bindValue(3, $class === 'security' ? 2 : 5, PDO::PARAM_INT);
@@ -217,7 +262,7 @@ $total0 = (int) $owner->query('SELECT count(*) FROM audit.activity_log')->fetchC
 $dry = $step([$heldRef], true);
 t_eq([$sec91], array_column($dry, 'leaf'), 'dry-run: a folha vencida mais antiga (security 91 d)');
 t_ok($exists($sec91) && $total0 === (int) $owner->query('SELECT count(*) FROM audit.activity_log')->fetchColumn(), 'dry-run não muda nada');
-t_eq($runs0, (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn(), 'dry-run não grava purge_runs');
+t_eq([$runs0 + 1, 'dry-run: next ' . $sec91], [(int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn(), (string) db()->query("SELECT error FROM purge_runs ORDER BY id DESC LIMIT 1")->fetchColumn()], 'dry-run grava uma linha em purge_runs (rows 0, nota com a folha)');
 $holdUser = t_seed_owner()['user_id'];
 db()->exec("INSERT INTO legal_holds (hold_kind, subject_type, subject_id, case_ref) VALUES ('judicial', 'user', $holdUser, 'proc-xyz')");
 t_eq('P0001', t_state(static fn () => $step([], false)), 'hold aberto e refs vazias: recusa');
@@ -227,6 +272,7 @@ $locker->beginTransaction();
 $locker->query("SELECT pg_advisory_xact_lock(hashtext('activity_retention'))");
 t_eq('P0001', t_state(static fn () => $step([$heldRef], false)), 'outra sessão com o lock: recusa (advisory lock)');
 $locker->rollBack();
+$runs1 = (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn();
 $dropped = [];
 while (($r = $step([$heldRef], false)) !== []) {
     $dropped[] = $r[0]['leaf'];
@@ -239,31 +285,49 @@ t_ok($exists($sec89) && $exists($oth13), 'security 89 d e other 13 d ficam');
 t_eq(1, (int) $owner->query('SELECT count(*) FROM audit.activity_log_held')->fetchColumn(), 'a linha retida foi copiada uma vez para _held');
 t_eq([], $step([$heldRef], false), 'nada mais a remover: nenhuma linha (rerun não copia nada)');
 t_eq(1, (int) $owner->query('SELECT count(*) FROM audit.activity_log_held')->fetchColumn(), 'rerun: _held igual');
-t_eq(count($dropped), (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn() - $runs0, 'purge_runs: uma linha por passo');
+t_eq(count($dropped) + 2, (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn() - $runs1, 'purge_runs: uma linha por chamada do step, inclusive as duas "nada a remover"');
+t_eq('nothing to drop', (string) db()->query("SELECT error FROM purge_runs WHERE job = 'activity_retention' ORDER BY id DESC LIMIT 1")->fetchColumn(), 'purge_runs: a chamada sem folha vencida também fica registrada');
 t_eq(1, (int) db()->query("SELECT sum(skipped_hold) FROM purge_runs WHERE job = 'activity_retention'")->fetchColumn(), 'purge_runs: skipped_hold = linhas retidas');
 
-echo "ensure com lock_timeout: leitor longo segura o pai, a retenção avisa e segue com os DROPs\n";
-$future7 = 'activity_log_other_p' . gmdate('Ymd', time() + 7 * 86400);
-$owner->exec("DROP TABLE IF EXISTS audit.$future7");
+echo "leaf_ensure com lock_timeout: leitor longo segura a árvore other; security segue, other falha e fica para o próximo run\n";
+$future7o = 'activity_log_other_p' . gmdate('Ymd', time() + 7 * 86400);
+$future7s = 'activity_log_security_p' . gmdate('Ymd', time() + 7 * 86400);
+$owner->exec("DROP TABLE audit.$future7o");
+$owner->exec("DROP TABLE audit.$future7s");
 $sec95 = $mk('security', 95);
 $locker = t_pg_as('casalivre_retention');
 $locker->beginTransaction();
 $locker->exec('LOCK TABLE audit.activity_log_other IN ACCESS SHARE MODE'); // como um pg_dump / leitura longa
 $t0 = microtime(true);
-t_eq('55P03', t_state(static fn () => $jobLike->query('SELECT audit.activity_partitions_ensure(7)')), 'ensure atrás do lock: 55P03 (lock_timeout da função)');
-t_ok(microtime(true) - $t0 < 2.0, 'ensure desiste rápido (200 ms, não espera o leitor)');
+t_eq('failed', $ensureLeaf('other', $day(7)), 'leaf_ensure atrás do leitor: failed (não levanta)');
+t_ok(microtime(true) - $t0 < 2.0, 'desiste rápido (lock_timeout 200 ms da função)');
+t_ok(str_contains((string) db()->query("SELECT error FROM purge_runs WHERE job = 'activity_leaf_ensure' AND status = 'failed' ORDER BY id DESC LIMIT 1")->fetchColumn(), '55P03'), 'purge_runs: linha failed com 55P03 e a folha');
 $t0 = microtime(true);
 $report = LogRetention::pgStep(db(), [$heldRef], false);
 $secs = microtime(true) - $t0;
 t_ok($secs < 5.0, sprintf('pgStep não fica preso atrás do leitor (%.2f s)', $secs));
-t_eq(0, $report['activity_particoes_criadas'] ?? null, 'pgStep: activity_particoes_criadas = 0 no timeout');
-t_ok(str_contains((string) ($report['aviso_activity_particoes_criadas'] ?? ''), '55P03'), 'pgStep: aviso de lock_timeout no relatório');
-t_ok(!isset($report['aviso_audit_particoes_criadas']) && is_int($report['audit_particoes_criadas'] ?? null), 'audit ensure sem conflito: sem aviso');
-t_ok(($report['activity_particoes_removidas'] ?? 0) >= 1 && !$exists($sec95), 'mesmo com o aviso, os passos de DROP rodaram (security 95 d removida)');
-t_ok(!$exists($future7), 'a folha de hoje+7 ficou para o próximo run');
+t_eq(1, $report['activity_particoes_criadas'] ?? null, 'pgStep: a folha security de hoje+7 foi criada (as outras folhas não esperam a que falhou)');
+t_ok($exists($future7s) && !$exists($future7o), 'security +7 existe; other +7 ficou para o próximo run');
+t_ok(str_contains((string) ($report['aviso_activity_particoes_falharam'] ?? ''), 'other ' . $day(7)), 'pgStep: aviso com a folha que falhou');
+t_ok(($report['activity_particoes_removidas'] ?? 0) >= 1 && !$exists($sec95), 'os passos de DROP rodaram (security 95 d removida)');
+$st1 = static fn (string $k): string => explode(' ', (string) ($report['saude ' . $k] ?? ''))[0];
+t_eq(['warn', 'ok', 'ok'], [$st1('failed_runs_26h'), $st1('last_retention_ok'), $st1('furthest_leaf activity_log_other')], 'health no relatório: failed_runs_26h warn, last_retention_ok ok, furthest_leaf ok');
+t_eq(0, $report['saude_criticos'] ?? null, 'nenhum check critical');
 $locker->rollBack();
-t_ok((int) $jobLike->query('SELECT audit.activity_partitions_ensure(7)')->fetchColumn() >= 1 && $exists($future7), 'sem o leitor: o ensure seguinte cria a folha');
-t_eq(['200ms', '200ms'], $owner->query("SELECT (SELECT option_value FROM pg_options_to_table(proconfig) WHERE option_name = 'lock_timeout') FROM pg_proc WHERE oid IN ('audit.activity_partitions_ensure(int)'::regprocedure, 'audit.audit_partitions_ensure()'::regprocedure) ORDER BY proname")->fetchAll(PDO::FETCH_COLUMN), 'as duas funções de ensure têm SET lock_timeout = 200ms');
+t_eq('created', $ensureLeaf('other', $day(7)), 'sem o leitor: o próximo run cria a folha');
+t_eq(['200ms', '200ms'], $owner->query("SELECT (SELECT option_value FROM pg_options_to_table(proconfig) WHERE option_name = 'lock_timeout') FROM pg_proc WHERE oid IN ('audit.activity_leaf_ensure(text, date)'::regprocedure, 'audit.audit_leaf_ensure(text, int)'::regprocedure) ORDER BY proname")->fetchAll(PDO::FETCH_COLUMN), 'as duas leaf_ensure têm SET lock_timeout = 200ms');
+$inTx = db();
+$inTx->beginTransaction();
+t_eq('LogicException', (static function () use ($inTx, $heldRef): string {
+    try {
+        LogRetention::pgStep($inTx, [$heldRef], true);
+        return 'none';
+    } catch (LogicException $e) {
+        return $e::class;
+    }
+})(), 'pgStep recusa rodar dentro de uma transação (uma folha por transação)');
+$inTx->rollBack();
+t_ok(in_array('casalivre_ops_logread', $owner->query("SELECT r.rolname FROM pg_roles r WHERE has_function_privilege(r.oid, 'audit.log_partitions_health()', 'EXECUTE') AND r.rolname IN ('casalivre_ops_logread', 'casalivre_log_job')")->fetchAll(PDO::FETCH_COLUMN), true), 'log_partitions_health: EXECUTE para casalivre_ops_logread');
 
 echo "Q4: leitura auditada (a linha ACTIVITY_LOG_READ é gravada dentro da função DEFINER, na mesma transação)\n";
 $n47 = static fn (): int => (int) $owner->query('SELECT count(*) FROM audit.audit_log WHERE code = 47')->fetchColumn();
@@ -313,6 +377,40 @@ $m5 = t_log_mark();
 $ops->query('SELECT count(*) FROM audit.audit_recent(NULL, 100000)')->fetchColumn();
 $cap5 = array_values(array_filter(t_log_rows($m5), static fn ($r) => $r['code'] === ActivityLog::ACTIVITY_LOG_READ));
 t_eq([1, 500], [count($cap5), $cap5[0]['params']['limit'] ?? null], 'audit_recent: limite 100000 vira 500');
+echo "audit_recent: só a classe admin (Segurança)\n";
+db()->exec("INSERT INTO activity_actions (code, description, retention_class) VALUES (900, 'teste fin_fiscal', 'fin_fiscal'), (901, 'teste contrato', 'contrato')");
+$owner->exec("INSERT INTO audit.audit_log (id, code, retention_class, actor_kind) VALUES ('" . $uuid() . "', 900, 'fin_fiscal', 'system'), ('" . $uuid() . "', 901, 'contrato', 'system')");
+t_eq(2, (int) $owner->query("SELECT count(*) FROM audit.audit_log WHERE retention_class IN ('fin_fiscal', 'contrato')")->fetchColumn(), 'há linhas fin_fiscal e contrato no audit_log');
+t_eq([0, 0], [count($ops->query('SELECT * FROM audit.audit_recent(900::smallint, 500)')->fetchAll()), count($ops->query('SELECT * FROM audit.audit_recent(901::smallint, 500)')->fetchAll())], 'ops_logread não vê fin_fiscal/contrato por audit_recent (nem pelo código)');
+$classes = array_values(array_unique(array_column($ops->query('SELECT retention_class FROM audit.audit_recent(NULL, 500)')->fetchAll(), 'retention_class')));
+t_eq(['admin'], $classes, 'audit_recent(NULL): só linhas admin');
+$lastRead = $ops->query("SELECT payload::text AS p FROM audit.audit_recent(47::smallint, 1)")->fetch();
+t_eq('admin', json_decode((string) $lastRead['p'], true)['class'] ?? null, 'a linha Q4 registra class admin');
+$owner->exec("DELETE FROM audit.audit_log WHERE code IN (900, 901)");
+db()->exec('DELETE FROM activity_actions WHERE code IN (900, 901)');
+
+echo "activity_by_actor: clamp 1..500 e cursor (before_id), mais novas primeiro (BD blocker 3)\n";
+$pageRef = random_bytes(32);
+$stPage = $owner->prepare("INSERT INTO audit.activity_log (id, code, retention_class, actor_kind, actor_ref, actor_key_version) SELECT uuidv7(), 5, 'other', 'user', ?, 1 FROM generate_series(1, 3)");
+$stPage->bindValue(1, $pageRef, PDO::PARAM_LOB);
+$stPage->execute();
+$byPage = static function (?string $before, int $limit) use ($ops, $pageRef): array {
+    $st = $ops->prepare('SELECT id::text AS id FROM audit.activity_by_actor(?::bytea[], ?::uuid, ?)');
+    $st->bindValue(1, Db::byteaArrayLiteral([$pageRef]));
+    $st->bindValue(2, $before, $before === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $st->bindValue(3, $limit, PDO::PARAM_INT);
+    $st->execute();
+    return array_column($st->fetchAll(), 'id');
+};
+$mb = t_log_mark();
+$p1 = $byPage(null, 2);
+$p2 = $byPage(end($p1) ?: null, 2);
+$all = $byPage(null, 100000);
+t_eq([2, 1, 3], [count($p1), count($p2), count($all)], 'páginas de 2 e 1; limite 100000 devolve as 3');
+t_eq($all, array_merge($p1, $p2), 'as duas páginas = a lista inteira, id desc, sem repetir');
+$reads = array_values(array_filter(t_log_rows($mb), static fn ($r) => $r['code'] === 47));
+t_eq([[2, false], [2, true], [500, false]], array_map(static fn ($r) => [$r['params']['limit'] ?? null, $r['params']['cursor'] ?? null], $reads), 'Q4: limite efetivo (100000 vira 500) e se veio cursor; nunca o id');
+t_ok(!str_contains(json_encode($reads), (string) end($p1)), 'o id do cursor não vai para o audit_log');
 t_eq('42501', t_state(static fn () => $app->query('SELECT * FROM audit.audit_recent(NULL, 1)')), 'casalivre_app: sem EXECUTE em audit_recent');
 t_eq('42501', t_state(static fn () => $job->query('SELECT * FROM audit.audit_recent(NULL, 1)')), 'cl_retention_job: sem EXECUTE em audit_recent');
 t_eq('42501', t_state(static fn () => $ops->query('SELECT 1 FROM audit.audit_log LIMIT 1')), 'casalivre_ops_logread: SELECT direto no audit_log negado');

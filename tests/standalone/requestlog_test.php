@@ -166,6 +166,7 @@ t_eq(['admin', 'admin'], array_column($rows, 'class'), 'conta: classe admin (aud
 t_eq(null, $rows[0]['anterior'], 'ACCOUNT_UPDATE: sem valor_anterior');
 t_eq(['campos_alterados' => ['name', 'street']], $rows[0]['atual'], 'ACCOUNT_UPDATE: só nomes alterados');
 t_eq(['campos_alterados' => ['email', 'status']], $rows[1]['atual'], 'ACCOUNT_DELETE: só nomes alterados');
+t_ok(!array_key_exists('ip', $rows[1]['params']), 'ACCOUNT_DELETE: sem ip no payload (nem /24; 5 anos no audit_log)');
 foreach (['João', 'Silva', 'Rua Velha', 'Rua Nova', '52998224725', 'joao@x.com', 'apagado-1', '203.0.113.9'] as $secret) {
     t_ok(!str_contains($all, $secret), "conta: '$secret' não aparece");
 }

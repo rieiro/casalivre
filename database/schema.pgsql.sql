@@ -287,6 +287,7 @@ CREATE TABLE IF NOT EXISTS purge_runs (
 GRANT REFERENCES (code, retention_class) ON activity_actions TO casalivre_retention;   -- FK composta
 GRANT SELECT (subject_type, subject_id, closed_at) ON legal_holds TO casalivre_retention, casalivre_log_job;
 GRANT INSERT ON purge_runs TO casalivre_retention;
+GRANT SELECT (job, status, started_at, finished_at) ON purge_runs TO casalivre_retention;   -- audit.log_partitions_health
 
 CREATE SCHEMA audit AUTHORIZATION casalivre_retention;
 SET ROLE casalivre_retention;
@@ -295,10 +296,11 @@ REVOKE ALL ON SCHEMA audit FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES FOR ROLE casalivre_retention REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES FOR ROLE casalivre_retention IN SCHEMA audit REVOKE ALL ON TABLES FROM PUBLIC;
 
--- Log de BI/segurança. id (UUIDv7) e created_at (UTC, microssegundos) vêm do PHP.
+-- Log de BI/segurança. id (UUIDv7) vem do PHP; created_at é do banco (DEFAULT statement_timestamp(); os papéis do
+-- app não têm INSERT na coluna), então relógio torto no PHP nunca joga linha na DEFAULT.
 CREATE TABLE audit.activity_log (
     id                uuid        NOT NULL,
-    created_at        timestamptz NOT NULL,
+    created_at        timestamptz NOT NULL DEFAULT statement_timestamp(),
     code              smallint    NOT NULL,
     retention_class   text        NOT NULL CHECK (retention_class IN ('security', 'other')),
     subtype           text        NULL CHECK (length(subtype) <= 32),
@@ -319,10 +321,10 @@ CREATE TABLE audit.activity_log (
 ) PARTITION BY LIST (retention_class);
 CREATE TABLE audit.activity_log_security PARTITION OF audit.activity_log FOR VALUES IN ('security') PARTITION BY RANGE (created_at);
 CREATE TABLE audit.activity_log_other    PARTITION OF audit.activity_log FOR VALUES IN ('other')    PARTITION BY RANGE (created_at);
--- DEFAULT tem de ficar vazia: activity_retention_step recusa enquanto houver linha (alerta).
+-- DEFAULT deveria ficar vazia: activity_leaf_ensure move as linhas dela para a folha do dia; log_partitions_health alerta.
 CREATE TABLE audit.activity_log_security_default PARTITION OF audit.activity_log_security DEFAULT;
 CREATE TABLE audit.activity_log_other_default    PARTITION OF audit.activity_log_other    DEFAULT;
--- folhas diárias audit.activity_log_<classe>_pYYYYMMDD, criadas por audit.activity_partitions_ensure
+-- folhas diárias audit.activity_log_<classe>_pYYYYMMDD, criadas por audit.activity_leaf_ensure (uma por transação)
 CREATE INDEX activity_actor ON audit.activity_log (actor_ref, id) WHERE actor_ref IS NOT NULL;
 CREATE INDEX activity_code  ON audit.activity_log (code, id);
 CREATE TABLE audit.activity_log_held (LIKE audit.activity_log INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
@@ -333,7 +335,7 @@ CREATE INDEX activity_held_actor ON audit.activity_log_held (actor_ref, id);
 -- até lá o CHECK proíbe ip_enc.
 CREATE TABLE audit.audit_log (
     id                 uuid        NOT NULL,
-    created_at         timestamptz NOT NULL,
+    created_at         timestamptz NOT NULL DEFAULT statement_timestamp(),   -- do banco, como no activity_log
     code               smallint    NOT NULL,
     retention_class    text        NOT NULL CHECK (retention_class IN ('fin_fiscal', 'contrato', 'admin')),
     actor_kind         text        NOT NULL CHECK (actor_kind IN ('user', 'anon', 'system')),
@@ -366,7 +368,7 @@ CREATE TABLE audit.audit_log_contrato   PARTITION OF audit.audit_log FOR VALUES 
 CREATE TABLE audit.audit_log_admin_default      PARTITION OF audit.audit_log_admin DEFAULT;
 CREATE TABLE audit.audit_log_fin_fiscal_default PARTITION OF audit.audit_log_fin_fiscal DEFAULT;
 CREATE TABLE audit.audit_log_contrato_default   PARTITION OF audit.audit_log_contrato DEFAULT;
--- folhas anuais audit.audit_log_<classe>_yYYYY, criadas por audit.audit_partitions_ensure
+-- folhas anuais audit.audit_log_<classe>_yYYYY, criadas por audit.audit_leaf_ensure
 CREATE INDEX audit_retention_until ON audit.audit_log (retention_until) WHERE retention_class = 'contrato';
 CREATE INDEX audit_created_brin    ON audit.audit_log USING brin (created_at);
 CREATE INDEX audit_subject         ON audit.audit_log (subject_type, subject_id);
@@ -374,49 +376,170 @@ CREATE INDEX audit_dsr_email       ON audit.audit_log (dsr_email_hmac) WHERE dsr
 CREATE INDEX audit_actor           ON audit.audit_log (actor_ref, id) WHERE actor_ref IS NOT NULL;
 CREATE INDEX audit_code            ON audit.audit_log (code, id);
 
--- Folhas diárias do activity_log, de hoje (UTC) até hoje + p_days_ahead. Idempotente; devolve quantas criou.
--- lock_timeout: CREATE TABLE ... PARTITION OF pega ACCESS EXCLUSIVE no pai da classe (e na DEFAULT); atrás de um
--- leitor longo (pg_dump, leitura de ops) os INSERTs da classe enfileirariam atrás do ensure. Desiste em 200 ms
--- (55P03); com 7 dias de folga o próximo run cria as folhas (LogRetention::pgStep trata como aviso).
-CREATE FUNCTION audit.activity_partitions_ensure(p_days_ahead int DEFAULT 7) RETURNS int
+-- Uma folha por chamada (BD, verdict db @07c428b). Chamada em autocommit = uma transação por folha (procedure
+-- SECURITY DEFINER não pode dar COMMIT, então o loop é do PHP: LogRetention::pgStep). Se a folha falta: LOCK na DEFAULT
+-- da classe, CREATE TABLE avulsa, move para ela as linhas do dia que estão na DEFAULT e ATTACH PARTITION. O ATTACH pega
+-- só SHARE UPDATE EXCLUSIVE no pai da classe (os INSERTs seguem) e ACCESS EXCLUSIVE na DEFAULT. lock_timeout 200 ms:
+-- atrás de um leitor longo desiste. Qualquer erro: linha 'failed' em purge_runs e devolve 'failed' (o próximo run
+-- tenta de novo; as outras folhas seguem). Mover linhas grava uma linha activity_default_repair.
+-- Devolve 'exists' | 'created' | 'moved N' | 'failed'.
+CREATE FUNCTION audit.activity_leaf_ensure(p_class text, p_day date) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
-DECLARE c text; d date; n int := 0;
+DECLARE v_leaf text; v_def text; v_lo timestamptz; v_hi timestamptz; v_moved bigint := 0; v_t0 timestamptz := clock_timestamp();
+BEGIN
+    IF p_class IS NULL OR p_class NOT IN ('security', 'other') OR p_day IS NULL THEN RAISE EXCEPTION 'bad class/day'; END IF;
+    v_leaf := format('activity_log_%s_p%s', p_class, to_char(p_day, 'YYYYMMDD'));
+    IF to_regclass('audit.' || v_leaf) IS NOT NULL THEN RETURN 'exists'; END IF;
+    v_def := 'activity_log_' || p_class || '_default';
+    v_lo := p_day::timestamp AT TIME ZONE 'UTC';
+    v_hi := (p_day + 1)::timestamp AT TIME ZONE 'UTC';
+    BEGIN
+        EXECUTE format('LOCK TABLE audit.%I IN ACCESS EXCLUSIVE MODE', v_def);
+        EXECUTE format('CREATE TABLE audit.%I (LIKE audit.activity_log INCLUDING DEFAULTS INCLUDING CONSTRAINTS)', v_leaf);
+        EXECUTE format('WITH m AS (DELETE FROM audit.%I WHERE created_at >= $1 AND created_at < $2 RETURNING *) INSERT INTO audit.%I SELECT * FROM m', v_def, v_leaf)
+            USING v_lo, v_hi;
+        GET DIAGNOSTICS v_moved = ROW_COUNT;
+        EXECUTE format('ALTER TABLE audit.%I ATTACH PARTITION audit.%I FOR VALUES FROM (%L) TO (%L)', 'activity_log_' || p_class, v_leaf, v_lo, v_hi);
+    EXCEPTION WHEN OTHERS THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, status, error)
+        VALUES ('activity_leaf_ensure', v_t0, clock_timestamp(), 'failed', left(v_leaf || ': ' || SQLSTATE || ' ' || SQLERRM, 300));
+        RETURN 'failed';
+    END;
+    IF v_moved > 0 THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, rows, status, error)
+        VALUES ('activity_default_repair', v_t0, clock_timestamp(), v_moved, 'ok', v_leaf);
+        RETURN 'moved ' || v_moved;
+    END IF;
+    RETURN 'created';
+END $$;
+
+-- Mesma coisa para a folha anual do audit_log (classe admin/fin_fiscal/contrato, ano UTC).
+CREATE FUNCTION audit.audit_leaf_ensure(p_class text, p_year int) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
+DECLARE v_leaf text; v_def text; v_lo timestamptz; v_hi timestamptz; v_moved bigint := 0; v_t0 timestamptz := clock_timestamp();
+BEGIN
+    IF p_class IS NULL OR p_class NOT IN ('admin', 'fin_fiscal', 'contrato') OR p_year IS NULL OR p_year NOT BETWEEN 2000 AND 9998 THEN
+        RAISE EXCEPTION 'bad class/year';
+    END IF;
+    v_leaf := format('audit_log_%s_y%s', p_class, p_year);
+    IF to_regclass('audit.' || v_leaf) IS NOT NULL THEN RETURN 'exists'; END IF;
+    v_def := 'audit_log_' || p_class || '_default';
+    v_lo := make_date(p_year, 1, 1)::timestamp AT TIME ZONE 'UTC';
+    v_hi := make_date(p_year + 1, 1, 1)::timestamp AT TIME ZONE 'UTC';
+    BEGIN
+        EXECUTE format('LOCK TABLE audit.%I IN ACCESS EXCLUSIVE MODE', v_def);
+        EXECUTE format('CREATE TABLE audit.%I (LIKE audit.audit_log INCLUDING DEFAULTS INCLUDING CONSTRAINTS)', v_leaf);
+        EXECUTE format('WITH m AS (DELETE FROM audit.%I WHERE created_at >= $1 AND created_at < $2 RETURNING *) INSERT INTO audit.%I SELECT * FROM m', v_def, v_leaf)
+            USING v_lo, v_hi;
+        GET DIAGNOSTICS v_moved = ROW_COUNT;
+        EXECUTE format('ALTER TABLE audit.%I ATTACH PARTITION audit.%I FOR VALUES FROM (%L) TO (%L)', 'audit_log_' || p_class, v_leaf, v_lo, v_hi);
+    EXCEPTION WHEN OTHERS THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, status, error)
+        VALUES ('audit_leaf_ensure', v_t0, clock_timestamp(), 'failed', left(v_leaf || ': ' || SQLSTATE || ' ' || SQLERRM, 300));
+        RETURN 'failed';
+    END;
+    IF v_moved > 0 THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, rows, status, error)
+        VALUES ('audit_default_repair', v_t0, clock_timestamp(), v_moved, 'ok', v_leaf);
+        RETURN 'moved ' || v_moved;
+    END IF;
+    RETURN 'created';
+END $$;
+
+-- Folhas que o job tem de garantir: dias que faltam de hoje (UTC) até hoje + p_days_ahead (1..31, padrão 14) e todo
+-- dia que tem linha na DEFAULT.
+CREATE FUNCTION audit.activity_leaves_plan(p_days_ahead int DEFAULT 14) RETURNS TABLE(class text, day date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+    SELECT c, d::date FROM unnest(ARRAY['security', 'other']) c,
+           generate_series(current_date, current_date + least(greatest(coalesce(p_days_ahead, 14), 1), 31), '1 day') d
+     WHERE to_regclass(format('audit.activity_log_%s_p%s', c, to_char(d, 'YYYYMMDD'))) IS NULL
+    UNION
+    SELECT 'security', (created_at AT TIME ZONE 'UTC')::date FROM audit.activity_log_security_default
+    UNION
+    SELECT 'other', (created_at AT TIME ZONE 'UTC')::date FROM audit.activity_log_other_default
+    ORDER BY 2, 1
+$$;
+
+-- Folhas anuais do audit_log que faltam (ano corrente e o seguinte, UTC) e todo ano que tem linha na DEFAULT.
+CREATE FUNCTION audit.audit_leaves_plan() RETURNS TABLE(class text, year int)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+    SELECT c, y FROM unnest(ARRAY['admin', 'fin_fiscal', 'contrato']) c,
+           generate_series(extract(year FROM current_date)::int, extract(year FROM current_date)::int + 1) y
+     WHERE to_regclass(format('audit.audit_log_%s_y%s', c, y)) IS NULL
+    UNION
+    SELECT 'admin', extract(year FROM created_at AT TIME ZONE 'UTC')::int FROM audit.audit_log_admin_default
+    UNION
+    SELECT 'fin_fiscal', extract(year FROM created_at AT TIME ZONE 'UTC')::int FROM audit.audit_log_fin_fiscal_default
+    UNION
+    SELECT 'contrato', extract(year FROM created_at AT TIME ZONE 'UTC')::int FROM audit.audit_log_contrato_default
+    ORDER BY 2, 1
+$$;
+
+-- Carga do schema (uma transação só): o plano inteiro de uma vez. O job usa o plano + leaf_ensure por folha.
+CREATE FUNCTION audit.activity_partitions_ensure(p_days_ahead int DEFAULT 14) RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+DECLARE r record; n int := 0;
 BEGIN
     IF p_days_ahead IS NULL OR p_days_ahead NOT BETWEEN 1 AND 31 THEN RAISE EXCEPTION 'days_ahead must be 1..31'; END IF;
-    FOREACH c IN ARRAY ARRAY['security', 'other'] LOOP
-        FOR d IN SELECT generate_series(current_date, current_date + p_days_ahead, '1 day')::date LOOP
-            IF to_regclass(format('audit.activity_log_%s_p%s', c, to_char(d, 'YYYYMMDD'))) IS NULL THEN
-                EXECUTE format('CREATE TABLE audit.%I PARTITION OF audit.%I FOR VALUES FROM (%L) TO (%L)',
-                    format('activity_log_%s_p%s', c, to_char(d, 'YYYYMMDD')), 'activity_log_' || c,
-                    d::timestamp AT TIME ZONE 'UTC', (d + 1)::timestamp AT TIME ZONE 'UTC');
-                n := n + 1;
-            END IF;
-        END LOOP;
+    FOR r IN SELECT * FROM audit.activity_leaves_plan(p_days_ahead) LOOP
+        IF audit.activity_leaf_ensure(r.class, r.day) ~ '^(created|moved)' THEN n := n + 1; END IF;
     END LOOP;
     RETURN n;
 END $$;
 
--- Folhas anuais do audit_log (ano corrente e o seguinte, UTC), nas três classes. Idempotente.
 CREATE FUNCTION audit.audit_partitions_ensure() RETURNS int
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
-DECLARE c text; y int; n int := 0;
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+DECLARE r record; n int := 0;
 BEGIN
-    FOREACH c IN ARRAY ARRAY['admin', 'fin_fiscal', 'contrato'] LOOP
-        FOR y IN SELECT generate_series(extract(year FROM current_date)::int, extract(year FROM current_date)::int + 1) LOOP
-            IF to_regclass(format('audit.audit_log_%s_y%s', c, y)) IS NULL THEN
-                EXECUTE format('CREATE TABLE audit.%I PARTITION OF audit.%I FOR VALUES FROM (%L) TO (%L)',
-                    format('audit_log_%s_y%s', c, y), 'audit_log_' || c,
-                    make_date(y, 1, 1)::timestamp AT TIME ZONE 'UTC', make_date(y + 1, 1, 1)::timestamp AT TIME ZONE 'UTC');
-                n := n + 1;
-            END IF;
-        END LOOP;
+    FOR r IN SELECT * FROM audit.audit_leaves_plan() LOOP
+        IF audit.audit_leaf_ensure(r.class, r.year) ~ '^(created|moved)' THEN n := n + 1; END IF;
     END LOOP;
     RETURN n;
 END $$;
+
+-- Saúde das partições, só leitura e sem conteúdo do log (nomes de folha e contagens), então sem linha Q4.
+-- critical/warn/ok; o alerta (cron, monitor) é da Arquitetura. log-retention.php sai != 0 com critical.
+CREATE FUNCTION audit.log_partitions_health() RETURNS TABLE(check_name text, status text, detail text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+    WITH leaves AS (
+        SELECT p.relname::text AS parent, to_date(substring(c.relname FROM '_p(\d{8})$'), 'YYYYMMDD') AS day
+          FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent
+         WHERE p.relnamespace = 'audit'::regnamespace AND c.relname ~ '_p\d{8}$'
+           AND p.relname IN ('activity_log_security', 'activity_log_other')),
+    cls(parent, keep_days) AS (VALUES ('activity_log_security', 90), ('activity_log_other', 14)),
+    agg AS (SELECT cls.parent, cls.keep_days, max(l.day) AS hi, min(l.day) AS lo FROM cls LEFT JOIN leaves l USING (parent) GROUP BY 1, 2)
+    SELECT 'furthest_leaf ' || parent,
+           CASE WHEN hi >= current_date + 7 THEN 'ok' WHEN hi >= current_date + 3 THEN 'warn' ELSE 'critical' END, coalesce(hi::text, 'none')
+      FROM agg
+    UNION ALL
+    SELECT 'oldest_leaf ' || parent,
+           CASE WHEN lo IS NULL OR lo + 1 + keep_days + 2 >= current_date THEN 'ok' ELSE 'critical' END, coalesce(lo::text, 'none')
+      FROM agg
+    UNION ALL
+    SELECT 'default_empty activity_log_security', CASE WHEN EXISTS (SELECT 1 FROM activity_log_security_default) THEN 'critical' ELSE 'ok' END, ''
+    UNION ALL
+    SELECT 'default_empty activity_log_other', CASE WHEN EXISTS (SELECT 1 FROM activity_log_other_default) THEN 'critical' ELSE 'ok' END, ''
+    UNION ALL
+    SELECT 'default_empty audit_log', CASE WHEN EXISTS (SELECT 1 FROM audit_log_admin_default) OR EXISTS (SELECT 1 FROM audit_log_fin_fiscal_default)
+           OR EXISTS (SELECT 1 FROM audit_log_contrato_default) THEN 'critical' ELSE 'ok' END, ''
+    UNION ALL
+    SELECT 'next_year_audit_leaf',
+           CASE WHEN (SELECT bool_and(to_regclass(format('audit.audit_log_%s_y%s', c, extract(year FROM current_date)::int + 1)) IS NOT NULL)
+                        FROM unnest(ARRAY['admin', 'fin_fiscal', 'contrato']) c) THEN 'ok' ELSE 'warn' END,
+           (extract(year FROM current_date)::int + 1)::text
+    UNION ALL
+    SELECT 'last_retention_ok', CASE WHEN max(finished_at) > now() - interval '26 hours' THEN 'ok' ELSE 'critical' END, coalesce(max(finished_at)::text, 'never')
+      FROM public.purge_runs WHERE job = 'activity_retention' AND status = 'ok'
+    UNION ALL
+    SELECT 'failed_runs_26h', CASE WHEN count(*) = 0 THEN 'ok' ELSE 'warn' END, count(*)::text
+      FROM public.purge_runs WHERE status = 'failed' AND started_at > now() - interval '26 hours'
+$$;
 
 -- Um passo da retenção: a folha diária vencida mais antiga (security: fim do dia <= now() - 90 d; other: 14 d).
 -- Copia para activity_log_held as linhas de p_held_refs, faz DROP da folha, limpa o _held sem hold e vencido e
--- registra em purge_runs. Dry-run (padrão) só devolve a folha. Nenhuma linha = nada a fazer.
+-- registra em purge_runs. Dry-run (padrão) só devolve a folha. Nenhuma linha = nada a fazer. Toda chamada grava uma
+-- linha em purge_runs (dry-run e "nada a remover" também: rows 0, error com a nota), para o health ver o job vivo.
+-- Linha na DEFAULT não para a retenção (o leaf_ensure move, o health alerta).
 CREATE FUNCTION audit.activity_retention_step(p_held_refs bytea[], p_dry_run boolean DEFAULT true)
 RETURNS TABLE(leaf text, held bigint, dropped boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
@@ -431,9 +554,6 @@ BEGIN
     IF cardinality(p_held_refs) = 0 AND EXISTS (SELECT 1 FROM public.legal_holds h WHERE h.closed_at IS NULL AND h.subject_type = 'user') THEN
         RAISE EXCEPTION 'open user legal holds but no held refs';
     END IF;
-    IF EXISTS (SELECT 1 FROM audit.activity_log_security_default) OR EXISTS (SELECT 1 FROM audit.activity_log_other_default) THEN
-        RAISE EXCEPTION 'activity_log DEFAULT partition not empty';
-    END IF;
     SELECT c.relname::text AS leaf, c.reltuples
       INTO r
       FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent
@@ -443,8 +563,14 @@ BEGIN
            <= now() - CASE p.relname WHEN 'activity_log_security' THEN interval '90 days' ELSE interval '14 days' END
      ORDER BY substring(c.relname FROM '_p(\d{8})$'), c.relname
      LIMIT 1;
-    IF NOT FOUND THEN RETURN; END IF;
+    IF NOT FOUND THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, rows, status, error)
+        VALUES ('activity_retention', v_t0, clock_timestamp(), 0, 'ok', CASE WHEN p_dry_run THEN 'dry-run: ' ELSE '' END || 'nothing to drop');
+        RETURN;
+    END IF;
     IF p_dry_run THEN
+        INSERT INTO public.purge_runs (job, started_at, finished_at, rows, status, error)
+        VALUES ('activity_retention', v_t0, clock_timestamp(), 0, 'ok', 'dry-run: next ' || r.leaf);
         RETURN QUERY SELECT r.leaf, 0::bigint, false;
         RETURN;
     END IF;
@@ -466,8 +592,8 @@ RETURNS SETOF audit.activity_log
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
 DECLARE v_limit int := least(greatest(coalesce(p_limit, 50), 1), 500);
 BEGIN
-    INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind, payload)
-    VALUES (uuidv7(), now(), 47, 'admin', 'system',
+    INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, payload)
+    VALUES (uuidv7(), 47, 'admin', 'system',
             jsonb_build_object('session_user', session_user::text, 'function', 'activity_recent', 'code', p_code, 'limit', v_limit));
     IF p_code IS NULL THEN
         RETURN QUERY SELECT * FROM audit.activity_log ORDER BY id DESC LIMIT v_limit;
@@ -476,56 +602,65 @@ BEGIN
     END IF;
 END $$;
 
--- Linhas de um ator (log + _held), por id. p_refs: uma ref de 32 bytes por key_version ativa (1..32 refs).
-CREATE FUNCTION audit.activity_by_actor(p_refs bytea[])
+-- Linhas de um ator (log + _held), mais novas primeiro, paginadas por id (p_before = menor id da página anterior).
+-- p_refs: uma ref de 32 bytes por key_version ativa (1..32 refs). p_limit 1..500 (clamp); a linha Q4 registra o
+-- limite efetivo e se veio cursor (nunca as refs nem o id).
+CREATE FUNCTION audit.activity_by_actor(p_refs bytea[], p_before uuid DEFAULT NULL, p_limit int DEFAULT 500)
 RETURNS SETOF audit.activity_log
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+DECLARE v_limit int := least(greatest(coalesce(p_limit, 500), 1), 500);
 BEGIN
     IF p_refs IS NULL OR cardinality(p_refs) NOT BETWEEN 1 AND 32
        OR EXISTS (SELECT 1 FROM unnest(p_refs) x WHERE octet_length(x) IS DISTINCT FROM 32) THEN
         RAISE EXCEPTION 'refs must be 1..32 values of 32 bytes';
     END IF;
-    INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind, payload)
-    VALUES (uuidv7(), now(), 47, 'admin', 'system',
-            jsonb_build_object('session_user', session_user::text, 'function', 'activity_by_actor', 'refs', cardinality(p_refs)));
+    INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, payload)
+    VALUES (uuidv7(), 47, 'admin', 'system', jsonb_build_object('session_user', session_user::text,
+            'function', 'activity_by_actor', 'refs', cardinality(p_refs), 'limit', v_limit, 'cursor', p_before IS NOT NULL));
     RETURN QUERY
         SELECT * FROM (
-            SELECT * FROM audit.activity_log l WHERE l.actor_ref = ANY (p_refs)
+            SELECT * FROM audit.activity_log l WHERE l.actor_ref = ANY (p_refs) AND (p_before IS NULL OR l.id < p_before)
             UNION ALL
             SELECT h.id, h.created_at, h.code, h.retention_class, h.subtype, h.actor_kind, h.actor_ref, h.actor_key_version,
                    h.access_event_id, h.payload, h.before_value, h.after_value
-              FROM audit.activity_log_held h WHERE h.actor_ref = ANY (p_refs)
-        ) x ORDER BY x.id;
+              FROM audit.activity_log_held h WHERE h.actor_ref = ANY (p_refs) AND (p_before IS NULL OR h.id < p_before)
+        ) x ORDER BY x.id DESC LIMIT v_limit;
 END $$;
 
--- Leitura de ops do audit_log (admin/fin_fiscal/contrato), mesmo contrato Q4: grava ACTIVITY_LOG_READ antes de
--- devolver as linhas, na mesma transação e sem tratador (o INSERT falhou, a leitura falha). A linha da própria
--- leitura entra no resultado (mesma transação).
+-- Leitura de ops do audit_log, SÓ a classe admin (Segurança: fin_fiscal/contrato terão leituras DEFINER próprias,
+-- para os papéis da classe, quando houver códigos). Mesmo contrato Q4: grava ACTIVITY_LOG_READ antes de devolver as
+-- linhas, na mesma transação e sem tratador (o INSERT falhou, a leitura falha). A linha da própria leitura entra no
+-- resultado (mesma transação).
 CREATE FUNCTION audit.audit_recent(p_code smallint DEFAULT NULL, p_limit int DEFAULT 50)
 RETURNS SETOF audit.audit_log
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
 DECLARE v_limit int := least(greatest(coalesce(p_limit, 50), 1), 500);
 BEGIN
-    INSERT INTO audit.audit_log (id, created_at, code, retention_class, actor_kind, payload)
-    VALUES (uuidv7(), now(), 47, 'admin', 'system',
-            jsonb_build_object('session_user', session_user::text, 'function', 'audit_recent', 'code', p_code, 'limit', v_limit));
+    INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, payload)
+    VALUES (uuidv7(), 47, 'admin', 'system',
+            jsonb_build_object('session_user', session_user::text, 'function', 'audit_recent', 'class', 'admin', 'code', p_code, 'limit', v_limit));
     IF p_code IS NULL THEN
-        RETURN QUERY SELECT * FROM audit.audit_log ORDER BY id DESC LIMIT v_limit;
+        RETURN QUERY SELECT * FROM audit.audit_log WHERE retention_class = 'admin' ORDER BY id DESC LIMIT v_limit;
     ELSE
-        RETURN QUERY SELECT * FROM audit.audit_log WHERE code = p_code ORDER BY id DESC LIMIT v_limit;
+        RETURN QUERY SELECT * FROM audit.audit_log WHERE retention_class = 'admin' AND code = p_code ORDER BY id DESC LIMIT v_limit;
     END IF;
 END $$;
 
-REVOKE ALL ON FUNCTION audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(),
-    audit.activity_retention_step(bytea[], boolean), audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]),
-    audit.audit_recent(smallint, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION audit.activity_leaf_ensure(text, date), audit.audit_leaf_ensure(text, int),
+    audit.activity_leaves_plan(int), audit.audit_leaves_plan(), audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(),
+    audit.log_partitions_health(), audit.activity_retention_step(bytea[], boolean), audit.activity_recent(smallint, int),
+    audit.activity_by_actor(bytea[], uuid, int), audit.audit_recent(smallint, int) FROM PUBLIC;
 GRANT USAGE ON SCHEMA audit TO casalivre_app, casalivre_log_writer, casalivre_ops_logread, casalivre_log_job;
-GRANT INSERT ON audit.activity_log TO casalivre_app, casalivre_log_writer;   -- sem SELECT/UPDATE/DELETE (D7)
-GRANT INSERT ON audit.audit_log TO casalivre_app;
-GRANT EXECUTE ON FUNCTION audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[]),
-    audit.audit_recent(smallint, int) TO casalivre_ops_logread;
-GRANT EXECUTE ON FUNCTION audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(),
+-- INSERT por coluna, sem created_at (o banco põe) e, no audit_log, sem retention_until; sem SELECT/UPDATE/DELETE (D7).
+GRANT INSERT (id, code, retention_class, subtype, actor_kind, actor_ref, actor_key_version, access_event_id, payload, before_value, after_value)
+    ON audit.activity_log TO casalivre_app, casalivre_log_writer;
+GRANT INSERT (id, code, retention_class, actor_kind, actor_ref, actor_key_version, subject_type, subject_id, payload, before_value,
+    after_value) ON audit.audit_log TO casalivre_app;
+GRANT EXECUTE ON FUNCTION audit.activity_recent(smallint, int), audit.activity_by_actor(bytea[], uuid, int),
+    audit.audit_recent(smallint, int), audit.log_partitions_health() TO casalivre_ops_logread;
+GRANT EXECUTE ON FUNCTION audit.activity_leaf_ensure(text, date), audit.audit_leaf_ensure(text, int), audit.activity_leaves_plan(int),
+    audit.audit_leaves_plan(), audit.activity_partitions_ensure(int), audit.audit_partitions_ensure(), audit.log_partitions_health(),
     audit.activity_retention_step(bytea[], boolean) TO casalivre_log_job;
-SELECT audit.activity_partitions_ensure(7);
+SELECT audit.activity_partitions_ensure(14);
 SELECT audit.audit_partitions_ensure();
 RESET ROLE;

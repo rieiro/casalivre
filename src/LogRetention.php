@@ -14,8 +14,9 @@ require_once __DIR__ . '/LogPrivacy.php';
  * - storage/error.log, storage/logs/calendar-sync.log, storage/php.log, storage/logs/php.log
  *   -> reescreve mantendo só entradas recentes (linhas sem data herdam a da entrada anterior)
  *
- * O log de atividades está no PostgreSQL (audit.activity_log): partições diárias removidas por DROP pela função
- * DEFINER audit.activity_retention_step (ver pgStep() e scripts/log-retention.php), nunca DELETE + VACUUM.
+ * O log de atividades está no PostgreSQL (audit.activity_log): partições criadas uma por transação (leaf_ensure, que
+ * também esvazia a DEFAULT) e removidas por DROP pela função DEFINER audit.activity_retention_step (ver pgStep() e
+ * scripts/log-retention.php), nunca DELETE + VACUUM.
  */
 final class LogRetention
 {
@@ -45,30 +46,55 @@ final class LogRetention
         return $report;
     }
 
+    /** Lead of daily activity_log leaves (today..today+N, UTC). */
+    public const LEAD_DAYS = 14;
+
     /**
-     * PG activity-log retention (spec §6), as a login with casalivre_log_job (SET ROLE): creates the partitions
-     * (activity: today..+7 days; audit: this and next year), then drops one eligible leaf per call until none is
-     * left. $heldRefs: actor_ref of every open user hold (heldRefs()). Dry-run by default: the first real DROP in
-     * production needs Rafael's approval.
+     * PG log retention (spec §6, BD verdict db @07c428b), as a login with casalivre_log_job (SET ROLE), in autocommit:
+     * 1. audit.activity_leaves_plan(14) + audit.audit_leaves_plan(): missing leaves and every day/year with rows in
+     *    a DEFAULT; one *_leaf_ensure call per row, so one leaf per transaction. A leaf that fails (lock_timeout
+     *    behind a long reader, ...) is logged 'failed' in purge_runs by the function and retried next run; the others
+     *    are still created. Rows found in a DEFAULT are moved into the new leaf.
+     * 2. activity_retention_step until nothing is left (dry-run: only the next leaf). $heldRefs: actor_ref of every
+     *    open user hold (heldRefs()). The first real DROP in production needs Rafael's approval.
+     * 3. audit.log_partitions_health(): every check in the report; 'saude_criticos' counts the critical ones
+     *    (scripts/log-retention.php exits non-zero and alerts on any).
      * @return array<string, int|string>
      */
     public static function pgStep(PDO $pdo, array $heldRefs, bool $dryRun = true): array
     {
+        if ($pdo->inTransaction()) {
+            throw new LogicException('pgStep needs autocommit: one leaf per transaction');
+        }
         $pdo->exec('SET ROLE casalivre_log_job');
         try {
             $report = [];
-            foreach (['activity_particoes_criadas' => 'SELECT audit.activity_partitions_ensure(7)', 'audit_particoes_criadas' => 'SELECT audit.audit_partitions_ensure()'] as $key => $sql) {
-                try {
-                    $report[$key] = (int) $pdo->query($sql)->fetchColumn();
-                } catch (PDOException $e) {
-                    // lock_timeout (55P03, 200 ms in the function): a long reader holds the parent. Warn and go on with
-                    // the DROP steps; there are 7 days of slack and the next run creates the leaves. Anything else throws.
-                    if (($e->errorInfo[0] ?? (string) $e->getCode()) !== '55P03') {
-                        throw $e;
+            $plans = [
+                'activity' => ['SELECT class, day::text AS unit FROM audit.activity_leaves_plan(' . self::LEAD_DAYS . ')', 'SELECT audit.activity_leaf_ensure(?, ?::date)'],
+                'audit' => ['SELECT class, year::text AS unit FROM audit.audit_leaves_plan()', 'SELECT audit.audit_leaf_ensure(?, ?::int)'],
+            ];
+            foreach ($plans as $kind => [$planSql, $ensureSql]) {
+                $created = $moved = 0;
+                $failed = [];
+                $ensure = $pdo->prepare($ensureSql);
+                foreach ($pdo->query($planSql)->fetchAll() as $leaf) {
+                    $ensure->execute([$leaf['class'], $leaf['unit']]);
+                    $result = (string) $ensure->fetchColumn();
+                    $ensure->closeCursor();
+                    if ($result === 'created') {
+                        $created++;
+                    } elseif (str_starts_with($result, 'moved ')) {
+                        $created++;
+                        $moved += (int) substr($result, 6);
+                    } elseif ($result === 'failed') {
+                        $failed[] = $leaf['class'] . ' ' . $leaf['unit'];
                     }
-                    $report[$key] = 0;
-                    $report['aviso_' . $key] = 'lock_timeout (55P03): folhas não criadas neste run; o próximo tenta de novo';
-                    error_log('CasaLivre WARN: log retention: ' . $key . ' hit lock_timeout (55P03); continuing with the drop steps.');
+                }
+                $report[$kind . '_particoes_criadas'] = $created;
+                $report[$kind . '_linhas_movidas_da_default'] = $moved;
+                if ($failed !== []) {
+                    $report['aviso_' . $kind . '_particoes_falharam'] = implode(', ', $failed) . ' (purge_runs status failed; o próximo run tenta de novo)';
+                    error_log('CasaLivre WARN: log retention: ' . count($failed) . ' ' . $kind . ' leaf(s) failed (see purge_runs); the others were created.');
                 }
             }
             $refs = Db::byteaArrayLiteral($heldRefs);
@@ -92,6 +118,12 @@ final class LogRetention
             }
             $report[$dryRun ? 'activity_proxima_particao' : 'activity_particoes_removidas'] = $dryRun ? ($dropped[0] ?? '-') : count($dropped);
             $report['activity_linhas_retidas'] = $held;
+            $critical = 0;
+            foreach ($pdo->query('SELECT check_name, status, detail FROM audit.log_partitions_health()')->fetchAll() as $h) {
+                $report['saude ' . $h['check_name']] = trim($h['status'] . ' ' . $h['detail']);
+                $critical += $h['status'] === 'critical' ? 1 : 0;
+            }
+            $report['saude_criticos'] = $critical;
             return $report;
         } finally {
             $pdo->exec('RESET ROLE');

@@ -22,6 +22,7 @@ final class ExceptionShield
                 date('c') . " $ref $methodName $route " . Redact::secrets($e->getMessage()) . "\n" . Redact::secrets($e->getTraceAsString()) . "\n",
                 FILE_APPEND
             );
+            @chmod($dir . '/error.log', 0640); // Segurança #148: sem leitura para "outros"
             if (function_exists('activity')) {
                 try {
                     activity(ActivityLog::INTERNAL_ERROR, [
