@@ -55,15 +55,13 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 
 Chat only for new work, decisions and blockers; no FYI or acks; priority only when the recipient must act.
 
-## Verdict format (PR comment, max ~8 lines)
+## Verdict format (PR comment, about 400 chars, 3 lines)
 ```
 VERDICT <role> @<sha7>: APPROVED|CHANGES
-Blockers:
-- path/file.php:123 - fix
-followup:
-- optional item
+Blockers: path/file.php:123 - fix; ... (or "none")
+Followups: optional items (or "none")
 ```
-Gerente collects `followup:` items into the backlog once per batch. Evidence goes in files, linked by path, not pasted. No recaps.
+One line each for Blockers and Followups, every reviewer role (db and arch included). Evidence (logs, query plans, benchmarks) goes in a linked file, gist or collapsed `<details>` section, never in the verdict body. Gerente collects `Followups:` items into the backlog once per batch. No recaps.
 
 ## Scripts and tests
 Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Run only what the diff needs; full regression once per batch on develop (Teste).
