@@ -32,5 +32,8 @@ try {
 }
 foreach ($report as $target => $count) {
     echo str_pad((string) $target, 34) . $count . "\n";
+    if (str_starts_with((string) $target, 'aviso_')) {
+        fwrite(STDERR, "log-retention: WARN $target: $count\n");
+    }
 }
 exit($rc);

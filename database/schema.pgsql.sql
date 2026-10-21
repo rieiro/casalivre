@@ -375,8 +375,11 @@ CREATE INDEX audit_actor           ON audit.audit_log (actor_ref, id) WHERE acto
 CREATE INDEX audit_code            ON audit.audit_log (code, id);
 
 -- Folhas diárias do activity_log, de hoje (UTC) até hoje + p_days_ahead. Idempotente; devolve quantas criou.
+-- lock_timeout: CREATE TABLE ... PARTITION OF pega ACCESS EXCLUSIVE no pai da classe (e na DEFAULT); atrás de um
+-- leitor longo (pg_dump, leitura de ops) os INSERTs da classe enfileirariam atrás do ensure. Desiste em 200 ms
+-- (55P03); com 7 dias de folga o próximo run cria as folhas (LogRetention::pgStep trata como aviso).
 CREATE FUNCTION audit.activity_partitions_ensure(p_days_ahead int DEFAULT 7) RETURNS int
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
 DECLARE c text; d date; n int := 0;
 BEGIN
     IF p_days_ahead IS NULL OR p_days_ahead NOT BETWEEN 1 AND 31 THEN RAISE EXCEPTION 'days_ahead must be 1..31'; END IF;
@@ -395,7 +398,7 @@ END $$;
 
 -- Folhas anuais do audit_log (ano corrente e o seguinte, UTC), nas três classes. Idempotente.
 CREATE FUNCTION audit.audit_partitions_ensure() RETURNS int
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
 DECLARE c text; y int; n int := 0;
 BEGIN
     FOREACH c IN ARRAY ARRAY['admin', 'fin_fiscal', 'contrato'] LOOP

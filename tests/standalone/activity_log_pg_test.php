@@ -10,6 +10,7 @@ require_once CL_ROOT . '/src/ActivityLog.php';
 require_once CL_ROOT . '/src/LogPrivacy.php';
 require_once CL_ROOT . '/src/Uuid.php';
 require_once CL_ROOT . '/src/ExceptionShield.php';
+require_once CL_ROOT . '/src/LogRetention.php';
 putenv('LOG_SALT=sal-activity-pg-test');
 
 /** SQLSTATE de $fn (null = sem erro). */
@@ -240,6 +241,29 @@ t_eq([], $step([$heldRef], false), 'nada mais a remover: nenhuma linha (rerun n�
 t_eq(1, (int) $owner->query('SELECT count(*) FROM audit.activity_log_held')->fetchColumn(), 'rerun: _held igual');
 t_eq(count($dropped), (int) db()->query('SELECT count(*) FROM purge_runs')->fetchColumn() - $runs0, 'purge_runs: uma linha por passo');
 t_eq(1, (int) db()->query("SELECT sum(skipped_hold) FROM purge_runs WHERE job = 'activity_retention'")->fetchColumn(), 'purge_runs: skipped_hold = linhas retidas');
+
+echo "ensure com lock_timeout: leitor longo segura o pai, a retenção avisa e segue com os DROPs\n";
+$future7 = 'activity_log_other_p' . gmdate('Ymd', time() + 7 * 86400);
+$owner->exec("DROP TABLE IF EXISTS audit.$future7");
+$sec95 = $mk('security', 95);
+$locker = t_pg_as('casalivre_retention');
+$locker->beginTransaction();
+$locker->exec('LOCK TABLE audit.activity_log_other IN ACCESS SHARE MODE'); // como um pg_dump / leitura longa
+$t0 = microtime(true);
+t_eq('55P03', t_state(static fn () => $jobLike->query('SELECT audit.activity_partitions_ensure(7)')), 'ensure atrás do lock: 55P03 (lock_timeout da função)');
+t_ok(microtime(true) - $t0 < 2.0, 'ensure desiste rápido (200 ms, não espera o leitor)');
+$t0 = microtime(true);
+$report = LogRetention::pgStep(db(), [$heldRef], false);
+$secs = microtime(true) - $t0;
+t_ok($secs < 5.0, sprintf('pgStep não fica preso atrás do leitor (%.2f s)', $secs));
+t_eq(0, $report['activity_particoes_criadas'] ?? null, 'pgStep: activity_particoes_criadas = 0 no timeout');
+t_ok(str_contains((string) ($report['aviso_activity_particoes_criadas'] ?? ''), '55P03'), 'pgStep: aviso de lock_timeout no relatório');
+t_ok(!isset($report['aviso_audit_particoes_criadas']) && is_int($report['audit_particoes_criadas'] ?? null), 'audit ensure sem conflito: sem aviso');
+t_ok(($report['activity_particoes_removidas'] ?? 0) >= 1 && !$exists($sec95), 'mesmo com o aviso, os passos de DROP rodaram (security 95 d removida)');
+t_ok(!$exists($future7), 'a folha de hoje+7 ficou para o próximo run');
+$locker->rollBack();
+t_ok((int) $jobLike->query('SELECT audit.activity_partitions_ensure(7)')->fetchColumn() >= 1 && $exists($future7), 'sem o leitor: o ensure seguinte cria a folha');
+t_eq(['200ms', '200ms'], $owner->query("SELECT (SELECT option_value FROM pg_options_to_table(proconfig) WHERE option_name = 'lock_timeout') FROM pg_proc WHERE oid IN ('audit.activity_partitions_ensure(int)'::regprocedure, 'audit.audit_partitions_ensure()'::regprocedure) ORDER BY proname")->fetchAll(PDO::FETCH_COLUMN), 'as duas funções de ensure têm SET lock_timeout = 200ms');
 
 echo "Q4: leitura auditada (a linha ACTIVITY_LOG_READ é gravada dentro da função DEFINER, na mesma transação)\n";
 $n47 = static fn (): int => (int) $owner->query('SELECT count(*) FROM audit.audit_log WHERE code = 47')->fetchColumn();

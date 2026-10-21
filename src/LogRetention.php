@@ -56,10 +56,21 @@ final class LogRetention
     {
         $pdo->exec('SET ROLE casalivre_log_job');
         try {
-            $report = [
-                'activity_particoes_criadas' => (int) $pdo->query('SELECT audit.activity_partitions_ensure(7)')->fetchColumn(),
-                'audit_particoes_criadas' => (int) $pdo->query('SELECT audit.audit_partitions_ensure()')->fetchColumn(),
-            ];
+            $report = [];
+            foreach (['activity_particoes_criadas' => 'SELECT audit.activity_partitions_ensure(7)', 'audit_particoes_criadas' => 'SELECT audit.audit_partitions_ensure()'] as $key => $sql) {
+                try {
+                    $report[$key] = (int) $pdo->query($sql)->fetchColumn();
+                } catch (PDOException $e) {
+                    // lock_timeout (55P03, 200 ms in the function): a long reader holds the parent. Warn and go on with
+                    // the DROP steps; there are 7 days of slack and the next run creates the leaves. Anything else throws.
+                    if (($e->errorInfo[0] ?? (string) $e->getCode()) !== '55P03') {
+                        throw $e;
+                    }
+                    $report[$key] = 0;
+                    $report['aviso_' . $key] = 'lock_timeout (55P03): folhas não criadas neste run; o próximo tenta de novo';
+                    error_log('CasaLivre WARN: log retention: ' . $key . ' hit lock_timeout (55P03); continuing with the drop steps.');
+                }
+            }
             $refs = Db::byteaArrayLiteral($heldRefs);
             $step = $pdo->prepare('SELECT leaf, held, dropped FROM audit.activity_retention_step(?::bytea[], ?)');
             $dropped = [];
