@@ -6,6 +6,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
 - [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
+- [ ] `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
 
 ## Em andamento
 
@@ -202,6 +203,9 @@ Removed 2026-10-21: no data migration (migrateLegacy goes away).
 - [ ] Restart the queue worker on deploy, after the asset build, so `AssetManifest` and code changes are picked up; add the step to `prompts/deploy.md`. Source: Arquitetura #142. Owner: Programador.
 - [ ] Recycle the queue worker under runit after a maximum job count, memory use or uptime. Source: Arquitetura #142. Owner: Programador.
 - [ ] Dev env: give each bot its own port range (Teste's nginx held 38542 while Arquitetura used it). Source: Arquitetura #142. Owner: Programador.
+- [ ] `FileStamp`: keep the stamp empty when a read fails, so a failed read is not cached as "unchanged". Source: Arquitetura #149. Owner: Programador.
+- [ ] `GrupoResolvedor`: cap the number of expired entries kept in the TTL cache. Source: Arquitetura #149. Owner: Programador.
+- [ ] `queue_worker_manifest_cache_test` and `queue_worker_cache_unchanged_test` rewrite the tracked `public/assets/manifest.json`; use a temp copy instead. Source: Arquitetura #149. Owner: Programador.
 - [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
 
 ### Older follow-ups (#99–#113)
