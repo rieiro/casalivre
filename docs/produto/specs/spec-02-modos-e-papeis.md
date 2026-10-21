@@ -138,14 +138,14 @@ O painel (Hoje e Desempenho) mostra **"Confiabilidade nos últimos 12 meses: 96%
 
 ## 4b. Canais de vitrine e temas (admins, e o gestor quando o canal pertence ao nó dele; S5)
 **Onde:** Gerenciar → Canais. Lista os canais do escopo (marketplace, site regional, site do parceiro), com domínio, status e quantidade de imóveis.
-**Canal:** nome, domínio, tema (logo, tokens de cor, fonte), imóveis publicados no canal (um imóvel pode estar em vários) e a organização responsável.
-**Tema:** editor de tokens com uma prévia ao vivo dos cards, botões, card de preço e estados de erro e de sucesso. **A validação de contraste roda ao salvar**: texto/fundo ≥ 4,5:1 e componentes ≥ 3:1, para cada par de tokens. Se reprovar, o tema não é salvo e aparece um resumo dos pares reprovados ("Texto em primary: 3,1:1, mínimo 4,5:1"), com link para cada campo e o foco no primeiro erro.
+**Canal:** nome, domínio, tema (escolhido da lista do repositório), imóveis publicados no canal (um imóvel pode estar em vários) e a organização responsável.
+**Tema (Rafael, 2026-10-21; [docs/decisions.md](../../decisions.md); regra completa na spec-04 §2):** os temas ficam **só no repositório**. Cada tema é uma pasta `themes/<nome>/` (logo, cores, fontes, estilo do mapa) preparada pela equipe, revisada em PR e listada no manifesto do build; o contraste AA é conferido quando o tema é preparado, não no app. **Não há editor de tema no app nem upload de logo** por enquanto. A tela do canal só **escolhe um tema da lista do manifesto**, com uma prévia somente leitura dos cards, botões, card de preço e estados de erro e de sucesso.
 **Estados:** domínio não verificado ("Aguardando DNS"); canal sem imóveis (vazio com "Adicionar imóveis").
 **Critérios de aceite**
-1. Dado um tema com contraste abaixo do mínimo, quando salvo, então nada é salvo e vejo cada par reprovado com a razão medida.
-2. Um tema aprovado é aplicado ao domínio do canal sem mudar outros canais do mesmo imóvel.
-3. Um admin_org só vê os canais da sub-árvore dele. O gestor edita o tema se o canal pertencer ao nó dele, sempre com a validação de contraste. Senão, vê o item desabilitado com a explicação.
-4. A prévia tem um texto equivalente (a lista dos pares e das razões), sem depender só da visualização.
+1. O seletor de tema oferece só os temas da lista do manifesto; qualquer outro nome é recusado pelo servidor (422).
+2. Um tema escolhido é aplicado ao domínio do canal sem mudar outros canais do mesmo imóvel.
+3. Um admin_org só vê os canais da sub-árvore dele. O gestor escolhe o tema se o canal pertencer ao nó dele. Senão, vê o item desabilitado com a explicação.
+4. A prévia tem uma descrição em texto equivalente, sem depender só da visualização.
 
 ## 5. WCAG 2.2 AA
 - Contadores de prazo em texto absoluto e relativo, com anúncio só nos marcos (4.1.3, 2.2.1). Nenhuma ação vence sem aviso visível.
@@ -154,7 +154,7 @@ O painel (Hoje e Desempenho) mostra **"Confiabilidade nos últimos 12 meses: 96%
 - Upload de comprovante com alternativa ao arrastar (2.5.7) e alvos de no mínimo 24 px (2.5.8).
 - O seletor de contexto é uma árvore acessível (padrão Tree View da APG: setas, Home/End, digitar para buscar). A trilha usa `nav aria-label="Contexto"`, com `aria-current` no último nível.
 - Itens desabilitados ficam focáveis, com `aria-disabled` e a explicação ligada por `aria-describedby`.
-- O validador de contraste informa os erros em texto (3.3.1), com um resumo e links para os campos.
+- O contraste dos temas é conferido quando o tema é preparado no repositório (sem validador no app). A prévia do tema tem uma descrição em texto.
 - Ações destrutivas (recusar, estornar) pedem confirmação (3.3.4).
 
 ## Pendências para Produto
