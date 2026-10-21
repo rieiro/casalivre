@@ -64,6 +64,6 @@ GrupoResolvedor::$clock = null;
 
 echo "scripts/queue-worker.php runs its loop through QueueWorkerLoop::tick\n";
 $src = (string) file_get_contents(CL_ROOT . '/scripts/queue-worker.php');
-t_ok(preg_match('/do \{\s*(try \{\s*)?\$reports = QueueWorkerLoop::tick\(/', $src) === 1, 'loop body is QueueWorkerLoop::tick');
+t_ok(preg_match('/do \{(?:(?!\} while).)*\$reports = QueueWorkerLoop::tick\(/s', $src) === 1, 'loop body is QueueWorkerLoop::tick');
 @exec('rm -rf ' . escapeshellarg($dir));
 t_done();
