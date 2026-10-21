@@ -3,7 +3,6 @@
 Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Geral edita este arquivo**; os analistas enviam os itens para consolidação. O que é necessário para subir em produção fica em `prompts/deploy.md`.
 
 ## Priority now
-- [ ] **Do first.** Live bug: the runit queue-worker loops forever (`scripts/queue-worker.php:33-46`, #118) and renders mail through `MailHtml.php:78` → `GrupoResolvedor::doDominio`, whose per-process cache (`src/GrupoResolvedor.php:47-59`) is never cleared. A domain that loses verification keeps being linked in emails until the worker restarts. Call `GrupoResolvedor::limparCache()` on every loop iteration and add a test. Source: Segurança #93. Owner: Programador.
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
 - [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
