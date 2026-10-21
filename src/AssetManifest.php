@@ -60,15 +60,23 @@ final class AssetManifest
         return json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
     }
 
+    /** @var null|array<string,string> per-process copy of manifest.json (the long-running queue worker clears it every tick) */
+    private static ?array $cache = null;
+
+    /** Drops the per-process copy: the next load() reads manifest.json again (e.g. after a rebuild). */
+    public static function clearCache(): void
+    {
+        self::$cache = null;
+    }
+
     /** @return array<string,string> */
     public static function load(): array
     {
-        static $cache = null;
-        if ($cache === null) {
+        if (self::$cache === null) {
             $raw = is_file(self::file()) ? (string) file_get_contents(self::file()) : '';
             $data = json_decode($raw, true);
-            $cache = is_array($data) ? array_filter($data, 'is_string') : [];
+            self::$cache = is_array($data) ? array_filter($data, 'is_string') : [];
         }
-        return $cache;
+        return self::$cache;
     }
 }
