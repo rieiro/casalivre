@@ -22,6 +22,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 
 ## Common rules
 - English only. No invented data; separate measured from estimated.
+- No data migration. All data is created from scratch (DB recreated, seeds). Don't write migration code, legacy-data conversion, backfills or migration deploy steps. Schema changes update the schema and seeds only. Data migration only later, by explicit Rafael decision.
 - Bots never ask Rafael questions. Rafael gets one daily progress summary from Gerente; other bots message him only when he asks. Decisions go through Gerente. Approval cards: only Rafael taps them; the bot tells Gerente what it is.
 - Only Gerente edits `prompts/*.md` (incl. `prompts/deploy.md`, `prompts/backlog.md`), `docs/decisions.md` and `docs/arquitetura.md`. Other bots never edit them, even in PRs: deploy notes go in the PR description, other text blocks go to Gerente.
 - Specialists may contact each other directly on PR/spec findings; new work, decisions, priorities, measurement requests and conflicts go via Gerente.
