@@ -29,7 +29,7 @@ Não há: reserva, pagamento, mensagens, comparação/favoritos, avaliação vin
 - Painel do proprietário (ganhos, repasses, ocupação), coanfitrião, rede de prestadores/chamados.
 
 ## Dependências e restrições
-Stack fixa (PHP 8.4, PDO, PostgreSQL/SQLite). **Infra decidida pelo Rafael (16/10):** ambiente igual ao de produção desde já, em container Void Linux musl com nginx, PHP-FPM 8.4 + OPcache, PostgreSQL 18, Valkey (filas) e runit, sem Docker. Os bots rodam o ambiente nos próprios computadores (rootless via bwrap); o Incus do Rafael é só para os testes dele. Na ValueHost o mesmo container roda em bare-metal Void. Pagamento e IA exigem revisão de Segurança (LGPD, dados de pagamento) e Arquitetura (filas Valkey, webhooks). Sem dados de uso reais: não há produção.
+Stack fixa (PHP 8.4, PDO, PostgreSQL). **Infra decidida pelo Rafael (16/10):** ambiente igual ao de produção desde já, em container Void Linux musl com nginx, PHP-FPM 8.4 + OPcache, PostgreSQL 18, Valkey (filas) e runit, sem Docker. Os bots rodam o ambiente nos próprios computadores (rootless via bwrap); o Incus do Rafael é só para os testes dele. Na ValueHost o mesmo container roda em bare-metal Void. Pagamento e IA exigem revisão de Segurança (LGPD, dados de pagamento) e Arquitetura (filas Valkey, webhooks). Sem dados de uso reais: não há produção.
 
 ---
 ## Arquitetura de produto (v0.3, 16/10 — Negócios + spec-01 + infra)

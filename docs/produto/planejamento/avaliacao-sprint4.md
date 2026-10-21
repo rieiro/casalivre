@@ -1,11 +1,11 @@
 # Avaliação da Sprint 4 × plano v0.4 (Gerente de Produto, 16/10/2026)
-Fontes: `adr/001-busca-sql-paginada.md` (Aceito; #99 e #100 mesclados, develop d2824fc), `adr/spec-schema-modelagem.md`, `prompts/backlog.md` (Sprint 4, itens 1–2), `casalivre-gerente/planejamento/sequencia-s4-s9.md`.
+Fontes: `/workspace/adr/001-busca-sql-paginada.md` (Aceito; #99 e #100 mesclados, develop d2824fc), `/workspace/adr/spec-schema-modelagem.md`, `prompts/backlog.md` (Sprint 4, itens 1–2), `/workspace/casalivre-gerente/planejamento/sequencia-s4-s9.md`.
 
 Mapeamento T1–T7 **corrigido pelo Gerente** (16/10).
 
 | Tarefa | O que faz | Cruzamento com o plano v0.4 | Classificação |
 |---|---|---|---|
-| T1 Schema v20: índices da busca + `rating_*` | PG `(city,id) INCLUDE(max_guests) WHERE active` + `(lat,lng)`; SQLite `(status,city)`; colunas `rating_sum/rating_count`; remove `idx_properties_status`; parity | Infra P0 (PG 18) | **Manter com ajuste 4:** medir no PG 18 (EXPLAIN ANALYZE) aqui e no fechamento; SQLite só funcional. Absorve o item 2 do backlog |
+| T1 Schema v20: índices da busca + `rating_*` | PG `(city,id) INCLUDE(max_guests) WHERE active` + `(lat,lng)`; SQLite `(status,city)`; colunas `rating_sum`/`rating_count`; remove `idx_properties_status`; parity | Infra P0 (PG 18) | **Manter com ajuste 4:** medir no PG 18 (EXPLAIN ANALYZE) aqui e no fechamento; SQLite só funcional. Absorve o item 2 do backlog |
 | T1b Índice da capa das fotos | `idx_photos_cover_ready` parcial | Independente | **Manter** |
 | T2 `rating_*` gravado no `addReview` | UPDATE na mesma transação do INSERT | A P3 vincula a avaliação à estadia | **Manter, compatível com a P3:** o contador fica em um só ponto de escrita (o caminho de avaliação), sem supor autor livre, para a P3 só trocar a validação de quem pode avaliar e não a contagem |
 | T3 Construtor SQL híbrido (filtros), remove `byCity` | `SearchService`, `GroupRepository::searchSource` no mesmo construtor | P2a (canais N:N), P2 (esperas de pagamento) | **Manter com ajustes 1 e 2:** (1) **vitrine genérica**: o construtor recebe um escopo de vitrine (hoje grupo, depois `channel_id`) e não cita `group_id` por dentro; (2) **função única de disponibilidade**. Regra para a P2: reserva/espera = `calendar_days` com `blocked=1, origin='reserva'` |
@@ -20,7 +20,7 @@ Nenhuma tarefa precisa ser descartada: o ADR já ataca o maior gargalo medido (o
 1. **Vitrine genérica** no T3 e no T6: evita reescrever a busca e a vitrine na P2a.
 2. **Função única de disponibilidade** no T3: as esperas de pagamento da P2 entram pelo `calendar_days`, sem uma 2ª fonte de disponibilidade.
 3. **Preço total** no T5 (aprovado pelo Negócios): total como valor principal, por noite como secundário. O filtro continua por noite (critério 6 do ADR). Filtrar ou ordenar pelo total é porta futura (P4/P5), fora do keyset por `id`.
-4. **Medição no PG 18** no T1 e no fechamento da sprint (critérios 1, 3 e 10 do ADR). **DECIDIDO pelo Rafael (16/10):** o SQLite continua funcionando; otimizações e medição só no PostgreSQL.
+4. **Medição no PG 18** no T1 e no fechamento da sprint (critérios 1, 3 e 10 do ADR). **DECIDIDO pelo Rafael (16/10):** o SQLite continua funcionando; otimizações e medição só no PostgreSQL. *Substituído em 21/10: só PostgreSQL; SQLite e MongoDB saem ([decisions](../../decisions.md)). As menções ao SQLite no T1 acima também deixam de valer.*
 - O T2 precisa continuar compatível com a P3 (avaliação ligada à estadia).
 
 **Ordem recomendada**
