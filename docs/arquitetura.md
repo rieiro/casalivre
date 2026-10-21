@@ -267,7 +267,7 @@ flowchart TB
 
 ### Admin (`users.is_admin = 1`)
 - Trocar o tema da plataforma (`/admin/tema`).
-- Criar grupo, editar nome e tema, incluir/remover domínio, gerar novo token e pedir "verificar agora",
+- Criar grupo, editar o nome e escolher o tema na lista do manifesto (temas só no repositório, sem editor nem upload), incluir/remover domínio, gerar novo token e pedir "verificar agora",
   incluir/trocar papel/remover membro (`/admin/grupos*`).
 - Promover alguém a admin é só por linha de comando (`scripts/set-admin.php`), nunca pela web.
 
@@ -341,7 +341,7 @@ GET só sem ação e POST só com ação: qualquer outra combinação é 404.
 |---|---|---|---|
 | GET/POST | `/admin/tema` | S, C, A | 302 `?ok=1`; 422 tema inválido; 409 conflito (troca concorrente ou banco ocupado) |
 | GET/POST | `/admin/grupos` | S, C, A | 200 / 302; 422 inválido |
-| GET/POST | `/admin/grupos/<slug>` | S, C, A | GET mostra o grupo; POST edita nome/tema |
+| GET/POST | `/admin/grupos/<slug>` | S, C, A | GET mostra o grupo; POST edita o nome e escolhe o tema do manifesto (422 se fora dele) |
 | POST | `/admin/grupos/<slug>/dominios`, `/dominios/remover`, `/dominios/token`, `/dominios/verificar` | S, C, A | 302 com aviso; 422 / 409 / 404 |
 | POST | `/admin/grupos/<slug>/membros`, `/membros/remover` | S, C, A | idem |
 
