@@ -239,7 +239,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 |---|---|---|---|---|---|---|---|---|---|
 | G9 | Bloqueio das datas enquanto a solicitação aguarda aprovação | 10 | 2 | 80% | 0,5 | 32 | Should | S7 | aprovado com mudanças |
 | G7 | Forma de check-in | 6 | 1 | 80% | 0,25 | 19,2 | Should | S7 (P10) | aprovado com mudança |
-| G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga pendente do Rafael |
+| G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga e rede decididas pelo Rafael (2026-10-21) |
 | G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
 | G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
@@ -307,12 +307,15 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 
 ### G1 — Relevância (antes da frente do ADR 001, T7)
 - **Problema:** "Relevância" é a ordenação padrão, mas nenhuma spec a define; o keyset do ADR 001 ordena por `id`, então hoje relevância = ordem de inserção.
-- **Solução:** nota guardada e indexável = fatores ponderados, com os **pesos como parâmetro do canal** (cada vitrine ajusta; por exemplo, uma franquia favorece reserva instantânea ou tempo de resposta) e padrões da plataforma. Sem impulso pago agora.
+- **Solução:** nota guardada e indexável = fatores ponderados, com os **pesos como parâmetro do canal** (cada vitrine ajusta; por exemplo, uma franquia favorece reserva instantânea ou tempo de resposta) e padrões da plataforma. **Decisão do Rafael (2026-10-21):** o ranking aceita dois pesos por canal, **posição paga** e **preferência pela própria rede**, ambos **0 (desligados) por padrão**; todo anúncio cuja posição recebeu impulso pago mostra o rótulo visível **"Patrocinado"**. Ligar qualquer um deles é uma decisão posterior.
 - **Critérios de aceite:**
   1. A nota é uma coluna guardada e indexada, atualizada quando o anúncio ou as avaliações mudam; o cursor versionado aceita a ordenação.
   2. Mudar os pesos de um canal muda só a ordem nesse canal.
-  3. Nenhum fator pago entra na nota enquanto o Rafael não decidir.
-- **Prioridade:** Should, antes da frente do ADR 001 (T7). **Pendente da decisão do Rafael** sobre posição paga e preferência da rede (ver "Decisões para o Rafael"). Fonte: competitors.md G1 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+  3. Cada canal tem os pesos `posição paga` e `preferência da rede`; num canal novo ou sem configuração, os dois valem 0 e a ordem é igual à de um ranking sem eles.
+  4. Com o peso de posição paga acima de 0 para um anúncio naquele canal, o card e o detalhe desse anúncio nesse canal mostram o rótulo "Patrocinado" (texto, não só ícone); com 0, o rótulo não aparece. O mesmo anúncio em outro canal com peso 0 não mostra o rótulo.
+  5. Só o admin (admin_plataforma) configura os dois pesos; gestores e outros papéis não veem a configuração e o servidor responde 403. Toda mudança de peso fica no log.
+  6. Antes de ligar qualquer um dos pesos (valor acima de 0) em produção, o Jurídico revisa o rótulo e a divulgação ao hóspede; ligar é decisão posterior do Rafael.
+- **Prioridade:** Should, antes da frente do ADR 001 (T7). Decidido pelo Rafael em 2026-10-21 (pesos por canal, 0 por padrão, rótulo "Patrocinado"). Fonte: competitors.md G1 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
 
 ### G2 — Confiabilidade de "Melhor avaliação" (com G1)
 - **Problema:** um 5,0 com 3 avaliações passa à frente de um 4,9 com 200.
@@ -401,9 +404,6 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   - (a) Agora: teto `max_nights` da plataforma, padrão 90 noites [E] (pendente do Jurídico sobre a Lei 8.245/1991 art. 48), gravado no snapshot.
   - (a') Agora: o mesmo teto com valor menor que 90 noites.
   - (b) Na P6: estadias acima de 30 noites [E] com linhas de pagamento mensais (G12), porque o escrow da Asaas vai até 45 dias. O Negócios recomenda decidir (a) e (b).
-- **G1:** "O ranking pode, algum dia, incluir posição paga ou preferência pelos imóveis da própria rede?"
-  - Não (padrão atual do Negócios): ranking só com fatores ponderados por canal, sem impulso pago.
-  - Sim: alavanca de receita, com rótulo visível ao hóspede e checagem do Jurídico antes.
 
 ## Itens adiados
 - Hóspede estrangeiro sem CPF: document_type/document_country (passaporte) e hmac por tipo/país, depois do J40 com o Jurídico (decisão do Rafael: deixar para depois). Por enquanto o CPF é obrigatório (guest_fiscal_party_id NOT NULL).
@@ -422,4 +422,4 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - Inscrição da casalivre no CRECI-RJ com corretor responsável (risco médio no canal direto enquanto não decidir).
 - Comissão do canal manual.
 - DIMOB (IN RFB 1.115/2010): aceitar a obrigação ou fazer consulta formal à Receita (em aberto); a modelagem com o CPF do hóspede em fiscal_parties continua.
-- G13 (estadia máxima) e G1 (posição paga ou preferência da rede no ranking): ver "Competitor gaps", "Decisões para o Rafael".
+- G13 (estadia máxima): ver "Competitor gaps", "Decisões para o Rafael".
