@@ -128,6 +128,9 @@ if ($status['running']) {
 }
 proc_close($proc);
 t_eq([false, 1], [$status['running'], $status['exitcode']], 'worker exits with code 1 (runit restarts it)');
+if ($status['exitcode'] !== 1) {
+    echo '  worker stderr: ' . str_replace("\n", "\n    ", trim((string) file_get_contents($stderr))) . "\n";
+}
 t_ok(str_contains((string) file_get_contents($stderr), 'queue-worker: DB connection lost (PDOException)'), 'logs the reason, without DSN or data');
 @unlink($stderr);
 t_done();
