@@ -7,12 +7,11 @@ final class ReturningWrite
     public static function update(string $table, array $values, string $where, array $whereParams, array $keys, array $columns): array
     {
         self::check($table, [...array_keys($values), ...$columns, 'audit_hold']);
-        $jsonFn = 'json_build_object';
         $jsonArgs = [];
         foreach ($columns as $column) {
             $jsonArgs[] = "'" . $column . "', " . self::q($column);
         }
-        $set = [self::q('audit_hold') . ' = ' . $jsonFn . '(' . implode(', ', $jsonArgs) . ')'];
+        $set = [self::q('audit_hold') . ' = json_build_object(' . implode(', ', $jsonArgs) . ')'];
         $params = [];
         foreach ($values as $column => $value) {
             $set[] = self::q($column) . ' = ?';

@@ -20,23 +20,45 @@ final class Db
         if (self::$conn instanceof PDO) {
             return self::$conn;
         }
-        self::loadEnv();
-        $dsn = self::dsn();
-        $user = getenv('DB_USER') ?: null;
-        $password = getenv('DB_PASSWORD');
-        $password = ($password === false || $password === '') ? null : $password;
-        if (!in_array('pgsql', PDO::getAvailableDrivers(), true)) {
-            throw new RuntimeException("PHP has no PDO 'pgsql' driver. On Void Linux: xbps-install -S php8.4-pgsql");
-        }
-        $pdo = new PDO($dsn, $user, $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
+        $pdo = self::connectAs('DB_USER', 'DB_PASSWORD');
         if (!self::$migrating) {
             // A web request or worker only CHECKS the version (one query); it never migrates. See ensureSchemaCurrent().
             self::ensureSchemaCurrent($pdo);
         }
         return self::$conn = $pdo;
+    }
+
+    /**
+     * New PDO on DB_DSN as the login in env $userEnv with the password in env $passwordEnv. Empty/unset $userEnv
+     * falls back to the main credentials (DB_USER/DB_PASSWORD); an empty or unset password is null (peer/trust).
+     * Same options for every connection: exceptions and FETCH_ASSOC. Used by pdo() and the role logins
+     * (LOG_DB_USER, LOG_JOB_DB_USER, OPS_DB_USER).
+     */
+    public static function connectAs(string $userEnv, string $passwordEnv): PDO
+    {
+        $dsn = self::dsn();
+        $user = (string) (getenv($userEnv) ?: '');
+        if ($user === '') {
+            $user = (string) (getenv('DB_USER') ?: '');
+            $passwordEnv = 'DB_PASSWORD';
+        }
+        $password = getenv($passwordEnv);
+        if (!in_array('pgsql', PDO::getAvailableDrivers(), true)) {
+            throw new RuntimeException("PHP has no PDO 'pgsql' driver. On Void Linux: xbps-install -S php8.4-pgsql");
+        }
+        return new PDO($dsn, $user === '' ? null : $user, ($password === false || $password === '') ? null : $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    }
+
+    /**
+     * PostgreSQL bytea[] literal ({"\\x..",...}) for binding a list of binary strings as one ?::bytea[] parameter.
+     * @param list<string> $values
+     */
+    public static function byteaArrayLiteral(array $values): string
+    {
+        return '{' . implode(',', array_map(static fn (string $v): string => '"\\\\x' . bin2hex($v) . '"', $values)) . '}';
     }
 
     /**
@@ -47,9 +69,7 @@ final class Db
     {
         $version = self::pgSchemaVersion($pdo);
         if ($version < self::SCHEMA_VERSION) {
-            throw new SchemaDesatualizado(
-                'Banco na versão ' . $version . ', esperada ' . self::SCHEMA_VERSION . '. Recrie o banco (database/schema.pgsql.sql) e rode php scripts/migrate.php antes de liberar o tráfego.'
-            );
+            throw new SchemaDesatualizado(self::staleSchemaMessage($version));
         }
     }
 
@@ -125,21 +145,11 @@ final class Db
      */
     public const SCHEMA_VERSION = 20; // 2: auth.pending_email; 3: resumo de camas por quarto (form.*, #21); 4: err.field_type + js.* (#23); 5: mail_queue; 6: tokens sha256 (sem activation_link/reset_link, #35); 7: fotos assíncronas (photos.status/uuid/original, image_queue); 8: users.is_admin + settings.theme (temas, Etapa 2); 9: seed sem err.email_taken (e-mail não é editável); 10: err.profile_required; 11: grupos (groups, group_members, group_domains, group_property_invites, properties.group_id); 12: group_domains.verify_token + verified_at (verificação DNS TXT); 13: group_domains.last_check_at + fail_count (reverificação pelo cron); 14: auth.verify_title/hint/button (ativação por POST); 15: cal.url_required + cal.feed_missing (paridade calendário/iCal); 16: photo.cover_one/none_arrived/partial + review.score_range/not_published (paridade capa/avaliação/fotos); 17: cal.feed_removed + cal.url_https (ajustes do calendário); 18: schema_meta (versão no pgsql) e fim da conversão money_unit (bancos recriados do zero, já em reais); 19: paridade dos schemas (7 tabelas no schema, properties.user_id RESTRICT, sem idx_ceps_cep/idx_photos_property, tokens parciais). 20: PostgreSQL only (#137): activity_actions.retention_class, schema audit (activity_log/audit_log particionados, funções DEFINER), legal_holds, legal_hold_access_events, purge_runs; sem caminho incremental no migrate()
 
-    /**
-     * No data migration: version 0 (new DB, fresh from the schema file) or already SCHEMA_VERSION (re-seed) migrates;
-     * any older version aborts. Recreate the DB from database/schema.pgsql.sql.
-     */
-    public const MIN_UPGRADE_FROM = self::SCHEMA_VERSION;
-
-    /** Lança se o banco está numa versão antiga: não há migração incremental, o banco é recriado do zero. */
-    private static function assertUpgradable(int $version): void
+    /** The one message for a DB behind SCHEMA_VERSION (requests and migrate.php): no data migration, recreate it. */
+    private static function staleSchemaMessage(int $version): string
     {
-        if ($version >= 1 && $version < self::MIN_UPGRADE_FROM) {
-            throw new RuntimeException(
-                "Banco na versão $version, esperada " . self::SCHEMA_VERSION . ': não há migração de dados. '
-                . 'Recrie o banco do zero (database/schema.pgsql.sql) e rode php scripts/migrate.php.'
-            );
-        }
+        return "Banco na versão $version, esperada " . self::SCHEMA_VERSION . ': não há migração de dados. '
+            . 'Recrie o banco do zero (database/schema.pgsql.sql) e rode php scripts/migrate.php antes de liberar o tráfego.';
     }
 
     /** Força/aplica a migração (usado por scripts/migrate.php no deploy). Retorna a versão final. */
@@ -151,14 +161,14 @@ final class Db
         } finally {
             self::$migrating = false;
         }
-        return self::migratePgsql($pdo, $force);
+        return self::migrateStep($pdo, $force);
     }
 
     /**
      * pg_advisory_lock serializa migrate.php concorrentes (o segundo espera o primeiro e, ao
      * rechecar a versão, não refaz nada). Tudo numa transação; a versão é gravada em schema_meta no mesmo COMMIT.
      */
-    private static function migratePgsql(PDO $pdo, bool $force): int
+    private static function migrateStep(PDO $pdo, bool $force): int
     {
         if ($pdo->query("SELECT to_regclass('public.users') IS NULL")->fetchColumn()) {
             throw new RuntimeException('Schema ausente: carregue database/schema.pgsql.sql num banco novo (psql -f) e rode o migrate.php de novo.');
@@ -169,7 +179,9 @@ final class Db
             try {
                 $pdo->exec(self::SCHEMA_META_DDL);
                 $current = self::pgSchemaVersion($pdo);
-                self::assertUpgradable($current);
+                if ($current >= 1 && $current < self::SCHEMA_VERSION) { // 0 = new DB fresh from the schema file
+                    throw new SchemaDesatualizado(self::staleSchemaMessage($current));
+                }
                 if ($force || $current < self::SCHEMA_VERSION) {
                     self::migrate($pdo);
                     $pdo->prepare("INSERT INTO schema_meta (skey, value) VALUES ('schema_version', ?) ON CONFLICT(skey) DO UPDATE SET value = excluded.value")
@@ -191,7 +203,7 @@ final class Db
     /**
      * Versão gravada em schema_meta. 0 se a tabela ou a linha não existem.
      * Atenção: a consulta que falha (tabela ausente) aborta a transação aberta; dentro de
-     * migratePgsql a tabela já foi criada antes, então isso não acontece lá.
+     * migrateStep a tabela já foi criada antes, então isso não acontece lá.
      */
     private static function pgSchemaVersion(PDO $pdo): int
     {

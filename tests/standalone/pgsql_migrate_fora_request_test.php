@@ -36,7 +36,7 @@ preg_match('/public static function pdo\(\): PDO\s*\{(.*?)\n    \}\n/s', $src, $
 $body = $m[1] ?? '';
 t_ok($body !== '' && !str_contains($body, 'self::migrate($pdo)'), 'pdo() não chama migrate() direto');
 t_ok(str_contains($body, 'self::ensureSchemaCurrent($pdo)'), 'pdo() chama ensureSchemaCurrent');
-t_ok(str_contains($src, 'pg_advisory_lock(') && str_contains($src, 'pg_advisory_unlock('), 'migratePgsql usa pg_advisory_lock/unlock');
+t_ok(str_contains($src, 'pg_advisory_lock(') && str_contains($src, 'pg_advisory_unlock('), 'migrateStep usa pg_advisory_lock/unlock');
 foreach (['sqlite', 'DB_DRIVER', 'BEGIN IMMEDIATE', 'migrateSqlite', 'sqliteVersion'] as $gone) {
     t_ok(!str_contains($src, $gone), "Db.php sem '$gone'");
 }

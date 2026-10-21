@@ -204,7 +204,7 @@ foreach ([['security', 91], ['security', 89], ['other', 15], ['other', 13]] as [
 $put('security', 91, $heldRef);
 $exists = static fn (string $name): bool => (bool) $owner->query("SELECT to_regclass('audit.$name') IS NOT NULL")->fetchColumn();
 $step = static function (array $refs, bool $dry) use ($jobLike): array {
-    $lit = '{' . implode(',', array_map(static fn ($r) => '"\\\\x' . bin2hex($r) . '"', $refs)) . '}';
+    $lit = Db::byteaArrayLiteral($refs);
     $st = $jobLike->prepare('SELECT leaf, held, dropped FROM audit.activity_retention_step(?::bytea[], ?)');
     $st->bindValue(1, $lit);
     $st->bindValue(2, $dry, PDO::PARAM_BOOL);
@@ -243,7 +243,7 @@ t_eq(1, (int) db()->query("SELECT sum(skipped_hold) FROM purge_runs WHERE job = 
 
 echo "Q4: leitura auditada (a linha ACTIVITY_LOG_READ é gravada dentro da função DEFINER, na mesma transação)\n";
 $n47 = static fn (): int => (int) $owner->query('SELECT count(*) FROM audit.audit_log WHERE code = 47')->fetchColumn();
-$refLit = '{"\\\\x' . bin2hex($heldRef) . '"}';
+$refLit = Db::byteaArrayLiteral([$heldRef]);
 $readers = [
     'activity_recent' => static fn (): array => $ops->query('SELECT * FROM audit.activity_recent(NULL, 5)')->fetchAll(),
     'activity_by_actor' => static function () use ($ops, $refLit): array {

@@ -5,7 +5,7 @@
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 t_eq(20, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 20');
-t_eq(Db::SCHEMA_VERSION, Db::MIN_UPGRADE_FROM, 'MIN_UPGRADE_FROM = SCHEMA_VERSION (sem caminho incremental)');
+t_ok(!defined('Db::MIN_UPGRADE_FROM'), 'sem MIN_UPGRADE_FROM (sem caminho incremental: uma checagem de versão só)');
 
 $migrate = static function (array $args = []): array {
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);

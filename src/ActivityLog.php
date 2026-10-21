@@ -358,11 +358,7 @@ final class ActivityLog
         if (self::$securityPdo instanceof PDO && self::$securityDsn === $dsn) {
             return self::$securityPdo;
         }
-        $user = (string) (getenv('LOG_DB_USER') ?: '');
-        $password = $user !== '' ? getenv('LOG_DB_PASSWORD') : getenv('DB_PASSWORD');
-        $pdo = new PDO($dsn, $user !== '' ? $user : (getenv('DB_USER') ?: null), ($password === false || $password === '') ? null : $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        ]);
+        $pdo = Db::connectAs('LOG_DB_USER', 'LOG_DB_PASSWORD');
         $pdo->exec("SET statement_timeout = '500ms'");
         self::$securityDsn = $dsn;
         return self::$securityPdo = $pdo;

@@ -40,15 +40,10 @@ $emit = static function (string $source, array $row) use (&$found): void {
 };
 
 // 1) audit.activity_log (security + other) e audit.activity_log_held. Cada chamada grava ACTIVITY_LOG_READ no audit_log.
-$user = (string) (getenv('OPS_DB_USER') ?: '');
-$password = $user !== '' ? getenv('OPS_DB_PASSWORD') : getenv('DB_PASSWORD');
-$pdo = new PDO(Db::dsn(), $user !== '' ? $user : (getenv('DB_USER') ?: null), ($password === false || $password === '') ? null : $password, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-]);
+$pdo = Db::connectAs('OPS_DB_USER', 'OPS_DB_PASSWORD');
 $pdo->exec('SET ROLE casalivre_ops_logread');
 $stmt = $pdo->prepare('SELECT id, created_at, code, retention_class, actor_kind, payload, before_value, after_value FROM audit.activity_by_actor(?::bytea[])');
-$stmt->execute(['{"\\\\x' . bin2hex((string) LogPrivacy::userRef($userId)) . '"}']);
+$stmt->execute([Db::byteaArrayLiteral([(string) LogPrivacy::userRef($userId)])]);
 foreach ($stmt as $row) {
     $emit('activity_log', $row);
 }

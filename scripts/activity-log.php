@@ -30,12 +30,7 @@ foreach (ActivityLog::CATALOG as $id => $label) {
 }
 echo str_repeat('-', 72) . "\n";
 
-$user = (string) (getenv('OPS_DB_USER') ?: '');
-$password = $user !== '' ? getenv('OPS_DB_PASSWORD') : getenv('DB_PASSWORD');
-$pdo = new PDO(Db::dsn(), $user !== '' ? $user : (getenv('DB_USER') ?: null), ($password === false || $password === '') ? null : $password, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-]);
+$pdo = Db::connectAs('OPS_DB_USER', 'OPS_DB_PASSWORD');
 $pdo->exec('SET ROLE casalivre_ops_logread');
 $st = $pdo->prepare('SELECT * FROM audit.activity_recent(?::smallint, ?)');
 $st->bindValue(1, $code, $code === null ? PDO::PARAM_NULL : PDO::PARAM_INT);

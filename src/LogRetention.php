@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/LogPrivacy.php';
 
 /**
@@ -59,7 +60,7 @@ final class LogRetention
                 'activity_particoes_criadas' => (int) $pdo->query('SELECT audit.activity_partitions_ensure(7)')->fetchColumn(),
                 'audit_particoes_criadas' => (int) $pdo->query('SELECT audit.audit_partitions_ensure()')->fetchColumn(),
             ];
-            $refs = '{' . implode(',', array_map(static fn (string $r): string => '"\\\\x' . bin2hex($r) . '"', $heldRefs)) . '}';
+            $refs = Db::byteaArrayLiteral($heldRefs);
             $step = $pdo->prepare('SELECT leaf, held, dropped FROM audit.activity_retention_step(?::bytea[], ?)');
             $dropped = [];
             $held = 0;

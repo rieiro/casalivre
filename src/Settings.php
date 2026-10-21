@@ -32,8 +32,6 @@ final class Settings
         foreach (self::defaults() as $key => [$value, $description]) {
             $exists->execute([$key]);
             $has = $exists->fetchColumn();
-            // Fecha a leitura antes de escrever.
-            $exists->closeCursor();
             if (!$has) {
                 $stmt->execute([$key, $value, $description]);
             }

@@ -24,11 +24,7 @@ $days = $numeric !== [] ? max(1, (int) $numeric[0]) : LogRetention::DEFAULT_DAYS
 $report = LogRetention::run($root, $days);
 $rc = 0;
 try {
-    $user = (string) (getenv('LOG_JOB_DB_USER') ?: '');
-    $password = $user !== '' ? getenv('LOG_JOB_DB_PASSWORD') : getenv('DB_PASSWORD');
-    $pdo = new PDO(Db::dsn(), $user !== '' ? $user : (getenv('DB_USER') ?: null), ($password === false || $password === '') ? null : $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    ]);
+    $pdo = Db::connectAs('LOG_JOB_DB_USER', 'LOG_JOB_DB_PASSWORD');
     $report += LogRetention::pgStep($pdo, LogRetention::heldRefs($pdo), !$apply);
 } catch (Throwable $e) {
     fwrite(STDERR, 'log-retention: PG step failed (' . $e::class . '): ' . $e->getMessage() . "\n");
