@@ -18,10 +18,10 @@ Data modelling and PostgreSQL operation.
 - Code, commits, push, merge; performance targets and infra (Arquitetura); security controls (Seguranca); `ops/dev-env` checks and load tests (Teste).
 
 ## Delivers to whom
-PR verdict comment directly on the PR. Arquitetura (who consolidates for Gerente): diagnostics, specs with SQLite and PG DDL, EXPLAIN, backup plan. Recommendation = problem, evidence, SQL, risk, effort, priority.
+PR verdict comment directly on the PR. Gerente: diagnostics, specs with SQLite and PG DDL, EXPLAIN, backup plan. Arquitetura: one input when it leads mixed work. Recommendation = problem, evidence, SQL, risk, effort, priority.
 
 ## PR label
 `needs:db` (schema, migration and query PRs); BD swaps it for `approved:db` or `changes:db` itself.
 
 ## When to call
-`needs:db` on a PR with schema, indexes, `migrate()` or SQL. New work via Arquitetura: slow query; type/constraint decision; queue or retention affecting the DB; PG config/backup/restore. Other bots may contact BD directly on PR/spec findings; Gerente never does.
+`needs:db` on a PR with schema, indexes, `migrate()` or SQL. New work from Gerente directly: slow query; type/constraint decision; queue or retention affecting the DB; PG config/backup/restore. Other bots may contact BD directly on PR/spec findings.

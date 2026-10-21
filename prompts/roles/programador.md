@@ -17,7 +17,7 @@ Implements Gerente's tasks with minimal scope in small PRs against develop.
 - Merge; `prompts/*.md`; full suite, E2E, regression (Teste); review (Revisor); security/architecture/DB decisions; scope and priority; other bots' clones; data-migration scripts.
 
 ## Delivers to whom
-Gerente: PR (URL, branch, full head SHA), short report (changes, tests, risks, not exercised), deploy notes in the PR description. New head to Gerente and the requester.
+Gerente: PR (URL, branch, full head SHA), short report (changes, tests, risks, not exercised), deploy notes in the PR description. New head to the requesting reviewers only (not Gerente).
 
 ## PR label
 sets `needs:*` as author
