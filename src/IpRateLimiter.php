@@ -11,14 +11,15 @@ require_once __DIR__ . '/ValkeyJobQueue.php';
  * Fixed-window limit per client (IP, IPv6 by /64, or an account key) on Valkey, shared by web and API
  * (cleanup sprint #158; replaces the files in storage/cache/ratelimit).
  *
- * Key: cl:rl:<bucket>:<HMAC-SHA256(LOG_SALT, 'ratelimit' \0 clientKey)>, cl:* only (cl_app ACL ~cl:*).
+ * Key: cl:rl:<bucket>:<HMAC-SHA256(subkey, 'ratelimit' \0 clientKey)>, cl:* only (cl_app ACL ~cl:*), with the derived
+ * subkey HMAC-SHA256(LOG_SALT, SUBKEY_LABEL) (Segurança #160), so the limiter never uses LOG_SALT itself.
  * Counting: MULTI INCR + EXPIRE NX + TTL + EXEC, so the window TTL is set atomically by the first hit and never
  * moved by later ones; Retry-After is the key's TTL (same fixed window as the file limiter: first hit + window).
- * Commands used: MULTI, EXEC, INCR, DECR, EXPIRE (NX), TTL, GET, DEL; all in the cl_app allowlist (no Lua).
+ * Commands used: MULTI, EXEC, INCR, DECR, SET (NX EX), EXPIRE (NX), TTL, GET, DEL; all in the cl_app allowlist (no Lua).
  * The client IP is REMOTE_ADDR only (nginx real_ip sets it from trusted proxies); X-Forwarded-For is never read.
  *
  * Valkey down (or LOG_SALT missing outside dev): the per-bucket decision in failClosed() applies (Segurança #158),
- * logged as INTERNAL_ERROR (security class) at most once per LOG_EVERY seconds per worker, with no IP.
+ * logged as VALKEY_UNAVAILABLE at most once per LOG_EVERY seconds per worker, with no IP.
  */
 final class IpRateLimiter
 {
@@ -29,6 +30,8 @@ final class IpRateLimiter
     public const FAIL_CLOSED_RETRY_AFTER = 30;
     /** Valkey-down log throttle per worker, in seconds. */
     public const LOG_EVERY = 60;
+    /** Label of the derived HMAC subkey: HMAC-SHA256(LOG_SALT, SUBKEY_LABEL). Bump the version to rotate the keys. */
+    public const SUBKEY_LABEL = 'cl-ratelimit-v1';
 
     /**
      * FAIL-MODE DECISION POINT (Segurança, #158). Buckets that refuse (429 + Retry-After FAIL_CLOSED_RETRY_AFTER)
@@ -49,7 +52,7 @@ final class IpRateLimiter
     public static string $namespace = '';
     /** Test hook: returns the connection (or throws); null = Valkey::connect(TIMEOUT). */
     public static ?Closure $connector = null;
-    /** Test hook: where the per-worker log throttle stamp lives; null = sys_get_temp_dir(). */
+    /** Test hook: where the per-worker log throttle stamp lives; null = stampDir() (storage/cache/iprl, 0700). */
     public static ?string $stampDir = null;
 
     private static ?Redis $conn = null;
@@ -80,7 +83,8 @@ final class IpRateLimiter
         if ($secret === null) {
             return null;
         }
-        return self::PREFIX . self::$namespace . $bucket . ':' . hash_hmac('sha256', "ratelimit\0" . self::clientKey($ip), $secret);
+        $subkey = hash_hmac('sha256', self::SUBKEY_LABEL, $secret, true);
+        return self::PREFIX . self::$namespace . $bucket . ':' . hash_hmac('sha256', "ratelimit\0" . self::clientKey($ip), $subkey);
     }
 
     /** Counts one hit. @return int seconds until allowed again (0 = allowed); Retry-After when > 0. */
@@ -159,16 +163,18 @@ final class IpRateLimiter
     }
 
     /**
-     * Gives a claimed slot back. If the window expired in between, DECR recreates the key at -1 (EXPIRE NX gives it
-     * the window again) and the INCR puts it back to 0, so a refund never leaves an extra slot in the next window.
+     * Gives a claimed slot back, in one MULTI (Segurança #160: no corrective INCR outside it). If the window expired
+     * in between, SET NX EX recreates the key at 1 with a new window and DECR takes it to 0, so a refund never goes
+     * below 0 or leaves an extra slot in the next window; on a live key SET NX is a no-op and DECR gives the slot
+     * back. EXPIRE NX still heals a key without TTL.
      */
     private static function release(string $key, int $windowSeconds, string $bucket): void
     {
         try {
-            $r = self::conn();
-            $res = $r->multi()->decr($key)->expire($key, max(1, $windowSeconds), 'NX')->exec();
-            if (is_array($res) && is_int($res[0] ?? null) && $res[0] < 0) {
-                $r->incr($key);
+            $w = max(1, $windowSeconds);
+            $res = self::conn()->multi()->set($key, '1', ['nx', 'ex' => $w])->decr($key)->expire($key, $w, 'NX')->exec();
+            if (!is_array($res) || count($res) !== 3 || !is_int($res[1])) {
+                throw new RuntimeException('MULTI SET NX/DECR/EXPIRE NX failed');
             }
         } catch (Throwable $e) {
             self::unavailable($bucket, $e);
@@ -214,27 +220,57 @@ final class IpRateLimiter
     }
 
     /**
+     * Private dir of the log throttle stamps (Segurança #160: not the shared /tmp, where a local user could pre-create
+     * the predictable stamp with a future mtime and mute the log): storage/cache/iprl, 0700, owned by this process's
+     * user, not a symlink. null when it cannot be made private: then no stamp is read or written (the per-process
+     * throttle still applies), so the log is never muted.
+     */
+    public static function stampDir(): ?string
+    {
+        $dir = self::$stampDir ?? dirname(__DIR__) . '/storage/cache/iprl';
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return null;
+        }
+        clearstatcache(true, $dir);
+        if (is_link($dir) || (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid())) {
+            return null;
+        }
+        if ((@fileperms($dir) & 0077) !== 0) {
+            @chmod($dir, 0700);
+            clearstatcache(true, $dir);
+            if ((@fileperms($dir) & 0077) !== 0) {
+                return null;
+            }
+        }
+        return $dir;
+    }
+
+    /**
      * At most once per LOG_EVERY s per worker (php-fpm worker = pid; the stamp file outlives the request): one
-     * error_log line and one INTERNAL_ERROR activity row (security retention class). No IP, key or message text
-     * (it could carry the socket path or a key): only the bucket, the mode and the exception class.
+     * error_log line and one VALKEY_UNAVAILABLE activity row (its own code, Segurança #160, so alerts and BI tell it
+     * from other internal errors). No IP, key or message text (it could carry the socket path or a key): only the
+     * bucket, the mode and the exception class.
      */
     private static function logUnavailable(string $bucket, bool $closed, Throwable $e): void
     {
         $now = time();
-        $stamp = (self::$stampDir ?? sys_get_temp_dir()) . '/cl-iprl-down-' . getmypid();
-        $last = self::$loggedAt ?? (@filemtime($stamp) ?: null);
-        if ($last !== null && $now - $last < self::LOG_EVERY) {
+        $dir = self::stampDir();
+        $stamp = $dir === null ? null : $dir . '/down-' . getmypid();
+        $last = self::$loggedAt ?? ($stamp === null ? null : (@filemtime($stamp) ?: null));
+        if ($last !== null && $now - $last < self::LOG_EVERY && $last <= $now) {
             return;
         }
         self::$loggedAt = $now;
-        @touch($stamp, $now);
+        if ($stamp !== null) {
+            @touch($stamp, $now);
+        }
         $mode = $closed ? 'fail-closed' : 'fail-open';
         error_log('ip_rate_limiter: unavailable (' . $e::class . '), ' . $mode . ' for bucket ' . $bucket);
         if (class_exists('ActivityLog', false)) {
-            ActivityLog::record(ActivityLog::INTERNAL_ERROR, [
-                'tipo' => 'ip_rate_limiter_unavailable',
+            ActivityLog::record(ActivityLog::VALKEY_UNAVAILABLE, [
                 'rota' => $bucket,
-                'mensagem' => $mode . ' (' . $e::class . ')',
+                'modo' => $mode,
+                'excecao' => $e::class,
             ]);
         }
     }

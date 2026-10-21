@@ -192,6 +192,9 @@ final class ActivityLog
     public const GROUP_DOMAIN_VERIFY_START = 44;
     public const GROUP_DOMAIN_VERIFIED = 45;
     public const GROUP_DOMAIN_UNVERIFIED = 46;
+    // 47 is taken by ACTIVITY_LOG_READ in #148 (PG-only ActivityLog).
+    /** IpRateLimiter could not reach Valkey (Segurança #160): own code, not INTERNAL_ERROR. */
+    public const VALKEY_UNAVAILABLE = 48;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -240,6 +243,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFY_START => 'Novo token de verificação DNS do domínio do grupo pelo admin',
         self::GROUP_DOMAIN_VERIFIED => 'Domínio do grupo verificado por DNS TXT',
         self::GROUP_DOMAIN_UNVERIFIED => 'Domínio do grupo perdeu a verificação (reverificação DNS TXT)',
+        self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
     ];
 
     public static function store(): ActivityStore
@@ -327,6 +331,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFY_START => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas', 'motivo'],
+        self::VALKEY_UNAVAILABLE => ['rota', 'modo', 'excecao'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

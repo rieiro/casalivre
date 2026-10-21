@@ -14,7 +14,9 @@ echo "key\n";
 $salt = (string) getenv('LOG_SALT');
 $k = (string) IpRateLimiter::key('/cadastro', '1.2.3.4');
 t_ok(str_starts_with($k, 'cl:rl:' . $ns0 . '/cadastro:'), 'key under cl:rl:<bucket>: (cl_app ACL ~cl:*)');
-t_eq(hash_hmac('sha256', "ratelimit\0" . '1.2.3.4', $salt), substr($k, -64), 'client part = HMAC-SHA256(LOG_SALT, "ratelimit\0" ip)');
+$subkey = hash_hmac('sha256', 'cl-ratelimit-v1', $salt, true);
+t_eq(hash_hmac('sha256', "ratelimit\0" . '1.2.3.4', $subkey), substr($k, -64), 'client part = HMAC-SHA256(subkey, "ratelimit\0" ip), subkey = HMAC-SHA256(LOG_SALT, "cl-ratelimit-v1") (Segurança #160 a)');
+t_ok(substr($k, -64) !== hash_hmac('sha256', "ratelimit\0" . '1.2.3.4', $salt), 'LOG_SALT itself is not the HMAC key');
 t_ok(!str_contains($k, '1.2.3.4') && substr($k, -64) !== hash('sha256', '1.2.3.4'), 'no raw IP and not a plain hash');
 t_eq(IpRateLimiter::key('b', '2001:db8:1:2::1'), IpRateLimiter::key('b', '2001:db8:1:2:ffff:1:2:3'), 'IPv6: same /64, same key');
 t_ok(IpRateLimiter::key('b', '2001:db8:1:2::1') !== IpRateLimiter::key('b', '2001:db8:1:3::1'), 'IPv6: other /64, other key');
@@ -71,6 +73,20 @@ if ($withValkey) {
     }
     t_eq([true, true, false], $seen, 'reserve: 3rd sees cabe=false');
     t_eq('2', $r->get((string) IpRateLimiter::key('rs', '1.2.3.4')), 'reserve: done without fitting is not counted');
+    // Segurança #160 c: the refund is one MULTI (SET NX EX + DECR + EXPIRE NX), no corrective INCR outside it.
+    $rk = (string) IpRateLimiter::key('rf', '1.2.3.4');
+    IpRateLimiter::reserve('rf', 2, 60, '1.2.3.4', static function (bool $cabe) use ($r, $rk): bool {
+        $r->del($rk); // the window expires while the action runs
+        return false;
+    });
+    t_eq('0', $r->get($rk), 'refund after the window expired: key at 0, never negative');
+    $t = $r->ttl($rk);
+    t_ok($t > 0 && $t <= 60, "refund after expiry: the recreated key has the window TTL ($t s)");
+    t_eq(0, IpRateLimiter::hit('rf', 1, 60, '1.2.3.4'), 'next window: 1 of 1 allowed (no extra slot)');
+    t_ok(IpRateLimiter::hit('rf', 1, 60, '1.2.3.4') > 0, 'next window: 2 of 1 refused (no extra slot)');
+    $src = (string) file_get_contents(CL_ROOT . '/src/IpRateLimiter.php');
+    preg_match('/function release\(.*?\n    \}\n/s', $src, $m);
+    t_ok(isset($m[0]) && str_contains($m[0], "->multi()->set(\$key, '1', ['nx', 'ex' => \$w])->decr(\$key)->expire(") && substr_count($m[0], '->incr(') === 0, 'release(): one MULTI, no INCR outside it');
 
     echo "resetClient\n";
     IpRateLimiter::hit('/cadastro', 1, 60, '127.0.0.1');
@@ -131,9 +147,14 @@ $lines = array_values(array_filter(explode("\n", (string) file_get_contents($log
 t_eq(1, count($lines), 'many failures in a row: one log line per LOG_EVERY s per worker');
 t_ok(str_contains($lines[0] ?? '', 'fail-closed') && str_contains($lines[0] ?? '', 'RedisException'), 'log line names the mode and exception class');
 t_ok(!str_contains((string) file_get_contents($log), '203.0.113'), 'log line has no IP');
-$rows = ActivityLog::store()->recent(10, ActivityLog::INTERNAL_ERROR);
-t_eq(1, count($rows), 'one INTERNAL_ERROR activity row (security class)');
-t_eq('ip_rate_limiter_unavailable', $rows[0]['params']['tipo'] ?? null, 'activity row tipo');
+$rows = ActivityLog::store()->recent(10, ActivityLog::VALKEY_UNAVAILABLE);
+t_eq(1, count($rows), 'one VALKEY_UNAVAILABLE activity row (Segurança #160 d: own code)');
+$got = array_intersect_key($rows[0]['params'] ?? [], ['excecao' => 1, 'modo' => 1, 'rota' => 1]);
+ksort($got);
+t_eq(['excecao' => 'RedisException', 'modo' => 'fail-closed', 'rota' => '/senha/esqueci'], $got, 'activity params: bucket, mode, exception class');
+t_eq([], ActivityLog::store()->recent(10, ActivityLog::INTERNAL_ERROR), 'no INTERNAL_ERROR row for a Valkey outage');
+t_eq(48, ActivityLog::VALKEY_UNAVAILABLE, 'code 48 (47 is ACTIVITY_LOG_READ in #148)');
+t_ok(isset(ActivityLog::CATALOG[ActivityLog::VALKEY_UNAVAILABLE]), 'code in the catalog (activity_actions seed)');
 t_ok(!str_contains(json_encode($rows[0]['params']) ?: '', '203.0.113'), 'activity params have no IP');
 // A new worker (or a minute later): logs again.
 IpRateLimiter::$stampDir = $stamps . '/other';
@@ -142,6 +163,32 @@ mkdir(IpRateLimiter::$stampDir, 0700);
 IpRateLimiter::hit('/api/busca', 5, 60);
 $n = substr_count((string) file_get_contents($log), 'ip_rate_limiter');
 t_eq(2, $n, 'after the throttle expires: logs again (fail-open line)');
+
+echo "throttle stamp in a private dir (Segurança #160 b)\n";
+IpRateLimiter::$stampDir = null;
+$def = IpRateLimiter::stampDir();
+t_eq(realpath(CL_ROOT) . '/storage/cache/iprl', realpath((string) $def), 'default stamp dir: storage/cache/iprl (not the shared /tmp)');
+t_eq(0700, fileperms((string) $def) & 0777, 'default stamp dir is 0700');
+$loose = $stamps . '/loose';
+mkdir($loose, 0777);
+chmod($loose, 0777);
+IpRateLimiter::$stampDir = $loose;
+t_eq($loose, IpRateLimiter::stampDir(), 'group/world-accessible dir: made private');
+t_eq(0700, fileperms($loose) & 0777, '... chmod 0700');
+symlink($loose, $stamps . '/link');
+IpRateLimiter::$stampDir = $stamps . '/link';
+t_eq(null, IpRateLimiter::stampDir(), 'symlinked dir: not used');
+// A pre-set future mtime (the /tmp attack) does not mute the log.
+$mute = $stamps . '/mute';
+mkdir($mute, 0700);
+IpRateLimiter::$stampDir = $mute;
+touch($mute . '/down-' . getmypid(), time() + 86400);
+(static fn () => IpRateLimiter::$loggedAt = null)->bindTo(null, IpRateLimiter::class)();
+$before = substr_count((string) file_get_contents($log), 'ip_rate_limiter');
+IpRateLimiter::hit('/api/busca', 5, 60);
+t_eq($before + 1, substr_count((string) file_get_contents($log), 'ip_rate_limiter'), 'stamp with a future mtime: still logs');
+t_ok(filemtime($mute . '/down-' . getmypid()) <= time(), 'stamp rewritten with the current time');
+IpRateLimiter::$stampDir = $stamps;
 
 echo "Valkey down (real socket, ~100 ms timeout)\n";
 IpRateLimiter::$connector = null;
