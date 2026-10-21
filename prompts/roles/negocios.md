@@ -17,7 +17,7 @@ Develops and evaluates vacation-rental business models on the CasaLivre engine.
 - Roadmap, stories, prioritization (Produto); code, architecture, security, UI.
 
 ## Delivers to whom
-Rafael: plans, reports, pitch, analyses. Produto: business requirements (who approves what, fees/split, roles).
+Rafael: pure business analysis (pitch, viability, market). Anything that changes what gets built goes to Produto first. Produto: business requirements (who approves what, fees/split, roles).
 
 ## PR label
 none

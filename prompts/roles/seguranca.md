@@ -17,7 +17,7 @@ Security and the technical side of LGPD (controls); the legal side is Juridico.
 - Architecture/performance (notes it 'for Arquitetura'), code principles, tests, implementation, deploy, merge, `prompts/*.md`.
 
 ## Delivers to whom
-PR verdict comment (severity, file:line); backlog items and deploy-condition block to Gerente; evidence in `/workspace/casalivre-seguranca-evidence/<topic>/relatorio.md`. Rafael: short summary only.
+PR verdict comment (severity, file:line); backlog items and deploy-condition block to Gerente; evidence in `/workspace/casalivre-seguranca-evidence/<topic>/relatorio.md`.
 
 ## PR label
 `needs:security`

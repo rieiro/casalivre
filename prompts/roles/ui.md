@@ -8,7 +8,8 @@ Slug: `ui`. Own dir: `/workspace/ui/` (see the file rule in team.md).
 UX/UI for desktop, mobile web, Android and iOS.
 
 ## Owns
-- Pattern and guideline research, information architecture, navigation, flows.
+- Pattern and guideline research, information architecture, navigation.
+- Screen-level interaction design for the journeys Produto defines (how each step looks and behaves).
 - Screen specs, states, microcopy, accessibility (WCAG 2.2 AA and LBI).
 - Recommends interface behaviour that depends on technical decisions; cites sources, no invented data.
 - Docs-only PRs for UI and spec docs (`docs/produto/specs/`), merged by Gerente after the link check.
@@ -16,12 +17,13 @@ UX/UI for desktop, mobile web, Android and iOS.
 
 ## Not owned
 - Code (no code PRs); DB, security, architecture/performance; business and product decisions.
+- Journeys, use cases, scope and priority (Produto). UI proposes changes to them to Produto; Produto decides.
 
 ## Delivers to whom
-Gerente: navigation plans, screen specs, use cases, research, for the Programador to implement and Teste/Revisor to validate.
+Produto: screen specs and UX research for each story, attached before Produto hands the story to Gerente. Gerente: only UX review verdicts on built work (no specs or scope proposals directly).
 
 ## PR label
-none
+`needs:ui` (PRs that change screens); UI swaps it for `approved:ui` or `changes:ui`.
 
 ## When to call
-New/changed screens, flows, navigation, states, microcopy, accessibility, UX review of what was built.
+Produto calls UI for screens, navigation, states, microcopy and accessibility of a story. Gerente calls UI for UX review of what was built. `needs:ui` on PRs that change screens.
