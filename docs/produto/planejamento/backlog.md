@@ -239,7 +239,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 |---|---|---|---|---|---|---|---|---|---|
 | G9 | Bloqueio das datas enquanto a solicitação aguarda aprovação | 10 | 2 | 80% | 0,5 | 32 | Should | S7 | aprovado com mudanças |
 | G7 | Forma de check-in | 6 | 1 | 80% | 0,25 | 19,2 | Should | S7 (P10) | aprovado com mudança |
-| G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga pendente do Rafael |
+| G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga e rede decididas pelo Rafael (2026-10-21) |
 | G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
 | G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
@@ -247,7 +247,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
-| G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto) + P6 | pendente da decisão do Rafael |
+| G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
@@ -307,12 +307,15 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 
 ### G1 — Relevância (antes da frente do ADR 001, T7)
 - **Problema:** "Relevância" é a ordenação padrão, mas nenhuma spec a define; o keyset do ADR 001 ordena por `id`, então hoje relevância = ordem de inserção.
-- **Solução:** nota guardada e indexável = fatores ponderados, com os **pesos como parâmetro do canal** (cada vitrine ajusta; por exemplo, uma franquia favorece reserva instantânea ou tempo de resposta) e padrões da plataforma. Sem impulso pago agora.
+- **Solução:** nota guardada e indexável = fatores ponderados, com os **pesos como parâmetro do canal** (cada vitrine ajusta; por exemplo, uma franquia favorece reserva instantânea ou tempo de resposta) e padrões da plataforma. **Decisão do Rafael (2026-10-21):** o ranking aceita dois pesos por canal, **posição paga** e **preferência pela própria rede**, ambos **0 (desligados) por padrão**; todo anúncio cuja posição recebeu impulso pago mostra o rótulo visível **"Patrocinado"**. Ligar qualquer um deles é uma decisão posterior.
 - **Critérios de aceite:**
   1. A nota é uma coluna guardada e indexada, atualizada quando o anúncio ou as avaliações mudam; o cursor versionado aceita a ordenação.
   2. Mudar os pesos de um canal muda só a ordem nesse canal.
-  3. Nenhum fator pago entra na nota enquanto o Rafael não decidir.
-- **Prioridade:** Should, antes da frente do ADR 001 (T7). **Pendente da decisão do Rafael** sobre posição paga e preferência da rede (ver "Decisões para o Rafael"). Fonte: competitors.md G1 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+  3. Cada canal tem os pesos `posição paga` e `preferência da rede`; num canal novo ou sem configuração, os dois valem 0 e a ordem é igual à de um ranking sem eles.
+  4. Com o peso de posição paga acima de 0 para um anúncio naquele canal, o card e o detalhe desse anúncio nesse canal mostram o rótulo "Patrocinado" (texto, não só ícone); com 0, o rótulo não aparece. O mesmo anúncio em outro canal com peso 0 não mostra o rótulo.
+  5. Só o admin (admin_plataforma) configura os dois pesos; gestores e outros papéis não veem a configuração e o servidor responde 403. Toda mudança de peso fica no log.
+  6. Antes de ligar qualquer um dos pesos (valor acima de 0) em produção, o Jurídico revisa o rótulo e a divulgação ao hóspede; ligar é decisão posterior do Rafael.
+- **Prioridade:** Should, antes da frente do ADR 001 (T7). Decidido pelo Rafael em 2026-10-21 (pesos por canal, 0 por padrão, rótulo "Patrocinado"). Fonte: competitors.md G1 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
 
 ### G2 — Confiabilidade de "Melhor avaliação" (com G1)
 - **Problema:** um 5,0 com 3 avaliações passa à frente de um 4,9 com 200.
@@ -362,11 +365,12 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 
 ### G13 — Estadia longa × repasse
 - **Problema:** a spec-03 não limita as noites máximas, e a P6 libera tudo em check-in + 24 h, com escrow do PSP de no máximo 45 dias; o reembolso na saída antecipada fica indefinido.
-- **Solução (Negócios: decidir as duas):** (a) agora, teto `max_nights` da plataforma como parâmetro (padrão 90 [E], pendente do Jurídico sobre a Lei 8.245/1991 art. 48), gravado no snapshot; (b) na P6, estadias acima de 30 noites [E] com linhas de pagamento mensais (G12). No piloto (D11, pagamento por fora), a comissão sai mensal na fatura da P9.
+- **Solução (decisão do Rafael, 2026-10-21):** a estadia máxima da plataforma é de **30 noites** por enquanto, no piloto e na P6. É um teto `max_nights` da plataforma, gravado no snapshot da reserva, e o `max_nights` do anfitrião não pode passar dele. Com esse teto, as linhas de pagamento mensais para estadias longas (opção b do Negócios) não são necessárias agora. No piloto (D11, pagamento por fora), a comissão sai mensal na fatura da P9.
 - **Critérios de aceite:**
-  1. O anúncio não aceita noites máximas acima do teto da plataforma.
-  2. O snapshot da reserva guarda as noites máximas e o teto em vigor; mudar o teto não altera reservas existentes.
-- **Prioridade:** Could. **Pendente da decisão do Rafael** (ver abaixo). Fonte: competitors.md G13 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+  1. O teto `max_nights` da plataforma vale 30 noites; o anúncio não aceita `max_nights` acima dele, e o servidor recusa (422) com a mensagem.
+  2. Uma busca ou reserva com mais de 30 noites é recusada com a explicação do limite.
+  3. O snapshot da reserva guarda o `max_nights` do anúncio e o teto da plataforma em vigor; mudar o teto não altera reservas existentes.
+- **Prioridade:** Could. Decidido pelo Rafael em 2026-10-21 (teto de 30 noites). Fonte: competitors.md G13 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
 
 ### G15 — Evento disruptivo (restrição)
 - **Problema:** força maior é decidida reserva por reserva; um evento regional (evacuação, estrada bloqueada) exige N provas e N decisões.
@@ -391,19 +395,10 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - O limite de solicitações pendentes é o parâmetro `max_pending_requests_overlapping` (padrão 2 [E], por canal), e o modo de bloqueio é parâmetro (`hard` só) (G9).
 - N expirações seguidas do anfitrião é parâmetro de nó/canal (padrão 2 [E]) (G10).
 - Cada solicitação guarda recebido / respondido / expirado na própria linha (G8, G10).
-- Pagamentos como N linhas por reserva, não um `paid_at` (G12, G13).
-- O snapshot guarda as noites máximas e o teto em vigor (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
+- Pagamentos como N linhas por reserva, não um `paid_at` (G12).
+- O snapshot guarda o `max_nights` do anúncio e o teto da plataforma de 30 noites (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
 - Uma oferta ou solicitação pré-aprovada leva o canal de origem (G11).
 - Cadastro de anúncio (P10): campos estruturados de divulgação de câmera externa (sim/não + local) e monitor de ruído (sim/não + só decibéis), com a confirmação obrigatória de "sem câmeras internas, sem gravação de áudio, sem reconhecimento facial" para publicar (G6); forma de check-in como enum (G7).
-
-### Decisões para o Rafael (via Gerente)
-- **G13:** "Qual é a estadia máxima da plataforma para o piloto e a P6 (90 noites [E] ou menos), e estadias longas são um segmento-alvo?"
-  - (a) Agora: teto `max_nights` da plataforma, padrão 90 noites [E] (pendente do Jurídico sobre a Lei 8.245/1991 art. 48), gravado no snapshot.
-  - (a') Agora: o mesmo teto com valor menor que 90 noites.
-  - (b) Na P6: estadias acima de 30 noites [E] com linhas de pagamento mensais (G12), porque o escrow da Asaas vai até 45 dias. O Negócios recomenda decidir (a) e (b).
-- **G1:** "O ranking pode, algum dia, incluir posição paga ou preferência pelos imóveis da própria rede?"
-  - Não (padrão atual do Negócios): ranking só com fatores ponderados por canal, sem impulso pago.
-  - Sim: alavanca de receita, com rótulo visível ao hóspede e checagem do Jurídico antes.
 
 ## Itens adiados
 - Hóspede estrangeiro sem CPF: document_type/document_country (passaporte) e hmac por tipo/país, depois do J40 com o Jurídico (decisão do Rafael: deixar para depois). Por enquanto o CPF é obrigatório (guest_fiscal_party_id NOT NULL).
@@ -422,4 +417,3 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - Inscrição da casalivre no CRECI-RJ com corretor responsável (risco médio no canal direto enquanto não decidir).
 - Comissão do canal manual.
 - DIMOB (IN RFB 1.115/2010): aceitar a obrigação ou fazer consulta formal à Receita (em aberto); a modelagem com o CPF do hóspede em fiscal_parties continua.
-- G13 (estadia máxima) e G1 (posição paga ou preferência da rede no ranking): ver "Competitor gaps", "Decisões para o Rafael".
