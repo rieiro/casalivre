@@ -150,6 +150,9 @@ Source: [docs/decisions.md](../docs/decisions.md) (Rafael, 2026-10-21).
 - [ ] `activity_log` on PostgreSQL follows the decided design (docs/decisions.md): INSERT-only app role, separate purge role, own transaction, sealed JSONL fallback loaded by a runit worker with COPY. Replaces "separate log DB and audit outbox".
 - [ ] LGPD on the PG `activity_log`: retention per event class (Jurídico parecer J1), IP and email as HMAC, audit separated from BI. Involve Segurança.
 - [ ] Segurança caveats on #109, must hold in the PG `activity_log`: CI asserts that the author/email HMAC is non-null and 64 hex; LogPrivacy key via `*_KEY_FILE`, 32-byte HMAC, no truncation (today `substr(…, 0, 16)` at `src/LogPrivacy.php:39`), with the single spec. Owner: Programador/Segurança.
+- [ ] `deploy/runit/casalivre-log-retention/run:17` swallows exit codes 1 and 2 (`|| echo`), so a failed log purge never alerts in production. Wire an alert within 1 h of any non-zero exit. Estimate 1 h. Source: Arquitetura #148. Owner: Arquitetura (alert design, assigned by BD); Programador implements.
+- [ ] Teste measures the `cl_logw` connection limit (20, estimated) against peak FPM plus worker connections. Source: Arquitetura #148. Owner: Teste.
+- [ ] The `audit.audit_log` 5-year cleanup job must ship before 2031-10-21 (first rows expire then). Source: Arquitetura #148. Owner: BD; Programador.
 
 ## Sprint 5 groups rewrite (P2a: org tree + channels)
 Source: D1, approved by Rafael 2026-10-21 ([docs/decisions.md](../docs/decisions.md)); spec-04. Groups become a management tree of free depth plus separate storefront channels; group domains and themes move to the channel. Acceptance requirements carried from the group backlog:
@@ -269,6 +272,8 @@ Removed 2026-10-21: SQLite removal. Items moved to PostgreSQL only.
 
 - [ ] `LogRetention::run` incluir arquivos `*.ret-*` remanescentes.
 - [ ] Add the CI gate for money paths (PHPStan max + php-cs-fixer + coverage check) before the first money PR ([docs/money-standards.md](../docs/money-standards.md)). Owner: Programador; Teste.
+- [ ] JobQueue: claim jobs with a single `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING`, add a lease token, make `fail()` atomic, and make BD's queue-table changes in the same separate PR. Estimate 0.5 d. Source: Arquitetura #148. Owner: Programador; BD.
+- [ ] Add a Valkey service to CI; `valkey_queue_test` is still skipped there. Estimate 1 h. Source: Arquitetura #148. Owner: Programador.
 
 ## Redução de dados enviados
 Removed 2026-10-21: already done (#36, #39); superseded (20 MB limit). Items moved to ADR 001 and P10.

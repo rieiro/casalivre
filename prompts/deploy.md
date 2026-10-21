@@ -65,7 +65,6 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] **CDN/cache** na frente deve respeitar `Vary: Origin` (respostas enviam `Access-Control-Allow-Credentials: true`).
 - [ ] **`APP_ENV=production`** explícito (qualquer valor diferente de `dev`/`local` esconde os links). Nunca usar `dev`/`local` fora do desenvolvimento.
 - [ ] **`APP_URL=https://<domínio>`** obrigatório (https, sem barra final, query ou credenciais): os links de ativação e redefinição saem dele; sem ele, o app dá erro em produção.
-- [ ] **`ACTIVITY_DB_PATH`**: só para testes, sem valor em produção.
 - [ ] `APP_ENV` e `APP_URL` documentados no `.env.example`.
 
 - [ ] **nginx `client_max_body_size`:** ver seção Limites de requisição (PR #34).
