@@ -16,18 +16,17 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price sums, stopped traffic) are left out.
 
 ### Clean deploy (Cori, #95/#98)
-- [ ] On a new server, `php scripts/migrate.php` creates the folders and the SQLite DB (#98). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist and update `docs/arquitetura.md` section 17 and the DB section above.
+- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist and update `docs/arquitetura.md` section 17 and the DB section above.
 - [ ] Install `php-bz2` for `load-ceps.php` and `refresh-settings-cache.php` (CepRepository). `python3` is the fallback (optional `CEP_PYTHON`); with neither, the scripts fail with a clear error.
 - [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
 
 ### Migrate and schema (#99, #100, SCHEMA 19)
-- [ ] The DB is recreated from scratch: on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (on SQLite, `database/schema.sql`). A v18 DB cannot become 19 (migrate aborts because of the RESTRICT FK).
+- [ ] The DB is recreated from scratch: on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php`. A v18 DB cannot become 19 (migrate aborts because of the RESTRICT FK).
 - [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
 - [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
 - [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD). Record this in `docs/arquitetura.md`.
 - [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
-- [ ] Before the PG deploy, run `schema_parity_test` with `PARITY_PG_DSN` on void-musl (Arquitetura/BD).
-- [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is UTC like SQLite.
+- [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is stored in UTC.
 - [ ] PG p50 must be measured; ADR 001 targets after the search PR: p50 < 150 ms and p95 < 500 ms with 10 concurrent users (final target p95 < 300 ms).
 
 ### Dev environment and Valkey (#109–#118, Segurança/Arquitetura)
@@ -43,7 +42,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] **nginx + php-fpm** em produção. Nunca `php -S` (`scripts/start.sh`), que escreve a URL completa no stderr.
 - [ ] **Log do nginx**: `log_format` sem query string e com `/ical/` e `/api/ical/` redigidos (ou `access_log off` nessas rotas).
 - [ ] **IP real atrás de proxy/LB**: configurar `real_ip` no nginx. Rate limit (60 req/min por IP e endpoint) e IP truncado nos logs dependem do `REMOTE_ADDR` real.
-- [ ] **PHP 8.4** (única versão testada) com `pdo_sqlite` (ou `pdo_pgsql`), `mbstring`, `openssl` (obrigatória para SMTP com STARTTLS/TLS; sem ela, o envio falha com "Falha no TLS"), `curl`, `gd`, `xml`; `mongodb` se `LOG_DRIVER=mongodb`. Sem `php-curl`, os feeds iCal ficam NOK.
+- [ ] **PHP 8.4** (única versão testada) com `pdo_pgsql`, `mbstring`, `openssl` (obrigatória para SMTP com STARTTLS/TLS; sem ela, o envio falha com "Falha no TLS"), `curl`, `gd`, `xml`. Sem `php-curl`, os feeds iCal ficam NOK.
 - [ ] **OPcache no php-fpm de produção**: `opcache.enable=1` e `opcache.validate_timestamps=0`, com reload do php-fpm a cada deploy (sem o reload, o código antigo continua em memória).
 - [ ] **`zend.exception_ignore_args = On`** no `php.ini` ou pool do php-fpm (o app também força via `ini_set` em `public/index.php`).
 - [ ] **Saída HTTPS (443) e DNS** liberados para os feeds iCal (só https desde o #91; a porta 80 não é necessária). O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
@@ -148,7 +147,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 **Ordem do deploy**
 - [ ] Código → `php scripts/build-assets.php && php scripts/build-assets.php --check` (manifesto, `public/assets/themes/<tema>.css`, `map-style.json`; sai com 1 se algum `brand.php` for inválido) → pré-compressão (brotli/gzip, sem o .pmtiles) → `systemctl reload php8.4-fpm`.
-- [ ] Banco em SCHEMA 13 (11: grupos; 12: verify_token/verified_at; 13: last_check_at/fail_count). Recriar com seeds, como nas versões anteriores, ou `php scripts/migrate.php`. Backup do SQLite antes.
+- [ ] Banco em SCHEMA 13 (11: grupos; 12: verify_token/verified_at; 13: last_check_at/fail_count). Recriar com seeds, como nas versões anteriores, ou `php scripts/migrate.php`. Backup do PostgreSQL antes.
 - [ ] `php scripts/refresh-settings-cache.php` e, para o primeiro admin, `php scripts/set-admin.php <email>`. Tema da plataforma em /admin/tema.
 
 **.env**
@@ -231,30 +230,29 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 ## Páginas de erro do nginx (#56)
 - [ ] Se o nginx servir uma página de erro própria (ex.: 502/504 fora de `/api/`), ela precisa ter os mesmos cabeçalhos de segurança do app: CSP (a mesma do item de XSS acima), `X-Frame-Options DENY` e `X-Content-Type-Options nosniff`, todos com `add_header ... always` (sem `always`, o nginx não manda os cabeçalhos em respostas de erro). Continua valendo: o nginx não manda outro CSP nem outro X-Frame-Options nas páginas do PHP.
 
-## Banco de dados (SQLite)
+## Banco de dados (PostgreSQL)
 
-- [ ] **Preparação de ambiente novo**: `setup.sh` (aplica `database/schema.sql`) → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio ("no such table: users", `src/Db.php:175`). Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
+- [ ] **Preparação de ambiente novo**: `psql -f database/schema.pgsql.sql` → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio, sem o schema carregado. Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
 - [ ] **Banco em desenvolvimento** (decisão do usuário, 14/10): sem scripts de migração. Se o schema mudar, recriar o banco (`setup.sh` + seeds). Continua obrigatório aumentar `Db::SCHEMA_VERSION`.
-- [ ] **Migração a cada deploy** (só depois da primeira subida) (SCHEMA_VERSION 3 com o #21 e 4 com o #23: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). O app só migra numa requisição quando `PRAGMA user_version` < `Db::SCHEMA_VERSION`.
-- [ ] **WAL**: o diretório `storage/db/` (não só o arquivo) gravável pelo php-fpm, para `-wal` e `-shm`; o mesmo vale para `storage/logs/activity.sqlite`. Disco local (WAL não funciona em NFS). `busy_timeout = 8000 ms`.
-- [ ] **Backup**: `sqlite3 casalivre.sqlite ".backup destino.sqlite"` ou copiar junto com `-wal`/`-shm`.
+- [ ] **Migração a cada deploy** (só depois da primeira subida) (SCHEMA_VERSION 3 com o #21 e 4 com o #23: só seeds de tradução, idempotente): `php scripts/migrate.php` antes de liberar o tráfego, com o usuário do php-fpm (`--force` reaplica). A requisição web não migra: só confere `schema_meta.schema_version` e responde 503 se o banco estiver atrás do código.
+- [ ] **Backup**: plano de backup do PostgreSQL (dump, PITR e restauração testada) definido pelo Banco de Dados.
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
 - [ ] **Dados de auditoria**: `activity_log.actor_id` passa a guardar HMAC; registros antigos mantêm o id numérico até a limpeza única abaixo ou a retenção.
 
 ## Fila de e-mail (PR #32)
 - [ ] Cron do worker a cada minuto, com o usuário do serviço: `* * * * * php /srv/casalivre/scripts/mail-worker.php` (a saída vai para o log do serviço e tem só contadores).
 - [ ] `storage/` com permissão 0700 e dono do serviço; `storage/mail-worker.lock` com 0600.
-- [ ] `QUEUE_DRIVER=sqlite` (no futuro, `redis` com a extensão `phpredis`) e `MAIL_QUEUE_RETENTION_DAYS=7` ou menos.
+- [ ] Fila na tabela do PostgreSQL ou no Valkey (`QUEUE_DRIVER=valkey`), com `MAIL_QUEUE_RETENTION_DAYS=7` ou menos.
 - [ ] Produção com `SMTP_HOST` configurado. Sem ele, nada entra na fila e o php.log mostra `mail_not_configured`: monitorar esse alerta.
 - [ ] Alarme se o worker parar, ou seja, fila `pending` crescendo ou sem purga.
 - [ ] Backups do banco tratados como sigilosos.
 
 ## Jobs agendados (usuário do php-fpm)
 
-- [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, `activity.sqlite` (DELETE + VACUUM), `error.log`, `calendar-sync.log`, `php.log` e Mongo (`deleteMany`). Confirmar a primeira execução (`sv status` e saída do script).
-- [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity.sqlite`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
+- [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, o `activity_log` no PostgreSQL, `error.log`, `calendar-sync.log` e `php.log`. Confirmar a primeira execução (`sv status` e saída do script).
+- [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity_log`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
 - [ ] **Limpeza do rate limit (opcional):** com o #34 o diretório se limpa sozinho; se quiser, `find storage/cache/ratelimit -mmin +120 -delete` no cron.
-- [ ] **Limpeza única**: apagar o histórico já existente em `activity.sqlite` (dados pessoais em `valor_anterior`/`valor_atual` gravados antes da allowlist).
+- [ ] **Limpeza única**: apagar o histórico já existente no `activity_log` (dados pessoais em `valor_anterior`/`valor_atual` gravados antes da allowlist).
 
 ## Permissões e arquivos
 
@@ -276,7 +274,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] SSRF do `CalendarSync::fetch` com DNS real e redirects.
 - [ ] Importação iCal com feeds reais (Airbnb, Booking, Google).
 - [ ] Carga paralela nos `.ics` com php-fpm real, sem 500 "database is locked" (DEF-008).
-- [ ] Retenção sob carga do php-fpm, sem sobrar arquivos `*.ret-*`; exclusão real no Mongo.
+- [ ] Retenção sob carga do php-fpm, sem sobrar arquivos `*.ret-*`; exclusão real no `activity_log` do PostgreSQL.
 - [ ] Mascaramento de `feeds[].url` no front separado (quando existir).
 - [ ] Cadastro, ativação e redefinição de ponta a ponta com e-mail real, sem link na tela e com o domínio do `APP_URL` mesmo com `Host:` forjado.
 - [ ] Tempo de resposta igual para e-mail existente e inexistente no esqueci-senha e no cadastro.

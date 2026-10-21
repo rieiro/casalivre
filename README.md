@@ -2,14 +2,14 @@
 
 Sistema de aluguel por temporada. O backend PHP não renderiza HTML: repositórios (`src/UserRepository.php`, `src/HouseRepository.php`, `src/PhotoRepository.php`) e a API JSON em `/api` concentram o acesso ao banco. O front em `views/` só monta páginas e chama esses serviços.
 
-O banco padrão é SQLite. Para Postgres, crie o schema e aponte o DSN. O código da aplicação não usa SQL específico de um deles.
+O banco é o PostgreSQL (decisão de 2026-10-21: só PostgreSQL). Crie o schema e aponte o DSN.
 
 ```bash
 psql -d casalivre -f database/schema.pgsql.sql   # Postgres novo: carregue o schema PRIMEIRO
 php scripts/migrate.php                          # depois migre (a cada deploy, antes do tráfego)
 ```
 
-No Postgres, a requisição web não migra: só confere `schema_meta.schema_version` (uma consulta) e responde 503 se o banco estiver atrás do código. A migração roda só no `scripts/migrate.php`, sob `pg_advisory_lock` (execuções simultâneas esperam uma pela outra). O `migrate.php` sai com 0 (ok), 1 (versão abaixo da esperada) ou 2 (falha, com a mensagem no STDERR). No SQLite nada muda: o banco migra sozinho na conexão.
+No Postgres, a requisição web não migra: só confere `schema_meta.schema_version` (uma consulta) e responde 503 se o banco estiver atrás do código. A migração roda só no `scripts/migrate.php`, sob `pg_advisory_lock` (execuções simultâneas esperam uma pela outra). O `migrate.php` sai com 0 (ok), 1 (versão abaixo da esperada) ou 2 (falha, com a mensagem no STDERR).
 
 No `.env` ficam o banco e as chaves de serviço. Nada disso é escrito em arquivo PHP.
 
@@ -18,41 +18,29 @@ DB_DRIVER=pgsql
 DB_DSN=pgsql:host=127.0.0.1;dbname=casalivre
 DB_USER=usuario
 DB_PASSWORD=
-LOG_DRIVER=sqlite
 STRIPE_SECRET_KEY=
 PAGARME_API_KEY=
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 ```
 
-O log de atividades fica fora do banco dos imóveis, em `storage/logs/activity.sqlite`. Cada ação tem um código, uma descrição e os parâmetros daquela ação (cidade e raio na busca, e-mail no login, imóvel nas fotos). A senha não é gravada. Para ler:
+O log de atividades é a tabela `activity_log` no PostgreSQL (a mudança do código está no backlog; até lá ele ainda é gravado em `storage/logs/activity.sqlite`). Cada ação tem um código, uma descrição e os parâmetros daquela ação (cidade e raio na busca, e-mail no login, imóvel nas fotos). A senha não é gravada. Para ler:
 
 ```bash
 php scripts/activity-log.php
 php scripts/activity-log.php --codigo=2 --limite=20
 ```
 
-Para MongoDB depois, sem mudar o resto do sistema:
-
-```bash
-LOG_DRIVER=mongodb
-LOG_MONGO_URI=mongodb://127.0.0.1:27017
-LOG_MONGO_DB=casalivre
-```
-
-Isso usa a extensão `mongodb` do PHP (`MongoActivityStore`). O documento tem os mesmos campos da tabela SQLite.
-
 ## Subir na máquina local
 
-Requisitos: PHP 8.2+ com `pdo_sqlite` e `mbstring`. No Void o pacote não liga o módulo sozinho:
+Requisitos: PHP 8.2+ com `pdo_pgsql` e `mbstring`, e um PostgreSQL. O ambiente de desenvolvimento igual ao de produção (PHP-FPM 8.4, PostgreSQL, Valkey) está em `ops/dev-env/`. No Void o pacote não liga o módulo sozinho:
 
 ```bash
 ver=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
-sudo xbps-install -S php php${ver}-sqlite
+sudo xbps-install -S php php${ver}-pgsql
 sudo mkdir -p /etc/php${ver}/conf.d
-printf 'extension=pdo_sqlite\n' | sudo tee /etc/php${ver}/conf.d/20-pdo_sqlite.ini
-printf 'extension=sqlite3\n' | sudo tee /etc/php${ver}/conf.d/20-sqlite3.ini
-php -m | grep pdo_sqlite
+printf 'extension=pdo_pgsql\n' | sudo tee /etc/php${ver}/conf.d/20-pdo_pgsql.ini
+php -m | grep pdo_pgsql
 ```
 
 ```bash
@@ -67,7 +55,7 @@ Abra http://127.0.0.1:8080 neste computador. O `start.sh` escuta em todas as int
 - Depois do login o proprietário cai em `/painel`, com a lista dos próprios imóveis.
 - Dá para adicionar, editar e remover imóvel, adicionar fotos e apagar fotos.
 - Fotos ficam em `public/uploads/users/{id}/imoveis/{id}/`.
-- Datas na interface usam dia/mês/ano (`dd/mm/aaaa`).
+- Datas na interface usam dia/mês/ano (dd/mm/aaaa).
 - No celular o menu abre em "Menu" e os formulários, a busca e o painel continuam disponíveis.
 - O idioma fica no canto superior (português, inglês, espanhol). Data, hora e moeda seguem o idioma. Os textos estão na tabela `translations`.
 - A busca usa a lista de municípios brasileiros, ignora maiúsculas e acentos, e sugere cidades a partir de 3 letras.
@@ -75,7 +63,7 @@ Abra http://127.0.0.1:8080 neste computador. O `start.sh` escuta em todas as int
 - Parâmetros, traduções, cidades/estados e CEPs ficam no banco e em cache JSON (`storage/cache/settings.json`, `translations.json`, `cities.json`, `cep.json`). O máximo de fotos por imóvel é o parâmetro `max_photos_per_property`. Depois de alterar o banco: `php scripts/refresh-settings-cache.php`.
 - Os CEPs vêm da base aberta OpenCEP 2.0.1 (julho de 2024, cerca de 1,2 milhão de códigos, licença MIT), no arquivo `database/cep.csv.bz2`. Na próxima subida, se a versão mudou, `scripts/start.sh` recarrega a tabela e regrava `storage/cache/cep.json`.
 - Contas bloqueadas ou inativas: `php scripts/support-conta.php --email=... --ativar --desbloquear`.
-- O catálogo das ações do log fica na tabela `activity_actions`, separado do arquivo `storage/logs/activity.sqlite`.
+- O catálogo das ações do log fica na tabela `activity_actions`.
 - A busca pública continua sem login.
 
 Para parar: `bash scripts/stop.sh`
@@ -119,16 +107,15 @@ php scripts/run-casos-de-teste.php
 
 ## Logs: pseudonimização e retenção
 
-- **`LOG_SALT` (obrigatório, sem fallback):** defina no `.env` um valor secreto e aleatório (`php -r 'echo bin2hex(random_bytes(32));'`). Ele é usado para HMAC-SHA256 de usuário, e-mail, user agent e URLs nos logs de requisições (`storage/logs/api/`) e de atividades (`activity.sqlite`). **Sem `LOG_SALT`**, esses identificadores são omitidos e o PHP emite um único aviso via `error_log`, sem dados. Trocar o sal quebra a correlação com registros antigos.
+- **`LOG_SALT` (obrigatório, sem fallback):** defina no `.env` um valor secreto e aleatório (`php -r 'echo bin2hex(random_bytes(32));'`). Ele é usado para HMAC-SHA256 de usuário, e-mail, user agent e URLs nos logs de requisições (`storage/logs/api/`) e de atividades (`activity_log`). **Sem `LOG_SALT`**, esses identificadores são omitidos e o PHP emite um único aviso via `error_log`, sem dados. Trocar o sal quebra a correlação com registros antigos.
 - **IP:** truncado em /24 (IPv4) e /48 (IPv6) nos dois logs.
-- **Retenção (14 dias, a confirmar com o Gerente Geral):** rode diariamente `php scripts/log-retention.php [dias]`. Ele cobre `storage/logs/api/api-*`, `storage/logs/activity.sqlite` (DELETE + VACUUM), `storage/error.log`, `storage/logs/calendar-sync.log` e `storage/php.log`/`storage/logs/php.log`. Cron sugerido:
+- **Retenção (14 dias, a confirmar com o Gerente Geral):** rode diariamente `php scripts/log-retention.php [dias]`. Ele cobre `storage/logs/api/api-*`, o log de atividades, `storage/error.log`, `storage/logs/calendar-sync.log` e `storage/php.log`/`storage/logs/php.log`. Cron sugerido:
 
   ```
   15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
   ```
 - **Falhas de escrita** do log de requisições incrementam `RequestLog::$writeFailures` e geram `error_log` sem dados.
 - **Query string no log da API:** rotas de iCal (`/api/ical/…`, `/ical/…`, `*.ics`) gravam a query vazia. Nas demais, só as chaves de `RequestLog::QUERY_VALUE_ALLOWLIST` (`q`, `localidade`, `checkin`, `checkout`, `hospedes`, …) têm o valor gravado. As outras chaves aparecem só pelo nome (valor `null`). Em `/api/ceps` só os nomes das chaves são gravados.
-- **MongoDB (`LOG_DRIVER=mongodb`):** a retenção usa `deleteMany` com `created_at` anterior ao corte. Não há índice TTL porque `created_at` é string, e TTL exige campo Date. Sem a extensão `mongodb`, o passo é ignorado com aviso.
 - **runit (Void Linux):** o serviço `deploy/runit/casalivre-log-retention/run` roda a retenção e dorme 24h; o runit o reinicia, então ela se repete todo dia.
 
   ```
@@ -136,5 +123,5 @@ php scripts/run-casos-de-teste.php
   # opcional: /etc/sv/casalivre-log-retention/conf com APP_DIR, APP_USER, RETENTION_DAYS, PHP_BIN
   sudo ln -s /etc/sv/casalivre-log-retention /var/service/
   ```
-- **Buscar registros de um usuário:** `php scripts/log-lookup.php <user_id>` calcula o HMAC do id com `LOG_SALT` (mesma função dos logs) e lista os registros do `activity_log` (SQLite e Mongo, se configurado) e dos `storage/logs/api/api-*`, um JSON por linha. Sem `LOG_SALT` o script se recusa a rodar (código 2). Para outra instalação, use `--root=/caminho`.
+- **Buscar registros de um usuário:** `php scripts/log-lookup.php <user_id>` calcula o HMAC do id com `LOG_SALT` (mesma função dos logs) e lista os registros do `activity_log` e dos `storage/logs/api/api-*`, um JSON por linha. Sem `LOG_SALT` o script se recusa a rodar (código 2). Para outra instalação, use `--root=/caminho`.
 

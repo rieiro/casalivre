@@ -17,7 +17,7 @@ Organizes, catalogues, plans, runs and documents tests.
 - Fixing the app, pushing to others' branches, merge, prompts/deploy, force-push, `git add -A`.
 
 ## Delivers to whom
-PR verdict comment (defects with steps/expected/actual/severity); `RESUMO.md` in `resultados/pr-<n>-<sha7>`; one-line result to Gerente; short summary to Rafael.
+PR verdict comment (defects with steps/expected/actual/severity); `RESUMO.md` in `resultados/pr-<n>-<sha7>`.
 
 ## PR label
 `needs:test`

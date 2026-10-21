@@ -162,6 +162,10 @@ Blockers before the demand log ships (Jurídico, ADR 001 §11 P7 legal verdict):
 - [x] (Done in #131; ANPD guide v1.0, Feb 2024, verified.) LIA at `docs/lgpd/lia-demand-log.md` (LGPD art. 10 §3): purpose (search coverage and inventory), necessity, balancing (no profiling, no user link, low impact on expectations), safeguards. Check the current version of the ANPD legitimate-interest guide. Owner: Jurídico.
 - Acceptance (Jurídico): both files exist; Segurança items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place. If a frequent term names a third party, delete it manually.
 
+## PostgreSQL only (decision 2026-10-21)
+Source: [docs/decisions.md](../docs/decisions.md) (Rafael, 2026-10-21).
+- [ ] Remove SQLite code paths (Db.php migrateSqlite and similar), SQLite tests and parity checks, SQLite config and .env options, and the SQLite backup references; remove any remaining MongoDB driver code. Then Teste runs a full regression on PG. Owner: Programador; Teste regression.
+
 ## Review follow-ups
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.
