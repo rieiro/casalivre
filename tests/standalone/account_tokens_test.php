@@ -162,7 +162,7 @@ t_http('POST', $base . '/api/users', json_encode($user + ['email' => $pend]), $j
 MailWorker::run(MailQueues::make(), $lock);
 t_http('POST', $base . '/api/users', json_encode($user + ['email' => $pend]), $json, $jar);
 $s = db()->prepare("SELECT COUNT(*) FROM mail_queue WHERE type = 'exists' AND cooldown_key = ?");
-$s->execute([SqliteMailQueue::cooldownKey('exists', $pend)]);
+$s->execute([DbMailQueue::cooldownKey('exists', $pend)]);
 t_eq(1, (int) $s->fetchColumn(), 'segundo cadastro enfileira exists');
 $s->closeCursor();
 MailWorker::run(MailQueues::make(), $lock);
@@ -179,7 +179,7 @@ $q = MailQueues::make();
 $e24 = 'h24' . bin2hex(random_bytes(3)) . '@casalivre.test';
 t_eq(true, $q->push('exists', $e24), '1º exists aceito');
 $age = static function (int $sec) use ($e24): void {
-    db()->prepare("UPDATE mail_queue SET created_at = ? WHERE cooldown_key = ?")->execute([gmdate('Y-m-d H:i:s', time() - $sec), SqliteMailQueue::cooldownKey('exists', $e24)]);
+    db()->prepare("UPDATE mail_queue SET created_at = ? WHERE cooldown_key = ?")->execute([gmdate('Y-m-d H:i:s', time() - $sec), DbMailQueue::cooldownKey('exists', $e24)]);
 };
 $age(3600);
 t_eq(false, $q->push('exists', strtoupper($e24)), 'exists após 1 h: recusado (e-mail normalizado)');

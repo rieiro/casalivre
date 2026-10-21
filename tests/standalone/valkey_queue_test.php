@@ -133,7 +133,7 @@ t_eq(0, (int) $r->lLen($q->key('processing')) + (int) $r->zCard($q->key('reserve
 echo "mail cooldown (HMAC key, SET NX EX before the insert, DEL if it fails)\n";
 $mq = new ValkeyMailQueue($r);
 $mail = 'cd-' . $tag . '@casalivre.test';
-$cdKey = $mq->key('cd:' . SqliteMailQueue::cooldownKey('reset', $mail));
+$cdKey = $mq->key('cd:' . DbMailQueue::cooldownKey('reset', $mail));
 $r->del($cdKey);
 $beforeSeq = (int) $r->get($mq->key('seq'));
 t_eq(true, $mq->push('reset', $mail), 'first push ok');
