@@ -5,6 +5,7 @@ declare(strict_types=1);
 if (!class_exists('JsonCache', false)) {
     require_once __DIR__ . '/JsonCache.php';
 }
+require_once __DIR__ . '/FileStamp.php';
 
 final class I18n
 {
@@ -145,19 +146,38 @@ final class I18n
         return $all[$lang] ?? [];
     }
 
+    /** Per-process copy of translations.json (one read per request; in the queue worker, until the file changes). */
+    private static ?array $rows = null;
+
+    /** FileStamp of translations.json taken just before $rows was loaded. */
+    private static ?string $stamp = null;
+
+    /**
+     * Drops the per-process copy: the next read goes back to translations.json (or the database).
+     * $ifChanged (WorkerCaches): only when translations.json changed since the copy was loaded.
+     */
+    public static function clearCache(bool $ifChanged = false): void
+    {
+        if ($ifChanged && (self::$rows === null || FileStamp::of(JsonCache::path('translations.json')) === self::$stamp)) {
+            return;
+        }
+        self::$rows = null;
+    }
+
     private static function all(): array
     {
-        static $rows = null;
-        if (is_array($rows)) {
-            return $rows;
+        if (is_array(self::$rows)) {
+            return self::$rows;
         }
+        // Stamp before reading: a write after this point changes the stamp and is picked up on the next check.
+        self::$stamp = FileStamp::of(JsonCache::path('translations.json'));
         $decoded = JsonCache::read('translations.json');
         if (is_array($decoded) && isset($decoded['pt-BR']['nav.search'])) {
-            $rows = $decoded;
-            return $rows;
+            self::$rows = $decoded;
+            return self::$rows;
         }
-        $rows = self::refresh();
-        return $rows;
+        self::$rows = self::refresh();
+        return self::$rows;
     }
 }
 

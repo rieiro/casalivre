@@ -16,7 +16,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price sums, stopped traffic) are left out.
 
 ### Clean deploy (Cori, #95/#98)
-- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist and update `docs/arquitetura.md` section 17 and the DB section above.
+- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist.
 - [ ] Install `php-bz2` for `load-ceps.php` and `refresh-settings-cache.php` (CepRepository). `python3` is the fallback (optional `CEP_PYTHON`); with neither, the scripts fail with a clear error.
 - [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
 
@@ -24,7 +24,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] No data migration (docs/decisions.md, 2026-10-21): on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (seeds and version only), then the seeds.
 - [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
 - [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
-- [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD). Record this in `docs/arquitetura.md`.
+- [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD).
 - [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
 - [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is stored in UTC.
 - [ ] PG p50 must be measured; ADR 001 targets after the search PR: p50 < 150 ms and p95 < 500 ms with 10 concurrent users (final target p95 < 300 ms).
@@ -54,7 +54,6 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] **`fastcgi_request_buffering on`** (padrão; manter ligado).
 - [ ] **php.ini:** `post_max_size` e `upload_max_filesize` coerentes com o nginx (ex.: `20M` / `16M`); `zend.exception_ignore_args = On`.
 - [ ] **`real_ip`** só atrás de proxy confiável (não aceitar `X-Forwarded-For` de qualquer origem).
-- [ ] **`storage/cache/ratelimit`** com permissão `0700` (dono do php-fpm). O diretório se limpa sozinho; o cron de limpeza fica opcional. Disco local e servidor único: ver a seção "Limitador de taxa" abaixo.
 - [ ] **`storage/logs/error.log`** com permissão `0600`, retenção ativa, e amostrar o arquivo depois do deploy (sem dado pessoal).
 
 ## Variáveis de ambiente
@@ -65,7 +64,6 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] **CDN/cache** na frente deve respeitar `Vary: Origin` (respostas enviam `Access-Control-Allow-Credentials: true`).
 - [ ] **`APP_ENV=production`** explícito (qualquer valor diferente de `dev`/`local` esconde os links). Nunca usar `dev`/`local` fora do desenvolvimento.
 - [ ] **`APP_URL=https://<domínio>`** obrigatório (https, sem barra final, query ou credenciais): os links de ativação e redefinição saem dele; sem ele, o app dá erro em produção.
-- [ ] **`ACTIVITY_DB_PATH`**: só para testes, sem valor em produção.
 - [ ] `APP_ENV` e `APP_URL` documentados no `.env.example`.
 
 - [ ] **nginx `client_max_body_size`:** ver seção Limites de requisição (PR #34).
@@ -208,13 +206,13 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] (#86, Segurança) Proxy (nginx/CDN): **não substituir as respostas 5xx da aplicação em `/api/`** (sem `proxy_intercept_errors on` nem `error_page 502` nesse location). O `POST /api/imoveis/<h>/ical/importar` devolve 502 com JSON (`error`, `status: NOK`, `feeds`) quando o download do feed falha.
 - [ ] (#89/#91) Feeds só `https://`, sem exceção. Feed `http://` que existir é recusado no cadastro e não sincroniza (NOK).
 - [ ] (#85) O limite de reenvio de ativação (3 por hora por conta) usa o e-mail como chave; isso funciona porque o e-mail de uma conta não pode ser trocado (não existe troca de e-mail).
-- [ ] (#93) `GrupoResolvedor::doDominio` tem cache por processo. Requisições web não são afetadas. The `scripts/queue-worker.php` runit service (#118) already loops and does not yet call `GrupoResolvedor::limparCache()`; the fix is in `prompts/backlog.md`, "Priority now". Until it ships, restart the queue-worker after a domain loses verification.
+- [x] (#93) `GrupoResolvedor::doDominio` has a per-process cache. Web requests are not affected. Fixed in #142 and #149: the `scripts/queue-worker.php` runit service resets the caches every tick, and resolver entries expire by TTL, so no restart is needed after a domain loses verification.
 - [ ] (#94) `scripts/seed-grupo-teste.php` é **só para dev**: recusa rodar se `APP_ENV` não for `dev`/`local` e nunca entra em scripts de setup ou deploy de produção.
 
-## Limitador de taxa (#85, #88; nota final)
-- [ ] Os limites por IP e por conta (`IpRateLimiter`, pasta `storage/cache/ratelimit`) usam arquivos com `flock`. Com **um servidor só**, a pasta fica em **disco local** (não NFS), porque o `flock` precisa funcionar.
-- [ ] Com mais de um servidor, NFS não serve, e cada nó com a sua pasta conta à parte (os limites se multiplicam pelo número de nós). **Antes de subir o segundo servidor**, mover o limitador para um armazenamento compartilhado e atômico (tabela no banco principal com UPSERT e trava de linha, ou Redis com INCR+EXPIRE). Até lá, a produção fica num servidor de aplicação só.
-- [ ] A pasta precisa ser gravável pelo php-fpm (`0700`). Se não for, o limitador deixa tudo passar (**fail-open**), inclusive o reenvio de ativação por conta e os baldes de cadastro e esqueci a senha.
+## Rate limiter (Valkey, #160)
+- [ ] `IpRateLimiter` runs on Valkey (keys `cl:rl:<bucket>:<HMAC>`, shared by web and API, so it works with more than one app server). Valkey with the cl_app ACL is now **required for the web/API**: PHP-FPM needs phpredis and `VALKEY_SOCKET`, `VALKEY_USER`, `VALKEY_PASSWORD_FILE` in its env. The prod ACL line is unchanged.
+- [ ] `LOG_SALT` is required (the limiter HMAC uses it). Without Valkey or without `LOG_SALT` outside dev, signup, password reset and the activation resend fail **closed** (429, `Retry-After: 30`) and every other bucket fails open; the outage is logged once per 60 s per worker.
+- [ ] Delete the old `storage/cache/ratelimit/` directory and any cleanup cron for it; it is no longer used.
 
 ## PHP, sessão e arquivos (condições da Segurança)
 - [ ] (#89/#91) `display_errors=Off` e `log_errors=On` (php.ini ou pool do php-fpm). Entradas malformadas, como um array em campo de texto, geram avisos que, com `display_errors` ligado, mostrariam caminhos internos ao cliente.
@@ -243,12 +241,10 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 - [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, o `activity_log` no PostgreSQL, `error.log`, `calendar-sync.log` e `php.log`. Confirmar a primeira execução (`sv status` e saída do script).
 - [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity_log`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
-- [ ] **Limpeza do rate limit (opcional):** com o #34 o diretório se limpa sozinho; se quiser, `find storage/cache/ratelimit -mmin +120 -delete` no cron.
 
 ## Permissões e arquivos
 
 - [ ] `storage/logs/api` `0700` e arquivos de log `0600`, do usuário do php-fpm (o app usa `umask 0077`).
-- [ ] `storage/cache/ratelimit/` gravável pelo php-fpm (`0700`); caso contrário, o limitador deixa tudo passar (fail-open, sem 429). Ver a seção "Limitador de taxa".
 - [ ] Não publicar `vendor/`, `tests/`, `phpunit.xml` nem `.phpunit.cache/` no servidor. Em produção, não rodar `composer install` (ou só `--no-dev --no-interaction`); Composer e PHPUnit 11 são apenas para testes.
 
 ## Compatibilidade

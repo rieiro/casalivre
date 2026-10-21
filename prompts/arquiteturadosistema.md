@@ -60,7 +60,7 @@ xi. Nos eventos de upload de arquivo, por exemplo, fotos, certifique-se: -&gt; M
 **Implementação atual** (descrição do código; não altera os requisitos acima)
 
 - Pipeline em cebola: `seguranca/` — `Middleware` (interface; define `WRITE_METHODS`), `Pipeline` (executor) e `Seguranca::pipeline()`, chamado por `public/index.php` antes do `dispatch()`. Camadas, de fora para dentro:
-  1. `ApiRateLimit`: limite por IP (IPv6 por /64) em rotas da API listadas em `public/index.php` (`api_limites`: cidades, ceps e busca 60/min; esqueci a senha 5/15 min; cadastro 10/h; avaliar 10/h; upload de fotos 30/10 min), via `IpRateLimiter` (arquivos em `storage/cache/ratelimit`, limpeza própria e teto de arquivos; falha aberta registrada no error_log). Excesso: 429 com `Retry-After`.
+  1. `ApiRateLimit`: limite por IP (IPv6 por /64) em rotas da API listadas em `public/index.php` (`api_limites`: cidades, ceps e busca 60/min; esqueci a senha 5/15 min; cadastro 10/h; avaliar 10/h; upload de fotos 30/10 min), via `IpRateLimiter` (Valkey, keys `cl:rl:<bucket>:<HMAC>`, `MULTI INCR + EXPIRE NX`; if Valkey is down, signup, password reset and activation resend fail closed with 429, the rest fail open, logged once per 60 s). Excesso: 429 com `Retry-After`.
   2. `BodyLimit`: em métodos de escrita não-multipart, `Transfer-Encoding` ou falta de `Content-Length` (exceto DELETE sem corpo) -> 411; corpo acima de 1 MiB (`BodyLimit::MAX_BYTES`) -> 413.
   3. `Sanitize`: `htmlspecialchars` recursivo em `$_GET`/`$_POST` (exceto campos puros: senhas, `_csrf`, URL de iCal).
   4. `Csrf`: token de sessão (`random_bytes`), exigido nos métodos de escrita (campo `_csrf`, cabeçalho `X-CSRF-Token` ou JSON). Recusa: 419.

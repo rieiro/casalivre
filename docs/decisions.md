@@ -3,6 +3,9 @@
 One line per decision in force, newest first within each area. A superseded decision is struck through and points to the decision that replaces it. Only Gerente edits this file.
 
 ## Process
+- 2026-10-21: Backlog plan: a cleanup sprint first (line-143 live bug, `IpRateLimiter` to Valkey, remove `migrateLegacy`, remove SQLite, close the backlog-review DROP items; about 1-2 days), then the standard plan resumes. Each sprint clears the KEEP items touching the code it changes plus about 20% of its effort on the remaining backlog. A new backlog item must name its sprint or it is dropped; Gerente reviews the backlog once per sprint (Rafael, 2026-10-21).
+- 2026-10-21: Verdict comments are capped at about 400 chars: the `VERDICT <role> @sha7: APPROVED|CHANGES` header, one Blockers line and one Followups line ("none" if empty). Evidence goes in a linked file, gist or collapsed section. Applies to every reviewer role. No per-PR hop counts in ready-to-merge messages (Rafael, 2026-10-21).
+- 2026-10-21: `docs/arquitetura.md` is a low-priority explanatory overview and may be outdated. Don't keep it in sync, don't open PRs or backlog items just to update it, and don't block PRs on it. It is refreshed from the latest specs only when Rafael asks (Rafael, 2026-10-21).
 - 2026-10-21: Money-code standards: [docs/money-standards.md](money-standards.md) (Rafael, 2026-10-21).
 - 2026-10-16: Work order: XSS -> P0 -> ADR 001 -> schema spec.
 - 2026-10-16: Team protocol in [prompts/team.md](../prompts/team.md) (PR labels as state machine, fixed verdict format), approved by Rafael; replaces the old `regrasbots.md`.
@@ -31,14 +34,17 @@ One line per decision in force, newest first within each area. A superseded deci
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
 
 ## Product
+- 2026-10-21: G1 ranking: the product supports per-channel weights for paid placement and own-network preference, both 0 (off) by default; a paid boost shows a visible "Patrocinado" label; only `admin_plataforma` sets the weights; turning either on is a later decision (Rafael, 2026-10-21).
+- 2026-10-21: G13: platform max stay is 30 nights for now (pilot and P6), a platform cap stored in the booking snapshot; a host's `max_nights` cannot exceed it (Rafael, 2026-10-21).
 - 2026-10-21: D1 approved: management tree of free depth plus separate storefront channels (Group -> Organization + Channel), Sprint 5 (P2a); group domains and themes move to the channel.
-- 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent.
+- 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent. New properties are ON by default only in the casalivre marketplace (own storefront); every other organization's or partner's channel needs the owner's opt-in, with no automatic inclusion of a node's new properties (Rafael, 2026-10-21).
 - 2026-10-21: Themes stay repo-only (`themes/<name>/`, prepared by the team, contrast checked when prepared); no in-app theme editor or logo upload for now.
 - 2026-10-21: No blanket move of forms to fetch/API: the P10 listing wizard decides its own approach, and no-JS forms stay where they work.
 - Email (signup, password reset): code ready but off, with no provider; both stay closed in production until a provider is chosen.
 - Maps: no Google Maps; OSM tiles today, PMTiles Brazil (Protomaps) + MapLibre GL in backlog.
 - Property rating screen frozen for redesign.
 - Foreign guest without CPF is in the backlog; CPF stays required (`guest_fiscal_party_id NOT NULL`).
+- 2026-10-21: During development Juridico does not draft or update host/owner terms or any other legal contract (terms of use, privacy and cancellation policies, rental and service contracts). It acts only as a consultant guiding Produto (legal/tax answers on specs, PR verdicts via `needs:legal`). All contracts are written at once near the end of the project, only when Rafael asks; the texts in `docs/produto/juridico/textos/` stay as they are until then (Rafael, 2026-10-21).
 
 ## Business
 - Franchise split: owner pays 10% = 4% brokerage (franchisee, NFS-e item 10.05) + 3% fund + 3% casalivre royalty (invoiced to the franchisee, item 17.08); all percentages are parameters.

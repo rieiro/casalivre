@@ -13,7 +13,11 @@ final class Valkey
     /** Every key the app writes starts with this prefix (cl_app ACL: ~cl:* only). */
     public const PREFIX = 'cl:';
 
-    public static function connect(): Redis
+    /**
+     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158); 0 keeps
+     * phpredis defaults (queues and workers).
+     */
+    public static function connect(float $timeout = 0.0): Redis
     {
         Db::loadEnv();
         if (!extension_loaded('redis')) {
@@ -30,7 +34,10 @@ final class Valkey
             throw new RuntimeException('VALKEY_PASSWORD_FILE is not readable.');
         }
         $r = new Redis();
-        $r->connect($socket);
+        $r->connect($socket, 0, $timeout);
+        if ($timeout > 0) {
+            $r->setOption(Redis::OPT_READ_TIMEOUT, $timeout);
+        }
         if (!$r->auth([$user, trim($pass)])) {
             throw new RuntimeException('Valkey AUTH failed for ' . $user . '.');
         }

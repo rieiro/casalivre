@@ -9,6 +9,7 @@ declare(strict_types=1);
  * muda sozinho quando o conteúdo muda. Gerado por scripts/build-assets.php (rodar no deploy; --check no CI/testes).
  */
 require_once __DIR__ . '/Theme.php';
+require_once __DIR__ . '/FileStamp.php';
 
 final class AssetManifest
 {
@@ -60,15 +61,34 @@ final class AssetManifest
         return json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
     }
 
+    /** @var null|array<string,string> per-process copy of manifest.json (in the queue worker, until the file changes) */
+    private static ?array $cache = null;
+
+    /** FileStamp of manifest.json taken just before $cache was loaded. */
+    private static ?string $stamp = null;
+
+    /**
+     * Drops the per-process copy: the next load() reads manifest.json again (e.g. after a rebuild).
+     * $ifChanged (WorkerCaches): only when manifest.json changed since the copy was loaded.
+     */
+    public static function clearCache(bool $ifChanged = false): void
+    {
+        if ($ifChanged && (self::$cache === null || FileStamp::of(self::file()) === self::$stamp)) {
+            return;
+        }
+        self::$cache = null;
+    }
+
     /** @return array<string,string> */
     public static function load(): array
     {
-        static $cache = null;
-        if ($cache === null) {
+        if (self::$cache === null) {
+            // Stamp before reading: a write after this point changes the stamp and is picked up on the next check.
+            self::$stamp = FileStamp::of(self::file());
             $raw = is_file(self::file()) ? (string) file_get_contents(self::file()) : '';
             $data = json_decode($raw, true);
-            $cache = is_array($data) ? array_filter($data, 'is_string') : [];
+            self::$cache = is_array($data) ? array_filter($data, 'is_string') : [];
         }
-        return $cache;
+        return self::$cache;
     }
 }

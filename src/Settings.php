@@ -5,6 +5,7 @@ declare(strict_types=1);
 if (!class_exists('JsonCache', false)) {
     require_once __DIR__ . '/JsonCache.php';
 }
+require_once __DIR__ . '/FileStamp.php';
 
 final class Settings
 {
@@ -75,12 +76,31 @@ final class Settings
         return $rows;
     }
 
+    /** Per-process copy of settings.json (one read per request; in the queue worker, until the file changes). */
+    private static ?array $rows = null;
+
+    /** FileStamp of settings.json taken just before $rows was loaded. */
+    private static ?string $stamp = null;
+
+    /**
+     * Drops the per-process copy: the next read goes back to settings.json (or the database).
+     * $ifChanged (WorkerCaches): only when settings.json changed since the copy was loaded.
+     */
+    public static function clearCache(bool $ifChanged = false): void
+    {
+        if ($ifChanged && (self::$rows === null || FileStamp::of(JsonCache::path('settings.json')) === self::$stamp)) {
+            return;
+        }
+        self::$rows = null;
+    }
+
     private static function cached(): array
     {
-        static $rows = null;
-        if (is_array($rows)) {
-            return $rows;
+        if (is_array(self::$rows)) {
+            return self::$rows;
         }
+        // Stamp before reading: a write after this point changes the stamp and is picked up on the next check.
+        self::$stamp = FileStamp::of(JsonCache::path('settings.json'));
         $decoded = JsonCache::read('settings.json');
         if (is_array($decoded)) {
             $complete = true;
@@ -91,12 +111,12 @@ final class Settings
                 }
             }
             if ($complete) {
-                $rows = $decoded;
-                return $rows;
+                self::$rows = $decoded;
+                return self::$rows;
             }
         }
-        $rows = self::refresh();
-        return $rows;
+        self::$rows = self::refresh();
+        return self::$rows;
     }
 
     private static function fromDatabase(): array

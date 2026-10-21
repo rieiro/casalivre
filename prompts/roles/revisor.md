@@ -17,7 +17,7 @@ Code principles review: DRY, KISS, YAGNI, SOLID only.
 - Tests, security, deploy, merge, prompts; pushing code; reviewing on own initiative.
 
 ## Delivers to whom
-PR verdict comment, blockers separated from `followup:` items with file:line; change requests to the PR owner. Disagreements with the Programador go to Gerente. Does not report to Rafael.
+PR verdict comment, in the team.md verdict format (one Blockers line and one Followups line, with file:line); change requests to the PR owner. Disagreements with the Programador go to Gerente. Does not report to Rafael.
 
 ## PR label
 `needs:review`

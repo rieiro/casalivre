@@ -24,7 +24,7 @@ GrupoAdmin::addDomain($admin, $g, 'pendente.example.com');
 GrupoAdmin::addDomain($admin, $g2, 'outro.example.com');
 db()->exec("UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE domain IN ('imob.example.com', 'outro.example.com')");
 $res = static fn (mixed $host, string $path = '/', ?array $imovel = null): array => (static function () use ($host, $path, $imovel): array {
-    GrupoResolvedor::limparCache(); // cada caso vê o banco atual (o cache de doDominio é por requisição)
+    GrupoResolvedor::clearCache(); // cada caso vê o banco atual (o cache de doDominio é por requisição)
     $r = GrupoResolvedor::resolver($host, $path, $imovel);
     return [$r['origem'], $r['grupo']['slug'] ?? null, $r['tema']];
 })();
@@ -116,10 +116,10 @@ t_eq('padrao', $css(t_http('GET', $base . '/imoveis/' . $owner['hash'], null, ['
 t_eq('padrao', $css(t_http('GET', $base . '/imoveis/0000000000000000')['body']), 'imóvel inexistente: plataforma');
 t_ok(str_contains(t_http('GET', $base . '/', null, ['Host: imob.example.com'])['headers'], 'Content-Security-Policy'), 'CSP mantida com tema de grupo');
 echo "cache por requisição de doDominio (chave = Host normalizado)\n";
-GrupoResolvedor::limparCache();
+GrupoResolvedor::clearCache();
 $cacheProp = new ReflectionProperty(GrupoResolvedor::class, 'cacheDominio');
-GrupoResolvedor::limparCache();
-t_eq([], $cacheProp->getValue(), 'limparCache: cache vazio');
+GrupoResolvedor::clearCache();
+t_eq([], $cacheProp->getValue(), 'clearCache: cache vazio');
 $a = GrupoResolvedor::doDominio('Imob.Example.com.:8443');
 $b = GrupoResolvedor::doDominio('imob.example.com');
 t_eq(['imob.example.com'], array_keys($cacheProp->getValue()), 'Hosts brutos diferentes, mesma chave normalizada (nunca o Host bruto)');
@@ -128,15 +128,15 @@ db()->exec("UPDATE group_domains SET verified_at = NULL WHERE domain = 'imob.exa
 t_eq('imob', GrupoResolvedor::doDominio('imob.example.com')['slug'] ?? null, 'segunda chamada na mesma requisição vem do cache (sem nova consulta)');
 [$noGrupo] = GrupoResolvedor::imovelNoHost('nao-existe', 'imob.example.com');
 t_ok($noGrupo && GrupoResolvedor::resolver('imob.example.com', '/')['origem'] === 'dominio', 'imovelNoHost e resolver reaproveitam o cache');
-GrupoResolvedor::limparCache();
-t_eq(null, GrupoResolvedor::doDominio('imob.example.com'), 'depois de limparCache: consulta de novo e vê o banco atual');
+GrupoResolvedor::clearCache();
+t_eq(null, GrupoResolvedor::doDominio('imob.example.com'), 'depois de clearCache: consulta de novo e vê o banco atual');
 t_eq(['imob.example.com' => null], $cacheProp->getValue(), '"não achou" também fica no cache');
-GrupoResolvedor::limparCache();
+GrupoResolvedor::clearCache();
 foreach (['127.0.0.1', '', null, ['x'], 'imob..example.com'] as $bad) {
     GrupoResolvedor::doDominio($bad);
 }
 t_eq([], $cacheProp->getValue(), 'Host inválido/plataforma não entra no cache');
 db()->exec("UPDATE group_domains SET verified_at = CURRENT_TIMESTAMP WHERE domain = 'imob.example.com'");
-GrupoResolvedor::limparCache();
+GrupoResolvedor::clearCache();
 
 t_done();

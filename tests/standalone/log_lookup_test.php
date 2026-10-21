@@ -2,7 +2,7 @@
 // scripts/log-lookup.php: recusa sem LOG_SALT; encontra registros no audit.activity_log (função DEFINER, como
 // casalivre_ops_logread) e nos api-*; a leitura fica registrada no audit_log (ACTIVITY_LOG_READ).
 require __DIR__ . '/lib.php';
-require CL_ROOT . '/src/LogPrivacy.php';
+require_once CL_ROOT . '/src/LogPrivacy.php';
 
 $root = sys_get_temp_dir() . '/lookup-' . bin2hex(random_bytes(3));
 mkdir($root . '/storage/logs/api', 0700, true);
