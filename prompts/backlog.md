@@ -6,7 +6,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [x] Line-143 live bug (queue worker `limparCache`): fixed in #142 and #149.
 - [x] DROP items from the backlog review: closed in #139.
 - [ ] Remove SQLite and MongoDB (PostgreSQL only): #148, in review. Owner: Programador.
-- [ ] Move `IpRateLimiter` to Valkey now (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
+- [x] Move `IpRateLimiter` to Valkey now (done in #160) (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
 - [ ] Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
 - [ ] Remove the leftover `pkg.php-sqlite` pin from `ops/dev-env` `versions.lock` (PostgreSQL only). Source: Arquitetura #162. Sprint: cleanup. Owner: Programador.
 
@@ -14,7 +14,7 @@ After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP 
 
 ## Priority now (right after the cleanup sprint)
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
-- [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
+- [x] (done in #167) Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
 - [ ] `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
 - [ ] `Valkey::connect()` from web requests (queue producers) has no tight timeout: with Valkey frozen it took over 20 s, so an FPM worker would hang up to `default_socket_timeout`. Give producers about 0.5 s and keep the long timeout only for the workers. Estimate 1 h. Source: Arquitetura #160. Sprint: Priority now. Owner: Programador.
