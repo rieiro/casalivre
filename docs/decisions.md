@@ -34,6 +34,8 @@ One line per decision in force, newest first within each area. A superseded deci
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
 
 ## Product
+- 2026-10-21: G1 ranking: the product supports per-channel weights for paid placement and own-network preference, both 0 (off) by default; a paid boost shows a visible "Patrocinado" label; only `admin_plataforma` sets the weights; turning either on is a later decision (Rafael, 2026-10-21).
+- 2026-10-21: G13: platform max stay is 30 nights for now (pilot and P6), a platform cap stored in the booking snapshot; a host's `max_nights` cannot exceed it (Rafael, 2026-10-21).
 - 2026-10-21: D1 approved: management tree of free depth plus separate storefront channels (Group -> Organization + Channel), Sprint 5 (P2a); group domains and themes move to the channel.
 - 2026-10-21: Channel membership: a channel manager may remove an owner's property from their channel without the owner's consent, but it is never deleted or hidden from the platform; the owner gets a notice and an audit log entry. Adding a property to a channel needs the owner's consent. New properties are ON by default only in the casalivre marketplace (own storefront); every other organization's or partner's channel needs the owner's opt-in, with no automatic inclusion of a node's new properties (Rafael, 2026-10-21).
 - 2026-10-21: Themes stay repo-only (`themes/<name>/`, prepared by the team, contrast checked when prepared); no in-app theme editor or logo upload for now.
