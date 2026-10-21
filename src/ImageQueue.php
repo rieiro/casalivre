@@ -22,7 +22,7 @@ final class ImageQueues
     {
         return match (Queues::driver()) {
             'sqlite' => new SqliteImageQueue(db()),
-            'valkey' => new ValkeyImageQueue(Valkey::connect()),
+            'valkey' => new ValkeyImageQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
 }
