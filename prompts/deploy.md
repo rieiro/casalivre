@@ -16,7 +16,7 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price sums, stopped traffic) are left out.
 
 ### Clean deploy (Cori, #95/#98)
-- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist and update `docs/arquitetura.md` section 17 and the DB section above.
+- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist.
 - [ ] Install `php-bz2` for `load-ceps.php` and `refresh-settings-cache.php` (CepRepository). `python3` is the fallback (optional `CEP_PYTHON`); with neither, the scripts fail with a clear error.
 - [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
 
@@ -24,7 +24,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] No data migration (docs/decisions.md, 2026-10-21): on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (seeds and version only), then the seeds.
 - [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
 - [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
-- [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD). Record this in `docs/arquitetura.md`.
+- [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD).
 - [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
 - [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is stored in UTC.
 - [ ] PG p50 must be measured; ADR 001 targets after the search PR: p50 < 150 ms and p95 < 500 ms with 10 concurrent users (final target p95 < 300 ms).
