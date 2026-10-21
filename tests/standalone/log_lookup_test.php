@@ -1,7 +1,7 @@
 <?php
 // scripts/log-lookup.php: recusa sem LOG_SALT; encontra registros no activity.sqlite e api-*.
 require __DIR__ . '/lib.php';
-require CL_ROOT . '/src/LogPrivacy.php';
+require_once CL_ROOT . '/src/LogPrivacy.php';
 
 $root = sys_get_temp_dir() . '/lookup-' . bin2hex(random_bytes(3));
 mkdir($root . '/storage/logs/api', 0700, true);

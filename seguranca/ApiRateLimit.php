@@ -8,7 +8,8 @@ require_once dirname(__DIR__) . '/src/IpRateLimiter.php';
 /**
  * Limite por IP (IpRateLimiter) nas rotas da API listadas: [método, regex do caminho, máximo, janela (s), balde].
  * Regras da API e dos formulários web sensíveis (POST /cadastro, POST /senha/esqueci); o balde
- * agrupa a rota (ex.: todas as casas no upload de fotos).
+ * agrupa a rota (ex.: todas as casas no upload de fotos). Contadores no Valkey; com ele fora do ar, o modo de falha
+ * do balde vem de IpRateLimiter::FAIL_CLOSED_BUCKETS (429 + Retry-After 30 ou passa).
  */
 final class ApiRateLimit implements Middleware
 {

@@ -63,10 +63,11 @@ function pdo(string $file): PDO
     return $p;
 }
 
-// Limpa sobras do limite por IP deixadas pelo CASOS/standalone (storage/cache/ratelimit), para o login abaixo não cair em 429.
+// Limpa sobras do limite por IP deixadas pelo CASOS (IpRateLimiter no Valkey, loopback), para o login abaixo não cair em 429.
 // Idem para o bloqueio de login por IP (tabela login_rate_limit), que o CASOS deixa preenchido com as senhas erradas dos casos.
-foreach (glob(dirname(__DIR__, 2) . '/storage/cache/ratelimit/*') ?: [] as $f) {
-    @unlink($f);
+require_once dirname(__DIR__, 2) . '/src/IpRateLimiter.php';
+foreach (['127.0.0.1', '::1'] as $ip) {
+    IpRateLimiter::resetClient($ip, array_unique(array_column(require dirname(__DIR__, 2) . '/seguranca/api_limites.php', 4)));
 }
 $appDb = dirname(__DIR__, 2) . '/storage/db/casalivre.sqlite';
 if (is_file($appDb)) {

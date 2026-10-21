@@ -8,6 +8,8 @@ declare(strict_types=1);
 // (MailWorker/ImageWorker); for sqlite keep using the cron scripts.
 //   php scripts/queue-worker.php [--once]
 // Exits on SIGTERM between batches (runit `sv stop`). Each iteration is QueueWorkerLoop::tick (clears per-process caches).
+// Exits 1 when the DB connection is lost (tick pings it first; a job interrupted by it is not counted as failed):
+// runit restarts the worker with a fresh connection.
 
 $root = dirname(__DIR__);
 require_once $root . '/src/Db.php';
@@ -30,7 +32,15 @@ $image = ImageQueues::make();
 $webp = function_exists('imagewebp') && (gd_info()['WebP Support'] ?? false);
 echo 'queue-worker: driver ' . Queues::driver() . ($webp ? '' : ' (no WebP: image queue skipped)') . "\n";
 do {
-    $reports = QueueWorkerLoop::tick($mail, $webp ? $image : null, $root . '/storage');
+    try {
+        $reports = QueueWorkerLoop::tick($mail, $webp ? $image : null, $root . '/storage');
+    } catch (Throwable $e) {
+        if (!Db::isConnectionError($e)) {
+            throw $e;
+        }
+        fwrite(STDERR, 'queue-worker: DB connection lost (' . $e::class . '), exiting so runit restarts the worker' . "\n");
+        exit(1);
+    }
     foreach ($reports as $q => $report) {
         if ($report !== null && ($report['enviados'] + $report['ignorados'] + $report['falhas']) > 0) {
             echo "queue-worker: $q " . json_encode($report) . "\n";
