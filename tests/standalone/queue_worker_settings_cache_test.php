@@ -1,7 +1,7 @@
 <?php
 // #142: the long-running queue worker kept Settings' per-process copy of settings.json forever, so mail kept the old
 // theme brand and account links kept the old expiry minutes after an admin change. Each QueueWorkerLoop::tick now
-// calls Settings::clearCache(): the second tick sees the new values.
+// reloads it when settings.json changed (WorkerCaches::refreshIfChanged): the second tick sees the new values.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';

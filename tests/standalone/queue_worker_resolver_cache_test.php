@@ -1,7 +1,8 @@
 <?php
 // Live bug (2026-10-21): the long-running scripts/queue-worker.php never cleared GrupoResolvedor's verified-domain
-// cache, so mail rendered by MailHtml kept linking a group domain after it lost verification. Each worker iteration
-// (QueueWorkerLoop::tick) now clears it: the second iteration's HTML mail no longer links the unverified domain.
+// cache, so mail rendered by MailHtml kept linking a group domain after it lost verification. Entries now expire after
+// GrupoResolvedor::CACHE_TTL_SECONDS (#142, Rafael): within the TTL the old answer stays; after it, the worker's next
+// HTML mail no longer links the unverified domain. Clock injected (GrupoResolvedor::$clock), no sleep.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -9,6 +10,7 @@ require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/conta/Account/AccountFlow.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
 require_once CL_ROOT . '/src/QueueWorkerLoop.php';
+require_once CL_ROOT . '/src/GrupoResolvedor.php';
 putenv('APP_URL=https://casalivre.example');
 putenv('QUEUE_DRIVER');
 putenv('MAIL_HTML');
@@ -32,6 +34,10 @@ $dir = sys_get_temp_dir() . '/qwrc' . bin2hex(random_bytes(4));
 mkdir($dir, 0700);
 $mail = MailQueues::make();
 $link = '<a href="https://imob.example.com/g/imob/"';
+$now = 1_800_000_000;
+GrupoResolvedor::$clock = static function () use (&$now): int {
+    return $now;
+};
 
 echo "iteration 1: domain verified\n";
 t_ok($mail->push('activation', 'a1@casalivre.test'), 'job 1 queued');
@@ -42,9 +48,11 @@ t_ok(str_contains($html[0] ?? '', $link), 'iteration 1: verified domain is a lin
 
 echo "domain loses verification between iterations\n";
 db()->exec("UPDATE group_domains SET verified_at = NULL WHERE domain = 'imob.example.com'");
-t_ok(GrupoResolvedor::doDominio('imob.example.com') !== null, 'control: without clearing, the process cache still holds the domain (the bug)');
+$now += GrupoResolvedor::CACHE_TTL_SECONDS - 1;
+t_ok(GrupoResolvedor::doDominio('imob.example.com') !== null, 'within the TTL: the process cache still holds the domain');
 
-echo "iteration 2: domain no longer verified\n";
+echo "iteration 2: TTL expired, domain no longer verified\n";
+$now += 1;
 t_ok($mail->push('activation', 'a2@casalivre.test'), 'job 2 queued');
 $r = QueueWorkerLoop::tick($mail, null, $dir);
 t_eq(1, $r['mail']['enviados'] ?? null, 'iteration 2: one mail delivered');
@@ -52,6 +60,7 @@ t_ok(isset($html[1]) && !str_contains($html[1], $link), 'iteration 2: unverified
 t_ok(str_contains($html[1] ?? '', 'https://imob.example.com/g/imob/'), 'iteration 2: URL kept as plain text');
 t_ok(str_contains($html[1] ?? '', '<a href="https://casalivre.example/"'), 'iteration 2: APP_URL still linked');
 t_ok(GrupoResolvedor::doDominio('imob.example.com') === null, 'cache now reflects the database');
+GrupoResolvedor::$clock = null;
 
 echo "scripts/queue-worker.php runs its loop through QueueWorkerLoop::tick\n";
 $src = (string) file_get_contents(CL_ROOT . '/scripts/queue-worker.php');
