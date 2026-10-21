@@ -8,7 +8,7 @@ Slug: `banco-de-dados`. Own dir: `/workspace/banco-de-dados/` (see the file rule
 Data modelling and PostgreSQL operation.
 
 ## Owns
-- Keys, constraints, types, ER (`docs/arquitetura.md`, section 16).
+- Keys, constraints, types, ER (`docs/arquitetura.md` section 16 is an overview only, not kept in sync).
 - Review of every schema change and `SCHEMA_VERSION` bump before merge.
 - Owns PG EXPLAIN and indexes (pg_stat_statements, N+1). CasaLivre runs on PostgreSQL only ([decisions](../../docs/decisions.md)).
 - PG operation: config, backup, PITR, tested restore, monitoring; data security with Seguranca (least privilege, TLS, retention).
