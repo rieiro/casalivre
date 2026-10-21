@@ -23,7 +23,6 @@ The location field on home and search (`views/home.php:8`, `views/search.php:21`
 4. The result URL always contains `local_id`; opening it gives the same results.
 5. Radius and map work for every search, because there is always a center.
 6. Performance (PostgreSQL only): an autocomplete query p95 < 50 ms and a search never loads all listings. Measured by Arquitetura.
-7. SQLite keeps working functionally.
 
 ## Priority and fit
 Should, RICE high on effort/benefit. Fits inside ADR 001 (SQL search), which already rewrites `SearchService`, so it costs no rework if done there; doing it separately now would be redone by ADR 001.
@@ -70,7 +69,7 @@ Sources: W3C APG Combobox Pattern (https://www.w3.org/WAI/ARIA/apg/patterns/comb
 Source: ADR 001 §11.2 and §11.3 (Gerente's ADR notes). The UX side of matching (word start, aliases, 9+ matches) is in item 2 above; this section only adds the data and privacy rules.
 
 ### Search keys (§11.2)
-- A `place_search_keys` table (`place_id`, `key`, `kind` name/alias, `popularity`; primary key `(key, place_id)`) serves the prefix lookup on PostgreSQL and SQLite.
+- A `place_search_keys` table (`place_id`, `key`, `kind` name/alias, `popularity`; primary key `(key, place_id)`) serves the prefix lookup on PostgreSQL.
 - Keys are **word suffixes** of the folded name, one per word start, running to the end of the name: "praia do forte" gives `praia do forte` and `forte`. A multi-word prefix such as "praia do f" therefore still matches.
 - Stopwords (`de, da, do, das, dos, e`) never start a key but stay inside keys.
 - Keys are generated in PHP with the same `fold()` on both engines when a place is written or seeded. The query uses a key range, not `LIKE`.

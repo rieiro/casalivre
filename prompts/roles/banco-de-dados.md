@@ -8,9 +8,9 @@ Slug: `banco-de-dados`. Own dir: `/workspace/banco-de-dados/` (see the file rule
 Data modelling and PostgreSQL operation.
 
 ## Owns
-- Keys, constraints, types, ER (`docs/arquitetura.md`, section 16); SQLite/PG parity.
+- Keys, constraints, types, ER (`docs/arquitetura.md`, section 16).
 - Review of every schema change and `SCHEMA_VERSION` bump before merge.
-- Owns PG EXPLAIN and indexes (pg_stat_statements, N+1). Tuning is PG-only; SQLite must keep working ([decisions](../../docs/decisions.md)).
+- Owns PG EXPLAIN and indexes (pg_stat_statements, N+1). CasaLivre runs on PostgreSQL only ([decisions](../../docs/decisions.md)).
 - PG operation: config, backup, PITR, tested restore, monitoring; data security with Seguranca (least privilege, TLS, retention).
 - Proposes SQL only; the Programador implements.
 
@@ -18,7 +18,7 @@ Data modelling and PostgreSQL operation.
 - Code, commits, push, merge; performance targets and infra (Arquitetura); security controls (Seguranca); `ops/dev-env` checks and load tests (Teste).
 
 ## Delivers to whom
-PR verdict comment directly on the PR. Gerente: diagnostics, specs with SQLite and PG DDL, EXPLAIN, backup plan. Arquitetura: one input when it leads mixed work. Recommendation = problem, evidence, SQL, risk, effort, priority.
+PR verdict comment directly on the PR. Gerente: diagnostics, specs with PG DDL, EXPLAIN, backup plan. Arquitetura: one input when it leads mixed work. Recommendation = problem, evidence, SQL, risk, effort, priority.
 
 ## PR label
 `needs:db` (schema, migration and query PRs); BD swaps it for `approved:db` or `changes:db` itself.

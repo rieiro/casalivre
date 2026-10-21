@@ -41,7 +41,7 @@ próprio.
 |---|---|---|
 | Linguagem | PHP (o `composer.json` pede `>=8.2`; desenvolvimento e testes em 8.4) | Hospedagem barata e simples; um processo por requisição evita estado compartilhado. |
 | Framework | Nenhum | Menos dependências para auditar; cada camada fica visível no código. |
-| Banco | SQLite (PostgreSQL opcional via `DB_DRIVER`/`DB_DSN`) | Um arquivo, backup trivial; o mesmo SQL roda nos dois. |
+| Banco | PostgreSQL (via `DB_DSN`) | Um banco só para desenvolver, otimizar e medir (decisão de 2026-10-21). |
 | Front | HTML renderizado no servidor + JS próprio (`public/assets/`) | Funciona sem JS; a CSP proíbe script inline. |
 | Trabalho pesado | Filas no banco + workers por cron | E-mail e imagens não travam a requisição do usuário. |
 
@@ -49,7 +49,7 @@ próprio.
 flowchart LR
     V["Navegador"] -->|HTTPS| N["nginx"]
     N -->|FastCGI| P["php-fpm<br/>public/index.php"]
-    P --> DB[("SQLite ou PostgreSQL")]
+    P --> DB[("PostgreSQL")]
     P --> FS["storage/<br/>fotos, sessões, logs"]
     C["cron"] --> W1["mail-worker"]
     C --> W2["image-worker"]
@@ -508,7 +508,7 @@ erDiagram
     properties ||--o{ group_property_invites : "recebe"
 ```
 
-- **Slug**: `^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$` (até 40 caracteres, sem hífen nas pontas). Nome até 80 caracteres.
+- **Slug**: `^[a-z0-9]{1}(?:[a-z0-9-]{0,38}[a-z0-9])?$` (até 40 caracteres, sem hífen nas pontas). Nome até 80 caracteres.
 - **Papéis**: `gestor` e `membro` (`GrupoValidacao::ROLES`). Admin é da plataforma, não do grupo.
 - **Domínios**: até 10 por grupo (`MAX_DOMAINS`), nunca o da plataforma nem subdomínio dele.
 - Cada ação mora numa classe: `GrupoAdmin` (admin), `GrupoGestor` (gestor), `GrupoDono` (dono do imóvel).
@@ -654,7 +654,7 @@ sequenceDiagram
   Até 5 tentativas (`MAX_ATTEMPTS`), espera de 60/300/900 s. Itens enviados ficam `MAIL_QUEUE_RETENTION_DAYS` (padrão 7).
 - **`APP_URL` obrigatório**: em produção o worker se recusa a iniciar sem um `APP_URL` válido. Sai com código 2,
   mensagem no stderr, e **não toca na fila**. Melhor não enviar do que enviar links quebrados.
-- **HTML** (`MailHtml`): `multipart/alternative` com a parte texto primeiro (fallback). Cabeçalho, rodapé e cor do tema
+- **HTML** (`MailHtml`): MIME multipart/alternative com a parte texto primeiro (fallback). Cabeçalho, rodapé e cor do tema
   (cor aceita só `#rgb` ou `#rrggbb`). Todo dado escapado com `htmlspecialchars(ENT_QUOTES|ENT_HTML5, UTF-8)`;
   sem imagens remotas, sem script, CSS só inline. Links só de `APP_URL` ou domínio verificado `https`.
   Assunto e nomes protegidos contra injeção de cabeçalho. `MAIL_HTML=0` desliga a parte HTML.
@@ -680,25 +680,25 @@ Filas no banco (`JobQueue`): job "preso" há mais de `STALE_SECONDS = 600` volta
 
 ## 16. Banco de dados e `SCHEMA_VERSION`
 
-`Db::SCHEMA_VERSION = 17`. A cada requisição o app compara a versão gravada no banco (`PRAGMA user_version` no SQLite)
-com a do código e só migra quando o banco está atrás; `scripts/migrate.php` força a migração no deploy.
+`Db::SCHEMA_VERSION = 17`. A cada requisição o app compara a versão gravada em `schema_meta.schema_version` com a do
+código e responde 503 se o banco estiver atrás; a migração roda só no `scripts/migrate.php`, no deploy.
 Histórico recente (comentário em `src/Db.php`):
 
 | Versão | Mudança |
 |---|---|
-| 7 | Fotos assíncronas (`photos.status/uuid/original`, `image_queue`) |
+| 7 | Fotos assíncronas (`photos.status`, `photos.uuid`, `photos.original`, `image_queue`) |
 | 8 | `users.is_admin` + `settings.theme` (temas) |
 | 9 | Seed sem `err.email_taken` |
 | 10 | `err.profile_required` |
 | 11 | Grupos: `groups`, `group_members`, `group_domains`, `group_property_invites`, `properties.group_id` |
 | 12 | `group_domains.verify_token` + `verified_at` (verificação DNS TXT) |
 | 13 | `group_domains.last_check_at` + `fail_count` (reverificação pelo cron) |
-| 14 | Textos da ativação por POST (`auth.verify_title/hint/button`) |
+| 14 | Textos da ativação por POST (`auth.verify_title`, `auth.verify_hint`, `auth.verify_button`) |
 | 15 | `cal.url_required` + `cal.feed_missing` (paridade calendário/iCal) |
 | 16 | `photo.*` e `review.*` (paridade capa, avaliação e fotos) |
 | 17 | `cal.feed_removed` + `cal.url_https` (feeds só https) |
 
-> **Dica de deploy**: faça backup do arquivo SQLite antes de subir uma versão com `SCHEMA_VERSION` maior.
+> **Dica de deploy**: faça backup do PostgreSQL antes de subir uma versão com `SCHEMA_VERSION` maior.
 
 ---
 
@@ -711,11 +711,9 @@ Histórico recente (comentário em `src/Db.php`):
 | `PLATFORM_ROOT_DOMAIN` | Domínio raiz extra da plataforma | Opcional; seus subdomínios nunca viram domínio de grupo. |
 | `GEO_SALT` | Sal do deslocamento das coordenadas públicas | ≥ 32 caracteres, obrigatório fora de dev. |
 | `LOG_SALT` | Sal do hash de IP nos logs | |
-| `DB_DRIVER`, `DB_DSN`, `DB_USER`, `DB_PASSWORD` | Banco | Padrão SQLite. |
-| `ACTIVITY_DB_PATH` | Arquivo do `activity.sqlite` | |
-| `LOG_DRIVER`, `LOG_MONGO_URI`, `LOG_MONGO_DB` | Destino dos logs | Mongo opcional. |
+| `DB_DRIVER`, `DB_DSN`, `DB_USER`, `DB_PASSWORD` | Banco | `DB_DRIVER=pgsql`. |
 | `REQUEST_LOG` | Liga o log de requisições | |
-| `QUEUE_DRIVER` | Implementação da fila | |
+| `QUEUE_DRIVER` | Implementação da fila | Tabela no PostgreSQL ou `valkey`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM`, `SMTP_TIMEOUT`, `SMTP_CA_FILE` | Envio de e-mail | |
 | `MAIL_HTML` | `0` desliga a parte HTML | Padrão: ligado. |
 | `MAIL_QUEUE_RETENTION_DAYS` | Retenção da fila de e-mail | Padrão 7. |
