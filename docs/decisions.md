@@ -34,6 +34,7 @@ One line per decision in force, newest first within each area. A superseded deci
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
 
 ## Product
+- 2026-10-21: Search sorts and filters (ADR 001 §12, `docs/adr/001-busca-sql-paginada.md`): every sort uses keyset pagination over scores precomputed on write or by a Valkey job, never per request; 6 search indexes regardless of channel count (narrow `listing_search` table). Zoom-in guards are OK (Rafael): a map-area list over 5,000 filtered candidates returns 'zoom in' under any sort; total-price sort capped at 2,000 candidates; map span capped at 8°. Relevance (G1) is the default sort (Produto). A paid boost may lag up to 5 min: position and 'Patrocinado' label come from the same row, billing starts at go-live, the host screen says so, and stale minutes aren't billed (Produto with Jurídico).
 - 2026-10-21: G1 ranking: the product supports per-channel weights for paid placement and own-network preference, both 0 (off) by default; a paid boost shows a visible "Patrocinado" label; only `admin_plataforma` sets the weights; turning either on is a later decision (Rafael, 2026-10-21).
 - 2026-10-21: G13: platform max stay is 30 nights for now (pilot and P6), a platform cap stored in the booking snapshot; a host's `max_nights` cannot exceed it (Rafael, 2026-10-21).
 - 2026-10-21: D1 approved: management tree of free depth plus separate storefront channels (Group -> Organization + Channel), Sprint 5 (P2a); group domains and themes move to the channel.
