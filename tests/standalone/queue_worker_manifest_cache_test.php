@@ -1,7 +1,8 @@
 <?php
 // #142: the long-running queue worker kept AssetManifest's per-process copy of public/assets/manifest.json forever,
-// so a rebuilt manifest (theme list, Theme::available) was never seen. Each QueueWorkerLoop::tick now calls
-// AssetManifest::clearCache(): after a rebuild that drops a theme, the next tick's mail falls back to the default brand.
+// so a rebuilt manifest (theme list, Theme::available) was never seen. Each QueueWorkerLoop::tick now reloads it when
+// manifest.json changed (WorkerCaches::refreshIfChanged): after a rebuild that drops a theme, the next tick's mail
+// falls back to the default brand.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';

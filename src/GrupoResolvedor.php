@@ -41,10 +41,21 @@ final class GrupoResolvedor
     /**
      * Cache por requisição de doDominio: chave = Host JÁ normalizado por GrupoValidacao::host (nunca o Host bruto), valor =
      * grupo ou null (o "não achou" também fica guardado). Assim imovelNoHost e o resolver não repetem a mesma consulta
-     * na página do imóvel vista pelo domínio de um grupo. Vive só no processo (static); testes limpam com limparCache().
+     * na página do imóvel vista pelo domínio de um grupo. Vive só no processo (static); testes limpam com clearCache().
+     * Each entry expires after CACHE_TTL_SECONDS ($cacheExpira), so a long-running process (queue worker) sees a domain
+     * that lost or gained verification within that time; a web request never lives that long.
      * @var array<string, ?array>
      */
     private static array $cacheDominio = [];
+
+    /** Lifetime (s) of a doDominio entry (Rafael's change request on #142: 60 s TTL for the DB-backed cache). */
+    public const CACHE_TTL_SECONDS = 60;
+
+    /** @var array<string, int> host => expiry (Unix time) of its $cacheDominio entry */
+    private static array $cacheExpira = [];
+
+    /** Clock for the TTL (tests); null = time(). @var null|callable(): int */
+    public static $clock = null;
 
     /** Grupo do domínio verificado do Host (normalizado; nunca o da plataforma); senão null. */
     public static function doDominio(mixed $host): ?array
@@ -53,16 +64,19 @@ final class GrupoResolvedor
         if ($h === null || GrupoValidacao::isPlatform($h)) {
             return null;
         }
-        if (!array_key_exists($h, self::$cacheDominio)) {
+        $now = self::$clock !== null ? (int) (self::$clock)() : time();
+        if (!array_key_exists($h, self::$cacheDominio) || (self::$cacheExpira[$h] ?? 0) <= $now) {
             self::$cacheDominio[$h] = GroupRepository::findByVerifiedDomain($h);
+            self::$cacheExpira[$h] = $now + self::CACHE_TTL_SECONDS;
         }
         return self::$cacheDominio[$h];
     }
 
     /** Esvazia o cache de doDominio (testes, entre casos que mudam grupo/domínio no mesmo processo). */
-    public static function limparCache(): void
+    public static function clearCache(): void
     {
         self::$cacheDominio = [];
+        self::$cacheExpira = [];
     }
 
     /**
