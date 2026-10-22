@@ -12,6 +12,7 @@ One line per decision in force, newest first within each area. A superseded deci
 - 2026-10-16: English everywhere (bots, Rafael, PRs).
 - 2026-10-14: No staging/homologation per batch while there is no production; it returns once, before the first go-live. Focused QA per PR, one full regression per batch.
 - Tests run only on PHP 8.4 (local and CI), no per-version runs.
+- 2026-10-21: Simplicity rule: handle only cases that can realistically happen here; code for a rare case says in the PR why it's worth it. The Revisor may return a PR as `changes:review` for unnecessary complexity, as for a bug. First application: the worker file caches reload when `filemtime()` differs from the value stored at load (after `clearstatcache()`), without inode/size or same-second checks; a stale file in the rare same-second case is acceptable (Rafael, 2026-10-21).
 
 ## Infrastructure and database
 - 2026-10-21: No data migration. All data is created from scratch (DB recreated, seeds). No migration code, legacy-data conversion, backfills or migration deploy steps; schema changes update the schema and seeds only (`Db::SCHEMA_VERSION` still bumps). Data migration comes only later, by explicit Rafael decision.
