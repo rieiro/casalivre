@@ -686,7 +686,7 @@ Problem (spec #182 §8 Q9): with the pin cap at 300, a city-scale map with 301 t
 - Client-side clustering: it would need the full 5,000-row payload.
 - Precomputed tile clusters: they go stale with filters and dates and need a new table and job.
 
-**Measure:** BD runs EXPLAIN for the 4,999-candidate map with clusters (relevance and channel, all filters and none). Teste checks the payload size and end-to-end p95 under 300 ms on mobile.
+**Measure: deferred (Rafael, 2026-10-21).** Map performance is accepted as done for now on BD's numbers (12.8). The EXPLAIN of the 4,999-candidate map with clusters and Teste's map payload and mobile p95 check are not run until Rafael reopens them.
 
 ### 12.8 Numbers (BD, PG 18.6, 150k-listing scaled real seed, final schema)
 **How BD measured:**
@@ -732,8 +732,8 @@ These are DB times for single requests, **not p95 under load**; that is Teste's 
 
 **Teste must measure** (real seed, VPS php-fpm, 100 concurrent requests):
 1. **Cold-cache total-price sort at 2,000 candidates**, 7 and 30 nights. The final GiST is warm-measured only; it was 491 ms cold at 5,000. If it exceeds the 150 ms backstop or the target, lower G-1a further.
-2. **The 8° span cap (G-3) with all filters**, fresh and after `rank:all` before REINDEX. If it is over ≈ 30 ms DB, shrink the span (e.g. 6°) and re-measure.
-3. **p95 end to end against the 300 ms target** (and < 50 ms autocomplete), with every option on. It includes one run **during `rank:all`** (the unvacuumed window) and the worst allowed cases: the channel at 4,999, flexible at 44k, total price at 2,000.
+2. ~~The 8° span cap (G-3) with all filters~~ **Deferred (Rafael, 2026-10-21):** no more map performance testing for now; 8° stays on BD's numbers.
+3. **p95 end to end against the 300 ms target** (and < 50 ms autocomplete), with every option on. It includes one run **during `rank:all`** (the unvacuumed window) and the worst allowed cases: the channel at 4,999, flexible at 44k, total price at 2,000. Map cases (`modo=mapa`, pins, clusters) are deferred with item 2.
 4. The p95 of `iteracoes` = 1 (criterion 5), with flexible dates and price filters on.
 
 ### 12.10 Appendix: Arquitetura's synthetic bench (rev 1–2, superseded by 12.8)
