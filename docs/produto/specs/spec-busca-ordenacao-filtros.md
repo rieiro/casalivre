@@ -2,7 +2,7 @@
 
 **Base:** [ADR 001 §12](../../adr/001-busca-sql-paginada.md) (rev 3, #179) and [docs/decisions.md](../../decisions.md) (2026-10-21, search sorts and filters; G1 and G13 decisions). Product sources: `docs/produto/planejamento/backlog.md` ("Competitor gaps": G1, G2, G3, G4, G13) and [spec-busca-localidade-resolvida.md](spec-busca-localidade-resolvida.md) (resolved place, map area, combobox, official copy table).
 **Scope:** what the guest sees and what the API returns. How each option is stored and indexed is §12 (Arquitetura, BD). Screen layout of the zoom states is UI's (section 7, TODO).
-**Supersedes:** the 5,000-candidate total-price cap in spec-01 §2 and in spec-busca-localidade-resolvida item 8 (now 2,000, G-1a). The fallback order is relevance, not `id`.
+**Aligned:** spec-01 §2 and spec-busca-localidade-resolvida item 8 now carry the 2,000-candidate total-price cap (G-1a) with a relevance fallback; their zoom-13/12 hint is superseded by section 7.
 [E] = estimate to calibrate (Negocios), no usage data yet.
 
 ## 0. Rules that apply to every section
@@ -174,12 +174,18 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 - Acceptance: each guard has a test at its limit and limit + 1, and the over-limit path executes no page query (§12.9 criterion 14).
 
 ## 7. Estados de zoom (spec de tela da UI)
-> **TODO (UI):** UI delivers `/workspace/ui/zoom-states-spec.md` (screens for G-1a, G-1b, G-2, G-3, G-4: copy placement, live-region announcements, the "Aproximar" action, focus, mobile). Produto merges it here. Until then the strings in section 9 are proposals and the zoom-13/12 hint in spec-busca-localidade-resolvida item 8 (derived from the old 5,000 cap) is not final.
+> **TODO (UI):** UI delivers `/workspace/ui/zoom-states-spec.md` (screens for G-1a, G-1b, G-2, G-3, G-4: copy placement, live-region announcements, the "Aproximar" action, focus, mobile). Produto merges it here. Until then the strings in section 9 are proposals. This section supersedes the zoom-13/12 hint formerly in spec-busca-localidade-resolvida item 8 and spec-01 §2.
 
-## 8. Open points for Arquitetura (via Gerente)
-1. G-3 response shape is not defined in §12.7 ("`zoom_in` before any query"); this spec assumes the G-2 shape (200, `items: []`, `zoom_in: true`) so the UI has one zoom state.
-2. G-5 has no error code in §12.7; proposal `stay_over_cap`.
-3. The 90-day host-cancellation demotion (spec-09 §5) needs a daily clear job, while §12.3 says no time-decay factor goes into `rank_base`.
+## 8. Open points (waiting on others)
+**Arquitetura** (answers expected in `/workspace/adr/notes-produto-spec-busca.md`):
+1. The 90-day host-cancellation demotion (spec-09 §5) needs a daily clear job, while §12.3 says no time-decay factor goes into `rank_base`.
+2. G-3 response shape is not defined in §12.7 ("`zoom_in` before any query"); this spec assumes the G-2 shape (200, `items: []`, `zoom_in: true`) so the UI has one zoom state.
+3. G-5 has no error code in §12.7; proposal `stay_over_cap`.
+
+**Negocios** (calibration expected in `/workspace/negocios/calibracao-busca.md`):
+4. G2 `C` and `m` defaults (proposal `C = 10`, `m = 4,5` [E]) and the G1 base-factor weights and demotion factor [E].
+
+**Decided (Produto, 2026-10-21):** spec-01 §2 and spec-busca-localidade-resolvida item 8 now use the 2,000 cap with a relevance fallback, and the zoom-13/12 hint is superseded by section 7; "Menor diária" is in spec-01's sort list; self check-in stays hidden until G7 data exists; the "Patrocinado" reconciliation in section 1 stands.
 
 ## 9. pt-BR strings (official copy table)
 To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localidade-resolvida.md; they go into the i18n PT keys, EN/ES follow.
