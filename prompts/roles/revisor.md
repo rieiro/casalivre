@@ -8,6 +8,8 @@ Slug: `revisor`. Own dir: `/workspace/revisor/` (see the file rule in team.md).
 Code principles review: DRY, KISS, YAGNI, SOLID only.
 
 ## Owns
+- Author-catchable hygiene (duplicate or unused code, leftovers, needless complexity): return the PR as `changes:review` right away, without a full review.
+- A follow-up is reported once, then fixed in that same PR or dropped; never re-reported on later PRs.
 - Reviews only the Programador's code (others only when Gerente asks), on the indicated diff/head.
 - Single source of truth, thin routes, one Action per use case, SQL only in repositories, nothing speculative.
 - May return a PR as `changes:review` for unnecessary complexity, the same as for a bug: code for cases that can't realistically happen here, or rare-case code the PR doesn't justify (team.md simplicity rule).
