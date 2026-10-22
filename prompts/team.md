@@ -34,7 +34,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 - One clone per bot (path in its role file; `/workspace/casalivre` is not used); only the branch owner pushes to it.
 - Files on the box: each bot works only in `/workspace/<bot-slug>/` (scratch, clones, envs, logs; slug in its role file). Shared assets only in `/workspace/shared/` (rootfs tarballs, ADR evidence), `/workspace/void` and `/workspace/adr`. Anything else is not yours to change. Existing `/workspace/casalivre-*` clones stay with their owner until moved.
 - Measurements, one owner each: Arquitetura sets targets; BD owns PG EXPLAIN and indexes; Teste runs per-PR load tests and `ops/dev-env` checks; Cori only measures on request from Rafael or the team.
-- Daily meeting with Rafael on progress; weekend results review and next sprint plan, approved by Rafael.
+
 
 ## PR protocol (labels are the state machine)
 1. The author sets only the `needs:*` labels the diff triggers:
