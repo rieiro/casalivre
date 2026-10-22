@@ -161,8 +161,8 @@ O mapa não reaproveita a lista. Ele pede **só a área visível**:
 `GET /api/busca?modo=mapa&bbox=lat_min,lng_min,lat_max,lng_max&checkin=&checkout=&hospedes=`
 
 - Resposta: `{ "pins": [ {"id","lat","lng","preco"} ], "limite": 300 }`, mais `clusters` e `pins_truncated` desde §12.7b. A coordenada é a pública (`public_coord`), nunca a exata.
-- **Limite: 300 pins.** Substituído por §12.7b: com 301 a 5.000 candidatos, a resposta traz os 300 primeiros pins na ordenação ativa mais `clusters` de uma grade 32×32 e `pins_truncated: true`; acima de 5.000 vale o G-2 (`zoom_in`, sem pins nem clusters). Texto original: com mais de 300 candidatos, `"pins": []` e a UI mostrava "Aproxime o mapa".
-- Os clusters são montados no navegador (MapLibre, GeoJSON), sobre no máximo 300 pontos. Substituído por §12.7b: acima de 300 candidatos os clusters vêm do SQL (grade 32×32); o MapLibre só desenha os pins e as bolhas de contagem.
+- **Limite: 300 pins.** Substituído por §12.7b: com 301 a 5.000 candidatos, a resposta traz os 300 primeiros pins na ordenação ativa mais `clusters` de uma grade conforme a viewport (até 32×32) e `pins_truncated: true`; acima de 5.000 vale o G-2 (`zoom_in`, sem pins nem clusters). Texto original: com mais de 300 candidatos, `"pins": []` e a UI mostrava "Aproxime o mapa".
+- Os clusters são montados no navegador (MapLibre, GeoJSON), sobre no máximo 300 pontos. Substituído por §12.7b: acima de 300 candidatos os clusters vêm do SQL (grade conforme a viewport, até 32×32); o MapLibre só desenha os pins e as bolhas de contagem.
 - Tocar no pin abre o card pelo `id`, com `GET /api/imoveis/<h>` (rota que já existe).
 - Usa o mesmo filtro SQL da lista (ativo, hóspedes, `NOT EXISTS` de noite bloqueada) + bbox no índice `(lat, lng)`. Sem facetas e sem cursor.
 
@@ -255,7 +255,7 @@ Se depois de 4 consultas ainda não houver 20, a API devolve **o que encontrou**
 
 1. p95 de `/api/busca` **< 300 ms** no php-fpm da VPS (cidade + datas, catálogo de teste definido pelo Bot Teste, 100 buscas simultâneas sem 500).
 2. Primeira página **< 50 KB com gzip** (≤ 20 itens).
-3. Mapa: nunca mais de 300 pins por resposta. Substituído por §12.7b: com 301 a 5.000 candidatos, os 300 primeiros pins na ordenação ativa mais clusters 32×32 (`pins_truncated: true`); acima de 5.000, G-2. Texto original: acima de 300, lista de pins vazia. p95 de `modo=mapa` < 300 ms. Payload do mapa medido com 300 pins; o limite em KB fica para o Teste definir depois da primeira medição.
+3. Mapa: nunca mais de 300 pins por resposta. Substituído por §12.7b: com 301 a 5.000 candidatos, os 300 primeiros pins na ordenação ativa mais clusters (grade conforme a viewport, até 32×32; `pins_truncated: true`); acima de 5.000, G-2. Texto original: acima de 300, lista de pins vazia. p95 de `modo=mapa` < 300 ms. Payload do mapa medido com 300 pins; o limite em KB fica para o Teste definir depois da primeira medição.
 4. Pior caso da lista: no máximo 4 consultas e 240 linhas lidas por requisição (conferir no log de consultas ou com contador em teste).
 5. Métrica `iteracoes` registrada em toda `/api/busca`; no cenário de carga do Teste, **p95 de `iteracoes` = 1**. Só filtros de preço com datas sobre imóveis com preço especial podem passar de 1.
 6. Filtros exatos: para cada combinação de `score_min`, mínimo de noites, limite de meses e preço do conjunto de caracterização, a busca nova devolve exatamente o mesmo conjunto que a antiga. Incluir casos de borda: média x,x5; `min_nights` 0 ou NULL no check-in; check-in em 31/01 com limite de 1 mês; preço especial só numa noite.
@@ -470,7 +470,7 @@ Dense-case EXPLAIN (ANALYZE, BUFFERS) at 4,331 candidates: `explain-total-4331.t
 | 5,870 (over cap) | 18.57* | **5.20** (returns n = 5001, no page) |
 | 13,411 (over cap) | 39.77* | **6.41** |
 
-\* The bench ran the page unconditionally; in the app the second query would be skipped, so over the cap it would cost about the count alone. **Keep the CTE:** one round trip, the filter is evaluated once, and over the cap it just returns `n > 5000`, so the API falls back to the relevance order with `sort_unavailable` (§12 G-1a; `id` order before §12). That fallback page is a separate query, the normal keyset page. Over the cap the guard check costs ~5–6 ms.
+\* The bench ran the page unconditionally; in the app the second query would be skipped, so over the cap it would cost about the count alone. **Keep the CTE:** one round trip, the filter is evaluated once, and over the cap it just returns a count of cap + 1 (the `LIMIT` is cap + 1: 2,001 under G-1a today, 5,001 when this was written), so the API falls back to the relevance order with `sort_unavailable` (§12 G-1a; `id` order before §12). That fallback page is a separate query, the normal keyset page. Over the cap the guard check costs ~5–6 ms.
 
 **Key index:** `(key COLLATE "C") INCLUDE (place_id, popularity)` (9 MB) gives an Index Only Scan with 0 heap fetches. The worst case on 55.7k keys goes from p95 28.3–31.0 to **24.3–25.0 ms** (−15–20%); "sao" goes from 3.06 to 2.53. What's left is the `GROUP BY` over 55k rows (the scan itself is 7.5 ms). **Choice (BD-confirmed):** `PRIMARY KEY (key, place_id) INCLUDE (popularity)`, with `COLLATE "C"` on the column definition (`key text COLLATE "C" NOT NULL`), so one index instead of two. The exact PK form was not benched on its own; I expect it to match the separate INCLUDE index [E].
 
@@ -653,7 +653,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 | G-1b | **Nightly-price sort** (no dates): filtered candidates > 5,000 | same as G-1a | BD at 4,999: 4.9 ms (≤ 7.3 in the worst state) |
 | G-2 | **Kept (Rafael, 2026-10-21).** Map-area list, any sort, channel included: filtered candidates > 5,000 | `items: []`, `zoom_in: true`; the list says "Aproxime o mapa" | BD at 5,001: the guard alone is 2.7–4.6 ms vacuumed, ≤ 8.5 ms unvacuumed. The channel sort at 4,999 is 12.5–18.6 ms. |
 | G-3 | Map span **> 8°** in latitude or longitude (Arquitetura, 2026-10-21; was 16°) **[E]** | `zoom_in` before any query | BD at 16° with all filters: 22–30 ms fresh, 27–48 ms churned before REINDEX (≈ 88k rows filtered inside the index-only scan). 8° is not measured. **Teste confirms on the real seed; fallback: shrink further (e.g. 6°) if it misses.** |
-| G-4 | Map pins > 300 | **Superseded by 12.7b:** 301–5,000 candidates return the top 300 pins in the active sort plus 32×32 `clusters` and `pins_truncated: true`; over 5,000, G-2 applies (no pins, no clusters). Not a guard state; no map message. (Was: empty `pins` with "Aproxime o mapa para ver os imóveis".) | §5 (superseded by 12.7b). BD at 44k all filters: 13.2 ms (≤ 18.5 ms). |
+| G-4 | Map pins > 300 | **Superseded by 12.7b:** 301–5,000 candidates return the top 300 pins in the active sort plus grid `clusters` (viewport-based, up to 32×32) and `pins_truncated: true`; over 5,000, G-2 applies (no pins, no clusters). Not a guard state; no map message. (Was: empty `pins` with "Aproxime o mapa para ver os imóveis".) | §5 (superseded by 12.7b). BD at 44k all filters: 13.2 ms (≤ 18.5 ms). |
 | G-5 | Nights > 30 (G13), or `max_nights` above the cap | 422 with the message, before any query | Bounds the total-price LATERAL to ≤ 30 rows per candidate |
 | G-6 | Flexible dates out of bounds | 422 `flex_invalid` | 12.4 |
 | G-7 | Cursor whose sort, channel or filters changed | 400 | §9 |
@@ -671,6 +671,8 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 - **Guard reason:** every guard response carries `guard: "span" | "candidates" | "price_sort"` next to `zoom_in` or `sort_unavailable`. Client config exposes `max_span_deg` (8). The 5,000 and 2,000 caps are exposed for information only, never for client-side gating.
 - **Suggested area:** only `guard: "span"` returns `suggested_bbox` (the requested centre clipped to 8°, computed, no query). `candidates` and `price_sort` return none, because finding one would cost a query; UI zooms in one level.
 - **Fallback in the cursor:** under the G-1a fallback the response returns `sort_effective: "relevance"` and `sort_fallback_from: "total_price"`, and the cursor encodes both. A request with `sort=total_price` plus that cursor is valid under G-7 and continues in relevance order. The fallback holds for the rest of the cursor chain, even if the area drops under 2,000; the sort switches back only on a new search with no cursor.
+- **Nightly-price fallback (UI Q11):** the `nightly_price` sort (no dates, cap 5,000, G-1b) falls back the same way, with `guard: "price_sort"`, `sort_effective: "relevance"` and `sort_fallback_from: "nightly_price"`. Every other rule (cursor, G-7, kept until a new search) is the same as for G-1a.
+- **Counts are taken before availability (UI Q10, intended):** the G-2 and G-1 counts run over the filtered candidates before the availability check. Counting availability would mean up to 5,000 calendar lookups, the very cost the guard avoids (BD Q12). So adding dates never lifts a guard, while adding G3 filters or zooming in does. The UI copy says "zoom in or add filters", never "add dates".
 - **Pins:** G-3 also applies to the pin query (same bbox; empty pins plus `zoom_in`). A resolved place wider than 8° (for example a state) opens with a map viewport that fits inside 8°, centred on the place's anchor point. The place-path list uses no bbox, so G-3 doesn't affect it.
 
 ### 12.7b Map pins between 300 and 5,000 candidates (Arquitetura, 2026-10-21)
@@ -680,9 +682,9 @@ Problem (spec #182 §8 Q9): with the pin cap at 300, a city-scale map with 301 t
 **Decision:** return the top-ranked pins plus grid clusters, from the same one-pass candidate set. Don't raise the cap.
 - The map request already collects up to 5,001 filtered candidates in one pass (§12, G-2). `lat` and `lng` come from the map index INCLUDE, so there are no heap reads.
 - **Pins:** the first 300 candidates in the active sort order (`relevance`, including a channel's `channel_rank` order, `rating`, or `total_price`/`nightly_price` under G-1, falling back to `relevance` there). The map then highlights the same listings the list ranks first. Each pin carries its id, lat/lng, price and the `sponsored` flag (from the same row, per 12.3a).
-- **Clusters:** the remaining candidates (up to 4,700) are grouped in SQL over the CTE by a fixed grid snapped to the bbox, 32×32 cells [E]. Each cluster returns `{lat, lng (mean), count}`. The UI draws a count bubble, and tapping it zooms to that cell.
+- **Clusters:** the remaining candidates (up to 4,700) are grouped in SQL over the CTE by a grid snapped to the bbox, sized from the viewport (see count bubbles below; at most 32×32 cells) [E]. Each cluster returns `{lat, lng (mean), count, bounds}`. The UI draws a count bubble, and tapping it zooms to the cluster's bounds.
 - When there are 300 candidates or fewer, all of them are pins and there are no clusters, the same as today.
-- When there are more than 5,000, G-2 applies unchanged: `zoom_in`, no pins and no clusters.
+- When there are more than 5,000, G-2 applies unchanged: `zoom_in`, no pins, no clusters and no counts (response below).
 - **Response:** `pins: [...]` (300 or fewer), `clusters: [...]` (1,024 or fewer), `pins_truncated: true` when clusters are present.
 
 **Cost [E]:** the pins are a `LIMIT 300` over rows already sorted in the CTE. The cluster step is one `GROUP BY` of `floor()` grid cells over 4,700 rows or fewer, held in memory, estimated at 1-3 ms. The worst allowed map case goes from 18.6 ms to about 22 ms, under the ~30 ms bar. No new index or table.
@@ -692,7 +694,16 @@ Problem (spec #182 §8 Q9): with the pin cap at 300, a city-scale map with 301 t
 - Client-side clustering: it would need the full 5,000-row payload.
 - Precomputed tile clusters: they go stale with filters and dates and need a new table and job.
 
-**Measure: deferred (Rafael, 2026-10-21).** Map performance is accepted as done for now on BD's numbers (12.8). The EXPLAIN of the 4,999-candidate map with clusters and Teste's map payload and mobile p95 check are not run until Rafael reopens them.
+**Count bubbles (UI Q-A1 to Q-A5; Arquitetura, 2026-10-21; every figure [E]):**
+- **Bounds (A1):** each cluster returns `bounds: [s, w, n, e]`, computed from its grid cell index at no extra cost. Tapping a bubble zooms to those bounds.
+- **Grid follows the viewport (A2):** the client sends `vp_w` and `vp_h` in px, and the server uses `ceil(vp_w/64) × ceil(vp_h/64)` cells, capped at 32×32 (1,024 clusters). For example, 1280×800 gives 20×13 and 390×700 gives 7×11; fewer cells are cheaper. Without a viewport the default is 16×16. This replaces the fixed 32×32 grid above.
+- **Over 5,000 (A3):** G-2 returns `items: [], pins: [], clusters: [], zoom_in: true, guard: "candidates"`, with no counts. G-3 (span) returns the same with `guard: "span"` and `suggested_bbox`. There is no `acima_do_limite` field.
+- **With dates (A4):** pins are checked for availability: the top 300 *available* candidates come from the same 5,000-candidate set, at about 300 calendar lookups, roughly 2–3 ms [E]. Cluster counts are not checked (that would cost up to 4,700 lookups), so the response sets `counts_approximate: true` and the UI shows them as approximate ("~N"). Without dates the counts are exact and `counts_approximate` is false.
+- **Sort fields (A5):** the map response also returns `sort_effective` and `sort_fallback_from` (12.7a), and the pins follow `sort_effective`, so they match the list order.
+- **Response shape:** `pins` (≤ 300), `clusters` (≤ 1,024, each `{lat, lng, count, bounds}`), `pins_truncated`, `counts_approximate`, `sort_effective`, `sort_fallback_from`, plus `zoom_in`/`guard`/`suggested_bbox` under G-2/G-3.
+- Map performance re-measurement is deferred (Rafael, #187), so these figures stay [E].
+
+**Measure: deferred (Rafael, 2026-10-21; #187).** Map performance is accepted as done for now on BD's numbers (12.8). The EXPLAIN of the 4,999-candidate map with clusters and Teste's map payload and mobile p95 check are not run until Rafael reopens them.
 
 ### 12.8 Numbers (BD, PG 18.6, 150k-listing scaled real seed, final schema)
 **How BD measured:**
