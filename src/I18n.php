@@ -149,12 +149,12 @@ final class I18n
     /** Per-process copy of translations.json (one read per request; in the queue worker, until the file changes). */
     private static ?array $rows = null;
 
-    /** FileStamp of translations.json taken just before $rows was loaded. */
-    private static ?string $stamp = null;
+    /** filemtime() of translations.json taken just before $rows was loaded. */
+    private static ?int $stamp = null;
 
     /**
      * Drops the per-process copy: the next read goes back to translations.json (or the database).
-     * $ifChanged (WorkerCaches): only when translations.json changed since the copy was loaded.
+     * $ifChanged (WorkerCaches): only when translations.json's mtime differs from the one stored at load.
      */
     public static function clearCache(bool $ifChanged = false): void
     {
