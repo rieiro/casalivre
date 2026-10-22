@@ -667,6 +667,27 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 - **Fallback in the cursor:** under the G-1a fallback the response returns `sort_effective: "relevance"` and `sort_fallback_from: "total_price"`, and the cursor encodes both. A request with `sort=total_price` plus that cursor is valid under G-7 and continues in relevance order. The fallback holds for the rest of the cursor chain, even if the area drops under 2,000; the sort switches back only on a new search with no cursor.
 - **Pins:** G-3 also applies to the pin query (same bbox; empty pins plus `zoom_in`). A resolved place wider than 8° (for example a state) opens with a map viewport that fits inside 8°, centred on the place's anchor point. The place-path list uses no bbox, so G-3 doesn't affect it.
 
+### 12.7b Map pins between 300 and 5,000 candidates (Arquitetura, 2026-10-21)
+
+Problem (spec #182 §8 Q9): with the pin cap at 300, a city-scale map with 301 to 5,000 filtered candidates shows a list but no pins.
+
+**Decision:** return the top-ranked pins plus grid clusters, from the same one-pass candidate set. Don't raise the cap.
+- The map request already collects up to 5,001 filtered candidates in one pass (§12, G-2). `lat` and `lng` come from the map index INCLUDE, so there are no heap reads.
+- **Pins:** the first 300 candidates in the active sort order (relevance, channel, rating, or price under G-1). The map then highlights the same listings the list ranks first. Each pin carries its id, lat/lng, price and the `sponsored` flag (from the same row, per 12.3a).
+- **Clusters:** the remaining candidates (up to 4,700) are grouped in SQL over the CTE by a fixed grid snapped to the bbox, 32×32 cells [E]. Each cluster returns `{lat, lng (mean), count}`. The UI draws a count bubble, and tapping it zooms to that cell.
+- When there are 300 candidates or fewer, all of them are pins and there are no clusters, the same as today.
+- When there are more than 5,000, G-2 applies unchanged: `zoom_in`, no pins and no clusters.
+- **Response:** `pins: [...]` (300 or fewer), `clusters: [...]` (1,024 or fewer), `pins_truncated: true` when clusters are present.
+
+**Cost [E]:** the pins are a `LIMIT 300` over rows already sorted in the CTE. The cluster step is one `GROUP BY` of `floor()` grid cells over 4,700 rows or fewer, held in memory, estimated at 1-3 ms. The worst allowed map case goes from 18.6 ms to about 22 ms, under the ~30 ms bar. No new index or table.
+
+**Rejected:**
+- A higher pin cap: 5,000 pins means about 400 KB of JSON and a client rendering cost that hurts mobile p95.
+- Client-side clustering: it would need the full 5,000-row payload.
+- Precomputed tile clusters: they go stale with filters and dates and need a new table and job.
+
+**Measure:** BD runs EXPLAIN for the 4,999-candidate map with clusters (relevance and channel, all filters and none). Teste checks the payload size and end-to-end p95 under 300 ms on mobile.
+
 ### 12.8 Numbers (BD, PG 18.6, 150k-listing scaled real seed, final schema)
 **How BD measured:**
 - `EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`, median of 3 warm runs, planning + execution, `jit = off`;
