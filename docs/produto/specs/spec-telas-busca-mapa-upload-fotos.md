@@ -6,7 +6,7 @@
 
 **Desktop**
 - Lista (60%, cards em 2 colunas) e mapa (40%) fixo ao rolar.
-- Card e pin ficam destacados juntos.
+- Card e pin ficam destacados juntos. Cards além dos 300 pins não destacam nada no mapa (piloto).
 - "Buscar ao mover o mapa" vem ligado, com espera de ~500 ms. Desligado, aparece o botão "Buscar nesta área". A map search replaces the place: the location field shows "Map area" with × to return to the last place (`spec-busca-localidade-resolvida.md`, UX item 6).
 
 **Mobile**
@@ -18,7 +18,9 @@
 **Componentes**
 - Card: fotos, favoritar, título, nota e "R$ X total · N noites · taxas inclusas".
 - Pin de preço: estados normal, selecionado (invertido) e visitado.
-- Cluster: mostra a contagem e expande com toque, clique ou zoom.
+- Cluster: mostra a contagem e expande com toque, clique ou zoom. É o agrupamento, no cliente, dos pins desenhados (até 300); nunca absorve pins patrocinados.
+- Bolha de contagem (301 a 5.000 candidatos, ADR 001 §12.7b): quadrado arredondado com o número e um "+", abaixo dos pins e clusters; mostra os imóveis que não viraram pin e, ao toque, aproxima até os limites da célula e busca. Com datas, a contagem é aproximada ("~N"). Detalhes em [spec-busca-ordenacao-filtros.md](spec-busca-ordenacao-filtros.md) §7.4.
+- Pin patrocinado: o pin com `sponsored` mostra sempre a etiqueta "Patrocinado" acima do preço, em todos os estados e zooms; conta dentro dos 300 pins.
 - Popup (desktop): foto, título, nota, preço total e "Ver detalhes".
 - Atribuição: "© OpenStreetMap contributors · Protomaps", sempre visível.
 

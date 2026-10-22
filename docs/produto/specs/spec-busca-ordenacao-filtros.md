@@ -1,6 +1,6 @@
 # Spec: search ranking, sorts, filters and flexible dates (G1, G2, G3, G4; draft, 2026-10-21)
 
-**Base:** [ADR 001 §12](../../adr/001-busca-sql-paginada.md) (rev 3, #179; guard responses §12.7a, #181; map pins and clusters §12.7b, #184) and [docs/decisions.md](../../decisions.md) (2026-10-21, search sorts and filters; G1 and G13 decisions). Product sources: `docs/produto/planejamento/backlog.md` ("Competitor gaps": G1, G2, G3, G4, G13) and [spec-busca-localidade-resolvida.md](spec-busca-localidade-resolvida.md) (resolved place, map area, combobox, official copy table).
+**Base:** [ADR 001 §12](../../adr/001-busca-sql-paginada.md) (rev 3, #179; guard responses §12.7a, #181; map pins and clusters §12.7b, #184; `rank_penalty` DDL §12.11, #188) and [docs/decisions.md](../../decisions.md) (2026-10-21, search sorts and filters; G1 and G13 decisions). Product sources: `docs/produto/planejamento/backlog.md` ("Competitor gaps": G1, G2, G3, G4, G13) and [spec-busca-localidade-resolvida.md](spec-busca-localidade-resolvida.md) (resolved place, map area, combobox, official copy table).
 **Scope:** what the guest sees and what the API returns. How each option is stored and indexed is §12 (Arquitetura, BD). Screen layout of the zoom states is UI's (section 7, merged from UI's screen spec).
 **Aligned:** spec-01 §2 and spec-busca-localidade-resolvida item 8 carry the 2,000-candidate total-price cap (G-1a) with a relevance fallback; the zoom-13/12 client hint is dropped (§12.7a) and the price sorts are always enabled (section 7).
 [E] = estimate to calibrate (Negocios), no usage data yet.
@@ -28,17 +28,18 @@
   | Self check-in (G7 check-in method: key box or smart lock) | listing (P10, S7) | 10% |
   | Response time (G8) | requests | 0% until pilot data exists |
 
-  - **Host cancellation demotion** (spec-09 §5: "perde o destaque na busca por 90 dias"; Negocios calibration, settings): **×0.7** for the 1st host-responsible cancellation in 90 days, **×0.5** from the 2nd. Only cancellations whose G14 `responsible` = host count; others don't.
-    - Arquitetura (`/workspace/adr/notes-produto-spec-busca.md` (a)): the penalty is **folded into the stored, indexed score** (`rank_base` in `listing_search` and each `channel_rank.score`; Arquitetura's "rank_score"), never subtracted at query time. `listing_search` stores `rank_penalty` and `penalty_until` (timestamptz).
-    - A host cancellation sets both and recomputes the listing's rows **in the same transaction**. A **daily `rank:sweep`** clears expired penalties and recomputes those rows (≤ 24 h staleness on expiry [E]). No other time factor in the score; no new index.
-    - Follow-up: column types and CHECKs go to BD in the schema spec.
+  - **Host cancellation demotion** (spec-09 §5: "perde o destaque na busca por 90 dias"; Negocios calibration, settings): **×0.7** for the 1st host-responsible cancellation in 90 days, **×0.5** from the 2nd, stored as a permille multiplier: `rank_penalty` **700** and **500** (1000 = no penalty). Only cancellations whose G14 `responsible` = host count; others don't.
+    - Arquitetura (`/workspace/adr/notes-produto-spec-busca.md` (a)): the penalty is **folded into the stored, indexed score** (`rank_base` in `listing_search` and each `channel_rank.score`; Arquitetura's "rank_score"), never subtracted at query time. `listing_search` stores `rank_penalty` and `penalty_until`.
+    - **Columns (BD; in ADR 001 [§12.11](../../adr/001-busca-sql-paginada.md), added by Arquitetura in #188):** `rank_penalty smallint NOT NULL DEFAULT 1000 CHECK (rank_penalty BETWEEN 1 AND 1000)`, a multiplier in permille (1000 = none, 700 = ×0.7, 500 = ×0.5); `penalty_until timestamptz NULL`; `CHECK ((rank_penalty = 1000) = (penalty_until IS NULL))`, so a penalty always has an expiry and an expiry always has a penalty. Integer math matches the int scores: `rank_base = raw * rank_penalty / 1000`, the same for each `channel_rank.score`. The factors are Negocios settings inside the range CHECK, so recalibrating needs no schema change.
+    - **On a host-responsible cancellation, in the same transaction as the cancel:** `rank_penalty` = the factor for the count of host-responsible cancellations in the last 90 days (counted from the G14 cancellations table, not stored here); `penalty_until = GREATEST(coalesce(penalty_until, now()), now() + interval '90 days')`; then `rank_base` and the listing's `channel_rank` rows are recomputed.
+    - A **daily `rank:sweep`** resets expired rows (`penalty_until <= now()`) to (1000, NULL) and recomputes them in one transaction (≤ 24 h staleness on expiry [E]). No other time factor in the score; no new search index. Seeds use the default (1000, NULL).
   - No price-vs-comparable or popularity factor now (they need per-date or behavioural data).
 - **Per-channel score `channel_rank.score`** (§12.2). A channel has its own factor weights plus the two commercial weights:
   - `peso_pago` (paid placement, default 0): applies only to listings with a **live boost** in that channel.
   - `peso_rede` (own-network preference, default 0): applies to listings managed by the channel's own organization or node subtree.
   - Both **default to 0**. With every weight of a channel at its default there are no `channel_rank` rows and the base order serves (§12.2 option c).
 - **Who configures:** only **admin_plataforma**, in Gerenciar → Canais → Ranking. Every change is logged (author, channel, old and new value). Other roles don't see the section; the API returns 403.
-- **"Patrocinado" label:** shown on the card and the detail page **in that channel** whenever the listing's position in that channel got a paid boost, i.e. its `channel_rank` row has `sponsored = true`. A boost can only be bought for a channel whose `peso_pago` > 0, so the label appears exactly when the paid weight is above 0 for that listing in that channel. Position and label always come from the **same row** (§12.3a.1).
+- **"Patrocinado" label:** shown on the card, the detail page and the **map pin** (section 7.4, Q-P2) **in that channel** whenever the listing's position in that channel got a paid boost, i.e. its `channel_rank` row has `sponsored = true`. A boost can only be bought for a channel whose `peso_pago` > 0, so the label appears exactly when the paid weight is above 0 for that listing in that channel. Position and label always come from the **same row** (§12.3a.1).
 - **Boost lag (§12.3a, Produto with UI and Jurídico):**
   - a purchase, edit or cancel reaches the ranking within **≤ 5 min** (`rank:sweep`);
   - the paid period and **billing start at go-live** (`live_from`), not at purchase;
@@ -56,11 +57,11 @@
 1. With every channel weight at its default (paid and network 0), the order in that channel is exactly the base order (`rank_base DESC, id DESC`), and no `channel_rank` row exists for it.
 2. Changing one channel's weights changes only that channel's order, within ≤ 60 s [E] (`rank:channel:{id}`); other channels are unchanged.
 3. Each channel has `peso_pago` and `peso_rede`, both 0 in a new or unconfigured channel.
-4. A listing whose row in channel X has `sponsored = true` shows "Patrocinado" (text, not only an icon, with screen-reader text) on its card and detail page in X; the same listing in a channel where its row is not sponsored, or has no row, shows no label. A boosted position never appears without the label, and the label never appears without the boost.
+4. A listing whose row in channel X has `sponsored = true` shows "Patrocinado" (text, not only an icon, with screen-reader text) on its card, its detail page and its map pin in X; the same listing in a channel where its row is not sponsored, or has no row, shows no label. A boosted position never appears without the label, and the label never appears without the boost.
 5. Only admin_plataforma can read or change the weights; any other role gets 403 and doesn't see the menu item. Each change creates an audit entry.
 6. A boost can't be bought for a channel with `peso_pago` = 0 (422 with the message).
 7. With a simulated clock (§12.9 criterion 16): billing starts at `live_from`; "Agendado" shows until then; stale minutes are not billed; a cancel before go-live bills 0; go-live is ≤ 5 min after purchase.
-8. A host-responsible cancellation multiplies the listing's score by 0.7 (1st in 90 days) or 0.5 (2nd onwards) in the same transaction, in `listing_search` and every `channel_rank` row; a cancellation with `responsible` ≠ host changes nothing; the daily sweep restores the score after `penalty_until` (≤ 24 h), with no other time-based change to `rank_base`.
+8. A host-responsible cancellation sets `rank_penalty` to 700 (1st in 90 days) or 500 (2nd onwards) and `penalty_until` to `GREATEST(current, now() + 90 days)` in the same transaction, and recomputes the score in `listing_search` and every `channel_rank` row (`score × rank_penalty / 1000`); a cancellation with `responsible` ≠ host changes nothing; the daily sweep resets expired rows to (1000, NULL) and restores the score (≤ 24 h), with no other time-based change to `rank_base`. The schema rejects a penalty without an expiry, an expiry without a penalty, and a `rank_penalty` outside 1–1000.
 9. Relevance pagination is keyset over the stored score; no request computes a score (builder test, §12.9 criterion 13). p95 within section 0 targets with a channel at weights > 0.
 
 ## 2. G2: best rated, weighted by review count
@@ -143,7 +144,7 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 ## 5. API
 `GET /api/busca` (list) and `GET /api/busca?modo=mapa` (pins), on top of §5, §5b and spec-busca-localidade-resolvida.
 
-**New request params:** `sort` = `relevance` (default) | `rating` | `total_price` (needs dates) | `nightly_price` (no dates), using §12.7a's names; the channel comes from the storefront (host), never from the client; the G3 params in section 3.
+**New request params:** `sort` = `relevance` (default) | `rating` | `total_price` (needs dates) | `nightly_price` (no dates), the one list in ADR 001 §12.0 rule 5; the channel comes from the storefront (host), never from the client; the G3 params in section 3.
 - `sort=total_price` without dates, or `nightly_price` with dates, is ignored and the response uses relevance.
 - The cursor is §12.1's `{v:2, sort, channel, last_key, id, checkin, checkout, hospedes, filters_hash}`, plus `sort_effective` and `sort_fallback_from` under a fallback (§12.7a). A mismatch returns 400 (G-7), except a request with `sort=total_price` or `nightly_price` plus a fallback cursor, which is valid and continues in relevance order.
 - **Client config** (§12.7a): `max_span_deg` (8) gates G-3 on the client; the 5,000 and 2,000 caps are exposed for information only, never for client-side gating.
@@ -165,18 +166,22 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 - `sort_effective` is the sort actually applied; under a G-1 fallback it is `"relevance"` and `sort_fallback_from` is `"total_price"` (G-1a) or `"nightly_price"` (G-1b). The fallback holds for the whole cursor chain; price order returns only on a new search with no cursor (§12.7a).
 - `guard` is `"span"` (G-3), `"candidates"` (G-2), `"price_sort"` (G-1a/G-1b) or `null` (§12.7a).
 - `suggested_bbox` (the requested centre clipped to 8°, computed, no query) comes **only** with `guard: "span"`.
-- **Map response (`modo=mapa`), pins and clusters (§12.7b):**
+- **Map response (`modo=mapa`), pins and clusters (§12.7b):** the map request also sends `vp_w` and `vp_h`, the map element's size in CSS px.
   ```json
   {
     "pins": [ { "id": "...", "lat": 0, "lng": 0, "preco": 0, "sponsored": false } ],
-    "clusters": [ { "lat": 0, "lng": 0, "count": 0 } ],
-    "pins_truncated": false
+    "clusters": [ { "lat": 0, "lng": 0, "count": 0, "bounds": [0, 0, 0, 0] } ],
+    "pins_truncated": false,
+    "counts_approximate": false,
+    "sort_effective": "relevance",
+    "sort_fallback_from": null
   }
   ```
-  - 300 filtered candidates or fewer: all are pins, no clusters.
-  - 301–5,000: `pins` holds the **first 300 candidates in the active sort order** (the order the list uses, including the relevance fallback under G-1), so the map highlights the listings the list ranks first. Each pin carries its id, lat/lng, price and the `sponsored` flag from the same row (§12.3a). The remaining candidates are grouped in SQL by a fixed 32×32 grid snapped to the request bbox; `clusters` (1,024 or fewer) holds `{lat, lng (mean), count}` per cell, and `pins_truncated: true` when clusters are present.
-  - Over 5,000: G-2 applies unchanged: `zoom_in: true`, no pins and no clusters.
-  - Under G-3: `pins: []`, `zoom_in: true`, `guard: "span"`, `suggested_bbox`. A resolved place wider than 8° opens with a map viewport inside 8°, centred on its anchor point (§12.7a).
+  - 300 filtered candidates or fewer: all are pins, `clusters: []`.
+  - 301–5,000: `pins` holds the **first 300 candidates in `sort_effective`** (the order the list uses, including the relevance fallback under G-1, with `sort_fallback_from`), so the map highlights the listings the list ranks first. Each pin carries its id, lat/lng, price and the `sponsored` flag from the same row (§12.3a); sponsored pins count inside the 300 and never add pins beyond it. The remaining candidates are grouped in SQL by a grid snapped to the bbox and sized from the viewport: `ceil(vp_w/64) × ceil(vp_h/64)` cells, capped at 32×32, default 16×16 without a viewport [E]. `clusters` (1,024 or fewer) holds `{lat, lng (mean), count, bounds: [s, w, n, e]}` per cell, and `pins_truncated: true` when clusters are present.
+  - With dates, pins are availability-checked (the top 300 available candidates) but cluster counts are not, so `counts_approximate: true` and the UI shows "~N"; without dates the counts are exact and `counts_approximate` is false.
+  - Over 5,000: `items: [], pins: [], clusters: []`, `zoom_in: true`, `guard: "candidates"`, no counts (G-4 on the map, section 7.4). There is no `acima_do_limite` field.
+  - Under G-3: the same with `guard: "span"` and `suggested_bbox`. A resolved place wider than 8° opens with a map viewport inside 8°, centred on its anchor point (§12.7a).
 - Errors: 422 `{ "code": "stay_over_cap" }` (G-5) and 422 `{ "code": "flex_invalid" }` (G-6, later) are distinct codes.
 
 ## 6. Guards (§12.7), explicit
@@ -186,14 +191,14 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 | G-1b | Nightly-price sort ("Menor diária") with **> 5,000** filtered candidates | as G-1a, with `sort_fallback_from: "nightly_price"` | map area: "Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pela menor diária."; place: "Ordenado por relevância. Adicione filtros para ordenar pela menor diária." |
 | G-2 | Map-area list with **> 5,000** filtered candidates, **any sort**, any channel | 200, `items: []`, `zoom_in: true`, `guard: "candidates"` | "Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou adicione filtros." |
 | G-3 | Map span **> 8°** (`max_span_deg`) in latitude or longitude | **no query**; 200, `items: []`, `pins: []`, `zoom_in: true`, `guard: "span"`, `suggested_bbox` | "Esta área do mapa é grande demais para buscar. Aproxime o mapa." |
-| G-4 | Map pins > 300 (§12.7b) | 301–5,000 candidates: top 300 pins in the active sort plus `clusters`, `pins_truncated: true`; over 5,000: G-2 unchanged (no pins, no clusters) | count bubbles on the map (section 7.4); no message |
+| G-4 | Map with **> 5,000** filtered candidates (§12.7b; the old "pins > 300" G-4 is superseded) | `items: [], pins: [], clusters: []`, `zoom_in: true`, `guard: "candidates"`; 301–5,000 is **not** a guard: top 300 pins in `sort_effective` plus `clusters`, `pins_truncated: true` | "Aproxime o mapa para ver os imóveis" (map only); 301–5,000: pins plus count bubbles, no message |
 | G-5 | Stay **> 30 nights**, or a listing `max_nights` above the platform cap | 422 `code: "stay_over_cap"`, before any query (distinct from G-6) | "A estadia máxima é de 30 noites." |
 | G-6 | Flexible window out of bounds (later) | 422 `flex_invalid` | — (not in this delivery) |
 | G-7 | Cursor whose sort, channel or filters changed | 400 | list restarts from page 1 |
 | G-9 | Backstop timeout 150 ms | 503 `retry` | "Não conseguimos carregar agora. Tentar novamente" |
 
 - **Order in a map area:** G-3 first (no query), then G-2 for every sort, then G-1a for the total price. 2,001–5,000 candidates list normally under relevance, rating and nightly price; total price there falls back to relevance.
-- On the place path, only G-1a/G-1b apply (and the §12.7b pins and clusters on its map).
+- On the place path, only G-1a/G-1b apply (and, on its map, the §12.7b pins and bubbles, or the G-4 pill above 5,000).
 - **Guards count filtered candidates before availability** (§12.5). Zooming in or adding filters (guests included) can clear G-2 or G-1; **adding dates can't**, and no guard state offers it (section 7).
 - Acceptance: each guard has a test at its limit and limit + 1, and the over-limit path executes no page query (§12.9 criterion 14).
 
@@ -202,7 +207,7 @@ Source: UI's screen spec **rev 3** (`/workspace/ui/zoom-states-spec.md`, 2026-10
 
 ### 7.0 Shared rules
 **Guard signal (§12.7a).**
-- Every guard response carries `guard`: `"span"` (G-3), `"candidates"` (G-2) or `"price_sort"` (G-1a/G-1b), next to `zoom_in` or `sort_unavailable`. The pin cap (G-4) is not a guard state: 301–5,000 candidates return the top 300 pins plus clusters with `pins_truncated: true` (§12.7b).
+- Every guard response carries `guard`: `"span"` (G-3), `"candidates"` (G-2) or `"price_sort"` (G-1a/G-1b), next to `zoom_in` or `sort_unavailable`. The map over 5,000 candidates (G-4) returns `items/pins/clusters: []`, `zoom_in: true`, `guard: "candidates"`; `acima_do_limite` is removed (§12.7b A3). 301–5,000 candidates return the top 300 pins plus clusters with `pins_truncated: true`, which is not a guard state.
 - **Copy and actions are chosen from `guard`, never from client counts.** Client config exposes `max_span_deg` (8). The 5,000 and 2,000 caps are for information only and never gate anything on the client.
 
 **The price-sort options.** "Menor preço total" [O] and "Menor diária" [A] are **always enabled**. The client zoom-13/12 hint is dropped; the server decides (§12.7a, Q1).
@@ -210,7 +215,7 @@ Source: UI's screen spec **rev 3** (`/workspace/ui/zoom-states-spec.md`, 2026-10
 **What "zoom in" means.**
 - **Manual zoom** (wheel, pinch, +/−, keyboard) follows the existing rules: desktop, "Buscar ao mover o mapa" [O] is ON and re-queries after the move; mobile, search-on-move is OFF and the "Buscar nesta área" [O] button appears.
 - **The "Aproximar" button [O]** is an explicit search action and always re-queries, mobile included.
-  - `guard: "span"`: it fits `suggested_bbox` (the requested centre clipped to 8°). One tap always leaves G-3, though it may land in G-2 or G-1, or on a map with count bubbles.
+  - `guard: "span"`: it fits `suggested_bbox` (the requested centre clipped to 8°). One tap always leaves G-3, though it may land in G-2, G-1 or G-4, or on a map with count bubbles.
   - `guard: "candidates"` or `"price_sort"`: it zooms **one level** on the current centre (no suggested area for these: finding one would cost a query).
 - If the state is still active after a tap, the message stays, the screen-reader text says "still", and the button doesn't move.
 - At maximum zoom, "Aproximar" is hidden and the first secondary action is promoted.
@@ -242,12 +247,12 @@ The filter bar stays visible, so anything not in a slot is still reachable.
 | G-1a total price > 2,000; G-1b nightly price > 5,000 | Applies | Applies |
 | G-2 list > 5,000 | **Never** | Applies (any sort, channel included) |
 | G-3 span > 8° | The list never hits it. The map opens fitted to 8° at the place's anchor point, so its pins don't trip it on open. | Applies to the list **and** the pins (empty pins + `zoom_in`), before any query |
-| G-4 pins > 300 (§12.7b) | Map only: top 300 pins plus count bubbles | Map only: top 300 pins plus count bubbles; over 5,000 in the viewport, no pins or clusters and the map pill (the list is unaffected) |
+| G-4 map > 5,000 candidates (no pins) | Map only (the list is unaffected) | Map only, next to G-2 |
 
 - "Escolha uma cidade" [O] always leaves G-2 and G-3.
 - On the place path, a desktop map zoom with search-on-move ON switches the search to a map area; × restores the place (spec-busca-localidade-resolvida item 6).
 
-**Priority.** G-3 > G-2 > G-1. Count bubbles (`pins_truncated`) are not a guard state and are never announced as one. Only the highest active state is announced, at most one polite announcement per response; lower states stay as visible text in their own region.
+**Priority.** G-3 > G-2 > G-1 > G-4. Count bubbles (`pins_truncated`) are not a guard state and are never announced as one. Only the highest active state is announced, at most one polite announcement per response; lower states stay as visible text in their own region.
 
 **Accessibility, all states.**
 - One shared polite `role="status"` region (the existing results-status region). Nothing is assertive.
@@ -266,11 +271,11 @@ Response: `items: []`, `zoom_in: true`, `guard: "candidates"`.
   - Secondary 2: "Escolha uma cidade" [O]. It focuses "Onde?" [O] with the list open (mobile: the full-screen "Onde?" step). A place never hits G-2, so this always clears the state.
   - At maximum zoom, "Escolha uma cidade" becomes primary, the narrowing slot is secondary 1, and "Filtros" is secondary 2 when the slot is "Adicionar hóspedes".
 - **Placement:**
-  - Desktop 1280: the block replaces the cards at the top of the list column, under the results header. The sort control stays; the count line and "Mostrar mais imóveis" are hidden. The map has no pins and no clusters (§12.7b) and shows only the map pill (7.4), with no button of its own.
+  - Desktop 1280: the block replaces the cards at the top of the list column, under the results header. The sort control stays; the count line and "Mostrar mais imóveis" are hidden. The map shows only the G-4 pill (the map is over 5,000 too), with no button of its own.
   - Mobile 390, list view: the block replaces the cards. "Aproximar" opens the map view and zooms there. The floating "Mapa" button stays.
   - Mobile 390, map view: one card in the carousel position. "Buscar nesta área" is hidden while it shows.
 - **Screen reader:** the message is announced on entry. After a guarded action [P]: "Ainda há imóveis demais. Aproxime mais o mapa ou adicione filtros." / "Still too many listings. Zoom in further or add filters."
-- **Combines with:** G-3 replaces it. It hides G-1 (no list; the sort stays in the URL). The map pill shows silently.
+- **Combines with:** G-3 replaces it. It hides G-1 (no list; the sort stays in the URL). G-4 shows on the map, silently.
 - **AC:**
   1. A response with `guard: "candidates"` shows the block and no cards, with no client count check. A mocked 5,000/5,001 pair covers the edge; the server limit test is Teste's (§12.9 item 14).
   2. Never shown with `local_id`.
@@ -308,7 +313,7 @@ For a neighborhood, beach or region, the list runs: (1) "Adicionar hóspedes" (o
 
 - **Placement:** desktop, one line under the results header, tied to the sort control with `aria-describedby`, actions inline after the text; the sort menu has no disabled option. Mobile: the same line above the first card, at most 2 lines, with 44 px text buttons on the next line. Cards, count and "Mostrar mais imóveis" are unchanged; the list keeps going in relevance order.
 - **Screen reader:** the fallback is announced once. After a guarded new search [P]: "Ainda ordenado por relevância. …" / "Still sorted by relevance. …", followed by the context's message. When price order returns [P]: "Ordenado pelo menor preço total." / "Sorted by lowest total price."; "Ordenado pela menor diária." / "Sorted by lowest nightly price."
-- **Combines with:** G-2 and G-3 replace it. The map often shows count bubbles at the same time (300 < 2,000); the pins are the top 300 in relevance order, the order the list actually uses, and the list line is the one announced.
+- **Combines with:** G-2 and G-3 replace it. G-4 can't be active with G-1 in the same map area (G-4 needs more than 5,000 candidates, where G-2 hides the list). From 2,001 to 5,000 candidates the map shows pins plus count bubbles, which are not a state; the pins follow `sort_effective` (relevance). On a resolved place, G-1 and G-4 can coexist (the place list falls back while its map is over 5,000): the list line is announced and the pill is silent.
 - **AC:**
   1. With `guard: "price_sort"`, the list is in relevance order with the line for its sort and path. The client never disables the price options and never gates on counts. Mocked edges: 2,000/2,001 for total price, 5,000/5,001 for nightly price. The copy follows `sort_fallback_from`: `"total_price"` gives the total-price line, `"nightly_price"` the "menor diária" line.
   2. The URL keeps the user's `sort`. "Mostrar mais imóveis" with the returned cursor continues in relevance order and never gets a 400 (G-7), even if the area has dropped under the cap, for both `sort_fallback_from` values.
@@ -332,27 +337,82 @@ Response: `zoom_in: true`, `guard: "span"` and `suggested_bbox`, before any quer
   4. Never shown for a `local_id` list.
   5. A place wider than 8° opens with its map fitted to 8° at its anchor point and its list unaffected, so G-3 doesn't fire on open.
 
-### 7.4 G-4: map pins over 300 (§12.7b)
-**301–5,000 filtered candidates.** The map shows the **top 300 pins in the active sort order** plus a **count bubble** per `clusters` entry; the response has `pins_truncated: true` (§5). The list is unaffected.
-- **Pins:** the same listings the list ranks first, in the sort the list actually uses (`sort_effective`, so relevance under a G-1 fallback). "Patrocinado" pins follow `sponsored`, as on the cards.
-- **Bubble:** drawn at the cluster's `lat`/`lng` with its `count`. **Tapping a bubble zooms the map to that grid cell** (the request bbox divided 32×32), then re-queries by the same rule as "Aproximar" (7.0: an explicit search action, `pushState`, mobile included).
-- No message, no action and no announcement: count bubbles are not a guard state. Bubble visuals, accessible name and any copy come from UI's screen spec (pending, section 8); this spec adds no strings for them.
+### 7.4 Map pins, count bubbles and G-4 (§12.7b)
+Sources: UI's zoom states **rev 3.1** (`/workspace/ui/zoom-states-spec.md`, G-4 aligned with §12.7b) and UI's **map count bubbles and sponsored pins** screen spec **rev 2.1** (`/workspace/ui/map-count-bubbles-spec.md`, 2026-10-21), with Arquitetura's A1–A5 (ADR 001 [§12.7b](../../adr/001-busca-sql-paginada.md)) and Produto's Q-P1/Q-P2. The bubble and the sponsored tag are listed under "Componentes" in [spec-telas-busca-mapa-upload-fotos.md](spec-telas-busca-mapa-upload-fotos.md) §1.
 
-**Over 5,000 filtered candidates.** G-2 applies unchanged (7.1): `zoom_in: true`, no pins and no clusters. The map shows the pill:
+| Filtered candidates in the map bbox | Map response | Map shows | List |
+|---|---|---|---|
+| ≤ 300 | `pins` (all), `clusters: []` | price pins only | normal |
+| 301–5,000 | `pins` (top 300 in `sort_effective`), `clusters` with `{lat, lng, count, bounds:[s,w,n,e]}`, `pins_truncated: true` | pins + count bubbles; **no pill** | normal: all results, 20 per load, "Mostrar mais imóveis" |
+| > 5,000 (G-4) | `items: [], pins: [], clusters: []`, `zoom_in: true`, `guard: "candidates"`; no counts | no pins, no bubbles; the pill "Aproxime o mapa para ver os imóveis" [O] | map area: the G-2 block (7.1); resolved place: normal |
+| span > 8° | same as above + `guard: "span"`, `suggested_bbox` | G-3 (7.3) | G-3 |
+
+- `acima_do_limite` is gone (§12.7b A3). The pill is driven by the map response's `guard: "candidates"`.
+- **Bubbles are not a guard state:** no message, no action row, no live announcement.
+
+**Pins.**
+- **Order (A5):** pins follow `sort_effective`, so they match the order of the list actually shown, including under the G-1 fallback (`sort_fallback_from`). Each pin carries `{id, lat/lng, preco, sponsored}`.
+- **With dates (A4):** the pins are availability-checked (the top 300 *available* candidates); the bubble counts aren't, so the response sets `counts_approximate: true`. Without dates the counts are exact and `counts_approximate` is false.
+- **Pin cap and sponsored pins (Produto, 2026-10-21):** sponsored pins count **inside** the 300-pin cap and never add pins beyond it. A sponsored listing is a pin only if it is among the top 300 in `sort_effective`.
+
+**Sponsored pins (Produto, Q-P2; UI rev 2.1 §5).** Sponsored pins are part of the 300 pins, never extra. A pin with `sponsored: true` **always** shows "Patrocinado" [O] (EN "Sponsored") on the pin itself, at every zoom and in every state, because any paid boost is labelled (Rafael; section 1). Position and label come from the **same `channel_rank` row** (§12.3a.1); the pin's `sponsored` flag is that row's flag.
+- The price pill is unchanged: same size, and the price text is never shortened. A compact **text tag** "Patrocinado" sits **above** the pill, attached to it like a tab, with the same width or narrower and smaller text, a 1 px dark border and its own fill. The cue is the **word**, not a colour or an icon (1.4.1); tag text ≥ 4.5:1 and tag border ≥ 3:1.
+- Pin states: normal, the tag shows; selected (inverted), the tag inverts with the pin; visited, the tag stays at full contrast.
+- **Accessible name** of the pin button [P]: "Anúncio patrocinado. R$ 2.250 total." / "Sponsored listing. R$ 2,250 total." With no dates the price part follows the card's existing price text (nightly). The sponsored text comes first; the tag is not a separate tab stop.
+- **Never clustered:** sponsored pins are excluded from client clustering and always drawn on their own, above clusters and bubbles; two overlapping sponsored pins both stay drawn, the selected one on top.
+- **Bubbles never carry "Patrocinado":** a listing inside a bubble is not drawn as a pin, so no position is shown for it. Display merging merges bubbles only, never pins.
+- Mobile uses the same tag at the same text size, never truncated or replaced by an icon; the 44 px target covers the pin and its tag together. The desktop popup and the mobile carousel cards show "Patrocinado" by the card rule.
+
+**Relation to the list (Produto, Q-P1, accepted for the pilot).** List cards beyond the top 300 pins **highlight nothing on the map**: hovering or focusing such a card changes nothing on the map and shows no message. List items carry no lat/lng (§5b) and **no cell id**, to keep the payload small. Cards that have a pin keep "Card e pin ficam destacados juntos" (map spec §1). Mobile carousel: cards of rendered pins only; bubbles are not in it. *Backlog candidate (note only, not added):* "Map highlight for listings outside the top-300 pins: needs a cell id or a coarse position per list item (Arquitetura)."
+
+**Grid (A2).** The client sends **its map viewport** as `vp_w`/`vp_h` in CSS px (the map element, not the window: desktop, the map column, 40% of 1280 = 512 px wide; mobile, the full-screen map), on every map request, including after a resize or rotation. The server uses `ceil(vp_w/64) × ceil(vp_h/64)` cells, capped at 32×32; with no viewport it defaults to 16×16. Cells are therefore about 64 px or more, so overlaps are rare. **Fallback:** bubbles whose boxes overlap at the current zoom are merged for display; the merged count is the sum (keeping "~" if `counts_approximate`), and a tap fits the union of the members' `bounds`.
+
+**Bubble vs client cluster.** The map spec's "Cluster" stays: the client-side cluster of rendered pins (MapLibre, over at most 300 points). The two are never merged.
+
+| | Client cluster (existing) | Count bubble (new) |
+|---|---|---|
+| Represents | rendered pins overlapping at this zoom | listings **not** drawn as pins |
+| Shape | **circle**, solid brand fill, white number | **rounded square**, light neutral fill, dark 1.5 px border, dark number, a **"+"** zoom glyph |
+| Layer | above bubbles | below pins and clusters |
+| Tap | expands to its pins | fits `bounds` and searches |
+
+Shape, glyph and text tell them apart, never colour alone (1.4.1).
+
+**Bubble states and count format.**
+- Default: ≥ 24×24 CSS px (2.5.8), 44 px on mobile. Hover (desktop): thicker border, light shadow, pointer; the visible tooltip is the accessible name. Focus: 2 px ring outside the border, ≥ 3:1 against the map, never obscured by the search bar, toggle or carousel (2.4.11; the map pans it into view). Pressed: darker fill, no scale change under `prefers-reduced-motion`. Area just tapped: the tapped `bounds` outlined (2 px, dark, not colour-only) until the next move or search. Loading after tap: the "+" becomes a spinner; old pins and bubbles stay dimmed with "Atualizando resultados…" [O] (EN [P] "Updating results…"); `aria-busy="true"` on the map region.
+- Count: exact with the locale separator, pt-BR "1.234", EN "1,234"; **approximate** (`counts_approximate: true`): pt-BR "~1.234", EN "~1,234". No compact "1,2 mil" form (a count is ≤ 4,700).
+
+**Tap behaviour and history (A1).** A tap, click or Enter/Space on a bubble fits its **`bounds`** (or the union for a merged bubble) with the map's padding; the animation respects reduced motion. It is **the same as "Aproximar" [O]** (7.0): one map and list search for the new view, `pushState`, one history entry; Back returns to the previous view with its bubbles.
+- Desktop with "Buscar ao mover o mapa" [O] ON: the tap's search replaces the move-triggered one (no second search, no `replaceState` for the same move).
+- Desktop with the toggle OFF, and mobile: the tap searches at once; "Buscar nesta área" [O] doesn't appear after a bubble tap, only after a manual pan or zoom.
+- On a resolved place: the search becomes "Área do mapa ×" [O], and × restores the place.
+
+**Accessibility.**
+- Each bubble is a `<button>`. Accessible names [P]: exact, "1.234 imóveis nesta área. Aproximar." (singular "1 imóvel nesta área. Aproximar.") / "1,234 listings in this area. Zoom in." (singular "1 listing in this area. Zoom in."); approximate, "Cerca de 1.234 imóveis nesta área. Aproximar." (singular "Cerca de 1 imóvel nesta área. Aproximar.") / "About 1,234 listings in this area. Zoom in." (singular "About 1 listing in this area. Zoom in."). The "~" is visual only and never read out.
+- Keyboard order: pins (in `sort_effective` order), then bubbles in reading order (north to south, west to east). A "Pular o mapa" [P] / "Skip the map" link comes before the map layer. The list stays the accessible path (map spec §1).
+- Focus after a zoom goes to the map region (`tabindex="-1"`, labelled "Mapa"). No live region for bubbles or truncation; the existing list-count update still applies. Contrast: number ≥ 4.5:1; border and glyph ≥ 3:1; focus ring ≥ 3:1.
+
+**G-4: map over 5,000 candidates** (rev 3.1).
 - **Message** [O]: "Aproxime o mapa para ver os imóveis" / "Zoom in to see listings".
 - **Actions:** primary "Aproximar" [O], one level. Secondary, mobile map view only: "Lista" (the same action as the floating "Lista" button).
-- **Placement:** desktop, a centred pill at the top of the map, under the "Buscar ao mover o mapa" toggle, with "Aproximar" inline; the attribution stays visible. Mobile map view: G-2's card in the carousel position (7.1). Mobile list view: nothing.
-- **Screen reader:** silent; G-2's message is the one announced.
+- **Placement:** desktop, a centred pill at the top of the map, under the "Buscar ao mover o mapa" toggle, with "Aproximar" inline; the attribution stays visible. Mobile map view: one card replaces the carousel, with the message, "Aproximar" and "Lista". Mobile list view: nothing.
+- **Screen reader:** announced only when the map is the main view (mobile map view) or right after a keyboard zoom or "Aproximar" on the map; silent on desktop while the list or the G-2 block is shown.
+- **Combines with:** G-3 replaces it. In a map area it always comes with G-2: the G-2 block is the one announced, and the pill is silent. On a resolved place it is alone: the list is normal.
 
-**Combines with:** G-3 replaces both (no pins, no clusters). Count bubbles show silently with G-1.
-
-**AC:**
-1. A mocked response with 300 candidates shows 300 pins and no bubbles; 301 shows 300 pins plus bubbles, with `pins_truncated: true`.
-2. The 300 pins are the first 300 in the active sort order: relevance, rating and nightly price each give the list's first 300; under a G-1 fallback, relevance order.
-3. Tapping a bubble zooms the map to its grid cell and re-queries with one history entry.
-4. Over 5,000 (5,000/5,001 mocked edge), G-2 applies unchanged: no pins, no bubbles, the map pill and G-2's list block.
-5. On mobile, "Lista" returns to the list at the same scroll position. No "Ver lista" label appears anywhere.
-6. Neither the pill nor a bubble covers the attribution or the zoom control.
+**AC** (mocked `modo=mapa` responses):
+1. **300 candidates:** 300 pins, `clusters: []`, no bubbles, no pill.
+2. **301 candidates:** 300 pins and bubbles summing to 1, with **no pill** and no announcement. Exact: the name is "1 imóvel nesta área. Aproximar." With `counts_approximate: true`: the bubble shows "~1" and the name is "Cerca de 1 imóvel nesta área. Aproximar."
+3. **5,000 candidates:** 300 pins plus bubbles, no pill. Without dates the bubbles sum to exactly 4,700 ("4.700" / "4,700"), and pins plus bubbles equal the candidate count. With dates every bubble shows "~", and no AC checks the sum against the list.
+4. **5,001 candidates:** the response has `items/pins/clusters: []`, `zoom_in: true` and `guard: "candidates"`. The map shows the pill with no pins and no bubbles. The list shows the G-2 block in a map area, and is normal on a resolved place. No code reads `acima_do_limite`.
+5. **Tap or Enter on a bubble:** it fits exactly that cluster's `bounds`, runs one search and pushes one history entry; with desktop search-on-move ON there is no extra search; on mobile there is no "Buscar nesta área"; Back restores the previous view.
+6. **Grid:** every map request sends `vp_w`/`vp_h` of the map element. At the default 1280 and 390 layouts, no two bubbles overlap in the mocked fixtures. When they do overlap (a fixture with close means), they merge with the summed count ("~" kept) and a tap fits the union of their bounds.
+7. **Pin order:** follows `sort_effective` (relevance, rating, nightly price; under the G-1 fallback the pins match the relevance list's first 300).
+8. **Sponsored pin (Q-P2):** a pin with `sponsored: true` shows the "Patrocinado" tag in the normal, selected and visited states, on desktop and mobile, at every zoom; the price is unchanged; its name starts with "Anúncio patrocinado"; it is never absorbed into a client cluster; a greyscale screenshot still shows the tag; `sponsored: false` shows no tag; bubbles never show the tag.
+9. **Sponsored inside the cap:** sponsored pins count inside the 300-pin cap and never add pins beyond it (a response with 300 pins, some sponsored, draws exactly 300); a sponsored listing outside the top 300 in `sort_effective` is not a pin.
+10. **Q-P1:** hovering or focusing a card whose listing is not among the pins changes nothing on the map; a card with a pin highlights it. List items carry no cell id.
+11. **Visual and accessibility:** bubbles and clusters differ in shape and glyph (greyscale check); the states above exist, and loading sets `aria-busy`; the names follow the accessibility rules, exact and approximate; Tab order is pins then bubbles, with a skip link; focus goes to the map region after a zoom; targets are ≥ 24 px (44 px on mobile); a focused element is never obscured.
+12. On mobile, "Lista" returns to the list at the same scroll position. No "Ver lista" label appears anywhere.
+13. Neither the pill nor a bubble covers the attribution or the zoom control.
 
 G-5, G-6, G-7 and G-9 are error states, not zoom states (section 6).
 
@@ -368,12 +428,27 @@ G-5, G-6, G-7 and G-9 are error states, not zoom states (section 6).
   - **Q10:** guards count candidates before availability, so dates never clear a guard. Guard states offer only actions that can clear them: "Adicionar datas" is removed from every guard state; the narrowing slot is "Adicionar hóspedes" when guests are unset (a candidate filter, §12.5), otherwise "Filtros"; the copy says "aproxime o mapa ou adicione filtros" (Produto approved rev 3).
   - **Q11:** the "Menor diária" fallback returns `sort_fallback_from: "nightly_price"` with `guard: "price_sort"`.
 - ADR 001 [§12.7b](../../adr/001-busca-sql-paginada.md) (#184):
-  - **Q9:** the pin cap stays 300. For 301–5,000 filtered candidates the map gets the top 300 pins in the active sort plus SQL grid clusters (32×32, `{lat, lng, count}`), with `pins_truncated: true`; tapping a bubble zooms to its cell. Over 5,000, G-2 applies unchanged (sections 5, 6, 7.4).
+  - **Q9:** the pin cap stays 300. For 301–5,000 filtered candidates the map gets the top 300 pins in `sort_effective` plus SQL grid clusters, with `pins_truncated: true`; tapping a bubble zooms to its bounds. Over 5,000, G-2 applies unchanged (sections 5, 6, 7.4).
+- ADR 001 §12.7b count bubbles (A1–A5, #188), UI's zoom states rev 3.1 and map count bubbles rev 2.1 (section 7.4):
+  - **Q-A1 (cell bounds):** each cluster returns `bounds: [s, w, n, e]`; a tap fits it.
+  - **Q-A2 (grid vs viewport):** the client sends `vp_w`/`vp_h`; the grid is `ceil(vp_w/64) × ceil(vp_h/64)`, capped at 32×32, default 16×16. Display merging stays as a rare fallback.
+  - **Q-A3 (fields above 5,000):** `items: [], pins: [], clusters: []`, `zoom_in: true`, `guard: "candidates"`, no counts; span adds `suggested_bbox`. `acima_do_limite` is removed; the ADR §5 and §12.7 G-4 row are marked superseded by §12.7b (#188).
+  - **Q-A4 (availability in counts):** with dates, pins are availability-checked and cluster counts are not (`counts_approximate: true`, "~N", "Cerca de…"); without dates counts are exact.
+  - **Q-A5 (effective sort for pins):** the map response returns `sort_effective` and `sort_fallback_from`; pins follow `sort_effective`.
+  - **Bubble screen spec from UI:** delivered (rev 2.1) and folded into section 7.4 and section 9; closed.
+- Produto, 2026-10-21 (section 7.4):
+  - **Q-P1:** accepted for the pilot: list cards beyond the top 300 pins highlight nothing on the map; list items carry no cell id, to keep the payload small. Backlog candidate only (a cell id or coarse position per list item); not added to the backlog.
+  - **Q-P2:** a sponsored pin always shows the "Patrocinado" tag, and is never clustered; position and label come from the same `channel_rank` row (Rafael: any paid boost is labelled).
+  - **Sponsored pins and the pin cap:** sponsored pins count inside the 300-pin cap and never add pins beyond it.
+- BD (`rank_penalty` / `penalty_until`): `smallint` permille multiplier with a 1–1000 CHECK, nullable `timestamptz`, and a pair CHECK; set in the cancel transaction and reset by the sweep (section 1). In ADR 001 §12.11 (#188).
 - Produto: UI's Q2, Q6, Q7, Q8 (section 7, as amended by Q10).
 
 **Still open:**
-- **Bubble screen spec from UI, pending:** visuals, accessible name and copy for the count bubbles (§12.7b). No bubble strings are added until then.
-- **BD (schema spec):** column types and CHECKs for `rank_penalty` and `penalty_until` on `listing_search`.
+- None for this spec.
+
+**Deferred (not open):**
+- **Per-view cap on sponsored pins** (UI rev 2.1 §10, closed there as deferred: never-clustered sponsored pins may clutter dense views): deferred until paid placement is switched on. Both channel weights are 0 by default, and switching paid placement on is a later Rafael decision. Until then, sponsored pins are bounded by the 300-pin cap.
+- **Map performance measurement** (EXPLAIN of the 4,999-candidate map with clusters, map payload size, mobile p95): deferred by Rafael (#187); the §12.7b figures stay [E].
 
 ## 9. pt-BR strings (official copy table)
 To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localidade-resolvida.md; they go into the i18n PT keys, EN/ES follow.
@@ -432,6 +507,16 @@ To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localid
 | Change sort | Mudar ordenação |
 | Add guests | Adicionar hóspedes |
 | Show on map | Ver no mapa |
+| *UI map count bubbles and sponsored pins, rev 2.1 (section 7.4), [P]; the count is formatted with the locale separator:* | |
+| 1,234 listings in this area. Zoom in. | 1.234 imóveis nesta área. Aproximar. |
+| 1 listing in this area. Zoom in. | 1 imóvel nesta área. Aproximar. |
+| About 1,234 listings in this area. Zoom in. | Cerca de 1.234 imóveis nesta área. Aproximar. |
+| About 1 listing in this area. Zoom in. | Cerca de 1 imóvel nesta área. Aproximar. |
+| Skip the map | Pular o mapa |
+| Sponsored listing. R$ 2,250 total. | Anúncio patrocinado. R$ 2.250 total. |
+| Updating results… | Atualizando resultados… (existing, map spec §1) |
+
+Approximate bubble counts show "~1.234" (pt-BR) / "~1,234" (EN); the "~" is visual only. The sponsored pin tag reuses "Sponsored" / "Patrocinado" above, and its accessible name starts with "Anúncio patrocinado" / "Sponsored listing" (the price part follows the card's price text).
 
 Superseded and removed (rev 3): "Sorted by relevance. Zoom in to sort by total price." (former official string; replaced in the official table), "Zoom in to sort by total price" (former official disabled-option hint; removed from the official table, since the price sorts are never disabled), "Sorted by relevance. Zoom in to sort by lowest nightly price." (Produto's Q8 line), "Add dates" / "Adicionar datas" (no longer a guard action), "Show list" / "Ver lista" (the existing "Lista" is used), and the rev-1 G-2, "still" and place-path lines.
 
