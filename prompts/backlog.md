@@ -275,6 +275,7 @@ Removed 2026-10-21: already done (#23, #32, #35, #85). The LGPD item moved to Po
 ## Funcionalidades e API
 Removed 2026-10-21: decided by Rafael (no blanket fetch/API move; P10 decides).
 
+- [ ] Map: list cards beyond the top 300 pins highlight their area on the map (for example a cluster cell id per item). Could-have. Source: UI via Produto (#189). Sprint: post-pilot. Owner: UI; Programador.
 - [ ] Escolher o provedor SMTP e abrir o cadastro em produção.
 - [ ] Expor ou gerar o `ical_hash` pela API (hoje só é criado ao abrir `views/calendar.php:140`).
 - [ ] Trocar `alert()` dos formulários por mensagens na própria página.
