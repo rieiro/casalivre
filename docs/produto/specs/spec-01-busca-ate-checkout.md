@@ -28,7 +28,7 @@ Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confir
 ## 2. Resultados (lista + mapa): UC-H03, UC-H04, UC-H05
 **Objetivo:** comparar pelo preço total e pela localização. O layout, os pins, os clusters, o popup, a atribuição OSM e os estados do mapa seguem a spec v1, seção 1.
 **Novidades por causa da S4 (paginação por cursor):**
-- Ordenação: **Relevância** (padrão), **Menor preço total** e **Melhor avaliação**. "Menor preço total" is a performance guard only, and the server decides: it runs with ≤ 5,000 candidates, otherwise the response has `sort_unavailable: "zoom_in"` and the list falls back to Relevance with the announcement and the inline text "Zoom in to sort by total price". As a client hint, the option is disabled with that text below zoom 13 (desktop) or 12 (mobile) unless a city or neighborhood is fixed (`spec-busca-localidade-resolvida.md`, UX item 8; spec-07).
+- Ordenação: **Relevância** (padrão), **Menor preço total** (com datas), **Menor diária** (sem datas) e **Melhor avaliação** (rules in `docs/produto/specs/spec-busca-ordenacao-filtros.md`). The price sorts are performance guards only, and the server decides: "Menor preço total" runs with ≤ **2,000** filtered candidates (ADR 001 §12.7 G-1a) and "Menor diária" with ≤ **5,000** (G-1b); otherwise the response has `sort_unavailable: "zoom_in"` and the list falls back to **Relevância** with the announcement and the inline text "Zoom in to sort by total price". ~~As a client hint, the option is disabled with that text below zoom 13 (desktop) or 12 (mobile) unless a city or neighborhood is fixed.~~ The zoom-13/12 hint is superseded by UI's zoom-states spec (§7 of `docs/produto/specs/spec-busca-ordenacao-filtros.md`; spec-07).
 - A lista carrega **20 itens por vez**, com o botão **"Mostrar mais imóveis"** no fim. Não há número de página nem rolagem infinita, e o rodapé continua acessível.
 - As contagens são **aproximadas**: "Mais de 120 imóveis", "~40 com piscina".
 - O mapa consulta pela área visível (bbox), separado da lista. Aviso quando são diferentes: "O mapa mostra os imóveis desta área".
@@ -45,7 +45,7 @@ Fluxo: **Busca → Resultados (lista + mapa) → Detalhe → Checkout → Confir
 3. Dado que há datas, então todo card mostra o total com limpeza e taxa incluídas, e esse valor é igual ao do detalhe.
 4. Nenhuma contagem é apresentada como exata ("Mais de", "~").
 5. Mover o mapa não reinicia a lista, a não ser que o usuário peça "Buscar nesta área" ou a opção "Buscar ao mover o mapa" esteja ligada (ON by default on desktop, OFF on mobile). Then the field shows "Map area" with × to return to the last place, and the URL has `bbox` instead of `local_id` (`spec-busca-localidade-resolvida.md`, UX items 6–7).
-7. Below the hint zoom, "Menor preço total" is visible but disabled with "Zoom in to sort by total price". On `sort_unavailable: "zoom_in"` (even for a city), the sort falls back to Relevance, announced in a polite live region and shown next to the sort control.
+7. When and how "Menor preço total" is shown as disabled follows UI's zoom-states spec (§7 of `docs/produto/specs/spec-busca-ordenacao-filtros.md`; the zoom-13/12 hint is superseded). On `sort_unavailable: "zoom_in"` (even for a city, above 2,000 candidates for the total price or 5,000 for the nightly price), the sort falls back to Relevance, announced in a polite live region and shown next to the sort control.
 6. O selo do tipo de reserva tem texto e não depende só de cor.
 
 ## 3. Detalhe do imóvel: UC-H07, UC-H08, UC-H09, UC-H13
