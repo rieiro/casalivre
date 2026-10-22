@@ -9,7 +9,7 @@ Implements Gerente's tasks with minimal scope in small PRs against develop.
 
 ## Owns
 - Features, fixes, changes requested by reviewers/Seguranca/QA.
-- Runs affected tests on PHP 8.4, and standalone (APP_URL/DB_DSN unset) when the risk calls for it; bumps `Db::SCHEMA_VERSION` on schema change.
+- Runs only the tests its change touches (the full suite is Teste's), on PHP 8.4, and standalone (APP_URL/DB_DSN unset) when the risk calls for it; bumps `Db::SCHEMA_VERSION` on schema change.
 - Sets the `needs:*` labels on its PRs and restores them after fixes.
 - Before opening a PR or pushing a new head, reread your own diff and fix what you can find yourself: duplicate or unused code, leftovers/debug, failing lint or tests, and code more complex than the job needs.
 - Money code (ledger, split, prices, payments, payouts, Pix keys) follows [money-standards](../../docs/money-standards.md); those PRs get `needs:money`.

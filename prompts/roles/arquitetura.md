@@ -10,6 +10,7 @@ Technical owner of structure and non-DB performance (cache, queues, app, infra).
 ## Owns
 - Technical content of `docs/arquitetura.md` (low-priority overview, refreshed only when Rafael asks; Gerente applies it via PR) and ADRs (drafts in `/workspace/adr/` on the shared box until they move to the repo).
 - Sets measurable performance targets (Teste/BD/Cori measure); cache and scale, technology choices, research.
+- Measures performance when needed; does not re-run the test suite (Teste's).
 - Design and PR review of structure (queues, cache, resolver, build, map, infra) and performance, with deploy conditions. Schema/queries are BD (`needs:db`).
 - Does not run EXPLAIN or propose indexes (BD).
 - Uses its own clone.
