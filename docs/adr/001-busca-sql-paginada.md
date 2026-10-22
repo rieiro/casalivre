@@ -521,8 +521,7 @@ The search columns live in a narrow projection table, `listing_search` (DDL in 1
   - A listing INSERT creates the row; DELETE cascades.
   - **No trigger:** the `features` mask spans several tables, and a trigger would fire on writes that touch no search column.
   - A **nightly reconcile job**, `rank:verify` (nightly and after deploys), compares the table with a fresh projection in keyset batches. It rewrites mismatching rows and logs the count, alerting if it is above 0.
-- **Index count:** `listing_search` has its own PK, which no search query reads. BD counts it as a table PK, so **search indexes stay 6**.
-  - Still flagged to Rafael: if he counts it, the wide layout is the fallback, and it misses the bar during recompute windows.
+- **Index count (Rafael, 2026-10-21):** **6 search indexes plus the write-path primary key `listing_search_pkey`, whose cost is measured.** Reason: no search reads it, but the app sync, the `rank:*` and `rank:verify` keyset batches and the cascaded delete all go by `id`; the table is updated incrementally, not rebuilt, so dropping it would force full scans, and a `UNIQUE(id)` replacement costs the same. BD's benchmark ran with it: narrow still costs about half of wide (16.5 vs 33 ms per 1k-row recompute batch; 14–21 vs 28–40 ms post-recompute search against the ~30 ms bar). The narrow layout stays; no switch to the wide fallback.
 - **Scores:** written by `RankScore` only to `listing_search` (and `channel_rank`). `properties` keeps `rating_sum` and `rating_count` (§4a).
   - `RankScore::base()`: factors defined by Produto, weights in settings.
   - `RankScore::rating()`: Bayesian mean with `C` and `m` in settings; integer ×1000, `CHECK 0..5000`, PHP `round()`.
@@ -628,7 +627,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 ```
 - **Backstop (BD):** `SET LOCAL statement_timeout = '150ms'` in every search transaction, per statement and not per role (the same role runs long jobs). 150 ms is ≈ 3× the slowest warm allowed case after the G-1 change.
 
-### 12.6 Index count (Rafael, 2026-10-21: 6 search indexes)
+### 12.6 Index count (Rafael, 2026-10-21: 6 search indexes plus the write-path PK)
 1. `idx_ls_place_rank`
 2. `idx_ls_place_rating`
 3. `idx_ls_geo` (INCLUDE carries `id`, `lat`, `lng`)
@@ -636,7 +635,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 5. `idx_chrank_place`
 6. `avail_runs` PK (only when ±N flexible dates ship)
 
-- `listing_search_pkey` is a table PK, not a search index (BD), and is flagged to Rafael (12.1).
+- Plus the write-path primary key `listing_search_pkey`, whose cost is measured (Rafael, 2026-10-21; reason in 12.1).
 - The `listing_boosts` indexes and the `search_feature_bits` PK are back-office.
 - `idx_prop_place_active` and `idx_prop_geo_active` (§11, rev 1) are dropped; they only ever existed in proposals.
 - Not adopted (option B, superseded): global rank and rating indexes. Before the revert they cost +48% on a recompute batch (`/workspace/adr/bench-adr001-sorts/round2/w-ls.txt`).
@@ -731,7 +730,7 @@ Raw output is in `/workspace/adr/bench-adr001-sorts/` and its `round2` subdirect
 Source: `/workspace/casalivre-db/adr001-sorts-answers.md`, appendix. It goes into `database/schema.pgsql.sql` and the seeds in the implementation PR, with no migration code.
 ```sql
 CREATE TABLE listing_search (
-  id            int PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,
+  id            int PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,  -- listing_search_pkey: write-path PK (sync, rank:* / rank:verify batches, cascade), cost measured (12.1)
   status        text     NOT NULL CHECK (status IN ('active','inactive','draft','blocked')),  -- mirror of properties.status values
   city_place_id int      NOT NULL,
   lat double precision NOT NULL CHECK (lat BETWEEN -90 AND 90),
