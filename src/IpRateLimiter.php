@@ -103,11 +103,7 @@ final class IpRateLimiter
     {
         try {
             $key = self::keyOrFail($bucket, $ip);
-            $r = self::conn();
-            $res = $r->multi()->get($key)->ttl($key)->exec();
-            if (!is_array($res) || count($res) !== 2) {
-                throw new RuntimeException('MULTI GET/TTL failed');
-            }
+            $res = self::exec(self::conn()->multi()->get($key)->ttl($key), 2);
         } catch (Throwable $e) {
             return self::unavailable($bucket, $e);
         }
@@ -155,10 +151,7 @@ final class IpRateLimiter
     /** @return array{0: int, 1: int} count after INCR and key TTL */
     private static function incr(string $key, int $windowSeconds): array
     {
-        $res = self::conn()->multi()->incr($key)->expire($key, max(1, $windowSeconds), 'NX')->ttl($key)->exec();
-        if (!is_array($res) || count($res) !== 3 || !is_int($res[0])) {
-            throw new RuntimeException('MULTI INCR/EXPIRE NX/TTL failed');
-        }
+        $res = self::exec(self::conn()->multi()->incr($key)->expire($key, max(1, $windowSeconds), 'NX')->ttl($key), 3, 0);
         return [$res[0], (int) $res[2]];
     }
 
@@ -172,13 +165,23 @@ final class IpRateLimiter
     {
         try {
             $w = max(1, $windowSeconds);
-            $res = self::conn()->multi()->set($key, '1', ['nx', 'ex' => $w])->decr($key)->expire($key, $w, 'NX')->exec();
-            if (!is_array($res) || count($res) !== 3 || !is_int($res[1])) {
-                throw new RuntimeException('MULTI SET NX/DECR/EXPIRE NX failed');
-            }
+            self::exec(self::conn()->multi()->set($key, '1', ['nx', 'ex' => $w])->decr($key)->expire($key, $w, 'NX'), 3, 1);
         } catch (Throwable $e) {
             self::unavailable($bucket, $e);
         }
+    }
+
+    /**
+     * EXECs a queued MULTI and checks the result shape: $replies replies, and an int at $intAt when given (the
+     * INCR/DECR reply). @throws RuntimeException otherwise, so the caller takes the unavailable() path.
+     */
+    private static function exec(Redis $multi, int $replies, ?int $intAt = null): array
+    {
+        $res = $multi->exec();
+        if (!is_array($res) || count($res) !== $replies || ($intAt !== null && !is_int($res[$intAt]))) {
+            throw new RuntimeException('MULTI/EXEC failed');
+        }
+        return $res;
     }
 
     private static function retryAfter(int $ttl, int $windowSeconds): int
