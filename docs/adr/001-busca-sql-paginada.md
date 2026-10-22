@@ -369,8 +369,8 @@ Total = `nightly_price × nights + Σ(exception price − nightly_price) + clean
 
 Cost is linear in **candidates** (~3.5 µs each), not in area: 443 km² gave 4.3k candidates in the dense city and 32 in the sparse one. So:
 - **Rule:** total-price sort is allowed when the filtered candidate set is **≤ 5,000** (measured p95 ≤ ~22 ms; 13k crosses ~47 ms). Server checks with a capped count (`SELECT 1 … LIMIT 5001`, same WHERE as the page, ~id-sort cost).
-- **UI hint (not the guard):** offer the sort from bbox **≤ 500 km²**, ≈ zoom **≥ 13 on desktop** (1280×800 at lat −23 ≈ 315 km²) and **≥ 12 on mobile** (390×800 ≈ 385 km²); a fixed city/neighborhood place also qualifies. Zoom→area is computed, not measured.
-- **Above the threshold:** the sort is disabled (server ignores it and returns the default `id` order with `sort_unavailable: "zoom_in"`); UI shows "Zoom in to sort by total price". No cheaper substitute sort, because id-sort in a bbox costs ~70% of total-sort.
+- ~~**UI hint (not the guard):** offer the sort from bbox ≤ 500 km² (zoom ≥ 13 desktop, ≥ 12 mobile).~~ Dropped in §12.7a: the server decides through G-1a.
+- **Above the threshold:** superseded by §12 G-1a (cap 2,000; fallback is the relevance order with `sort_effective`/`sort_fallback_from`, see §12.7a). Original text: the sort is disabled and the server returns the default `id` order with `sort_unavailable: "zoom_in"`.
 - Re-measure with the Bot Teste on the real seed and concurrency before raising 5,000.
 
 ### 11.2 Place search keys (Produto requirement on change 1, accepted 2026-10-16)
@@ -659,6 +659,14 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
   - An area with 2,001–5,000 candidates lists normally under relevance, rating, channel and nightly price.
   - A total-price request there returns the relevance order with `sort_unavailable`.
 - On the place path, G-1a and G-1b apply, and no other guard is needed: the btree is read in key order with `LIMIT` (BD: São Paulo with all filters, 2.8–3.4 ms).
+
+### 12.7a Guard responses (UI answers, Arquitetura, 2026-10-21)
+
+- **No client-side zoom hint** for the total-price sort (the old zoom 13/12 hint is dropped). The server decides through G-1a (more than 2,000 filtered candidates), because the count depends on the filters and no zoom level can predict it.
+- **Guard reason:** every guard response carries `guard: "span" | "candidates" | "price_sort"` next to `zoom_in` or `sort_unavailable`. Client config exposes `max_span_deg` (8). The 5,000 and 2,000 caps are exposed for information only, never for client-side gating.
+- **Suggested area:** only `guard: "span"` returns `suggested_bbox` (the requested centre clipped to 8°, computed, no query). `candidates` and `price_sort` return none, because finding one would cost a query; UI zooms in one level.
+- **Fallback in the cursor:** under the G-1a fallback the response returns `sort_effective: "relevance"` and `sort_fallback_from: "total_price"`, and the cursor encodes both. A request with `sort=total_price` plus that cursor is valid under G-7 and continues in relevance order. The fallback holds for the rest of the cursor chain, even if the area drops under 2,000; the sort switches back only on a new search with no cursor.
+- **Pins:** G-3 also applies to the pin query (same bbox; empty pins plus `zoom_in`). A resolved place wider than 8° (for example a state) opens with a map viewport that fits inside 8°, centred on the place's anchor point. The place-path list uses no bbox, so G-3 doesn't affect it.
 
 ### 12.8 Numbers (BD, PG 18.6, 150k-listing scaled real seed, final schema)
 **How BD measured:**
