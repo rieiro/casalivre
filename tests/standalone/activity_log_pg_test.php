@@ -232,8 +232,10 @@ $sec89 = $mk('security', 89);
 $oth15 = $mk('other', 15);
 $oth13 = $mk('other', 13);
 $heldRef = (string) LogPrivacy::userRef(99);
+// Noon UTC of the leaf's day ($mk), so the row is in that leaf at any time of day (now() - N days - 1 h fell into
+// the previous day's leaf between 00:00 and 01:00 UTC).
 $put = static function (string $class, int $daysAgo, ?string $ref) use ($owner, $uuid): void {
-    $st = $owner->prepare("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id) VALUES (?::uuid, now() - make_interval(days => ?) - interval '1 hour', ?, ?, ?, ?, ?, ?::uuid)");
+    $st = $owner->prepare("INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id) VALUES (?::uuid, ((((now() AT TIME ZONE 'UTC')::date - ?::int) + time '12:00') AT TIME ZONE 'UTC'), ?, ?, ?, ?, ?, ?::uuid)");
     $st->bindValue(1, $uuid());
     $st->bindValue(2, $daysAgo, PDO::PARAM_INT);
     $st->bindValue(3, $class === 'security' ? 2 : 5, PDO::PARAM_INT);
