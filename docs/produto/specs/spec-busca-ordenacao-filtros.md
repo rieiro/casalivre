@@ -1,8 +1,8 @@
 # Spec: search ranking, sorts, filters and flexible dates (G1, G2, G3, G4; draft, 2026-10-21)
 
-**Base:** [ADR 001 §12](../../adr/001-busca-sql-paginada.md) (rev 3, #179) and [docs/decisions.md](../../decisions.md) (2026-10-21, search sorts and filters; G1 and G13 decisions). Product sources: `docs/produto/planejamento/backlog.md` ("Competitor gaps": G1, G2, G3, G4, G13) and [spec-busca-localidade-resolvida.md](spec-busca-localidade-resolvida.md) (resolved place, map area, combobox, official copy table).
+**Base:** [ADR 001 §12](../../adr/001-busca-sql-paginada.md) (rev 3, #179; guard responses §12.7a, #181) and [docs/decisions.md](../../decisions.md) (2026-10-21, search sorts and filters; G1 and G13 decisions). Product sources: `docs/produto/planejamento/backlog.md` ("Competitor gaps": G1, G2, G3, G4, G13) and [spec-busca-localidade-resolvida.md](spec-busca-localidade-resolvida.md) (resolved place, map area, combobox, official copy table).
 **Scope:** what the guest sees and what the API returns. How each option is stored and indexed is §12 (Arquitetura, BD). Screen layout of the zoom states is UI's (section 7, merged from UI's screen spec).
-**Aligned:** spec-01 §2 and spec-busca-localidade-resolvida item 8 now carry the 2,000-candidate total-price cap (G-1a) with a relevance fallback; their zoom-13/12 hint is superseded by section 7.
+**Aligned:** spec-01 §2 and spec-busca-localidade-resolvida item 8 carry the 2,000-candidate total-price cap (G-1a) with a relevance fallback; the zoom-13/12 client hint is dropped (§12.7a) and the price sorts are always enabled (section 7).
 [E] = estimate to calibrate (Negocios), no usage data yet.
 
 ## 0. Rules that apply to every section
@@ -74,7 +74,7 @@ A 5.0 with 3 reviews outranks a 4.9 with 200.
 - `rating_rank` is also the rating factor of G1.
 
 ### User flow
-Guest picks "Melhor avaliação" in the sort control; the list reorders; the choice stays in the URL (`ordem=avaliacao`).
+Guest picks "Melhor avaliação" in the sort control; the list reorders; the choice stays in the URL (`sort=rating`).
 
 ### Acceptance criteria
 1. With `C = 5`, `m = 4,5`, a listing with three 5-star reviews (4.69) ranks below a listing with 200 reviews averaging 4.9 (4.89).
@@ -129,7 +129,7 @@ A "Filtros" panel (sheet on mobile, side panel on desktop; layout by UI) with th
 "Datas flexíveis" appears in the calendar and in the empty state with no behavior.
 
 ### Solution (pilot, §12.4)
-- "Datas flexíveis" **clears the dates**. Cards show the **nightly price**, not the total. The price sort becomes **"Menor diária"** (`ordem=preco_noite`) under G-1b (cap 5,000). Cost is zero.
+- "Datas flexíveis" **clears the dates**. Cards show the **nightly price**, not the total. The price sort becomes **"Menor diária"** (`sort=nightly_price`) under G-1b (cap 5,000). Cost is zero.
 - "Any N nights in window W" (±N days) is **later**: it needs `avail_runs` (§12.4), caps `1 ≤ N ≤ 30`, `W ≤ 31 days`, `N ≤ W`, else **422 `flex_invalid`** (G-6). Not in this delivery.
 
 ### User flow
@@ -143,33 +143,38 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 ## 5. API
 `GET /api/busca` (list) and `GET /api/busca?modo=mapa` (pins), on top of §5, §5b and spec-busca-localidade-resolvida.
 
-**New request params:** `ordem` = `relevancia` (default) | `avaliacao` | `preco_total` (needs dates) | `preco_noite` (no dates); `canal` comes from the storefront (host), never from the client; the G3 params in section 3.
-- `ordem=preco_total` without dates, or `preco_noite` with dates, is ignored and the response uses relevance.
-- The cursor is §12.1's `{v:2, sort, channel, last_key, id, checkin, checkout, hospedes, filters_hash}`; a mismatch returns 400.
+**New request params:** `sort` = `relevance` (default) | `rating` | `total_price` (needs dates) | `nightly_price` (no dates), using §12.7a's names; the channel comes from the storefront (host), never from the client; the G3 params in section 3.
+- `sort=total_price` without dates, or `nightly_price` with dates, is ignored and the response uses relevance.
+- The cursor is §12.1's `{v:2, sort, channel, last_key, id, checkin, checkout, hospedes, filters_hash}`, plus `sort_effective` and `sort_fallback_from` under a fallback (§12.7a). A mismatch returns 400 (G-7), except a request with `sort=total_price` or `nightly_price` plus a fallback cursor, which is valid and continues in relevance order.
+- **Client config** (§12.7a): `max_span_deg` (8) gates G-3 on the client; the 5,000 and 2,000 caps are exposed for information only, never for client-side gating.
 
 **List response additions:**
 ```json
 {
   "items": [ { "id": "...", "patrocinado": false, "...": "§5b fields" } ],
   "next_cursor": "opaque or null",
-  "ordem": "relevancia",
+  "sort_effective": "relevance",
+  "sort_fallback_from": null,
   "sort_unavailable": null,
   "zoom_in": false,
-  "guard": null
+  "guard": null,
+  "suggested_bbox": null
 }
 ```
 - `items[].patrocinado` mirrors `channel_rank.sponsored` for the current channel (false when no row).
-- `ordem` is the sort actually applied (it may differ from the request after a guard; contract to confirm, section 8, Q4).
-- `guard` is `"candidates"` (G-2), `"span"` (G-3) or `null` (Arquitetura).
+- `sort_effective` is the sort actually applied; under a G-1 fallback it is `"relevance"` and `sort_fallback_from` is `"total_price"` (G-1a) or `"nightly_price"` (G-1b). The fallback holds for the whole cursor chain; price order returns only on a new search with no cursor (§12.7a).
+- `guard` is `"span"` (G-3), `"candidates"` (G-2), `"price_sort"` (G-1a/G-1b) or `null` (§12.7a).
+- `suggested_bbox` (the requested centre clipped to 8°, computed, no query) comes **only** with `guard: "span"`.
+- Map response (`modo=mapa`): under G-3, `pins: []`, `zoom_in: true`, `guard: "span"`, `suggested_bbox`; under G-4, `pins: []`, `acima_do_limite: true`. A resolved place wider than 8° opens with a map viewport inside 8°, centred on its anchor point (§12.7a).
 - Errors: 422 `{ "code": "stay_over_cap" }` (G-5) and 422 `{ "code": "flex_invalid" }` (G-6, later) are distinct codes.
 
 ## 6. Guards (§12.7), explicit
 | # | Trigger | Response | Guest sees |
 |---|---|---|---|
-| G-1a | Total-price sort with **> 2,000** filtered candidates (place or map) | 200, relevance order, `ordem: "relevancia"`, `sort_unavailable: "zoom_in"` | "Ordenado por relevância. Aproxime o mapa para ordenar pelo preço total." |
-| G-1b | Nightly-price sort ("Menor diária") with > 5,000 filtered candidates | same as G-1a | "Ordenado por relevância. Aproxime o mapa para ordenar pela menor diária." |
-| G-2 | Map-area list with **> 5,000** filtered candidates, **any sort**, any channel | 200, `items: []`, `zoom_in: true`, `guard: "candidates"` | "Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou escolha uma cidade." |
-| G-3 | Map span **> 8°** in latitude or longitude | **no query**; 200, `items: []`, `pins: []`, `zoom_in: true`, `guard: "span"` | "Esta área do mapa é grande demais para buscar. Aproxime o mapa." |
+| G-1a | Total-price sort with **> 2,000** filtered candidates (place or map) | 200, relevance order, `sort_unavailable: "zoom_in"`, `guard: "price_sort"`, `sort_effective: "relevance"`, `sort_fallback_from: "total_price"` | map area: "Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pelo preço total."; place: "Ordenado por relevância. Adicione filtros para ordenar pelo preço total." |
+| G-1b | Nightly-price sort ("Menor diária") with **> 5,000** filtered candidates | as G-1a, with `sort_fallback_from: "nightly_price"` | map area: "Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pela menor diária."; place: "Ordenado por relevância. Adicione filtros para ordenar pela menor diária." |
+| G-2 | Map-area list with **> 5,000** filtered candidates, **any sort**, any channel | 200, `items: []`, `zoom_in: true`, `guard: "candidates"` | "Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou adicione filtros." |
+| G-3 | Map span **> 8°** (`max_span_deg`) in latitude or longitude | **no query**; 200, `items: []`, `pins: []`, `zoom_in: true`, `guard: "span"`, `suggested_bbox` | "Esta área do mapa é grande demais para buscar. Aproxime o mapa." |
 | G-4 | Map pins > 300 | `pins: []`, `acima_do_limite: true` | "Aproxime o mapa para ver os imóveis" (map only) |
 | G-5 | Stay **> 30 nights**, or a listing `max_nights` above the platform cap | 422 `code: "stay_over_cap"`, before any query (distinct from G-6) | "A estadia máxima é de 30 noites." |
 | G-6 | Flexible window out of bounds (later) | 422 `flex_invalid` | — (not in this delivery) |
@@ -177,126 +182,175 @@ Guest taps "Datas flexíveis" in the calendar or in the empty state → dates cl
 | G-9 | Backstop timeout 150 ms | 503 `retry` | "Não conseguimos carregar agora. Tentar novamente" |
 
 - **Order in a map area:** G-3 first (no query), then G-2 for every sort, then G-1a for the total price. 2,001–5,000 candidates list normally under relevance, rating and nightly price; total price there falls back to relevance.
-- On the place path, only G-1a/G-1b apply.
+- On the place path, only G-1a/G-1b apply (and G-4 on its map).
+- **Guards count filtered candidates before availability** (§12.5). Zooming in or adding filters (guests included) can clear G-2 or G-1; **adding dates can't**, and no guard state offers it (section 7).
 - Acceptance: each guard has a test at its limit and limit + 1, and the over-limit path executes no page query (§12.9 criterion 14).
 
 ## 7. Estados de zoom (spec de tela da UI)
-Source: UI's screen spec `/workspace/ui/zoom-states-spec.md` (2026-10-21), merged here with Produto's answers to UI's Q2, Q6, Q7 and Q8 and Arquitetura's notes (`/workspace/adr/notes-produto-spec-busca.md`). UI/UX owns layout; thresholds are §12.7 (section 6). Copy key: **[O]** official string (spec-busca-localidade-resolvida table), **[P]** new string, listed in section 9. **Copy never shows a threshold number**, because the caps may still move (§12.9).
+Source: UI's screen spec **rev 3** (`/workspace/ui/zoom-states-spec.md`, 2026-10-21, approved by Produto), with Produto's answers to Q2, Q6, Q7, Q8 (as amended by Q10) and ADR 001 [§12.7a](../../adr/001-busca-sql-paginada.md) (Arquitetura's answers to UI, `/workspace/adr/adr001-s12-addendum-ui.md`). UI/UX owns layout; thresholds are §12.7 (section 6). Copy key: **[O]** official string, **[A]** given by Produto, **[P]** proposed by UI and accepted here; all new strings are in section 9. **Copy never shows a cap number**, because the caps may still move (§12.9).
 
 ### 7.0 Shared rules
+**Guard signal (§12.7a).**
+- Every guard response carries `guard`: `"span"` (G-3), `"candidates"` (G-2) or `"price_sort"` (G-1a/G-1b), next to `zoom_in` or `sort_unavailable`. The pin cap (G-4) is `acima_do_limite: true` (§5).
+- **Copy and actions are chosen from `guard`, never from client counts.** Client config exposes `max_span_deg` (8). The 5,000 and 2,000 caps are for information only and never gate anything on the client.
+
+**The price-sort options.** "Menor preço total" [O] and "Menor diária" [A] are **always enabled**. The client zoom-13/12 hint is dropped; the server decides (§12.7a, Q1).
+
 **What "zoom in" means.**
-- **Manual zoom** (wheel, pinch, +/− control, keyboard) keeps the existing rules: desktop "Buscar ao mover o mapa" ON re-queries after the move; mobile search-on-move is OFF, so "Buscar nesta área" appears.
-- **The "Aproximar" button** [O] in a guard state is an explicit search action and always re-queries, on mobile too.
-  - **G-2, G-1a, G-4: exactly one zoom step** (+1 level, about half the span on each axis), on the current map center. The server returns only a flag (`zoom_in` / `acima_do_limite` / `guard`), with no density or area hint, so one step is predictable and keeps the user oriented.
-  - **G-3 is the exception:** "Aproximar" fits the largest view whose span is within the cap, on the same center, so one tap always leaves G-3 (it may land in G-2 or G-4).
-- If the state is still active after a tap, the message stays, the screen-reader text says "still", and the button stays in place.
-- At maximum zoom, "Aproximar" is hidden and the secondary action becomes primary.
+- **Manual zoom** (wheel, pinch, +/−, keyboard) follows the existing rules: desktop, "Buscar ao mover o mapa" [O] is ON and re-queries after the move; mobile, search-on-move is OFF and the "Buscar nesta área" [O] button appears.
+- **The "Aproximar" button [O]** is an explicit search action and always re-queries, mobile included.
+  - `guard: "span"`: it fits `suggested_bbox` (the requested centre clipped to 8°). One tap always leaves G-3, though it may land in G-2, G-1 or G-4.
+  - `guard: "candidates"` or `"price_sort"`, and the pin cap: it zooms **one level** on the current centre (no suggested area for these: finding one would cost a query).
+- If the state is still active after a tap, the message stays, the screen-reader text says "still", and the button doesn't move.
+- At maximum zoom, "Aproximar" is hidden and the first secondary action is promoted.
 - The zoom animation respects `prefers-reduced-motion`.
 
-**Back and URL** (extends spec-busca-localidade-resolvida item 7; Produto, Q7).
-- **No guard state goes in the URL.** It is derived from the response, so reload or share re-derives it from the same `bbox`, `local_id`, filters and sort.
-- **"Aproximar" and "Buscar nesta área" use `pushState`** with the new `bbox` (4 decimals). Back returns to the wider area and shows its guard state again (expected).
-- **Moves made by "Buscar ao mover o mapa" use `replaceState`**, so panning doesn't flood the history (Produto decision, Q7).
-- **Sort intent is kept.** Under the G-1a/G-1b fallback the URL keeps the user's `ordem` while the list shows relevance; zooming or filtering back under the cap restores that order with no extra tap. The cursor must follow the order actually shown (open, section 8, Q4).
-- A guard state with no list (G-2, G-3) clears the cursor and the scroll position.
+**Exit rule.** A guard action is offered **only if it can clear the state**. G-2 and G-1 count filtered candidates **before** availability (§12.5; Q10), so zooming in or adding filters can lower the count; **adding dates can't**.
 
-**Place path vs map area** (§12.7 "Interplay").
+**Narrowing slot** (Produto Q2, amended by Q10). Facets have no counts (§5b), so the generic "Filtros" is used. Wherever a state has a narrowing slot, it takes **the first of**:
+1. "Adicionar hóspedes" [P], when guests are unset. It opens the "Quem vai?" [O] step. The guest count is a candidate filter (`s.max_guests >= :h` inside the capped CTE, §12.5).
+2. "Filtros" [P]. It opens the existing filter panel.
 
-| State | Resolved place (`local_id`) | Map area (`bbox`, "Área do mapa ×") |
+The filter bar stays visible, so anything not in a slot is still reachable.
+
+**Dates are not a guard action.** "Quando?" stays in the search bar as usual; dates still give availability-checked results, total prices on the cards and the total-price sort. But they never clear G-2 or G-1 (under G-1b, adding dates even turns the price sort into total price, whose cap is lower). **No guard state offers "Adicionar datas", and no guard copy mentions dates.**
+
+**Action limit.** Each state shows at most **1 primary action plus 2 secondary actions**.
+
+**Back and URL** (spec-busca-localidade-resolvida item 7; Q7).
+- `pushState`: "Aproximar", "Buscar nesta área", picking a place and "Ver no mapa" [P].
+- `replaceState`: moves made by "Buscar ao mover o mapa", the cursor and the scroll position.
+- No guard state goes in the URL. It is re-derived from `bbox`/`local_id`, filters and sort on reload or share. Back returns to the previous area and re-shows its guard state.
+- **Sort fallback (§12.7a, Q4):** the URL keeps the user's `sort` (`total_price` or `nightly_price`). The response returns `sort_effective: "relevance"` and `sort_fallback_from`, and the cursor encodes both. "Mostrar mais imóveis" continues in relevance order under the same chain, even if the area has dropped under the cap. Price order returns only on a **new search with no cursor** (a zoom, filter, date, guest or place change), never mid-list.
+- A guard with no list (G-2, G-3) clears the cursor and the scroll position.
+
+**Place path vs map area** (§12.7 "Interplay", §12.7a, Q5).
+
+| State | Resolved place (`local_id`) | Map area (`bbox`, "Área do mapa ×" [O]) |
 |---|---|---|
-| G-1a total price > 2,000 / G-1b nightly price > 5,000 | Applies | Applies |
-| G-2 list > 5,000 | **Never** | Applies, any sort, channel included |
-| G-3 span > 8° | List: never. Pins: open (section 8, Q5) | Applies first, before any query; list and pins empty |
+| G-1a total price > 2,000; G-1b nightly price > 5,000 | Applies | Applies |
+| G-2 list > 5,000 | **Never** | Applies (any sort, channel included) |
+| G-3 span > 8° | The list never hits it. The map opens fitted to 8° at the place's anchor point, so its pins don't trip it on open. | Applies to the list **and** the pins (empty pins + `zoom_in`), before any query |
 | G-4 pins > 300 | Map only | Map only |
 
-So **"Escolha uma cidade" [O] always leaves G-2 and G-3**: the guaranteed exit for map areas. On the place path, zooming the desktop map with search-on-move ON switches to "Área do mapa ×" [O], and × restores the place.
+- "Escolha uma cidade" [O] always leaves G-2 and G-3.
+- On the place path, a desktop map zoom with search-on-move ON switches the search to a map area; × restores the place (spec-busca-localidade-resolvida item 6).
 
-**Priority when states combine:** G-3 > G-2 > G-1a/G-1b > G-4. Only the highest active state is announced; lower states still visible stay as text in their own region (the map), unannounced. At most one polite announcement per response.
+**Priority.** G-3 > G-2 > G-1 > G-4. Only the highest active state is announced, at most one polite announcement per response; lower states stay as visible text in their own region.
 
 **Accessibility, all states.**
-- One shared polite live region (`role="status"`, the existing results-status region); no `aria-live="assertive"`.
-- Announce on entering a state, and after a user action ("Aproximar", a filter, a sort change) whose result is still guarded (with the "still" text); never on an automatic re-query that leaves the state unchanged.
-- Focus is never moved on entering a state. After "Aproximar": if the state is still active, focus stays on the button; if it clears and the button disappears, focus moves to the results heading (`tabindex="-1"`) and the usual count is announced.
-- Message, primary and secondary actions are real buttons or links, in that DOM order. Targets ≥ 24×24 px (WCAG 2.5.8), 44 px tall on mobile. Never colour alone.
+- One shared polite `role="status"` region (the existing results-status region). Nothing is assertive.
+- **When to announce:** on entering a state, and after a user action that leaves the result still guarded (the "still" text). Never on an unchanged automatic re-query.
+- **Focus:** never moved on entering a state. After a tap, focus stays on the button while the state lasts; if the button disappears, focus goes to the results heading (`tabindex="-1"`) and the usual count is announced.
+- **DOM order:** message, primary, then secondaries. All are real buttons or links.
+- **Targets:** at least 24×24 px (WCAG 2.5.8); 44 px tall on mobile. The message never relies on colour alone.
+- **Mobile wording:** the list/map toggle is the existing floating **"Mapa" / "Lista"** button. Guard cards that send the user back to the list use the same **"Lista"** label. "Ver no mapa" [P] is a different action: it turns a place search into a map area (7.2).
 
-**Filter suggestions (Produto, Q2).** Facets have no counts (§5b), so the UI offers the generic **"Filtros"**. When the search has **no dates**, **"Adicionar datas"** [P] comes first; when **guests are unset**, **"Adicionar hóspedes"** [P] comes next; then "Filtros".
-
-### 7.1 G-2: map-area list over 5,000 filtered candidates (any sort)
+### 7.1 G-2: map-area list over 5,000 filtered candidates (`guard: "candidates"`)
 Response: `items: []`, `zoom_in: true`, `guard: "candidates"`.
-- **Message** [P]: "Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou escolha uma cidade."
-- **Actions:** primary "Aproximar" [O] (one step); secondary "Escolha uma cidade" [O] (focuses "Onde?" [O] with the list open, or opens the full-screen "Onde?" step on mobile); then the filter suggestions of 7.0 ("Adicionar datas", "Adicionar hóspedes", "Filtros").
-- **Placement:**
-  - Desktop 1280: the block replaces the cards at the top of the list column, under the results header; the sort control stays visible and enabled; the count line and "Mostrar mais imóveis" are hidden. The map shows only the G-4 pill, with no second button.
-  - Mobile 390, list view: the block replaces the cards; "Aproximar" opens the map view and zooms one step. The floating "Mapa" button stays.
-  - Mobile 390, map view: one card where the carousel sits; "Buscar nesta área" [O] is hidden while it shows.
-- **Screen reader:** announce the message on entry. Still active after "Aproximar" [P]: "Ainda há imóveis demais. Aproxime mais o mapa ou escolha uma cidade."
-- **Combines with:** G-3 replaces it. It hides G-1a/G-1b (no list, no fallback text; sort intent stays in the URL). G-4 shows on the map unannounced.
-- **AC:**
-  1. A mocked 5,001 response shows the block with no cards; 5,000 lists normally.
-  2. Never shown with a `local_id` search.
-  3. "Escolha uma cidade" reaches a list in one choice; "Aproximar" pushes one history entry with the new `bbox`.
-  4. Announced once on entry and once per guarded action; nothing on an unchanged automatic re-query.
-  5. Focus is never lost when the block disappears.
-  6. With no dates, "Adicionar datas" is the first filter suggestion; with guests unset, "Adicionar hóspedes" follows.
-
-### 7.2 G-1a: total price over 2,000 candidates (and G-1b: nightly price over 5,000), fallback to relevance
-Response: relevance order, `ordem: "relevancia"`, `sort_unavailable: "zoom_in"`. Applies on both paths. In a map area with 2,001–5,000 candidates the list shows normally in relevance order.
-- **Message, map area:** [O] "Ordenado por relevância. Aproxime o mapa para ordenar pelo preço total." For G-1b: [P] "Ordenado por relevância. Aproxime o mapa para ordenar pela menor diária." (Produto, Q8).
-- **Message, resolved place** ("zoom in" doesn't apply to a `local_id` list) [P]: "Ordenado por relevância. Escolha um bairro ou use filtros para ordenar pelo preço total."
+- **Message** [P]: "Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou adicione filtros." / "There are too many listings in this area to show a list. Zoom in or add filters."
 - **Actions:**
-  - Map area: primary "Aproximar" [O] (one step); secondary "Escolha uma cidade" [O].
-  - City: primary "Escolha um bairro" [P] (opens "Onde?" pre-filled with the city, listing its neighborhoods); secondary "Filtros". On desktop, zooming the map is also allowed (switches to "Área do mapa ×").
-  - Neighborhood, beach or region (Produto, Q6): "Adicionar datas" [P] first when dates are missing, then "Filtros", "Mudar ordenação" [P] (opens the sort control) and "Ver no mapa" [P] (opens the map on the place, where "Aproximar" applies).
-- **Placement:** desktop, one line under the results header next to the sort control, tied with `aria-describedby`, action inline after the text; in the sort menu, "Menor preço total" [O] may show as disabled with "Aproxime o mapa para ordenar pelo preço total" [O], "Aproximar" [O] and "Escolha uma cidade" [O] (when to disable is open, section 8, Q1; until then the server response is the only signal). Mobile: the same line above the first card, at most 2 lines; the action is a 44 px text button on its own line. Cards, count line and "Mostrar mais imóveis" behave normally.
-- **Screen reader:** announce once per fallback. Still over the cap after "Aproximar" [P]: "Ainda ordenado por relevância. Aproxime mais o mapa para ordenar pelo preço total." When the sort resumes [P]: "Ordenado pelo menor preço total." (for G-1b: "Ordenado pela menor diária.").
-- **Combines with:** G-2 and G-3 replace it. G-4 can be active at the same time (common: 300 < 2,000); the map shows its pill unannounced, the list line is announced.
+  - Primary: "Aproximar" [O], one level.
+  - Secondary 1: the narrowing slot ("Adicionar hóspedes" when guests are unset, otherwise "Filtros").
+  - Secondary 2: "Escolha uma cidade" [O]. It focuses "Onde?" [O] with the list open (mobile: the full-screen "Onde?" step). A place never hits G-2, so this always clears the state.
+  - At maximum zoom, "Escolha uma cidade" becomes primary, the narrowing slot is secondary 1, and "Filtros" is secondary 2 when the slot is "Adicionar hóspedes".
+- **Placement:**
+  - Desktop 1280: the block replaces the cards at the top of the list column, under the results header. The sort control stays; the count line and "Mostrar mais imóveis" are hidden. The map shows only the G-4 pill (pins are over 300 too), with no button of its own.
+  - Mobile 390, list view: the block replaces the cards. "Aproximar" opens the map view and zooms there. The floating "Mapa" button stays.
+  - Mobile 390, map view: one card in the carousel position. "Buscar nesta área" is hidden while it shows.
+- **Screen reader:** the message is announced on entry. After a guarded action [P]: "Ainda há imóveis demais. Aproxime mais o mapa ou adicione filtros." / "Still too many listings. Zoom in further or add filters."
+- **Combines with:** G-3 replaces it. It hides G-1 (no list; the sort stays in the URL). G-4 shows on the map, silently.
 - **AC:**
-  1. A mocked 2,001 response shows relevance order plus the line; 2,000 shows total-price order with no line (G-1b: 5,001 / 5,000).
-  2. The URL keeps `ordem` under fallback, and zooming under the cap restores that order without a tap.
-  3. "Mostrar mais imóveis" under fallback never returns a 400 (section 8, Q4).
-  4. Each path shows its own text; "Aproxime o mapa…" never appears on a `local_id` list.
-  5. Each fallback and each resume is announced once.
+  1. A response with `guard: "candidates"` shows the block and no cards, with no client count check. A mocked 5,000/5,001 pair covers the edge; the server limit test is Teste's (§12.9 item 14).
+  2. Never shown with `local_id`.
+  3. "Escolha uma cidade" reaches a list in one choice. "Aproximar" zooms one level and pushes one history entry.
+  4. At most 1 primary + 2 secondary actions. The slot shows "Adicionar hóspedes" when guests are unset and "Filtros" otherwise.
+  5. Announced once on entry and once per guarded action; never on an unchanged automatic re-query.
+  6. Focus is never lost when the block disappears.
+  7. "Adicionar datas" never appears as a guard action, and no guard text mentions dates. Adding dates through "Quando?" stays possible, and the state stays.
 
-### 7.3 G-3: map span over 8° (latitude or longitude)
-Response (Arquitetura): G-2 shape, **no query**: `items: []`, `pins: []`, `zoom_in: true`, `guard: "span"`. The 8° is [E] (Teste may shrink it), so the client reads the cap from config, never hard-codes it (section 8, Q3).
-- **Message** [P]: "Esta área do mapa é grande demais para buscar. Aproxime o mapa."
-- **Actions:** primary "Aproximar" [O] (fits the largest view within the cap, same center; one tap exits); secondary "Escolha uma cidade" [O].
-- **Placement:** desktop, the block in the list column (as G-2) plus the same message as a centred pill at the top of the map with its own "Aproximar" (the only map pill with an action, since there are no pins); both actions do the same. Mobile: list view as G-2; map view, the carousel-position card. Optionally the client may skip the request and show this state directly (span is computable); behaviour is the same.
-- **Screen reader:** announce on entry; no "still" text (one tap exits).
-- **Combines with:** replaces every other state; after the tap the next state is announced on its own.
+### 7.2 G-1a total price over 2,000 / G-1b nightly price over 5,000: fallback to relevance (`guard: "price_sort"`)
+- G-1a's cap is **2,000** and needs dates. G-1b, "Menor diária" [A], is the price sort when the search has no dates (§12.4), cap **5,000**. Both apply on either path.
+- Response: relevance order plus `sort_unavailable: "zoom_in"`, `guard: "price_sort"`, `sort_effective: "relevance"` and `sort_fallback_from`: `"total_price"` (G-1a) or `"nightly_price"` (G-1b; Q11). Copy is picked from `sort_fallback_from`.
+- In a map area, a G-1a case with 2,001–5,000 candidates lists normally, in relevance order.
+
+**Message**
+
+| | Map area | Resolved place |
+|---|---|---|
+| Total price | [P] "Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pelo preço total." / "Sorted by relevance. Zoom in or add filters to sort by total price." (replaces the former official string) | [P] "Ordenado por relevância. Adicione filtros para ordenar pelo preço total." / "Sorted by relevance. Add filters to sort by total price." |
+| Nightly price | [P] "Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pela menor diária." / "Sorted by relevance. Zoom in or add filters to sort by lowest nightly price." (replaces Produto's Q8 line) | [P] "Ordenado por relevância. Adicione filtros para ordenar pela menor diária." / "Sorted by relevance. Add filters to sort by lowest nightly price." |
+
+"Aproxime o mapa…" never appears on a `local_id` list.
+
+**Actions (at most 1 + 2)**
+
+| Context | Primary | Secondary |
+|---|---|---|
+| Map area | "Aproximar" [O] (one level) | narrowing slot; "Escolha uma cidade" [O] |
+| City | "Escolha um bairro" [P] (opens "Onde?" pre-filled with the city, so its neighborhoods are listed) | narrowing slot; "Ver no mapa" [P] |
+| Neighborhood, beach or region (Q6) | 1st item of the list below | 2nd item of the list; "Ver no mapa" [P] |
+
+For a neighborhood, beach or region, the list runs: (1) "Adicionar hóspedes" (only when guests are unset); (2) "Filtros"; (3) "Mudar ordenação" [P] (opens the sort control; choosing another sort ends the fallback). So with guests set: "Filtros", "Mudar ordenação", "Ver no mapa". With guests unset: "Adicionar hóspedes", "Filtros", "Ver no mapa" ("Mudar ordenação" drops off, but the sort control is still next to the text).
+
+"Ver no mapa" [P] fits the map to the place and turns the search into a map area ("Área do mapa ×", where × restores the place), with `pushState`; on mobile it also opens the map view. It clears the state only in two steps (the fitted map has the same candidates, so the user then needs "Aproximar"); it is kept because it is the only way to narrow by area (Q6).
+
+- **Placement:** desktop, one line under the results header, tied to the sort control with `aria-describedby`, actions inline after the text; the sort menu has no disabled option. Mobile: the same line above the first card, at most 2 lines, with 44 px text buttons on the next line. Cards, count and "Mostrar mais imóveis" are unchanged; the list keeps going in relevance order.
+- **Screen reader:** the fallback is announced once. After a guarded new search [P]: "Ainda ordenado por relevância. …" / "Still sorted by relevance. …", followed by the context's message. When price order returns [P]: "Ordenado pelo menor preço total." / "Sorted by lowest total price."; "Ordenado pela menor diária." / "Sorted by lowest nightly price."
+- **Combines with:** G-2 and G-3 replace it. G-4 is often active at the same time (300 < 2,000): the map pill is silent, and the list line is the one announced.
 - **AC:**
-  1. A span at the cap queries normally; just over it shows this state, on either axis.
-  2. One "Aproximar" always produces a span within the cap.
-  3. Changing the cap in config changes the behaviour with no code change.
+  1. With `guard: "price_sort"`, the list is in relevance order with the line for its sort and path. The client never disables the price options and never gates on counts. Mocked edges: 2,000/2,001 for total price, 5,000/5,001 for nightly price. The copy follows `sort_fallback_from`: `"total_price"` gives the total-price line, `"nightly_price"` the "menor diária" line.
+  2. The URL keeps the user's `sort`. "Mostrar mais imóveis" with the returned cursor continues in relevance order and never gets a 400 (G-7), even if the area has dropped under the cap, for both `sort_fallback_from` values.
+  3. Price order returns only on a new search with no cursor (a zoom, filter, date, guest or place change), never mid-list. It is announced once.
+  4. On a `local_id` list the text never says "Aproxime o mapa". In every context, the text names only exits that can clear the state (zoom or filters), never dates.
+  5. Actions follow the table, at most 1 + 2. A neighborhood, beach or region with guests set shows "Filtros", "Mudar ordenação" and "Ver no mapa"; with guests unset, "Adicionar hóspedes" is primary. "Adicionar datas" never appears, including under G-1b.
+  6. "Ver no mapa" switches to a map area with one history entry, and × restores the place with its relevance list.
+  7. Each fallback and each return is announced once.
+
+### 7.3 G-3: map span over 8° (`guard: "span"`)
+Response: `zoom_in: true`, `guard: "span"` and `suggested_bbox`, before any query; the list and the pins are both empty (§12.7a, Q5).
+- **Message** [P]: "Esta área do mapa é grande demais para buscar. Aproxime o mapa." / "This map area is too large to search. Zoom in."
+- **Actions:** primary "Aproximar" [O], which fits `suggested_bbox` (one tap always exits); secondary 1 "Escolha uma cidade" [O]. No narrowing slot: filters don't lift a span guard.
+- **Placement:** desktop, the block sits in the list column, and a centred pill at the top of the map carries the same "Aproximar" (the only map pill with an action). Mobile: list view as G-2; map view, the carousel-position card. The client may skip the request when the span is over `max_span_deg` from config and show the state with a locally clipped bbox; the behaviour is identical.
+- **Screen reader:** announced on entry; no "still" text is needed.
+- **Combines with:** replaces all other states; after the tap, the next state is announced by itself.
+- **AC:**
+  1. `guard: "span"` shows the state with empty list and pins, on either axis. A span exactly at `max_span_deg` queries normally.
+  2. One "Aproximar" fits `suggested_bbox` and leaves G-3.
+  3. Changing `max_span_deg` in config changes the behaviour with no code change. The 5,000 and 2,000 caps are never used to gate.
   4. Never shown for a `local_id` list.
+  5. A place wider than 8° opens with its map fitted to 8° at its anchor point and its list unaffected, so G-3 doesn't fire on open.
 
 ### 7.4 G-4: map pins over 300
-Response: `pins: []`, `acima_do_limite: true`. The map shows the message only; the list is unaffected.
-- **Message** [O]: "Aproxime o mapa para ver os imóveis".
-- **Actions:** primary "Aproximar" [O] (one step). Secondary: on mobile map view, "Ver lista" [P]; desktop needs none (the list is next to the map).
-- **Placement:** desktop, a centred pill at the top of the map, below the "Buscar ao mover o mapa" toggle, with an inline "Aproximar"; attribution stays visible. Mobile map view: the carousel is replaced by one card (message, "Aproximar", "Ver lista"). Mobile list view: nothing.
-- **Screen reader:** announced only when the map is the main view (mobile map view) or right after a keyboard zoom or "Aproximar" on the map; not on desktop with a list.
-- **Combines with:** G-3 replaces it; shows silently with G-2 and G-1a. Expected often: any area with more than 300 filtered listings (section 8, Q9).
+Response: `pins: []`, `acima_do_limite: true`. The list is unaffected.
+- **Message** [O]: "Aproxime o mapa para ver os imóveis" / "Zoom in to see listings".
+- **Actions:** primary "Aproximar" [O], one level. Secondary, mobile map view only: "Lista" (the same action as the floating "Lista" button).
+- **Placement:** desktop, a centred pill at the top of the map, under the "Buscar ao mover o mapa" toggle, with "Aproximar" inline; the attribution stays visible. Mobile map view: one card replaces the carousel, with the message, "Aproximar" and "Lista". Mobile list view: nothing.
+- **Screen reader:** announced only when the map is the main view (mobile map view) or right after a keyboard zoom or "Aproximar" on the map; silent on desktop while the list is shown.
+- **Combines with:** G-3 replaces it; it shows silently with G-2 and G-1. It is common: any area with more than 300 filtered listings (Q9).
 - **AC:**
   1. A mocked 301 response shows the pill and no pins; 300 shows pins and clusters.
-  2. On mobile map view, "Ver lista" returns to the list at the same scroll position.
+  2. On mobile, "Lista" returns to the list at the same scroll position. No "Ver lista" label appears anywhere.
   3. The pill never covers the attribution or the zoom control.
 
 G-5, G-6, G-7 and G-9 are error states, not zoom states (section 6).
 
-## 8. Open points (waiting on others)
-**Answered and folded in (2026-10-21):** Arquitetura's notes (`/workspace/adr/notes-produto-spec-busca.md`): demotion folded into the stored score with `penalty_until` and a daily sweep (section 1); G-3 shape with `guard: "span"` and empty pins (sections 5-7); 422 `stay_over_cap` (section 6); the fallback is relevance, not `id` (§11.1 line 372 is superseded by §12 G-1a). Negocios calibration (`/workspace/negocios/calibracao-busca.md`): weights, demotion and G2 prior (sections 1-2). Produto: UI's Q2, Q6, Q7, Q8 (section 7).
+## 8. Open points
+**Resolved and folded in (2026-10-21):**
+- Arquitetura's notes (`/workspace/adr/notes-produto-spec-busca.md`): demotion folded into the stored score with `penalty_until` and a daily sweep (section 1); 422 `stay_over_cap` (section 6); the fallback is relevance, not `id` (§11.1 superseded by §12 G-1a).
+- Negocios calibration (`/workspace/negocios/calibracao-busca.md`): weights, demotion and G2 prior (sections 1-2).
+- ADR 001 §12.7a (#181) and UI rev 3:
+  - **Q1:** the client zoom hint is dropped; the server decides through G-1a. The price sorts are always enabled.
+  - **Q3:** every guard carries `guard` (`span` / `candidates` / `price_sort`); `max_span_deg` (8) is in client config; the 5,000 and 2,000 caps are information only; `suggested_bbox` comes only with `guard: "span"`.
+  - **Q4:** `sort_effective` and `sort_fallback_from` are in the response and carried in the cursor; the fallback holds for the whole cursor chain, and price order returns only on a new search with no cursor.
+  - **Q5:** G-3 also covers the pins (empty pins + `zoom_in`); a place wider than 8° opens inside 8°, centred on its anchor point; the place-path list is unaffected.
+  - **Q10:** guards count candidates before availability, so dates never clear a guard. Guard states offer only actions that can clear them: "Adicionar datas" is removed from every guard state; the narrowing slot is "Adicionar hóspedes" when guests are unset (a candidate filter, §12.5), otherwise "Filtros"; the copy says "aproxime o mapa ou adicione filtros" (Produto approved rev 3).
+  - **Q11:** the "Menor diária" fallback returns `sort_fallback_from: "nightly_price"` with `guard: "price_sort"`.
+- Produto: UI's Q2, Q6, Q7, Q8 (section 7, as amended by Q10).
 
-**Follow-up (BD, schema spec):** column types and CHECKs for `rank_penalty` and `penalty_until` on `listing_search`.
-
-**Open with Arquitetura** (UI's questions, not answered in the notes):
-- **Q1:** the zoom-13/12 client hint was computed for the old 5,000 cap; recompute it for 2,000 or drop it so the server response is the only signal. Until then the server response is the only signal (section 7.2).
-- **Q3:** `guard` now says why (`span` / `candidates`). Still open: exposing the caps (G-3 span, ideally G-1a/G-2) in config for the client, and an optional suggested `bbox`.
-- **Q4:** under the G-1a/G-1b fallback, `next_cursor` must carry the order actually used and the next page must not trigger the G-7 400; confirm the contract (this spec proposes `ordem` = effective sort in the response).
-- **Q5:** G-3 empties the pins in a map-area search; still open: what happens when a resolved place's own bbox is wider than the cap (UI proposes the map opens fitted within the cap).
-
-**Open with Arquitetura and Produto:**
-- **Q9:** G-4 (300 pins) is far below G-2 (5,000), so most city-scale views will show a list with an empty map. A server-side count grid would fix it but is new scope and cost; not proposed here.
+**Still open:**
+- **Q9 (Arquitetura, with Produto):** the pin cap G-4 (300) is far below the list cap G-2 (5,000), so many city-scale views will show a list with an empty map. A server-side count grid would fix it but is new scope and cost; not proposed here.
+- **BD (schema spec):** column types and CHECKs for `rank_penalty` and `penalty_until` on `listing_search`.
 
 ## 9. pt-BR strings (official copy table)
 To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localidade-resolvida.md; they go into the i18n PT keys, EN/ES follow.
@@ -309,8 +363,6 @@ To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localid
 | Lowest nightly price | Menor diária |
 | Sponsored | Patrocinado |
 | Sponsored listing (screen reader) | Anúncio patrocinado |
-| Sorted by relevance. Zoom in to sort by total price. | Ordenado por relevância. Aproxime o mapa para ordenar pelo preço total. |
-| Sorted by relevance. Zoom in to sort by lowest nightly price. | Ordenado por relevância. Aproxime o mapa para ordenar pela menor diária. |
 | Zoom in to see listings | Aproxime o mapa para ver os imóveis |
 | The maximum stay is 30 nights. | A estadia máxima é de 30 noites. |
 | We couldn't load this now. Try again | Não conseguimos carregar agora. Tentar novamente |
@@ -342,21 +394,22 @@ To add to the "Textos da interface (pt-BR, oficial)" table in spec-busca-localid
 | Active since <date and time> | Ativo desde <data e hora> |
 | A boost can take up to 5 minutes to start. | O destaque pode levar até 5 minutos para começar. |
 | Paid placement is off in this channel. | A posição paga está desligada neste canal. |
-
-| *UI zoom states (section 7), [P]:* | |
-| There are too many listings in this area to show a list. Zoom in or pick a city. | Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou escolha uma cidade. |
-| Still too many listings. Zoom in further or pick a city. | Ainda há imóveis demais. Aproxime mais o mapa ou escolha uma cidade. |
-| Sorted by relevance. Pick a neighborhood or use filters to sort by total price. | Ordenado por relevância. Escolha um bairro ou use filtros para ordenar pelo preço total. |
+| *UI zoom states, rev 3 (section 7), [P]:* | |
+| There are too many listings in this area to show a list. Zoom in or add filters. | Há imóveis demais nesta área para mostrar a lista. Aproxime o mapa ou adicione filtros. |
+| Still too many listings. Zoom in further or add filters. | Ainda há imóveis demais. Aproxime mais o mapa ou adicione filtros. |
+| Sorted by relevance. Zoom in or add filters to sort by total price. | Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pelo preço total. |
+| Sorted by relevance. Add filters to sort by total price. | Ordenado por relevância. Adicione filtros para ordenar pelo preço total. |
+| Sorted by relevance. Zoom in or add filters to sort by lowest nightly price. | Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pela menor diária. |
+| Sorted by relevance. Add filters to sort by lowest nightly price. | Ordenado por relevância. Adicione filtros para ordenar pela menor diária. |
+| Still sorted by relevance. … | Ainda ordenado por relevância. … |
+| Sorted by lowest total price. | Ordenado pelo menor preço total. |
+| Sorted by lowest nightly price. | Ordenado pela menor diária. |
+| This map area is too large to search. Zoom in. | Esta área do mapa é grande demais para buscar. Aproxime o mapa. |
 | Pick a neighborhood | Escolha um bairro |
 | Change sort | Mudar ordenação |
-| Still sorted by relevance. Zoom in further to sort by total price. | Ainda ordenado por relevância. Aproxime mais o mapa para ordenar pelo preço total. |
-| Sorted by lowest total price. | Ordenado pelo menor preço total. |
-| This map area is too large to search. Zoom in. | Esta área do mapa é grande demais para buscar. Aproxime o mapa. |
-| Show list | Ver lista |
-| *Produto answers to UI (Q2, Q6, Q8):* | |
-| Add dates | Adicionar datas |
 | Add guests | Adicionar hóspedes |
 | Show on map | Ver no mapa |
-| Sorted by lowest nightly price. | Ordenado pela menor diária. |
+
+Superseded and removed (rev 3): "Sorted by relevance. Zoom in to sort by total price." (former official string; replaced in the official table), "Zoom in to sort by total price" (former official disabled-option hint; removed from the official table, since the price sorts are never disabled), "Sorted by relevance. Zoom in to sort by lowest nightly price." (Produto's Q8 line), "Add dates" / "Adicionar datas" (no longer a guard action), "Show list" / "Ver lista" (the existing "Lista" is used), and the rev-1 G-2, "still" and place-path lines.
 
 Boost and label copy for hosts is UI's, reviewed by Jurídico (§12.3a.3); the lines above are the starting proposal.
