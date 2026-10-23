@@ -232,8 +232,8 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - campo no anúncio para cadastro e taxa municipais.
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
-## Competitor gaps (reviewed 2026-10-21 and 2026-10-22)
-Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 22/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
+## Competitor gaps (reviewed 2026-10-21 to 2026-10-23)
+Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 23/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026; G21 a G23 aprovados com mudança). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). O Rafael decidiu em 2026-10-22, depois dessa revisão: G10 (penalidade do anfitrião por solicitação expirada) e G20 (reserva dupla pelo iCal) não entram no backlog; a G19 não avisa ninguém e não relaxa o mínimo, só pinta a noite vazia no calendário do anfitrião. RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
 
 | # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -244,10 +244,11 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G18 | Regras de disponibilidade | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes de fechar a disponibilidade da busca (restrição já no ADR 001) | aprovado com mudança (I 1 → 2; 6,4 → 12,8) |
 | G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
-| G10 | Consequência para o anfitrião que deixa expirar | 6 | 1 | 80% | 0,5 | 9,6 | Should | S7 | aprovado com mudança |
-| G20 | Reserva dupla entre canais pelo iCal | 3 | 2 | 80% | 0,5 | 9,6 | **Must** | antes da S7 | aprovado com mudança (nota mantida, sobe para Must) |
+| G21 | Tipo de solicitação "pergunta" | — | — | — | — | 9,6 | **Must** | antes da S7 | aprovado com mudança |
+| G22 | Avisos automáticos da estadia | — | — | — | — | 9,6 | Could | depois do piloto (proprietário direto) | aprovado com mudança (9,6 pelo valor para corretores) |
 | G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
+| G23 | Conversa aberta depois do cancelamento ou do check-out | — | — | — | — | 6,4 | Should | antes da S9 | aprovado com mudança (14 dias, não 30) |
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
@@ -255,28 +256,19 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
 | G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
-| G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | piloto (alerta); depois do piloto (relaxamento automático) | alterado pelo Negócios |
+| G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | calendário do anfitrião (só a cor) | decidido pelo Rafael (2026-10-22): só a cor |
 | G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
 
 ### G9 — Bloqueio durante a aprovação (S7)
 - **Problema:** nenhuma regra diz se uma solicitação `solicitada` bloqueia as datas; a disponibilidade do ADR 001 §4 lê só `calendar_days.blocked`, e o antibloqueio (spec-01 §5b) não cobre solicitações, então um hóspede pode segurar várias casas por 24 h. Uma OTA pode vender as mesmas noites na janela de 24 h / 4 h.
-- **Solução:** a solicitação bloqueia as noites do envio até aprovar, recusar, desistir ou expirar; a liberação é atômica com a mudança de estado (formaliza o critério 2 da P2). O bloqueio também sai nos **feeds iCal** do imóvel. Limite por hóspede no parâmetro `max_pending_requests_overlapping` (padrão da plataforma 2 [E], sobrescrito por canal), reaproveitando o contador "N expirações e bloqueio" da §5b. Modo do bloqueio como parâmetro de canal/organização (`hard` padrão; `none` reservado); só `hard` entra na S7.
+- **Solução:** a solicitação do tipo `reserva` bloqueia as noites do envio até aprovar, recusar, desistir ou expirar; a liberação é atômica com a mudança de estado (formaliza o critério 2 da P2). O bloqueio lê o tipo: uma `pergunta` (G21) não segura noites. O bloqueio também sai nos **feeds iCal** do imóvel. Limite por hóspede no parâmetro `max_pending_requests_overlapping` (padrão da plataforma 2 [E], sobrescrito por canal), reaproveitando o contador "N expirações e bloqueio" da §5b; a `pergunta` não entra nessa contagem. Modo do bloqueio como parâmetro de canal/organização (`hard` padrão; `none` reservado); só `hard` entra na S7.
 - **Critérios de aceite:**
-  1. Depois do envio, as noites somem da busca e não aceitam outra solicitação, até a decisão ou a expiração.
+  1. Depois do envio de uma solicitação do tipo `reserva`, as noites somem da busca e não aceitam outra solicitação, até a decisão ou a expiração. Uma `pergunta` não tira noite nenhuma.
   2. Aprovar, recusar, desistir ou expirar libera ou confirma as noites na mesma transação; decisões concorrentes recebem 409.
-  3. O feed iCal do imóvel exporta o bloqueio enquanto a solicitação está pendente e o remove ao liberar.
-  4. Com `max_pending_requests_overlapping` = 2, a 3ª solicitação do mesmo hóspede com datas sobrepostas é recusada com a mensagem; o canal pode sobrescrever o valor.
+  3. O feed iCal do imóvel exporta o bloqueio enquanto a solicitação do tipo `reserva` está pendente e o remove ao liberar.
+  4. Com `max_pending_requests_overlapping` = 2, a 3ª solicitação do tipo `reserva` do mesmo hóspede com datas sobrepostas é recusada com a mensagem; o canal pode sobrescrever o valor. A `pergunta` não conta para o limite.
   5. Um canal com o modo `hard` bloqueia; nenhum outro modo é oferecido na S7.
-- **Prioridade:** Should, S7, junto com G10. Fonte: competitors.md G9 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
-
-### G10 — Expiração pelo anfitrião (S7)
-- **Problema:** o hóspede é penalizado por expirações de pagamento e o anfitrião por cancelamentos, mas o anfitrião que ignora solicitações não sofre nada, enquanto cada solicitação segura datas (G9).
-- **Solução:** N expirações seguidas = parâmetro de nó/canal (padrão 2 [E]). Na primeira, aviso ao anfitrião e ao nó acima (suporte do franqueado); ao atingir N, o anúncio é **pausado da busca** até reativar, nunca excluído nem oculto da plataforma (coerente com a decisão de canais). A contagem vale para quem tem a delegação de aprovar. Banner no painel Hoje.
-- **Critérios de aceite:**
-  1. Na 1ª expiração, o anfitrião e o nó acima recebem o aviso.
-  2. Com N = 2, a 2ª expiração seguida pausa o anúncio da busca, com o banner e o botão "Reativar"; o anúncio continua acessível na plataforma.
-  3. A expiração conta para quem tem a delegação de aprovar, e cada pausa fica no log.
-- **Prioridade:** Should, S7. Fonte: competitors.md G10 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+- **Prioridade:** Should, S7. Fonte: competitors.md G9 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
 
 ### G14 — Cancelamento causado pelo anfitrião (antes da S7)
 - **Problema:** se o anfitrião não pode receber e pede ao hóspede para cancelar, o cancelamento segue a política do hóspede, o anfitrião escapa da taxa e da métrica, e o hóspede não tem canal antes do check-in.
@@ -405,27 +397,50 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   6. Arquitetura e BD registram no ADR 001 como as regras entram na disponibilidade da busca, dentro das metas de velocidade, antes de a frente fechar.
 - **Prioridade:** Should, antes de fechar a disponibilidade da busca; a restrição de velocidade vale já no ADR 001. RICE 12,8 (R 4, I 2, C 80%, E 0,5; o Negócios subiu I de 1 para 2). Fonte: competitors.md G18 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb updating your availability](https://www.airbnb.com/resources/hosting-homes/a/updating-your-availability-708), [Airbnb booking settings](https://www.airbnb.com/help/article/3728), [Airbnb controlling your pricing](https://www.airbnb.co.in/resources/hosting-homes/a/controlling-your-pricing-648), [Booking.com adding and managing restrictions](https://partner.booking.com/en-us/help/reservations/restrictions/adding-and-managing-restrictions), [Booking.com setting reservation restrictions](https://partner.booking.com/en-us/help/reservations/restrictions/setting-reservation-restrictions-your-property).
 
-### G19 — Noites vazias entre reservas (piloto: alerta)
-- **Problema:** com mínimo de 3 noites ou mais (comum no Réveillon e no Carnaval), 1 a 2 noites livres entre reservas ficam impossíveis de reservar, e o anfitrião não é avisado.
-- **Solução (alterada pelo Negócios):** **no piloto**, um alerta simples ao anfitrião **e ao nó acima** quando sobram 1 ou 2 noites que não podem ser reservadas. **Depois do piloto**, uma regra opcional que relaxa o mínimo de estadia para essas noites (um parâmetro, **desligado por padrão**). Motivo do Negócios: o alerta dá ao franqueado uma ação concreta que preenche noites; a automação pode esperar.
+### G19 — Noites vazias entre reservas (só a cor no calendário)
+- **Problema:** com mínimo de 3 noites ou mais (comum no Réveillon e no Carnaval), as noites livres entre reservas ficam impossíveis de reservar, e no calendário do anfitrião elas parecem uma noite livre qualquer.
+- **Solução (decisão do Rafael, 2026-10-22):** o único comportamento é pintar, no calendário do anfitrião, as noites vazias que o mínimo de estadia impede de reservar, numa cor distinta que marca o conflito. Não há alerta de nenhum tipo, nem ao anfitrião nem ao nó acima. Não há relaxamento automático do mínimo de estadia. As noites continuam impossíveis de reservar.
 - **Critérios de aceite:**
-  1. (Piloto) Com mínimo de 5 noites e 2 noites livres entre duas reservas, o anfitrião e o nó acima recebem o alerta, que mostra as datas e o mínimo que impede a reserva.
-  2. (Piloto) Noites livres que podem ser reservadas com o mínimo vigente não geram alerta.
-  3. (Depois do piloto) Com a regra ligada, essas noites aceitam uma estadia que as ocupa por inteiro, mesmo abaixo do mínimo; com a regra no padrão (desligada), nada muda.
-  4. O cálculo usa a mesma avaliação de mínimo de estadia da G18.
-- **Prioridade:** Could; alerta no piloto, relaxamento automático depois do piloto. RICE 0,75 (R 3, I 0,5, C 50%, E 1; mantido). Fonte: competitors.md G19 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb updating your availability](https://www.airbnb.com/resources/hosting-homes/a/updating-your-availability-708), [Booking.com dynamic restriction rules](https://partner.booking.com/en-gb/help/reservations/restrictions/setting-dynamic-restriction-rules).
+  1. Com mínimo de 5 noites e 2 noites livres entre duas reservas, essas 2 noites aparecem no calendário do anfitrião numa cor distinta, diferente da noite reservada e da noite livre que dá para reservar.
+  2. Noites livres que podem ser reservadas com o mínimo vigente não usam essa cor.
+  3. Ninguém recebe alerta, aviso ou banner por causa dessas noites: nem o anfitrião, nem o nó acima.
+  4. Essas noites não aceitam uma estadia abaixo do mínimo; o mínimo não é relaxado.
+  5. A busca e o checkout continuam recusando essas noites. O cálculo usa a mesma avaliação de mínimo de estadia da G18.
+- **Prioridade:** Could. RICE 0,75 (R 3, I 0,5, C 50%, E 1; mantido). Decidido pelo Rafael em 2026-10-22: só a cor no calendário do anfitrião, sem alerta e sem relaxar o mínimo. Fonte: competitors.md G19 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referência: [Airbnb updating your availability](https://www.airbnb.com/resources/hosting-homes/a/updating-your-availability-708).
 
-### G20 — Reserva dupla entre canais pelo iCal (Must, antes da S7)
-- **Problema:** as OTAs leem a exportação da casalivre só a cada 2 a 3 h, e a casalivre importa em intervalos, então uma reserva do Airbnb/Booking e uma da casalivre podem cair nas mesmas noites. As specs não dizem o que acontece quando um bloqueio importado de OTA se sobrepõe a uma solicitação pendente ou reserva confirmada da casalivre (quem é avisado, se o hóspede da casalivre é informado, se conta como cancelamento do anfitrião), nem se o **feed de exportação inclui as datas seguradas** (aguardando aprovação/pagamento, G9).
-- **Solução (aprovada pelo Negócios com mudança):** (1) a exportação inclui toda noite que bloqueia uma reserva da casalivre, inclusive solicitações aguardando aprovação ou pagamento; (2) uma importação que se sobrepõe a uma solicitação ou reserva da casalivre gera um **registro de conflito** e um alerta no Hoje e na reserva, e **nunca sobrescreve** a reserva; (3) se o anfitrião então cancela, é cancelamento do anfitrião pela spec-09 §5, com `responsible` = anfitrião (campo da G14), sem força maior; (4) dica ao anfitrião no cadastro do anúncio para sincronizar nos dois sentidos. Mudanças do Negócios: o **intervalo de importação é um parâmetro** (tão curto quanto a origem permitir); o alerta de conflito vai ao anfitrião **e ao nó acima**, com **prazo de resolução**; a **realocação vai primeiro para um imóvel comparável da mesma rede**, para a reserva ficar conosco. Depois: sincronização direta por channel manager ou API, como complemento pago opcional. O Jurídico confirma o remédio do lado do hóspede (só reembolso ou ajuda para realocar). Motivo do Negócios: os proprietários do piloto vão anunciar em vários canais, e uma reserva dupla prejudica a confiança no site direto mais do que a nota mostra.
+### G21 — Tipo de solicitação "pergunta" (Must, antes da S7)
+- **Problema:** a pergunta antes de reservar (UC-H10) vira uma solicitação, e o bloqueio da G9 segura as noites de toda solicitação pendente. Uma pergunta não é tentativa de reserva: não deve ocupar datas, expirar nem contar no limite de solicitações sobrepostas. O contato continua mascarado, e o anfitrião precisa poder transformar a pergunta numa oferta.
+- **Solução (aprovada pelo Negócios com mudança):** a solicitação tem o tipo `pergunta`. Ela não segura noites, não expira e não conta em `max_pending_requests_overlapping`. O mascaramento de contatos é o mesmo de antes da reserva confirmada. O anfitrião pode transformar a pergunta numa oferta; a partir daí ela segue como solicitação de reserva e o bloqueio da G9 passa a valer. **A mais, pelo Negócios:** um parâmetro do imóvel, herdado do nó, desliga as perguntas (padrão ligado); e um teto de perguntas abertas do mesmo hóspede no mesmo imóvel (padrão 3 [E]). O bloqueio da G9 lê o tipo (`reserva` ou `pergunta`).
 - **Critérios de aceite:**
-  1. O feed iCal exportado do imóvel inclui as noites de reservas confirmadas e de solicitações pendentes de aprovação ou pagamento, e as remove quando liberadas.
-  2. Uma importação que se sobrepõe a uma solicitação ou reserva da casalivre cria um registro de conflito, alerta o anfitrião e o nó acima no Hoje e na reserva, com o prazo de resolução, e não altera nem cancela a reserva.
-  3. Se o anfitrião cancela depois do conflito, o cancelamento tem `responsible` = anfitrião (G14) e conta na métrica dele; força maior não se aplica.
-  4. O intervalo de importação é um parâmetro; mudá-lo muda a frequência sem mudar código.
-  5. Ao resolver o conflito, a realocação oferece primeiro imóveis comparáveis da mesma rede.
-  6. O cadastro do anúncio mostra a dica de sincronizar nos dois sentidos.
-- **Prioridade:** **Must, antes da S7** (RICE 9,6 mantido: R 3, I 2, C 80%, E 0,5). Fonte: competitors.md G20 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb sync calendars](https://www.airbnb.com/help/article/99), [Booking.com synchronise calendars](https://partner.booking.com/en-gb/help/rates-availability/extranet-calendar/how-synchronise-your-calendars-across-channels), [Booking.com handling double bookings](https://partner.booking.com/en-gb/help/reservations/overbookings-no-shows/handling-overbookings).
+  1. Uma `pergunta` não tira as noites da busca nem do calendário, não tem prazo de expiração e não entra na contagem de `max_pending_requests_overlapping`.
+  2. Telefone, e-mail, link, @usuário e chave Pix na pergunta aparecem como "[contato oculto]" até a reserva ser confirmada.
+  3. O anfitrião transforma a pergunta numa oferta. Depois disso, as noites passam a ser seguradas como solicitação de reserva (G9).
+  4. Com as perguntas desligadas no imóvel, ou no nó quando o imóvel não tem valor próprio, uma pergunta nova é recusada com a mensagem. Sem configuração, o padrão é ligado.
+  5. Com o teto padrão 3, a 4ª pergunta aberta do mesmo hóspede no mesmo imóvel é recusada. Pergunta já encerrada, ou já virada em oferta, não conta.
+  6. O bloqueio de solicitação pendente (G9) só vale para o tipo `reserva`. Uma `pergunta` nunca segura noites.
+- **Prioridade:** **Must, antes da S7.** RICE 9,6. Fonte: competitors.md G21 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G22 — Avisos automáticos da estadia (Could, depois do piloto)
+- **Problema:** o anfitrião, e sobretudo o corretor, manda na mão as mesmas mensagens em momentos fixos da estadia. As respostas rápidas da spec-08 não disparam sozinhas.
+- **Solução (aprovada pelo Negócios com mudança):** um agendador no Valkey dispara gatilhos no nível do imóvel ou do nó. O conjunto padrão é o do piloto: antes do check-in, no dia do check-in, no meio da estadia e o pedido de avaliação depois do check-out. O nó edita os modelos. O hóspede pode sair dos avisos que não são da transação.
+- **Critérios de aceite:**
+  1. Cada gatilho é um parâmetro do imóvel ou do nó; o imóvel sem valor próprio usa o do nó.
+  2. No padrão, os quatro gatilhos (antes do check-in, dia do check-in, meio da estadia, avaliação depois do check-out) disparam uma vez por reserva, pelo agendador no Valkey.
+  3. Editar o modelo no nó muda a mensagem dos imóveis que herdam esse modelo.
+  4. O hóspede consegue sair dos avisos que não são da transação. Os avisos da própria reserva (aprovação, pagamento, cancelamento) continuam.
+  5. Com a saída marcada, esse hóspede não recebe os quatro avisos agendados.
+- **Prioridade:** Could, depois do piloto, para operação só de proprietário direto. RICE 9,6 pelo valor para corretores. Fonte: competitors.md G22 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G23 — Conversa aberta depois do cancelamento ou do check-out (Should, antes da S9)
+- **Problema:** a spec-08 encerra a conversa na hora quando a reserva expira, é recusada ou é cancelada. Depois do cancelamento ou do check-out ainda falta falar de reembolso, item esquecido ou dano. A janela de disputa (spec-09) é de 14 dias, não de 30.
+- **Solução (aprovada pelo Negócios com mudança):** a conversa fica aberta N dias depois do cancelamento ou do check-out. O padrão é **14 dias**, a mesma janela da disputa, e não 30. Nessa janela só entram os assuntos reembolso, item esquecido e dano; depois, a conversa fica só leitura. Solicitação recusada ou expirada continua encerrando na hora.
+- **Critérios de aceite:**
+  1. Depois do cancelamento ou do check-out, a conversa aceita mensagem por N dias (padrão 14). No dia seguinte ao fim da janela, fica só leitura.
+  2. Sem configuração, N vale 14, alinhado à janela de disputa da spec-09. 30 não é o padrão.
+  3. Na janela, o envio exige um dos assuntos reembolso, item esquecido ou dano. Outro assunto é recusado.
+  4. Solicitação recusada ou expirada encerra a conversa na hora, só leitura, sem essa janela.
+  5. N é parâmetro de nó ou canal; o padrão da plataforma é 14.
+- **Prioridade:** Should, antes da S9. RICE 6,4. Fonte: competitors.md G23 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
@@ -437,13 +452,12 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - O cancelamento guarda `initiated_by` e `responsible` em campos separados; taxa, métrica, reembolso e comissão leem `responsible` (G14), com referência opcional a um evento disruptivo (G15).
 - O bloqueio de solicitação pendente é visível para a disponibilidade do ADR 001 e sai nos feeds iCal do imóvel; a expiração libera na mesma transação (G9).
 - O limite de solicitações pendentes é o parâmetro `max_pending_requests_overlapping` (padrão 2 [E], por canal), e o modo de bloqueio é parâmetro (`hard` só) (G9).
-- N expirações seguidas do anfitrião é parâmetro de nó/canal (padrão 2 [E]) (G10).
-- Cada solicitação guarda recebido / respondido / expirado na própria linha (G8, G10).
+- O bloqueio da G9 lê o tipo da solicitação: `reserva` segura as noites; `pergunta` não segura noites, não expira e não conta em `max_pending_requests_overlapping` (G21).
+- Cada solicitação guarda recebido / respondido / expirado na própria linha (G8).
 - Pagamentos como N linhas por reserva, não um `paid_at` (G12).
 - O snapshot guarda o `max_nights` do anúncio e o teto da plataforma de 30 noites (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
 - Uma oferta ou solicitação pré-aprovada leva o canal de origem (G11).
-- A exportação iCal inclui as noites seguradas (G9, G20); uma importação que se sobrepõe a uma solicitação ou reserva da casalivre cria um registro de conflito e nunca a sobrescreve; o intervalo de importação é parâmetro (G20).
-- Regras de disponibilidade por imóvel, com modelos por nó e valores sazonais pelos períodos de datas, avaliadas num lugar só e dentro das metas de velocidade do ADR 001 (G18, G19).
+- Regras de disponibilidade por imóvel, com modelos por nó e valores sazonais pelos períodos de datas, avaliadas num lugar só e dentro das metas de velocidade do ADR 001 (G18). As noites vazias que o mínimo impede de reservar aparecem só como cor distinta no calendário do anfitrião, sem alerta e sem relaxar o mínimo (G19).
 - Cadastro de anúncio (P10): campos estruturados de divulgação de câmera externa (sim/não + local) e monitor de ruído (sim/não + só decibéis), com a confirmação obrigatória de "sem câmeras internas, sem gravação de áudio, sem reconhecimento facial" para publicar (G6); forma de check-in como enum (G7).
 
 ## Itens adiados
