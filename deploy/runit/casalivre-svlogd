@@ -99,14 +99,13 @@ command -v chpst >/dev/null 2>&1 || {
 }
 
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-if [ -n "${ALERT_BIN:-}" ] && [ -x "$ALERT_BIN" ]; then
-  alert=$ALERT_BIN
-elif [ -x "$here/casalivre-alert" ]; then
-  alert=$here/casalivre-alert
-elif [ -x /usr/local/sbin/casalivre-alert ]; then
-  alert=/usr/local/sbin/casalivre-alert
-else
-  alert=
+alert=
+if [ -r "$here/casalivre-resolve" ]; then
+  # shellcheck disable=SC1091
+  . "$here/casalivre-resolve"
+  alert=$(casalivre_bin casalivre-alert "$here") || alert=
+fi
+if [ -z "$alert" ]; then
   echo "casalivre-svlogd: casalivre-alert not found; logging without paging" >&2
 fi
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # runit service: CasaLivre queue worker (mail and image queues).
 # Install (Void), full steps in the deploy checklist:
-#   sudo install -m 0755 deploy/runit/casalivre-alert \
+#   sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
 #     deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish /usr/local/sbin/
 #   sudo cp -a deploy/runit/casalivre-queue-worker /etc/sv/
 #   sudo ln -s /etc/sv/casalivre-queue-worker /var/service/

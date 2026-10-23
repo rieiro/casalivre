@@ -9,6 +9,7 @@ require __DIR__ . '/lib.php';
 $root = CL_ROOT . '/deploy/runit';
 $scripts = [
     "$root/casalivre-alert",
+    "$root/casalivre-resolve",
     "$root/casalivre-finish",
     "$root/casalivre-svlogd",
     "$root/casalivre-queue-worker/run",
@@ -33,6 +34,22 @@ $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
 t_ok(!preg_match('/\|\|\s*echo/', $retentionRun) && str_contains($retentionRun, 'exit "$status"') && str_contains($retentionRun, 'sleep 86400'), 'log-retention: failure exits, success still sleeps 24h');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-queue-worker/finish"), 'casalivre-queue-worker 0'), 'queue worker finish does not delay the restart');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-log-retention/finish"), 'casalivre-log-retention 86400'), 'log-retention finish waits a day after a failure');
+$wrappers = [
+    "$root/casalivre-queue-worker/finish",
+    "$root/casalivre-queue-worker/log/run",
+    "$root/casalivre-log-retention/finish",
+    "$root/casalivre-log-retention/log/run",
+];
+foreach ($wrappers as $path) {
+    $body = (string) file_get_contents($path);
+    $rel = substr($path, strlen(CL_ROOT) + 1);
+    t_eq(1, preg_match_all('/^exec /m', $body), "$rel is a single exec");
+    t_ok(str_contains($body, 'casalivre-resolve') && !str_contains($body, 'elif'), "$rel does not copy the helper lookup");
+}
+$lookup = (string) file_get_contents("$root/casalivre-resolve");
+t_ok(str_contains($lookup, 'ALERT_BIN') && str_contains($lookup, 'casalivre_bin'), 'alert lookup lives in casalivre-resolve');
+$callers = (string) file_get_contents("$root/casalivre-finish") . (string) file_get_contents("$root/casalivre-svlogd");
+t_ok(!str_contains($callers, 'ALERT_BIN') && str_contains($callers, 'casalivre_bin '), 'finish and svlogd call the shared lookup');
 $sv = (string) file_get_contents("$root/casalivre-svlogd");
 t_ok(str_contains($sv, '*ALERT*') && str_contains($sv, 'n14') && str_contains($sv, 't86400') && str_contains($sv, '0700'), 'svlogd helper: ALERT match, 14 days, private dir');
 
@@ -106,6 +123,7 @@ $baseEnv = [
     'ALERT_CMD_OUT' => "$tmp/page.out",
     'FIFO_DIR' => "$tmp/fifo",
     'RESTART_DELAY' => '0',
+    'CASALIVRE_RESOLVE' => "$root/casalivre-resolve",
 ];
 
 $run = static function (string $cmd, string $cwd, array $env, ?string $stdin = null) use ($baseEnv): array {
