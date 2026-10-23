@@ -64,7 +64,8 @@ php8.4-fpm, php8.4-pgsql, php8.4-redis, postgresql18(-client), valkey e nginx.
 O provision instala exatamente esses e falha se o instalado divergir.
 `ca-certificates` e `gettext` (envsubst) vêm do repo sem trava; o resto da
 base é atualizada com `xbps-install -Su` só no primeiro provision (sem
-`$CL_HOME/.provisioned`; re-provision não roda `-Su`): rolling de propósito, então o build
+`$CL_HOME/.provisioned`; re-provision não roda `-Su`, só sincroniza o índice
+com `-S` para um pin novo de `versions.lock` instalar): rolling de propósito, então o build
 não é reproduzível bit a bit. O xbps confere a assinatura RSA dos repos com as
 chaves que vêm no rootfs (verificado por sha256); se aparecer chave nova, o
 provision falha em vez de aceitá-la.
