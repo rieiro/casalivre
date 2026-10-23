@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/JobQueue.php';
+require_once __DIR__ . '/Db.php';
 
 /**
  * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
- * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos.
+ * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. Erro de conexão com o banco (Db::isConnectionError)
+ * não conta como falha do item: o lote para e a exceção sobe (o worker de longa duração sai e o runit o reinicia).
  */
 final class QueueWorker
 {
@@ -56,6 +58,11 @@ final class QueueWorker
                     $queue->ack($job['id']);
                     $report[$done ? 'enviados' : 'ignorados']++;
                 } catch (Throwable $e) {
+                    if (Db::isConnectionError($e)) {
+                        // DB connection lost: not the job's fault, so no fail()/attempt. The job stays reserved and
+                        // goes back to the queue as a stale reservation; the worker exits (scripts/queue-worker.php).
+                        throw $e;
+                    }
                     $report['falhas']++;
                     if ($queue->fail($job['id'], $e::class)) {
                         $report['desistencias']++;

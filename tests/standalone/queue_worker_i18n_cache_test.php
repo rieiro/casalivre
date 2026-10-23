@@ -35,6 +35,7 @@ QueueWorkerLoop::tick($mail, null, $dir);
 t_eq('Buscar', $seen[0] ?? null, 'tick 1: pt-BR nav.search from translations.json');
 db()->prepare('UPDATE translations SET text = ? WHERE lang = ? AND tkey = ?')->execute(['Procurar', 'pt-BR', 'nav.search']);
 I18n::refresh(); // what scripts/refresh-settings-cache.php does after a translation change (another process)
+t_backdate($cacheFile);
 t_ok($mail->push('activation', 'i2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::tick($mail, null, $dir);
 t_eq('Procurar', $seen[1] ?? null, 'tick 2: the changed translation is seen');

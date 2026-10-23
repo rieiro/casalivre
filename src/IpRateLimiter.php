@@ -2,195 +2,279 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/AppEnv.php';
+require_once __DIR__ . '/LogPrivacy.php';
+require_once __DIR__ . '/ValkeyJobQueue.php';
+
 /**
- * Limite simples por IP em janela fixa, com estado em arquivos locais (storage/cache/ratelimit, 0700/0600).
- * Usado pela camada ApiRateLimit do pipeline. IPv6 é agrupado pelo /64. Arquivos mais velhos que MAX_AGE
- * são apagados aqui mesmo (amostragem PURGE_CHANCE e sempre que o teto MAX_FILES é atingido). Com o teto
- * ainda cheio, chave nova recebe 429 (logado). Falha aberta (deixa passar) se o estado não puder ser gravado;
- * o evento vai para o error_log.
+ * Fixed-window limit per client (IP, IPv6 by /64, or an account key) on Valkey, shared by web and API
+ * (cleanup sprint #158; replaces the files in storage/cache/ratelimit).
+ *
+ * Key: cl:rl:<bucket>:<HMAC-SHA256(subkey, 'ratelimit' \0 clientKey)>, cl:* only (cl_app ACL ~cl:*), with the derived
+ * subkey HMAC-SHA256(LOG_SALT, SUBKEY_LABEL) (Segurança #160), so the limiter never uses LOG_SALT itself.
+ * Counting: MULTI INCR + EXPIRE NX + TTL + EXEC, so the window TTL is set atomically by the first hit and never
+ * moved by later ones; Retry-After is the key's TTL (same fixed window as the file limiter: first hit + window).
+ * Commands used: MULTI, EXEC, INCR, DECR, SET (NX EX), EXPIRE (NX), TTL, GET, DEL; all in the cl_app allowlist (no Lua).
+ * The client IP is REMOTE_ADDR only (nginx real_ip sets it from trusted proxies); X-Forwarded-For is never read.
+ *
+ * Valkey down (or LOG_SALT missing outside dev): the per-bucket decision in failClosed() applies (Segurança #158),
+ * logged as VALKEY_UNAVAILABLE at most once per LOG_EVERY seconds per worker, with no IP.
  */
 final class IpRateLimiter
 {
-    public const MAX_AGE = 7200;      // >= maior janela usada (1 h)
-    public const MAX_FILES = 20000;
-    public const PURGE_CHANCE = 100;  // 1 em N chamadas
+    public const PREFIX = Valkey::PREFIX . 'rl:';
+    /** Valkey connect and read timeout for the limiter, in seconds (Segurança #158: ~100 ms). */
+    public const TIMEOUT = 0.1;
+    /** Retry-After of a fail-closed refusal (429), in seconds. */
+    public const FAIL_CLOSED_RETRY_AFTER = 30;
+    /** Valkey-down log throttle per worker, in seconds. */
+    public const LOG_EVERY = 60;
+    /** Label of the derived HMAC subkey: HMAC-SHA256(LOG_SALT, SUBKEY_LABEL). Bump the version to rotate the keys. */
+    public const SUBKEY_LABEL = 'cl-ratelimit-v1';
 
-    public static ?string $dir = null;
-    public static int $maxFiles = self::MAX_FILES;
-    /** 0 desliga a amostragem (testes). */
-    public static int $purgeChance = self::PURGE_CHANCE;
+    /**
+     * FAIL-MODE DECISION POINT (Segurança, #158). Buckets that refuse (429 + Retry-After FAIL_CLOSED_RETRY_AFTER)
+     * when the limiter cannot count: login, password reset, signup, OTP/2FA verify, email-verification resend and
+     * anything that sends email or SMS. Every other bucket fails open (request allowed, logged).
+     * To flip a bucket, add it to or remove it from this list; nothing else decides the fail mode.
+     */
+    public const FAIL_CLOSED_BUCKETS = [
+        '/senha/esqueci',   // password reset (web + API), sends email
+        '/cadastro',        // signup (web + API), sends the activation email
+        'ativacao-reenvio', // activation resend on login of a pending account (LoginAttempt), sends email
+    ];
 
-    /** Chave do cliente: IPv4 inteiro; IPv6 pelo prefixo /64. */
+    /** Only for dev/local without LOG_SALT (APP_ENV=dev|local); production without LOG_SALT fails per bucket. */
+    private const DEV_KEY = 'casalivre-dev-ratelimit-key-not-secret';
+
+    /** Test hook: key namespace after cl:rl: (tests/standalone isolates runs with it); '' in production. */
+    public static string $namespace = '';
+    /** Test hook: returns the connection (or throws); null = Valkey::connect(TIMEOUT). */
+    public static ?Closure $connector = null;
+    /** Test hook: where the per-worker log throttle stamp lives; null = stampDir() (storage/cache/iprl, 0700). */
+    public static ?string $stampDir = null;
+
+    private static ?Redis $conn = null;
+    private static ?int $loggedAt = null;
+
+    public static function failClosed(string $bucket): bool
+    {
+        return in_array($bucket, self::FAIL_CLOSED_BUCKETS, true);
+    }
+
+    /** Client key: whole IPv4; IPv6 by its /64 prefix; IPv4-mapped IPv6 as IPv4; anything else (account key) as is. */
     public static function clientKey(string $ip): string
     {
         $bin = @inet_pton($ip);
         if ($bin !== false && strlen($bin) === 16) {
             if (str_starts_with($bin, str_repeat("\0", 10) . "\xff\xff")) {
-                return (string) inet_ntop(substr($bin, 12)); // IPv4 mapeado
+                return (string) inet_ntop(substr($bin, 12));
             }
             return bin2hex(substr($bin, 0, 8)) . '::/64';
         }
         return $ip;
     }
 
-    /** @return int segundos até liberar (0 = permitido) */
-    public static function hit(string $bucket, int $max, int $windowSeconds, ?string $ip = null, ?int $now = null): int
+    /** Valkey key of (bucket, client); null when there is no HMAC key (LOG_SALT missing outside dev). */
+    public static function key(string $bucket, string $ip): ?string
     {
-        $ip ??= (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-        $now ??= time();
-        $dir = self::dir();
-        $old = umask(0077);
+        $secret = LogPrivacy::salt() ?? (AppEnv::isDevWithEnv() ? self::DEV_KEY : null);
+        if ($secret === null) {
+            return null;
+        }
+        $subkey = hash_hmac('sha256', self::SUBKEY_LABEL, $secret, true);
+        return self::PREFIX . self::$namespace . $bucket . ':' . hash_hmac('sha256', "ratelimit\0" . self::clientKey($ip), $subkey);
+    }
+
+    /** Counts one hit. @return int seconds until allowed again (0 = allowed); Retry-After when > 0. */
+    public static function hit(string $bucket, int $max, int $windowSeconds, ?string $ip = null): int
+    {
         try {
-            if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
-                return self::open('diretório indisponível');
-            }
-            if (self::$purgeChance > 0 && random_int(1, self::$purgeChance) === 1) {
-                self::purge();
-            }
-            $file = $dir . '/' . hash('sha256', $bucket . '|' . self::clientKey($ip)) . '.json';
-            if (!is_file($file) && self::count() >= self::$maxFiles) {
-                self::purge();
-                if (self::count() >= self::$maxFiles) {
-                    // Chave nova com o teto cheio: recusa (429) em vez de criar arquivo; chaves existentes seguem contando.
-                    error_log('ip_rate_limiter: teto de arquivos atingido, chave nova recusada');
-                    return max(1, $windowSeconds);
-                }
-            }
-            $fh = @fopen($file, 'c+');
-            if ($fh === false) {
-                return self::open('arquivo de estado indisponível');
-            }
-            flock($fh, LOCK_EX);
-            $data = json_decode((string) stream_get_contents($fh), true);
-            $start = (int) ($data['start'] ?? 0);
-            $count = (int) ($data['count'] ?? 0);
-            if ($now - $start >= $windowSeconds) {
-                $start = $now;
-                $count = 0;
-            }
-            $count++;
-            ftruncate($fh, 0);
-            rewind($fh);
-            fwrite($fh, (string) json_encode(['start' => $start, 'count' => $count]));
-            flock($fh, LOCK_UN);
-            fclose($fh);
-            return $count > $max ? max(1, $start + $windowSeconds - $now) : 0;
-        } finally {
-            umask($old);
+            [$count, $ttl] = self::incr(self::keyOrFail($bucket, $ip), $windowSeconds);
+        } catch (Throwable $e) {
+            return self::unavailable($bucket, $e);
+        }
+        return $count > $max ? self::retryAfter($ttl, $windowSeconds) : 0;
+    }
+
+    /** Checks without counting: seconds until allowed (0 = one more hit still fits). */
+    public static function peek(string $bucket, int $max, int $windowSeconds, ?string $ip = null): int
+    {
+        try {
+            $key = self::keyOrFail($bucket, $ip);
+            $res = self::exec(self::conn()->multi()->get($key)->ttl($key), 2);
+        } catch (Throwable $e) {
+            return self::unavailable($bucket, $e);
+        }
+        return (int) $res[0] >= $max ? self::retryAfter((int) $res[1], $windowSeconds) : 0;
+    }
+
+    /**
+     * Check, act and count without a check-then-act race: INCR claims a slot first, so parallel calls for the same
+     * key get distinct counts and at most $max of them see $cabe = true. $action(bool $cabe): bool says whether
+     * the action really happened; the slot is given back (DECR) unless it fit AND happened, so only real actions
+     * count. Returns $action's result. Limiter unavailable: $action(false) on a fail-closed bucket, $action(true)
+     * (uncounted) otherwise.
+     */
+    public static function reserve(string $bucket, int $max, int $windowSeconds, ?string $ip, callable $action): bool
+    {
+        try {
+            $key = self::keyOrFail($bucket, $ip);
+            [$count] = self::incr($key, $windowSeconds);
+        } catch (Throwable $e) {
+            return (bool) $action(self::unavailable($bucket, $e) === 0);
+        }
+        $cabe = $count <= $max;
+        $feito = (bool) $action($cabe);
+        if (!$cabe || !$feito) {
+            self::release($key, $windowSeconds, $bucket);
+        }
+        return $feito;
+    }
+
+    /** Clears the counters of one client in the given buckets (CASOS scripts; ACL has no SCAN). */
+    public static function resetClient(string $ip, array $buckets): void
+    {
+        $keys = array_values(array_filter(array_map(static fn (string $b): ?string => self::key($b, $ip), $buckets)));
+        if ($keys !== []) {
+            self::conn()->del($keys);
+        }
+    }
+
+    /** Drops the cached connection (tests). */
+    public static function disconnect(): void
+    {
+        self::$conn = null;
+    }
+
+    /** @return array{0: int, 1: int} count after INCR and key TTL */
+    private static function incr(string $key, int $windowSeconds): array
+    {
+        $res = self::exec(self::conn()->multi()->incr($key)->expire($key, max(1, $windowSeconds), 'NX')->ttl($key), 3, 0);
+        return [$res[0], (int) $res[2]];
+    }
+
+    /**
+     * Gives a claimed slot back, in one MULTI (Segurança #160: no corrective INCR outside it). If the window expired
+     * in between, SET NX EX recreates the key at 1 with a new window and DECR takes it to 0, so a refund never goes
+     * below 0 or leaves an extra slot in the next window; on a live key SET NX is a no-op and DECR gives the slot
+     * back. EXPIRE NX still heals a key without TTL.
+     */
+    private static function release(string $key, int $windowSeconds, string $bucket): void
+    {
+        try {
+            $w = max(1, $windowSeconds);
+            self::exec(self::conn()->multi()->set($key, '1', ['nx', 'ex' => $w])->decr($key)->expire($key, $w, 'NX'), 3, 1);
+        } catch (Throwable $e) {
+            self::unavailable($bucket, $e);
         }
     }
 
     /**
-     * Consulta sem contar: segundos até liberar (0 = ainda cabe mais um hit na janela). Lê sob LOCK_SH, para não
-     * ver o arquivo vazio no meio de uma escrita de hit()/reserve(). Falha aberta (0).
+     * EXECs a queued MULTI and checks the result shape: $replies replies, and an int at $intAt when given (the
+     * INCR/DECR reply). @throws RuntimeException otherwise, so the caller takes the unavailable() path.
      */
-    public static function peek(string $bucket, int $max, int $windowSeconds, ?string $ip = null, ?int $now = null): int
+    private static function exec(Redis $multi, int $replies, ?int $intAt = null): array
     {
-        $ip ??= (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-        $now ??= time();
-        $file = self::dir() . '/' . hash('sha256', $bucket . '|' . self::clientKey($ip)) . '.json';
-        $fh = is_file($file) ? @fopen($file, 'r') : false;
-        if ($fh === false) {
-            return 0;
+        $res = $multi->exec();
+        if (!is_array($res) || count($res) !== $replies || ($intAt !== null && !is_int($res[$intAt]))) {
+            throw new RuntimeException('MULTI/EXEC failed');
         }
-        flock($fh, LOCK_SH);
-        $data = json_decode((string) stream_get_contents($fh), true);
-        flock($fh, LOCK_UN);
-        fclose($fh);
-        $start = (int) ($data['start'] ?? 0);
-        $count = (int) ($data['count'] ?? 0);
-        if ($now - $start >= $windowSeconds) {
-            return 0;
+        return $res;
+    }
+
+    private static function retryAfter(int $ttl, int $windowSeconds): int
+    {
+        return $ttl > 0 ? $ttl : max(1, $windowSeconds);
+    }
+
+    private static function keyOrFail(string $bucket, ?string $ip): string
+    {
+        $key = self::key($bucket, $ip ?? self::clientIp());
+        if ($key === null) {
+            throw new RuntimeException('LOG_SALT missing: no HMAC key for the limiter');
         }
-        return $count >= $max ? max(1, $start + $windowSeconds - $now) : 0;
+        return $key;
+    }
+
+    /** REMOTE_ADDR only (never X-Forwarded-For): behind a proxy, nginx real_ip must set it from trusted proxies. */
+    private static function clientIp(): string
+    {
+        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        return $ip !== '' ? $ip : '0.0.0.0';
+    }
+
+    private static function conn(): Redis
+    {
+        if (self::$conn === null) {
+            self::$conn = self::$connector !== null ? (self::$connector)() : Valkey::connect(self::TIMEOUT);
+        }
+        return self::$conn;
+    }
+
+    /** Limiter could not count: applies failClosed() and logs (throttled). @return int Retry-After (0 = fail open) */
+    private static function unavailable(string $bucket, Throwable $e): int
+    {
+        self::$conn = null;
+        $closed = self::failClosed($bucket);
+        self::logUnavailable($bucket, $closed, $e);
+        return $closed ? self::FAIL_CLOSED_RETRY_AFTER : 0;
     }
 
     /**
-     * Confere, age e conta sob o MESMO flock exclusivo do arquivo do balde (sem corrida check-then-act).
-     * $action(bool $cabe): bool recebe se ainda cabe uma vaga na janela e devolve se a ação aconteceu de fato;
-     * só conta (count++) quando cabia E a ação aconteceu. Chamadas paralelas da mesma chave ficam em fila no
-     * flock, então no máximo $max ações por janela. Devolve o retorno de $action.
-     * Falha aberta como hit(): sem diretório/arquivo de estado, roda $action(true) sem contar (logado).
-     * Chave nova com o teto MAX_FILES cheio: $action(false), como o 429 de hit().
+     * Private dir of the log throttle stamps (Segurança #160: not the shared /tmp, where a local user could pre-create
+     * the predictable stamp with a future mtime and mute the log): storage/cache/iprl, 0700, owned by this process's
+     * user, not a symlink. null when it cannot be made private: then no stamp is read or written (the per-process
+     * throttle still applies), so the log is never muted.
      */
-    public static function reserve(string $bucket, int $max, int $windowSeconds, ?string $ip, callable $action, ?int $now = null): bool
+    public static function stampDir(): ?string
     {
-        $ip ??= (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-        $dir = self::dir();
-        $old = umask(0077);
-        try {
-            if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
-                self::open('diretório indisponível');
-                return (bool) $action(true);
-            }
-            $file = $dir . '/' . hash('sha256', $bucket . '|' . self::clientKey($ip)) . '.json';
-            if (!is_file($file) && self::count() >= self::$maxFiles) {
-                self::purge();
-                if (self::count() >= self::$maxFiles) {
-                    error_log('ip_rate_limiter: teto de arquivos atingido, chave nova recusada');
-                    return (bool) $action(false);
-                }
-            }
-            $fh = @fopen($file, 'c+');
-            if ($fh === false) {
-                self::open('arquivo de estado indisponível');
-                return (bool) $action(true);
-            }
-            flock($fh, LOCK_EX);
-            try {
-                $now ??= time();
-                $data = json_decode((string) stream_get_contents($fh), true);
-                $start = (int) ($data['start'] ?? 0);
-                $count = (int) ($data['count'] ?? 0);
-                if ($now - $start >= $windowSeconds) {
-                    $start = $now;
-                    $count = 0;
-                }
-                $cabe = $count < $max;
-                $feito = (bool) $action($cabe);
-                if ($cabe && $feito) {
-                    ftruncate($fh, 0);
-                    rewind($fh);
-                    fwrite($fh, (string) json_encode(['start' => $start, 'count' => $count + 1]));
-                    fflush($fh);
-                }
-                return $feito;
-            } finally {
-                flock($fh, LOCK_UN);
-                fclose($fh);
-            }
-        } finally {
-            umask($old);
+        $dir = self::$stampDir ?? dirname(__DIR__) . '/storage/cache/iprl';
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return null;
         }
-    }
-
-    /** Apaga arquivos de estado sem uso há mais de MAX_AGE segundos. Devolve quantos apagou. */
-    public static function purge(?int $now = null): int
-    {
-        $limit = ($now ?? time()) - self::MAX_AGE;
-        $n = 0;
-        foreach (glob(self::dir() . '/*.json') ?: [] as $f) {
-            $m = @filemtime($f);
-            if ($m !== false && $m < $limit && @unlink($f)) {
-                $n++;
+        clearstatcache(true, $dir);
+        if (is_link($dir) || (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid())) {
+            return null;
+        }
+        if ((@fileperms($dir) & 0077) !== 0) {
+            @chmod($dir, 0700);
+            clearstatcache(true, $dir);
+            if ((@fileperms($dir) & 0077) !== 0) {
+                return null;
             }
         }
-        return $n;
+        return $dir;
     }
 
-    private static function dir(): string
+    /**
+     * At most once per LOG_EVERY s per worker (php-fpm worker = pid; the stamp file outlives the request): one
+     * error_log line and one VALKEY_UNAVAILABLE activity row (its own code, Segurança #160, so alerts and BI tell it
+     * from other internal errors). No IP, key or message text (it could carry the socket path or a key): only the
+     * bucket, the mode and the exception class.
+     */
+    private static function logUnavailable(string $bucket, bool $closed, Throwable $e): void
     {
-        return self::$dir ?? dirname(__DIR__) . '/storage/cache/ratelimit';
-    }
-
-    private static function count(): int
-    {
-        return count(glob(self::dir() . '/*.json', GLOB_NOSORT) ?: []);
-    }
-
-    private static function open(string $why): int
-    {
-        error_log('ip_rate_limiter: falha aberta (' . $why . ')');
-        return 0;
+        $now = time();
+        $dir = self::stampDir();
+        $stamp = $dir === null ? null : $dir . '/down-' . getmypid();
+        $last = self::$loggedAt ?? ($stamp === null ? null : (@filemtime($stamp) ?: null));
+        if ($last !== null && $now - $last < self::LOG_EVERY && $last <= $now) {
+            return;
+        }
+        self::$loggedAt = $now;
+        if ($stamp !== null) {
+            @touch($stamp, $now);
+        }
+        $mode = $closed ? 'fail-closed' : 'fail-open';
+        error_log('ip_rate_limiter: unavailable (' . $e::class . '), ' . $mode . ' for bucket ' . $bucket);
+        if (class_exists('ActivityLog', false)) {
+            ActivityLog::record(ActivityLog::VALKEY_UNAVAILABLE, [
+                'rota' => $bucket,
+                'modo' => $mode,
+                'excecao' => $e::class,
+            ]);
+        }
     }
 }

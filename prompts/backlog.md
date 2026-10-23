@@ -6,18 +6,29 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [x] Line-143 live bug (queue worker `limparCache`): fixed in #142 and #149.
 - [x] DROP items from the backlog review: closed in #139.
 - [ ] Remove SQLite and MongoDB (PostgreSQL only): #148, in review. Owner: Programador.
-- [ ] Move `IpRateLimiter` to Valkey now (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
-- [ ] Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
+- [x] Move `IpRateLimiter` to Valkey now (done in #160) (INCR+EXPIRE under `cl:*`, shared by web and API; replaces the files in `storage/cache/ratelimit`), Rafael 2026-10-21. Keeps today's limits and `Retry-After`; fail-open/closed behavior agreed with Segurança. Makes the file-limiter `flock` findings and the `storage/cache/ratelimit` test flakes moot. Owner: Programador; needs Segurança and Teste.
+- [x] (done in #164) Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
 - [ ] Remove the leftover `pkg.php-sqlite` pin from `ops/dev-env` `versions.lock` (PostgreSQL only). Source: Arquitetura #162. Sprint: cleanup. Owner: Programador.
+- [ ] Same ops PR as the pin removal: `provision.sh` refreshes the package index when re-provisioning after a pin bump (today the workaround is deleting `.provisioned`), and the CI Valkey step PINGs as `cl_app` instead of only waiting for the socket. Estimate 1 h. Source: Arquitetura #162/#174. Sprint: cleanup. Owner: Programador.
+- [ ] Add `Db::sqlState(PDOException): ?string` and use it at the four call sites that still read SQLSTATE differently (`src/Db.php` ~224 and ~248, `src/GroupRepository.php` ~258, `src/Acoes/ThemeSet.php` ~68). Source: Revisor (larger than #148). Sprint: cleanup. Owner: Programador.
 
 After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP items that touch the code it changes, plus a fixed slice of the remaining backlog of about 20% of the sprint's effort. A new item must name its sprint or it is dropped; Gerente reviews this list once per sprint.
 
 ## Priority now (right after the cleanup sprint)
 - [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
-- [ ] Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
+- [x] (done in #167) Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [ ] `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
-- [ ] `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
+- [x] (done in #170) `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
+- [ ] ~~`FileStamp`: add `ctime`~~ Superseded by the simplification below (Rafael 2026-10-21, simplicity rule); #180 is closed.
+- [ ] Simplify the worker file caches (from #149/#154/#170): store each file's `filemtime()` at load; on each check call `clearstatcache()` and reload when `filemtime()` differs from the stored value ("differs", not "is newer", so rollbacks and checkouts with older mtimes are caught). Drop the inode+size checks and the same-second logic; a stale file in the rare same-second case is acceptable. Fold in the open `FileStamp` failed-read and triple-copy items below only if they still apply. Estimate 1 h. Source: Rafael 2026-10-21. Sprint: cleanup. Owner: Programador.
 - [ ] `Valkey::connect()` from web requests (queue producers) has no tight timeout: with Valkey frozen it took over 20 s, so an FPM worker would hang up to `default_socket_timeout`. Give producers about 0.5 s and keep the long timeout only for the workers. Estimate 1 h. Source: Arquitetura #160. Sprint: Priority now. Owner: Programador.
+- [ ] Queue worker restarts about once a second during a PG outage: sleep 5-30 s before `exit(1)` when the DB is lost, and alert on the `DB connection lost` log line. Estimate 0.5 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador.
+- [ ] Worker tests: a lost ack after a successful send (the email goes out again after 10 min, possibly with a second activation or reset token), and a Valkey outage (today the worker crashes with exit 255 and dumps a stack trace into the runit log; catch it and log one line). Estimate 1 h. Source: Arquitetura #167. Sprint: Priority now. Owner: Programador; Teste; Segurança.
+- [ ] Worker hardening, one PR: (a) `queue-worker.php:63-65` logs other exceptions (including the Valkey AUTH/secret-file `RuntimeException`) as one line with the class only, plus `zend.exception_ignore_args=On`, with no stack trace; (b) a stale reclaim counts as an attempt, so retries are bounded; (c) the Valkey-outage test uses its own queue instead of draining the real `cl:q:mail` in dev. (d) also send #174's Valkey ALERT to the error log; optionally give the worker a Valkey timeout of about 5 s (a frozen Valkey is detected only after about 61 s today; Arquitetura #174). Estimate 2 h. Source: Segurança #174. Sprint: Priority now. Owner: Programador; Segurança.
+- [ ] **(high)** Production has no queue-worker runit service and no log capture, so nothing collects the worker's ALERT lines or alerts on them; the log-retention exit-code alert from #148 has the same gap. Add the runit service (`deploy/runit/`) with `svlogd` capture and an alert on ALERT lines and non-zero exits, and document it in `prompts/deploy.md`. Estimate 2 h. Source: Arquitetura #148/#174. Sprint: Priority now. Owner: Programador; Arquitetura.
+- [ ] `ActivityLog::securityPdo` is cached and never reconnects in long-running workers, so security events can be lost after a PG restart (code reading, not measured). Reconnect or ping like the worker's `Db` check. Estimate 1 h. Source: Arquitetura #148. Sprint: Priority now. Owner: Programador; Segurança.
+- [ ] Photo upload opens a Valkey connection per photo; with Valkey frozen each waits 0.5 s, so a 20-photo upload takes about 10 s [E]. Reuse one connection per request and skip the rest after the first failure. Estimate 1 h. Source: Arquitetura #173. Sprint: Priority now. Owner: Programador.
+- [ ] Limiter hardening, one PR: (a) HMAC with a derived subkey `HMAC(LOG_SALT, 'cl-ratelimit-v1')` instead of `LOG_SALT` itself; (b) move the outage-log throttle stamp from `/tmp` to a private `0700` dir (`IpRateLimiter.php:224`); (c) fold the refund `INCR` into the `MULTI` (`:171`); (d) log a dedicated `VALKEY_UNAVAILABLE` code instead of `INTERNAL_ERROR` so alerts and BI can tell it apart; (e) a Teste case that `SIGSTOP`s Valkey and proves the fail-closed buckets return 429 within about 100 ms. Source: Segurança #160. Sprint: Priority now. Owner: Programador; Teste; Segurança.
 
 ## Em andamento
 
@@ -185,6 +196,7 @@ Source: spec-03; `docs/produto/planejamento/sprints.md`. The wizard decides its 
 - [ ] The edit page HTML (44 KB) is slimmed down in the wizard rewrite.
 
 ## Review follow-ups
+- [ ] (low, UX only) Reuse the activation/reset token when the mail job is retried, so the first email's link keeps working. Two valid tokens never exist today: the hash column per purpose is overwritten (`AccountFlow::issueLink:192-205`). Source: Segurança #167/#174. Sprint: the next sprint that touches `AccountFlow`. Owner: Programador.
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.
 
@@ -215,11 +227,11 @@ Removed 2026-10-21: no data migration (migrateLegacy goes away).
 - [ ] Restart the queue worker on deploy, after the asset build, so `AssetManifest` and code changes are picked up; add the step to `prompts/deploy.md`. Source: Arquitetura #142. Owner: Programador.
 - [ ] Recycle the queue worker under runit after a maximum job count, memory use or uptime. Source: Arquitetura #142. Owner: Programador.
 - [ ] Dev env: give each bot its own port range (Teste's nginx held 38542 while Arquitetura used it). Source: Arquitetura #142. Owner: Programador.
-- [ ] `FileStamp`: keep the stamp empty when a read fails, so a failed read is not cached as "unchanged". Source: Arquitetura #149. Owner: Programador.
+- [ ] `FileStamp`: keep the stamp empty when a read fails, so a failed read is not cached as "unchanged". Today `AssetManifest::load` takes the stamp before reading, so a failed read caches `[]` until the file changes (still open after #170). Estimate 0.5 h. Source: Arquitetura #149, #170. Sprint: Priority now (with the ctime item). Owner: Programador.
 - [ ] `GrupoResolvedor`: cap the number of expired entries kept in the TTL cache. Source: Arquitetura #149. Owner: Programador.
 - [ ] `Settings`, `AssetManifest`, `I18n`: the same "skip if the stamp is empty or equal, else drop" check is copied 3 times and each class writes its file path twice. Move the comparison into `FileStamp` (for example, `FileStamp::changed($file, $stamp)`) and keep one file-path constant per class. Source: Revisor #149. Owner: Programador.
 - [ ] `GrupoResolvedor` (`src/GrupoResolvedor.php:55-58,70`): keep `[group, expiry]` in one array instead of the parallel `$cacheExpira`, and drop the public mutable static `$clock` test hook. Source: Revisor #149. Owner: Programador.
-- [ ] `queue_worker_manifest_cache_test` and `queue_worker_cache_unchanged_test` rewrite the tracked `public/assets/manifest.json`; use a temp copy instead. Source: Arquitetura #149. Owner: Programador.
+- [ ] `queue_worker_manifest_cache_test` and `queue_worker_cache_unchanged_test` rewrite the tracked `public/assets/manifest.json`; use a temp copy instead. Still open after #170. Source: Arquitetura #149, #170. Sprint: Priority now (with the ctime item). Owner: Programador.
 - [ ] `ValkeyJobQueue.php:105` reserve reads the whole processing list and reservation set (O(n)); review for P1. Source: #118 (Teste). Owner: Arquitetura.
 
 ### Older follow-ups (#99–#113)
@@ -265,6 +277,7 @@ Removed 2026-10-21: already done (#23, #32, #35, #85). The LGPD item moved to Po
 ## Funcionalidades e API
 Removed 2026-10-21: decided by Rafael (no blanket fetch/API move; P10 decides).
 
+- [ ] Map: list cards beyond the top 300 pins highlight their area on the map (for example a cluster cell id per item). Could-have. Source: UI via Produto (#189). Sprint: post-pilot. Owner: UI; Programador.
 - [ ] Escolher o provedor SMTP e abrir o cadastro em produção.
 - [ ] Expor ou gerar o `ical_hash` pela API (hoje só é criado ao abrir `views/calendar.php:140`).
 - [ ] Trocar `alert()` dos formulários por mensagens na própria página.
@@ -281,10 +294,10 @@ Removed 2026-10-21: SQLite removal. Items moved to PostgreSQL only.
 
 - [ ] `LogRetention::run` incluir arquivos `*.ret-*` remanescentes.
 - [ ] Add the CI gate for money paths (PHPStan max + php-cs-fixer + coverage check) before the first money PR ([docs/money-standards.md](../docs/money-standards.md)). Owner: Programador; Teste.
-- [ ] JobQueue: claim jobs with a single `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING`, add a lease token, make `fail()` atomic, and make BD's queue-table changes in the same separate PR. Estimate 0.5 d. Source: Arquitetura #148. Owner: Programador; BD.
+- [ ] JobQueue: claim jobs with a single `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING`, add a lease token, make `fail()` atomic, and make BD's queue-table changes in the same separate PR. The lease token also lets a reserved job be reclaimed sooner than 10 min (Arquitetura #167). Estimate 0.5 d. Source: Arquitetura #148. Sprint: Priority now. Owner: Programador; BD.
 - [ ] Add a Valkey service to CI; `valkey_queue_test` is still skipped there. Estimate 1 h. Source: Arquitetura #148. Owner: Programador.
 - [ ] After a Valkey failure, skip Valkey for about 5 s per worker so rate-limited routes don't each pay the 100 ms connect timeout. Estimate 1 h. Source: Arquitetura #160. Sprint: ADR 001. Owner: Programador.
-- [ ] Add a production `valkey.conf` to the repo: `maxmemory` with `noeviction` or `volatile-ttl` (never `allkeys-*`), `appendonly yes` + `appendfsync everysec`, and require Valkey 7 or later (`EXPIRE NX`). Estimate 1 h. Source: Arquitetura #160. Sprint: ADR 001. Owner: Programador; Segurança.
+- [ ] Add a production `valkey.conf` to the repo: `maxmemory` with `maxmemory-policy noeviction` only (not `volatile-ttl`: the limiter and `cl:cd:*` keys all have TTLs, so they would be evicted first and silently reset limits and cooldowns) plus a memory alert at 80%, `appendonly yes` + `appendfsync everysec`, and require Valkey 7 or later (`EXPIRE NX`). Estimate 1 h. Source: Arquitetura #160; Segurança sign-off on noeviction. Sprint: ADR 001. Owner: Programador; Segurança.
 
 ## Redução de dados enviados
 Removed 2026-10-21: already done (#36, #39); superseded (20 MB limit). Items moved to ADR 001 and P10.

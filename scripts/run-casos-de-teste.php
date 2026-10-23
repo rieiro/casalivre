@@ -87,7 +87,8 @@ function assert_true(bool $ok, string $message): void
  * - contas criadas pelo Caso 1 (user<10 dígitos de time()>@casalivre.test; os seeds usam 6 hex) e, em cascata,
  *   os imóveis/fotos delas (Caso 3), com a fila de imagens e os arquivos das fotos;
  * - trava de login (tabela login_rate_limit; o Caso RL-1 a dispara de propósito) e limites por IP
- *   (storage/cache/ratelimit; ex.: 30 envios de foto por 10 min, #39).
+ *   (IpRateLimiter no Valkey, cliente de loopback em todos os baldes de seguranca/api_limites.php; ex.: 30 envios
+ *   de foto por 10 min, #39).
  */
 function limpar_rodada_anterior(): void
 {
@@ -96,7 +97,7 @@ function limpar_rodada_anterior(): void
     require_once $root . '/src/helpers.php';
     require_once $root . '/src/PhotoStorage.php';
     $pdo = db();
-    $users = "SELECT id FROM users WHERE email GLOB 'user[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]@casalivre.test'";
+    $users = "SELECT id FROM users WHERE email ~ '^user[0-9]{10}@casalivre\\.test$'";
     $photos = $pdo->query("SELECT p.* FROM photos p JOIN properties pr ON pr.id = p.property_id WHERE pr.user_id IN ($users)")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($photos as $photo) {
         PhotoStorage::deletePhotoFiles($photo);
@@ -111,13 +112,19 @@ function limpar_rodada_anterior(): void
         $pdo->commit();
     } catch (PDOException $e) {
         $pdo->rollBack();
-        // FK: PG 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503; SQLite 23000 (código estendido 19/787).
-        $fk = in_array((string) $e->getCode(), ['23001', '23503', '23000'], true) ? ' (violação de FK)' : '';
+        // FK: 23001 (restrict_violation, ON DELETE RESTRICT) ou 23503.
+        $fk = in_array((string) $e->getCode(), ['23001', '23503'], true) ? ' (violação de FK)' : '';
         fwrite(STDERR, "Limpeza da massa falhou$fk: " . $e->getMessage() . "\n");
         exit(1);
     }
-    foreach (glob($root . '/storage/cache/ratelimit/*') ?: [] as $f) {
-        @unlink($f);
+    require_once $root . '/src/IpRateLimiter.php';
+    $baldes = array_unique(array_column(require $root . '/seguranca/api_limites.php', 4));
+    foreach (['127.0.0.1', '::1'] as $ip) {
+        try {
+            IpRateLimiter::resetClient($ip, $baldes);
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Limpeza dos limites por IP falhou (' . $e::class . '); seguindo.' . "\n");
+        }
     }
     echo "Limpeza: $contas conta(s) de rodadas anteriores, " . count($photos) . " foto(s); trava de login e limites por IP zerados\n";
 }

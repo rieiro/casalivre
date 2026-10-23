@@ -33,9 +33,6 @@ final class Settings
         foreach (self::defaults() as $key => [$value, $description]) {
             $exists->execute([$key]);
             $has = $exists->fetchColumn();
-            // Fecha a leitura antes de escrever: cursor aberto segura o lock de leitura no SQLite e o UPDATE
-            // seguinte recebe BUSY na hora (sem busy_timeout) se outro processo estiver escrevendo.
-            $exists->closeCursor();
             if (!$has) {
                 $stmt->execute([$key, $value, $description]);
             }
@@ -82,12 +79,12 @@ final class Settings
     /** Per-process copy of settings.json (one read per request; in the queue worker, until the file changes). */
     private static ?array $rows = null;
 
-    /** FileStamp of settings.json taken just before $rows was loaded. */
-    private static ?string $stamp = null;
+    /** filemtime() of settings.json taken just before $rows was loaded. */
+    private static ?int $stamp = null;
 
     /**
      * Drops the per-process copy: the next read goes back to settings.json (or the database).
-     * $ifChanged (WorkerCaches): only when settings.json changed since the copy was loaded.
+     * $ifChanged (WorkerCaches): only when settings.json's mtime differs from the one stored at load.
      */
     public static function clearCache(bool $ifChanged = false): void
     {

@@ -29,12 +29,12 @@ final class MailQueues
     public const MAX_ATTEMPTS = Queues::MAX_ATTEMPTS;
     public const BACKOFF = Queues::BACKOFF;
 
-    /** Fila configurada em QUEUE_DRIVER (padrão sqlite). */
+    /** Queue from QUEUE_DRIVER (db, the default: the mail_queue table in PostgreSQL; or valkey). */
     public static function make(): MailQueue
     {
         return match (Queues::driver()) {
-            'sqlite' => new SqliteMailQueue(db()),
-            'valkey' => new ValkeyMailQueue(Valkey::connect()),
+            'db' => new DbMailQueue(db()),
+            'valkey' => new ValkeyMailQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
 
@@ -50,8 +50,8 @@ final class MailQueues
     }
 }
 
-/** Fila na tabela mail_queue do banco da aplicação (SQLite, mas SQL portável para pgsql). */
-final class SqliteMailQueue extends SqlJobQueue implements MailQueue
+/** Queue in the mail_queue table of the app database (PostgreSQL). */
+final class DbMailQueue extends SqlJobQueue implements MailQueue
 {
     /** Test hook: runs between the cooldown check and the insert (widens the race window in mail_cooldown_race_test). */
     public static ?Closure $afterCheck = null;
@@ -88,11 +88,10 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
     public const PG_COOLDOWN_LOCK = 718331202;
 
     /**
-     * Check and insert are serialized per cooldown key on PG (Segurança #88: SELECT-then-INSERT let parallel
+     * Check and insert are serialized per cooldown key (Segurança #88: SELECT-then-INSERT let parallel
      * requests queue the same mail several times): one transaction with pg_advisory_xact_lock(PG_COOLDOWN_LOCK,
      * hashtext(key)) held until commit (READ COMMITTED: the check then sees the other request's committed row).
      * Inside a caller's transaction it joins it (savepoint) and the lock lasts until that transaction ends.
-     * SQLite keeps its old unserialized check-then-insert: CasaLivre is PostgreSQL only (#137; #148 removes SQLite).
      */
     public function push(string $type, string $recipient): bool
     {
@@ -100,9 +99,6 @@ final class SqliteMailQueue extends SqlJobQueue implements MailQueue
             throw new InvalidArgumentException('Tipo de e-mail inválido.');
         }
         $key = self::cooldownKey($type, $recipient);
-        if ((string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'pgsql') {
-            return $this->checkAndInsert($type, $recipient, $key); // PG-only fix per #137
-        }
         return (bool) Db::transactional($this->pdo, function (PDO $pdo) use ($type, $recipient, $key): bool {
             $lock = $pdo->prepare('SELECT pg_advisory_xact_lock(' . self::PG_COOLDOWN_LOCK . ', hashtext(?))');
             $lock->execute([$key]);
@@ -153,7 +149,7 @@ final class ValkeyMailQueue extends ValkeyJobQueue implements MailQueue
         }
         // Cooldown: atomic SET NX EX on the HMAC key (no address in the key) before the insert, so concurrent
         // pushes cannot both pass. If the insert fails, the key is removed so a retry is accepted.
-        $cd = $this->key('cd:' . SqliteMailQueue::cooldownKey($type, $recipient));
+        $cd = $this->key('cd:' . DbMailQueue::cooldownKey($type, $recipient));
         if ($this->r->set($cd, '1', ['nx', 'ex' => MailQueues::cooldownSeconds($type)]) !== true) {
             return false;
         }

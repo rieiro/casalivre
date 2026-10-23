@@ -1,18 +1,16 @@
 <?php
-// Concorrência da troca de tema (QA #57 D1/D2): processos paralelos chamam ThemeSet no mesmo SQLite.
-// Esperado: nenhum erro (nada de "database is locked"/500), só 'ok' ou 'conflito'; nenhum THEME_CHANGE com
+// Concorrência da troca de tema (QA #57 D1/D2): processos paralelos chamam ThemeSet no mesmo banco PG.
+// Esperado: nenhum erro (nada de 500), só 'ok' ou 'conflito'; nenhum THEME_CHANGE com
 // tema == tema_anterior; trocas alternadas sem duplicata e saldo igual ao valor final.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
-$dbFile = t_temp_sqlite();
+$dsn = t_temp_db();
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/src/Settings.php';
 require_once CL_ROOT . '/src/ActivityLog.php';
 $act = c_activity_file();
-// Cria o store de atividades (tabelas + journal_mode=WAL) aqui, antes dos workers: se os 12 processos o criam
-// juntos do zero, o PRAGMA journal_mode = WAL de um esbarra no lock de outro (QA #57 D3). Só o teste muda.
-new SqliteActivityStore($act);
+$mark0 = c_mark($act);
 register_shutdown_function(static function (): void {
     $c = JsonCache::read('settings.json');
     if (is_array($c) && isset($c['theme'])) {
@@ -23,7 +21,7 @@ register_shutdown_function(static function (): void {
 Settings::refresh();
 t_eq('padrao', db()->query("SELECT value FROM settings WHERE skey = 'theme'")->fetchColumn(), 'começa no padrão');
 
-$env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => 'sqlite:' . $dbFile, 'ACTIVITY_DB_PATH' => $act]);
+$env = array_merge(getenv(), ['DB_DSN' => $dsn]);
 $tipos = [];
 $erros = [];
 for ($rodada = 1; $rodada <= 3; $rodada++) {
@@ -48,10 +46,10 @@ for ($rodada = 1; $rodada <= 3; $rodada++) {
     }
     unlink($start);
 }
-t_eq([], $erros, '36 chamadas paralelas sem erro (sem database is locked)');
+t_eq([], $erros, '36 chamadas paralelas sem erro');
 t_eq([], array_values(array_diff(array_unique($tipos), ['ok', 'conflito'])), 'só ok ou conflito: ' . json_encode(array_count_values($tipos)));
 
-$logs = array_values(array_filter(c_logs($act, 0), static fn ($l) => $l['code'] === ActivityLog::THEME_CHANGE));
+$logs = array_values(array_filter(c_logs($act, $mark0), static fn ($l) => $l['code'] === ActivityLog::THEME_CHANGE));
 t_ok($logs !== [], 'houve trocas registradas (' . count($logs) . ')');
 $semMudanca = array_filter($logs, static fn ($l) => ($l['params']['tema'] ?? null) === ($l['params']['tema_anterior'] ?? null));
 t_eq(0, count($semMudanca), 'nenhum THEME_CHANGE com tema == tema_anterior');

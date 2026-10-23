@@ -1,0 +1,1466 @@
+# EXPLAIN evidence on PostgreSQL 18.6 on x86_64-unknown-linux-musl, compiled by cc (GCC) 14.2.1 20250405, 64-bit, real schema, as casalivre_dev + SET ROLE, 2026-10-21 13:54 -03
+-- PR #137 follow-up evidence: real schema (database/schema.pgsql.sql), ~105 daily leaves, EXPLAIN (ANALYZE, BUFFERS).
+\set ON_ERROR_STOP 1
+\timing off
+Timing is off.
+SET ROLE casalivre_retention;
+SET
+DO $$ DECLARE c text; d date; keep int;
+BEGIN
+  FOREACH c IN ARRAY ARRAY['security','other'] LOOP
+    keep := CASE c WHEN 'security' THEN 90 ELSE 14 END;
+    FOR d IN SELECT generate_series(current_date - keep, current_date - 1, '1 day')::date LOOP
+      IF to_regclass(format('audit.activity_log_%s_p%s', c, to_char(d,'YYYYMMDD'))) IS NULL THEN
+        EXECUTE format('CREATE TABLE audit.%I PARTITION OF audit.%I FOR VALUES FROM (%L) TO (%L)',
+          format('activity_log_%s_p%s', c, to_char(d,'YYYYMMDD')), 'activity_log_' || c,
+          d::timestamp AT TIME ZONE 'UTC', (d + 1)::timestamp AT TIME ZONE 'UTC');
+      END IF;
+    END LOOP;
+  END LOOP;
+END $$;
+DO
+SELECT p.relname AS parent, count(*) AS leaves FROM pg_inherits i JOIN pg_class p ON p.oid = i.inhparent
+ WHERE p.relname IN ('activity_log_security','activity_log_other') GROUP BY 1 ORDER BY 1;
+        parent         | leaves 
+-----------------------+--------
+ activity_log_other    |     23
+ activity_log_security |     99
+(2 rows)
+
+-- seed: security 1000/day (90 d), other 3000/day (14 d); 1 in 50 rows has a user actor_ref (200 distinct users)
+INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id, payload)
+SELECT uuidv7(ts - now()), ts, (ARRAY[1,2,3,18,19,20,21,30,45,46])[1 + (g % 10)], 'security',
+       CASE WHEN g % 50 = 0 THEN 'user' ELSE 'anon' END,
+       CASE WHEN g % 50 = 0 THEN sha256(('u' || (g / 50) % 200)::bytea) END,
+       CASE WHEN g % 50 = 0 THEN 1 END, gen_random_uuid(), '{"canal":"web"}'
+  FROM generate_series(1, 90000) g, LATERAL (SELECT now() - (g * interval '86 seconds')) t(ts);
+INSERT 0 90000
+INSERT INTO audit.activity_log (id, created_at, code, retention_class, actor_kind, actor_ref, actor_key_version, access_event_id, payload)
+SELECT uuidv7(ts - now()), ts, (ARRAY[5,14,15,17,22,29])[1 + (g % 6)], 'other',
+       CASE WHEN g % 50 = 0 THEN 'user' ELSE 'anon' END,
+       CASE WHEN g % 50 = 0 THEN sha256(('u' || (g / 50) % 200)::bytea) END,
+       CASE WHEN g % 50 = 0 THEN 1 END, gen_random_uuid(), '{"canal":"api","raio":10}'
+  FROM generate_series(1, 42000) g, LATERAL (SELECT now() - (g * interval '28.8 seconds')) t(ts);
+INSERT 0 42000
+ANALYZE audit.activity_log;
+ANALYZE
+SELECT retention_class, count(*) FROM audit.activity_log GROUP BY 1 ORDER BY 1;
+ retention_class | count 
+-----------------+-------
+ other           | 42000
+ security        | 90000
+(2 rows)
+
+\echo == activity_recent(NULL, 50): inner query
+== activity_recent(NULL, 50): inner query
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON) SELECT * FROM audit.activity_log ORDER BY id DESC LIMIT 50;
+                                                                                  QUERY PLAN                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=1.048..1.080 rows=50.00 loops=1)
+   Buffers: shared hit=333
+   ->  Merge Append (actual time=1.046..1.075 rows=50.00 loops=1)
+         Sort Key: activity_log.id DESC
+         Buffers: shared hit=333
+         ->  Index Scan Backward using activity_log_other_p20261007_pkey on activity_log_other_p20261007 activity_log_1 (actual time=0.014..0.014 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261008_pkey on activity_log_other_p20261008 activity_log_2 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261009_pkey on activity_log_other_p20261009 activity_log_3 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261010_pkey on activity_log_other_p20261010 activity_log_4 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261011_pkey on activity_log_other_p20261011 activity_log_5 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261012_pkey on activity_log_other_p20261012 activity_log_6 (actual time=0.014..0.014 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261013_pkey on activity_log_other_p20261013 activity_log_7 (actual time=0.009..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261014_pkey on activity_log_other_p20261014 activity_log_8 (actual time=0.018..0.018 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261015_pkey on activity_log_other_p20261015 activity_log_9 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261016_pkey on activity_log_other_p20261016 activity_log_10 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261017_pkey on activity_log_other_p20261017 activity_log_11 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261018_pkey on activity_log_other_p20261018 activity_log_12 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261019_pkey on activity_log_other_p20261019 activity_log_13 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261020_pkey on activity_log_other_p20261020 activity_log_14 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_other_p20261021_pkey on activity_log_other_p20261021 activity_log_15 (actual time=0.008..0.014 rows=38.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=4
+         ->  Index Scan Backward using activity_log_other_p20261022_pkey on activity_log_other_p20261022 activity_log_16 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261023_pkey on activity_log_other_p20261023 activity_log_17 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261024_pkey on activity_log_other_p20261024 activity_log_18 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261025_pkey on activity_log_other_p20261025 activity_log_19 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261026_pkey on activity_log_other_p20261026 activity_log_20 (actual time=0.005..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261027_pkey on activity_log_other_p20261027 activity_log_21 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_p20261028_pkey on activity_log_other_p20261028 activity_log_22 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_other_default_pkey on activity_log_other_default activity_log_23 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20260723_pkey on activity_log_security_p20260723 activity_log_24 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20260724_pkey on activity_log_security_p20260724 activity_log_25 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260725_pkey on activity_log_security_p20260725 activity_log_26 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260726_pkey on activity_log_security_p20260726 activity_log_27 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260727_pkey on activity_log_security_p20260727 activity_log_28 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260728_pkey on activity_log_security_p20260728 activity_log_29 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260729_pkey on activity_log_security_p20260729 activity_log_30 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260730_pkey on activity_log_security_p20260730 activity_log_31 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260731_pkey on activity_log_security_p20260731 activity_log_32 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260801_pkey on activity_log_security_p20260801 activity_log_33 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260802_pkey on activity_log_security_p20260802 activity_log_34 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260803_pkey on activity_log_security_p20260803 activity_log_35 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260804_pkey on activity_log_security_p20260804 activity_log_36 (actual time=0.006..0.006 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260805_pkey on activity_log_security_p20260805 activity_log_37 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260806_pkey on activity_log_security_p20260806 activity_log_38 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260807_pkey on activity_log_security_p20260807 activity_log_39 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260808_pkey on activity_log_security_p20260808 activity_log_40 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260809_pkey on activity_log_security_p20260809 activity_log_41 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260810_pkey on activity_log_security_p20260810 activity_log_42 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260811_pkey on activity_log_security_p20260811 activity_log_43 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260812_pkey on activity_log_security_p20260812 activity_log_44 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260813_pkey on activity_log_security_p20260813 activity_log_45 (actual time=0.006..0.006 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260814_pkey on activity_log_security_p20260814 activity_log_46 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260815_pkey on activity_log_security_p20260815 activity_log_47 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260816_pkey on activity_log_security_p20260816 activity_log_48 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260817_pkey on activity_log_security_p20260817 activity_log_49 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260818_pkey on activity_log_security_p20260818 activity_log_50 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260819_pkey on activity_log_security_p20260819 activity_log_51 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260820_pkey on activity_log_security_p20260820 activity_log_52 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260821_pkey on activity_log_security_p20260821 activity_log_53 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260822_pkey on activity_log_security_p20260822 activity_log_54 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260823_pkey on activity_log_security_p20260823 activity_log_55 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260824_pkey on activity_log_security_p20260824 activity_log_56 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260825_pkey on activity_log_security_p20260825 activity_log_57 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260826_pkey on activity_log_security_p20260826 activity_log_58 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260827_pkey on activity_log_security_p20260827 activity_log_59 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260828_pkey on activity_log_security_p20260828 activity_log_60 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260829_pkey on activity_log_security_p20260829 activity_log_61 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260830_pkey on activity_log_security_p20260830 activity_log_62 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260831_pkey on activity_log_security_p20260831 activity_log_63 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260901_pkey on activity_log_security_p20260901 activity_log_64 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260902_pkey on activity_log_security_p20260902 activity_log_65 (actual time=0.016..0.016 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260903_pkey on activity_log_security_p20260903 activity_log_66 (actual time=0.016..0.016 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260904_pkey on activity_log_security_p20260904 activity_log_67 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260905_pkey on activity_log_security_p20260905 activity_log_68 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260906_pkey on activity_log_security_p20260906 activity_log_69 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260907_pkey on activity_log_security_p20260907 activity_log_70 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260908_pkey on activity_log_security_p20260908 activity_log_71 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260909_pkey on activity_log_security_p20260909 activity_log_72 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260910_pkey on activity_log_security_p20260910 activity_log_73 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260911_pkey on activity_log_security_p20260911 activity_log_74 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260912_pkey on activity_log_security_p20260912 activity_log_75 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260913_pkey on activity_log_security_p20260913 activity_log_76 (actual time=0.014..0.014 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260914_pkey on activity_log_security_p20260914 activity_log_77 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260915_pkey on activity_log_security_p20260915 activity_log_78 (actual time=0.009..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260916_pkey on activity_log_security_p20260916 activity_log_79 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260917_pkey on activity_log_security_p20260917 activity_log_80 (actual time=0.007..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260918_pkey on activity_log_security_p20260918 activity_log_81 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260919_pkey on activity_log_security_p20260919 activity_log_82 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260920_pkey on activity_log_security_p20260920 activity_log_83 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260921_pkey on activity_log_security_p20260921 activity_log_84 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260922_pkey on activity_log_security_p20260922 activity_log_85 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260923_pkey on activity_log_security_p20260923 activity_log_86 (actual time=0.007..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260924_pkey on activity_log_security_p20260924 activity_log_87 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260925_pkey on activity_log_security_p20260925 activity_log_88 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260926_pkey on activity_log_security_p20260926 activity_log_89 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260927_pkey on activity_log_security_p20260927 activity_log_90 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260928_pkey on activity_log_security_p20260928 activity_log_91 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260929_pkey on activity_log_security_p20260929 activity_log_92 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260930_pkey on activity_log_security_p20260930 activity_log_93 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261001_pkey on activity_log_security_p20261001 activity_log_94 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261002_pkey on activity_log_security_p20261002 activity_log_95 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261003_pkey on activity_log_security_p20261003 activity_log_96 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261004_pkey on activity_log_security_p20261004 activity_log_97 (actual time=0.012..0.013 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261005_pkey on activity_log_security_p20261005 activity_log_98 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261006_pkey on activity_log_security_p20261006 activity_log_99 (actual time=0.007..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261007_pkey on activity_log_security_p20261007 activity_log_100 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261008_pkey on activity_log_security_p20261008 activity_log_101 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261009_pkey on activity_log_security_p20261009 activity_log_102 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261010_pkey on activity_log_security_p20261010 activity_log_103 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261011_pkey on activity_log_security_p20261011 activity_log_104 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261012_pkey on activity_log_security_p20261012 activity_log_105 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261013_pkey on activity_log_security_p20261013 activity_log_106 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261014_pkey on activity_log_security_p20261014 activity_log_107 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261015_pkey on activity_log_security_p20261015 activity_log_108 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261016_pkey on activity_log_security_p20261016 activity_log_109 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261017_pkey on activity_log_security_p20261017 activity_log_110 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261018_pkey on activity_log_security_p20261018 activity_log_111 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261019_pkey on activity_log_security_p20261019 activity_log_112 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261020_pkey on activity_log_security_p20261020 activity_log_113 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261021_pkey on activity_log_security_p20261021 activity_log_114 (actual time=0.007..0.009 rows=13.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261022_pkey on activity_log_security_p20261022 activity_log_115 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261023_pkey on activity_log_security_p20261023 activity_log_116 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261024_pkey on activity_log_security_p20261024 activity_log_117 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261025_pkey on activity_log_security_p20261025 activity_log_118 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261026_pkey on activity_log_security_p20261026 activity_log_119 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261027_pkey on activity_log_security_p20261027 activity_log_120 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_p20261028_pkey on activity_log_security_p20261028 activity_log_121 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+         ->  Index Scan Backward using activity_log_security_default_pkey on activity_log_security_default activity_log_122 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=3572
+ Planning Time: 16.911 ms
+ Execution Time: 1.904 ms
+(375 rows)
+
+\echo == activity_recent(2, 50): inner query
+== activity_recent(2, 50): inner query
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON) SELECT * FROM audit.activity_log WHERE code = 2 ORDER BY id DESC LIMIT 50;
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=1.236..1.272 rows=50.00 loops=1)
+   Buffers: shared hit=344
+   ->  Merge Append (actual time=1.234..1.267 rows=50.00 loops=1)
+         Sort Key: activity_log.id DESC
+         Buffers: shared hit=344
+         ->  Index Scan Backward using activity_log_other_p20261007_code_id_idx on activity_log_other_p20261007 activity_log_1 (actual time=0.045..0.045 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=5
+         ->  Index Scan Backward using activity_log_other_p20261008_code_id_idx on activity_log_other_p20261008 activity_log_2 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261009_code_id_idx on activity_log_other_p20261009 activity_log_3 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261010_code_id_idx on activity_log_other_p20261010 activity_log_4 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261011_code_id_idx on activity_log_other_p20261011 activity_log_5 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261012_code_id_idx on activity_log_other_p20261012 activity_log_6 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261013_code_id_idx on activity_log_other_p20261013 activity_log_7 (actual time=0.007..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261014_code_id_idx on activity_log_other_p20261014 activity_log_8 (actual time=0.009..0.009 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261015_code_id_idx on activity_log_other_p20261015 activity_log_9 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261016_code_id_idx on activity_log_other_p20261016 activity_log_10 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261017_code_id_idx on activity_log_other_p20261017 activity_log_11 (actual time=0.010..0.010 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261018_code_id_idx on activity_log_other_p20261018 activity_log_12 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261019_code_id_idx on activity_log_other_p20261019 activity_log_13 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261020_code_id_idx on activity_log_other_p20261020 activity_log_14 (actual time=0.007..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261021_code_id_idx on activity_log_other_p20261021 activity_log_15 (actual time=0.012..0.012 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261022_code_id_idx on activity_log_other_p20261022 activity_log_16 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261023_code_id_idx on activity_log_other_p20261023 activity_log_17 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261024_code_id_idx on activity_log_other_p20261024 activity_log_18 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261025_code_id_idx on activity_log_other_p20261025 activity_log_19 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261026_code_id_idx on activity_log_other_p20261026 activity_log_20 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261027_code_id_idx on activity_log_other_p20261027 activity_log_21 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_p20261028_code_id_idx on activity_log_other_p20261028 activity_log_22 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_other_default_code_id_idx on activity_log_other_default activity_log_23 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20260723_code_id_idx on activity_log_security_p20260723 activity_log_24 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20260724_code_id_idx on activity_log_security_p20260724 activity_log_25 (actual time=0.009..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260725_code_id_idx on activity_log_security_p20260725 activity_log_26 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260726_code_id_idx on activity_log_security_p20260726 activity_log_27 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260727_code_id_idx on activity_log_security_p20260727 activity_log_28 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260728_code_id_idx on activity_log_security_p20260728 activity_log_29 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260729_code_id_idx on activity_log_security_p20260729 activity_log_30 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260730_code_id_idx on activity_log_security_p20260730 activity_log_31 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260731_code_id_idx on activity_log_security_p20260731 activity_log_32 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260801_code_id_idx on activity_log_security_p20260801 activity_log_33 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260802_code_id_idx on activity_log_security_p20260802 activity_log_34 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260803_code_id_idx on activity_log_security_p20260803 activity_log_35 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260804_code_id_idx on activity_log_security_p20260804 activity_log_36 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260805_code_id_idx on activity_log_security_p20260805 activity_log_37 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260806_code_id_idx on activity_log_security_p20260806 activity_log_38 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260807_code_id_idx on activity_log_security_p20260807 activity_log_39 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260808_code_id_idx on activity_log_security_p20260808 activity_log_40 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260809_code_id_idx on activity_log_security_p20260809 activity_log_41 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260810_code_id_idx on activity_log_security_p20260810 activity_log_42 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260811_code_id_idx on activity_log_security_p20260811 activity_log_43 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260812_code_id_idx on activity_log_security_p20260812 activity_log_44 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260813_code_id_idx on activity_log_security_p20260813 activity_log_45 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260814_code_id_idx on activity_log_security_p20260814 activity_log_46 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260815_code_id_idx on activity_log_security_p20260815 activity_log_47 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260816_code_id_idx on activity_log_security_p20260816 activity_log_48 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260817_code_id_idx on activity_log_security_p20260817 activity_log_49 (actual time=0.023..0.023 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260818_code_id_idx on activity_log_security_p20260818 activity_log_50 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260819_code_id_idx on activity_log_security_p20260819 activity_log_51 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260820_code_id_idx on activity_log_security_p20260820 activity_log_52 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260821_code_id_idx on activity_log_security_p20260821 activity_log_53 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260822_code_id_idx on activity_log_security_p20260822 activity_log_54 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260823_code_id_idx on activity_log_security_p20260823 activity_log_55 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260824_code_id_idx on activity_log_security_p20260824 activity_log_56 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260825_code_id_idx on activity_log_security_p20260825 activity_log_57 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260826_code_id_idx on activity_log_security_p20260826 activity_log_58 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260827_code_id_idx on activity_log_security_p20260827 activity_log_59 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260828_code_id_idx on activity_log_security_p20260828 activity_log_60 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260829_code_id_idx on activity_log_security_p20260829 activity_log_61 (actual time=0.014..0.015 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260830_code_id_idx on activity_log_security_p20260830 activity_log_62 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260831_code_id_idx on activity_log_security_p20260831 activity_log_63 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260901_code_id_idx on activity_log_security_p20260901 activity_log_64 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260902_code_id_idx on activity_log_security_p20260902 activity_log_65 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260903_code_id_idx on activity_log_security_p20260903 activity_log_66 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260904_code_id_idx on activity_log_security_p20260904 activity_log_67 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260905_code_id_idx on activity_log_security_p20260905 activity_log_68 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260906_code_id_idx on activity_log_security_p20260906 activity_log_69 (actual time=0.017..0.017 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260907_code_id_idx on activity_log_security_p20260907 activity_log_70 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260908_code_id_idx on activity_log_security_p20260908 activity_log_71 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260909_code_id_idx on activity_log_security_p20260909 activity_log_72 (actual time=0.019..0.019 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260910_code_id_idx on activity_log_security_p20260910 activity_log_73 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260911_code_id_idx on activity_log_security_p20260911 activity_log_74 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260912_code_id_idx on activity_log_security_p20260912 activity_log_75 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260913_code_id_idx on activity_log_security_p20260913 activity_log_76 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260914_code_id_idx on activity_log_security_p20260914 activity_log_77 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260915_code_id_idx on activity_log_security_p20260915 activity_log_78 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260916_code_id_idx on activity_log_security_p20260916 activity_log_79 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260917_code_id_idx on activity_log_security_p20260917 activity_log_80 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260918_code_id_idx on activity_log_security_p20260918 activity_log_81 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260919_code_id_idx on activity_log_security_p20260919 activity_log_82 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260920_code_id_idx on activity_log_security_p20260920 activity_log_83 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260921_code_id_idx on activity_log_security_p20260921 activity_log_84 (actual time=0.018..0.018 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260922_code_id_idx on activity_log_security_p20260922 activity_log_85 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260923_code_id_idx on activity_log_security_p20260923 activity_log_86 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260924_code_id_idx on activity_log_security_p20260924 activity_log_87 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260925_code_id_idx on activity_log_security_p20260925 activity_log_88 (actual time=0.008..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260926_code_id_idx on activity_log_security_p20260926 activity_log_89 (actual time=0.013..0.013 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260927_code_id_idx on activity_log_security_p20260927 activity_log_90 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260928_code_id_idx on activity_log_security_p20260928 activity_log_91 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260929_code_id_idx on activity_log_security_p20260929 activity_log_92 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20260930_code_id_idx on activity_log_security_p20260930 activity_log_93 (actual time=0.011..0.011 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261001_code_id_idx on activity_log_security_p20261001 activity_log_94 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261002_code_id_idx on activity_log_security_p20261002 activity_log_95 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261003_code_id_idx on activity_log_security_p20261003 activity_log_96 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261004_code_id_idx on activity_log_security_p20261004 activity_log_97 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261005_code_id_idx on activity_log_security_p20261005 activity_log_98 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261006_code_id_idx on activity_log_security_p20261006 activity_log_99 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261007_code_id_idx on activity_log_security_p20261007 activity_log_100 (actual time=0.008..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261008_code_id_idx on activity_log_security_p20261008 activity_log_101 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261009_code_id_idx on activity_log_security_p20261009 activity_log_102 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261010_code_id_idx on activity_log_security_p20261010 activity_log_103 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261011_code_id_idx on activity_log_security_p20261011 activity_log_104 (actual time=0.007..0.007 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261012_code_id_idx on activity_log_security_p20261012 activity_log_105 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261013_code_id_idx on activity_log_security_p20261013 activity_log_106 (actual time=0.010..0.010 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261014_code_id_idx on activity_log_security_p20261014 activity_log_107 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261015_code_id_idx on activity_log_security_p20261015 activity_log_108 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261016_code_id_idx on activity_log_security_p20261016 activity_log_109 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261017_code_id_idx on activity_log_security_p20261017 activity_log_110 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261018_code_id_idx on activity_log_security_p20261018 activity_log_111 (actual time=0.012..0.012 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261019_code_id_idx on activity_log_security_p20261019 activity_log_112 (actual time=0.008..0.008 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261020_code_id_idx on activity_log_security_p20261020 activity_log_113 (actual time=0.009..0.009 rows=1.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=3
+         ->  Index Scan Backward using activity_log_security_p20261021_code_id_idx on activity_log_security_p20261021 activity_log_114 (actual time=0.010..0.020 rows=50.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=10
+         ->  Index Scan Backward using activity_log_security_p20261022_code_id_idx on activity_log_security_p20261022 activity_log_115 (actual time=0.023..0.023 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261023_code_id_idx on activity_log_security_p20261023 activity_log_116 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261024_code_id_idx on activity_log_security_p20261024 activity_log_117 (actual time=0.005..0.005 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261025_code_id_idx on activity_log_security_p20261025 activity_log_118 (actual time=0.006..0.007 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261026_code_id_idx on activity_log_security_p20261026 activity_log_119 (actual time=0.007..0.007 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261027_code_id_idx on activity_log_security_p20261027 activity_log_120 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_p20261028_code_id_idx on activity_log_security_p20261028 activity_log_121 (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+         ->  Index Scan Backward using activity_log_security_default_code_id_idx on activity_log_security_default activity_log_122 (actual time=0.006..0.006 rows=0.00 loops=1)
+               Index Cond: (code = 2)
+               Index Searches: 1
+               Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=56
+ Planning Time: 6.449 ms
+ Execution Time: 2.208 ms
+(497 rows)
+
+\echo == activity_by_actor(1 ref): inner query
+== activity_by_actor(1 ref): inner query
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON)
+SELECT * FROM (SELECT * FROM audit.activity_log l WHERE l.actor_ref = ANY (ARRAY[sha256('u7'::bytea)])
+  UNION ALL SELECT h.id, h.created_at, h.code, h.retention_class, h.subtype, h.actor_kind, h.actor_ref, h.actor_key_version,
+         h.access_event_id, h.payload, h.before_value, h.after_value FROM audit.activity_log_held h WHERE h.actor_ref = ANY (ARRAY[sha256('u7'::bytea)])) x ORDER BY x.id;
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=0.748..0.761 rows=14.00 loops=1)
+   Sort Key: l.id
+   Sort Method: quicksort  Memory: 27kB
+   Buffers: shared hit=121
+   ->  Append (actual time=0.023..0.742 rows=14.00 loops=1)
+         Buffers: shared hit=121
+         ->  Append (actual time=0.023..0.731 rows=14.00 loops=1)
+               Buffers: shared hit=119
+               ->  Index Scan using activity_log_other_p20261007_actor_ref_id_idx on activity_log_other_p20261007 l_1 (actual time=0.013..0.013 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261008_actor_ref_id_idx on activity_log_other_p20261008 l_2 (actual time=0.010..0.010 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_other_p20261009_actor_ref_id_idx on activity_log_other_p20261009 l_3 (actual time=0.008..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261010_actor_ref_id_idx on activity_log_other_p20261010 l_4 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261011_actor_ref_id_idx on activity_log_other_p20261011 l_5 (actual time=0.008..0.008 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_other_p20261012_actor_ref_id_idx on activity_log_other_p20261012 l_6 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261013_actor_ref_id_idx on activity_log_other_p20261013 l_7 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261014_actor_ref_id_idx on activity_log_other_p20261014 l_8 (actual time=0.007..0.007 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_other_p20261015_actor_ref_id_idx on activity_log_other_p20261015 l_9 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261016_actor_ref_id_idx on activity_log_other_p20261016 l_10 (actual time=0.008..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261017_actor_ref_id_idx on activity_log_other_p20261017 l_11 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261018_actor_ref_id_idx on activity_log_other_p20261018 l_12 (actual time=0.007..0.007 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_other_p20261019_actor_ref_id_idx on activity_log_other_p20261019 l_13 (actual time=0.008..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261020_actor_ref_id_idx on activity_log_other_p20261020 l_14 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_other_p20261021_actor_ref_id_idx on activity_log_other_p20261021 l_15 (actual time=0.008..0.009 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Seq Scan on activity_log_other_p20261022 l_16 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261023 l_17 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261024 l_18 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261025 l_19 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261026 l_20 (actual time=0.003..0.003 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261027 l_21 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_p20261028 l_22 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_other_default l_23 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20260723 l_24 (actual time=0.003..0.003 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Index Scan using activity_log_security_p20260724_actor_ref_id_idx on activity_log_security_p20260724 l_25 (actual time=0.008..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260725_actor_ref_id_idx on activity_log_security_p20260725 l_26 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260726_actor_ref_id_idx on activity_log_security_p20260726 l_27 (actual time=0.008..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260727_actor_ref_id_idx on activity_log_security_p20260727 l_28 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260728_actor_ref_id_idx on activity_log_security_p20260728 l_29 (actual time=0.011..0.011 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260729_actor_ref_id_idx on activity_log_security_p20260729 l_30 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260730_actor_ref_id_idx on activity_log_security_p20260730 l_31 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260731_actor_ref_id_idx on activity_log_security_p20260731 l_32 (actual time=0.013..0.013 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260801_actor_ref_id_idx on activity_log_security_p20260801 l_33 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260802_actor_ref_id_idx on activity_log_security_p20260802 l_34 (actual time=0.008..0.008 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260803_actor_ref_id_idx on activity_log_security_p20260803 l_35 (actual time=0.009..0.009 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260804_actor_ref_id_idx on activity_log_security_p20260804 l_36 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260805_actor_ref_id_idx on activity_log_security_p20260805 l_37 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260806_actor_ref_id_idx on activity_log_security_p20260806 l_38 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260807_actor_ref_id_idx on activity_log_security_p20260807 l_39 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260808_actor_ref_id_idx on activity_log_security_p20260808 l_40 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260809_actor_ref_id_idx on activity_log_security_p20260809 l_41 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260810_actor_ref_id_idx on activity_log_security_p20260810 l_42 (actual time=0.007..0.008 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260811_actor_ref_id_idx on activity_log_security_p20260811 l_43 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260812_actor_ref_id_idx on activity_log_security_p20260812 l_44 (actual time=0.007..0.007 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260813_actor_ref_id_idx on activity_log_security_p20260813 l_45 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260814_actor_ref_id_idx on activity_log_security_p20260814 l_46 (actual time=0.009..0.009 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260815_actor_ref_id_idx on activity_log_security_p20260815 l_47 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260816_actor_ref_id_idx on activity_log_security_p20260816 l_48 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260817_actor_ref_id_idx on activity_log_security_p20260817 l_49 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260818_actor_ref_id_idx on activity_log_security_p20260818 l_50 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260819_actor_ref_id_idx on activity_log_security_p20260819 l_51 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260820_actor_ref_id_idx on activity_log_security_p20260820 l_52 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260821_actor_ref_id_idx on activity_log_security_p20260821 l_53 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260822_actor_ref_id_idx on activity_log_security_p20260822 l_54 (actual time=0.006..0.006 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260823_actor_ref_id_idx on activity_log_security_p20260823 l_55 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260824_actor_ref_id_idx on activity_log_security_p20260824 l_56 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260825_actor_ref_id_idx on activity_log_security_p20260825 l_57 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260826_actor_ref_id_idx on activity_log_security_p20260826 l_58 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260827_actor_ref_id_idx on activity_log_security_p20260827 l_59 (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260828_actor_ref_id_idx on activity_log_security_p20260828 l_60 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260829_actor_ref_id_idx on activity_log_security_p20260829 l_61 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260830_actor_ref_id_idx on activity_log_security_p20260830 l_62 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260831_actor_ref_id_idx on activity_log_security_p20260831 l_63 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260901_actor_ref_id_idx on activity_log_security_p20260901 l_64 (actual time=0.006..0.006 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260902_actor_ref_id_idx on activity_log_security_p20260902 l_65 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260903_actor_ref_id_idx on activity_log_security_p20260903 l_66 (actual time=0.009..0.009 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260904_actor_ref_id_idx on activity_log_security_p20260904 l_67 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260905_actor_ref_id_idx on activity_log_security_p20260905 l_68 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260906_actor_ref_id_idx on activity_log_security_p20260906 l_69 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260907_actor_ref_id_idx on activity_log_security_p20260907 l_70 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260908_actor_ref_id_idx on activity_log_security_p20260908 l_71 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260909_actor_ref_id_idx on activity_log_security_p20260909 l_72 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260910_actor_ref_id_idx on activity_log_security_p20260910 l_73 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260911_actor_ref_id_idx on activity_log_security_p20260911 l_74 (actual time=0.006..0.006 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260912_actor_ref_id_idx on activity_log_security_p20260912 l_75 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260913_actor_ref_id_idx on activity_log_security_p20260913 l_76 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260914_actor_ref_id_idx on activity_log_security_p20260914 l_77 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260915_actor_ref_id_idx on activity_log_security_p20260915 l_78 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260916_actor_ref_id_idx on activity_log_security_p20260916 l_79 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260917_actor_ref_id_idx on activity_log_security_p20260917 l_80 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260918_actor_ref_id_idx on activity_log_security_p20260918 l_81 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260919_actor_ref_id_idx on activity_log_security_p20260919 l_82 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260920_actor_ref_id_idx on activity_log_security_p20260920 l_83 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260921_actor_ref_id_idx on activity_log_security_p20260921 l_84 (actual time=0.006..0.006 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20260922_actor_ref_id_idx on activity_log_security_p20260922 l_85 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260923_actor_ref_id_idx on activity_log_security_p20260923 l_86 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260924_actor_ref_id_idx on activity_log_security_p20260924 l_87 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260925_actor_ref_id_idx on activity_log_security_p20260925 l_88 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260926_actor_ref_id_idx on activity_log_security_p20260926 l_89 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260927_actor_ref_id_idx on activity_log_security_p20260927 l_90 (actual time=0.006..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260928_actor_ref_id_idx on activity_log_security_p20260928 l_91 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260929_actor_ref_id_idx on activity_log_security_p20260929 l_92 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20260930_actor_ref_id_idx on activity_log_security_p20260930 l_93 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261001_actor_ref_id_idx on activity_log_security_p20261001 l_94 (actual time=0.008..0.008 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20261002_actor_ref_id_idx on activity_log_security_p20261002 l_95 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261003_actor_ref_id_idx on activity_log_security_p20261003 l_96 (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261004_actor_ref_id_idx on activity_log_security_p20261004 l_97 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261005_actor_ref_id_idx on activity_log_security_p20261005 l_98 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261006_actor_ref_id_idx on activity_log_security_p20261006 l_99 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261007_actor_ref_id_idx on activity_log_security_p20261007 l_100 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261008_actor_ref_id_idx on activity_log_security_p20261008 l_101 (actual time=0.006..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261009_actor_ref_id_idx on activity_log_security_p20261009 l_102 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261010_actor_ref_id_idx on activity_log_security_p20261010 l_103 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261011_actor_ref_id_idx on activity_log_security_p20261011 l_104 (actual time=0.010..0.010 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Index Scan using activity_log_security_p20261012_actor_ref_id_idx on activity_log_security_p20261012 l_105 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261013_actor_ref_id_idx on activity_log_security_p20261013 l_106 (actual time=0.006..0.006 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261014_actor_ref_id_idx on activity_log_security_p20261014 l_107 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261015_actor_ref_id_idx on activity_log_security_p20261015 l_108 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261016_actor_ref_id_idx on activity_log_security_p20261016 l_109 (actual time=0.010..0.010 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261017_actor_ref_id_idx on activity_log_security_p20261017 l_110 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261018_actor_ref_id_idx on activity_log_security_p20261018 l_111 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261019_actor_ref_id_idx on activity_log_security_p20261019 l_112 (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261020_actor_ref_id_idx on activity_log_security_p20261020 l_113 (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=1
+               ->  Index Scan using activity_log_security_p20261021_actor_ref_id_idx on activity_log_security_p20261021 l_114 (actual time=0.006..0.006 rows=1.00 loops=1)
+                     Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+                     Index Searches: 1
+                     Buffers: shared hit=2
+               ->  Seq Scan on activity_log_security_p20261022 l_115 (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261023 l_116 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261024 l_117 (actual time=0.003..0.003 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261025 l_118 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261026 l_119 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261027 l_120 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_p20261028 l_121 (actual time=0.003..0.003 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               ->  Seq Scan on activity_log_security_default l_122 (actual time=0.002..0.002 rows=0.00 loops=1)
+                     Filter: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+         ->  Index Scan using activity_held_actor on activity_log_held h (actual time=0.008..0.008 rows=0.00 loops=1)
+               Index Cond: (actor_ref = ANY ('{"\\xe8180000fa67e824043aa522c6743de57dbc5de1d39d5483acb618b699a9dd00"}'::bytea[]))
+               Index Searches: 1
+               Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=125 read=2
+ Planning Time: 6.149 ms
+ Execution Time: 1.610 ms
+(470 rows)
+
+RESET ROLE;
+RESET
+\echo == the functions themselves, as casalivre_ops_logread (each writes ACTIVITY_LOG_READ)
+== the functions themselves, as casalivre_ops_logread (each writes ACTIVITY_LOG_READ)
+SET ROLE casalivre_ops_logread;
+SET
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON) SELECT * FROM audit.activity_recent(NULL, 50);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Function Scan on activity_recent (actual time=5.537..5.539 rows=50.00 loops=1)
+   Buffers: shared hit=691 read=3 dirtied=7 written=4
+ Planning Time: 0.017 ms
+ Execution Time: 5.552 ms
+(4 rows)
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON) SELECT * FROM audit.activity_recent(2::smallint, 50);
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Function Scan on activity_recent (actual time=7.850..7.853 rows=50.00 loops=1)
+   Buffers: shared hit=421
+ Planning Time: 0.018 ms
+ Execution Time: 7.864 ms
+(4 rows)
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, SUMMARY ON) SELECT * FROM audit.activity_by_actor(ARRAY[sha256('u7'::bytea)]);
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Function Scan on activity_by_actor (actual time=8.086..8.087 rows=14.00 loops=1)
+   Buffers: shared hit=251
+ Planning Time: 0.030 ms
+ Execution Time: 8.095 ms
+(4 rows)
+
+RESET ROLE;
+RESET
+SET ROLE casalivre_retention;
+SET
+SELECT code, payload FROM audit.audit_log WHERE code = 47 ORDER BY id;
+ code |                                           payload                                           
+------+---------------------------------------------------------------------------------------------
+   47 | {"code": null, "limit": 50, "function": "activity_recent", "session_user": "casalivre_dev"}
+   47 | {"code": 2, "limit": 50, "function": "activity_recent", "session_user": "casalivre_dev"}
+   47 | {"refs": 1, "function": "activity_by_actor", "session_user": "casalivre_dev"}
+(3 rows)
+
+RESET ROLE;
+RESET

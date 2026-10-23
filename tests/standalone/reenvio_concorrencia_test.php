@@ -1,5 +1,5 @@
 <?php
-// PR #88 (Security): conferir o limite, enfileirar e contar sob o mesmo flock (IpRateLimiter::reserve).
+// PR #88 (Security): conferir o limite, enfileirar e contar sem corrida (IpRateLimiter::reserve: vaga atômica por INCR no Valkey).
 // N processos em paralelo partindo juntos: no máximo RESEND_MAX ações / e-mails de ativação.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
@@ -30,14 +30,14 @@ $burst = static function (array $args): array {
 };
 
 echo "IpRateLimiter::reserve: " . N . " processos em paralelo, limite 3\n";
-$dir = sys_get_temp_dir() . '/cl-rl-conc-' . bin2hex(random_bytes(4));
+$ns = 'tconc' . bin2hex(random_bytes(4)) . ':';
 $saida = tempnam(sys_get_temp_dir(), 'conc');
-$burst(['reserve', $dir, $saida]);
+$burst(['reserve', $ns, $saida]);
 t_eq(3, substr_count((string) file_get_contents($saida), '1'), 'no máximo 3 ações dentro da janela (as outras ' . (N - 3) . ' viram "não cabe")');
-IpRateLimiter::$dir = $dir;
+$prev = IpRateLimiter::$namespace;
+IpRateLimiter::$namespace = $ns;
 t_ok(IpRateLimiter::peek('conc', 3, 3600, 'conta:x') > 0, 'balde em 3/3: peek bloqueia');
-IpRateLimiter::$dir = (string) getenv('T_RATELIMIT_DIR');
-@exec('rm -rf ' . escapeshellarg($dir));
+IpRateLimiter::$namespace = $prev;
 @unlink($saida);
 
 echo "login: " . N . " logins paralelos com a senha certa (conta pendente) enfileiram no máximo " . LoginAttempt::RESEND_MAX . "\n";

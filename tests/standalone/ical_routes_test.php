@@ -1,5 +1,5 @@
 <?php
-// Testes HTTP (php -S + SQLite temporário): rota antiga .ics -> 404, export por ical_hash, ics_body ignorado.
+// Testes HTTP (php -S + banco PG temporário): rota antiga .ics -> 404, export por ical_hash, ics_body ignorado.
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();

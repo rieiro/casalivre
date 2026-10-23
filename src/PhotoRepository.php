@@ -139,7 +139,7 @@ final class PhotoRepository
 
     public static function makePrimary(int $propertyId, int $photoId): array
     {
-        $json = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? 'json_build_object' : 'json_object';
+        $json = 'json_build_object';
         $sql = 'UPDATE ' . ReturningWrite::q('photos')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('id', " . ReturningWrite::q('id') . ", 'path', " . ReturningWrite::q('path') . ", 'is_primary', " . ReturningWrite::q('is_primary') . ", 'sort_order', " . ReturningWrite::q('sort_order') . '), '
             . ReturningWrite::q('is_primary') . ' = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE property_id = ? AND EXISTS (SELECT 1 FROM photos target WHERE target.id = ? AND target.property_id = ?) RETURNING '
@@ -149,7 +149,7 @@ final class PhotoRepository
 
     public static function ensurePrimary(int $propertyId): array
     {
-        $json = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? 'json_build_object' : 'json_object';
+        $json = 'json_build_object';
         $sql = 'UPDATE ' . ReturningWrite::q('photos')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('id', " . ReturningWrite::q('id') . ", 'path', " . ReturningWrite::q('path') . ", 'is_primary', " . ReturningWrite::q('is_primary') . ", 'sort_order', " . ReturningWrite::q('sort_order') . '), '
             . ReturningWrite::q('is_primary') . ' = CASE WHEN id = (SELECT id FROM photos WHERE property_id = ? ORDER BY sort_order, id LIMIT 1) THEN 1 ELSE 0 END WHERE property_id = ? AND NOT EXISTS (SELECT 1 FROM photos p WHERE p.property_id = ? AND p.is_primary = 1) RETURNING '

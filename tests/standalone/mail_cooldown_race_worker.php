@@ -8,8 +8,8 @@ const CL_ROOT = __DIR__ . '/../..';
 [$_, $go, $email] = $argv;
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/MailQueue.php';
-$q = new SqliteMailQueue(db());
-SqliteMailQueue::$afterCheck = static fn () => usleep(200000);
+$q = new DbMailQueue(db());
+DbMailQueue::$afterCheck = static fn () => usleep(200000);
 while (!is_file($go)) {
     usleep(1000);
 }

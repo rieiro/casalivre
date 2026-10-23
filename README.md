@@ -14,7 +14,6 @@ No Postgres, a requisição web não migra: só confere `schema_meta.schema_vers
 No `.env` ficam o banco e as chaves de serviço. Nada disso é escrito em arquivo PHP.
 
 ```bash
-DB_DRIVER=pgsql
 DB_DSN=pgsql:host=127.0.0.1;dbname=casalivre
 DB_USER=usuario
 DB_PASSWORD=
@@ -24,7 +23,7 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 ```
 
-O log de atividades é a tabela `activity_log` no PostgreSQL (a mudança do código está no backlog; até lá ele ainda é gravado em `storage/logs/activity.sqlite`). Cada ação tem um código, uma descrição e os parâmetros daquela ação (cidade e raio na busca, e-mail no login, imóvel nas fotos). A senha não é gravada. Para ler:
+O log fica no schema `audit` do PostgreSQL: `audit.activity_log` (classes `security`, 90 dias, e `other`, 14 dias, em partições diárias removidas por DROP) e `audit.audit_log` (classe `admin`, 5 anos). Cada ação tem um código, uma classe (`activity_actions`) e só os parâmetros permitidos daquela ação; o usuário vira um HMAC de 32 bytes (`LOG_SALT`, `LOG_SALT_KEY_VERSION`) e a senha nunca é gravada. O app só tem INSERT; a leitura é pelas funções `audit.activity_recent` / `audit.activity_by_actor`, como um login com `casalivre_ops_logread`, e cada leitura fica registrada no `audit_log`. Retenção: `php scripts/log-retention.php` (dry-run; `--apply` remove). Para ler:
 
 ```bash
 php scripts/activity-log.php
@@ -54,7 +53,7 @@ Abra http://127.0.0.1:8080 neste computador. O `start.sh` escuta em todas as int
 
 - Depois do login o proprietário cai em `/painel`, com a lista dos próprios imóveis.
 - Dá para adicionar, editar e remover imóvel, adicionar fotos e apagar fotos.
-- Fotos ficam em `public/uploads/users/{id}/imoveis/{id}/`.
+- Fotos: o original fica fora do `public/` (`storage/fotos/originais/<uuid>.<ext>`) e os WebP públicos em `public/uploads/fotos/<uuid>-<largura>.webp`, gerados pelo `scripts/image-worker.php`.
 - Datas na interface usam dia/mês/ano (dd/mm/aaaa).
 - No celular o menu abre em "Menu" e os formulários, a busca e o painel continuam disponíveis.
 - O idioma fica no canto superior (português, inglês, espanhol). Data, hora e moeda seguem o idioma. Os textos estão na tabela `translations`.

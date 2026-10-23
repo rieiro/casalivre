@@ -6,8 +6,6 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
-$actFile = tempnam(sys_get_temp_dir(), 'act') . '.sqlite';
-putenv('ACTIVITY_DB_PATH=' . $actFile);
 $base = t_server();
 $attr = static function (string $body, string $name): ?string {
     if (!preg_match('/<div id="result-map"[^>]*\s' . preg_quote($name, '/') . '="([^"]*)"/s', $body, $m)) {
@@ -48,10 +46,7 @@ db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([
 t_eq(0, count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . $loc)['body'], true)['items'] ?? [1]), 'API (e o mapa) não lista imóvel pausado');
 
 echo "log: cada visita ao mapa grava exatamente uma busca\n";
-$count = static function () use ($actFile): int {
-    $pdo = new PDO('sqlite:' . $actFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    return (int) $pdo->query('SELECT COUNT(*) FROM activity_log WHERE action_code = ' . ActivityLog::SEARCH)->fetchColumn();
-};
+$count = static fn (): int => t_log_count(ActivityLog::SEARCH);
 $before = $count();
 $page = t_http('GET', $base . '/busca/mapa?localidade=' . $loc);
 t_eq($before, $count(), 'a página /busca/mapa não grava SEARCH');

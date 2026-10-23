@@ -1,0 +1,14 @@
+# Corpo do run (o services.sh prefixa shebang e o '. $CL_HOME/etc/dev-env.env').
+# Retenção diária de logs como o login do job (cl_retention_job, peer no socket: ver sv/postgresql/run), igual à
+# produção (LOG_JOB_DB_USER): cria as partições (uma por transação), move linhas achadas numa DEFAULT, roda o passo
+# de retenção e o health. Dry-run (não remove partições) a menos que CL_LOG_RETENTION_APPLY=1 em
+# $CL_HOME/etc/log-retention.conf. Roda uma vez e dorme 24 h; ao fim do sleep o runit reinicia (diário).
+[ -S "$CL_RUN/.s.PGSQL.5432" ] || { sleep 1; exit 1; }
+# Banco ainda sem schema (antes do db-setup.sh): tenta de novo em 1 min.
+psql -X -tAc "SELECT to_regclass('audit.activity_log')" 2>/dev/null | grep -q activity_log || { sleep 60; exit 1; }
+cd "$CL_REPO" || exit 1
+CL_LOG_RETENTION_APPLY=
+[ -r "$CL_HOME/etc/log-retention.conf" ] && . "$CL_HOME/etc/log-retention.conf"
+LOG_JOB_DB_USER=cl_retention_job php8.4 scripts/log-retention.php ${CL_LOG_RETENTION_APPLY:+--apply} 2>&1 ||
+	echo "log-retention: falhou (código $?)"
+exec sleep 86400

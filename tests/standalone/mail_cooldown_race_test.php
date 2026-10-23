@@ -1,8 +1,8 @@
 <?php
-// Cleanup sprint #158 (Segurança #88): SqliteMailQueue::push checked the cooldown (SELECT) and then inserted, so
+// Cleanup sprint #158 (Segurança #88): DbMailQueue::push checked the cooldown (SELECT) and then inserted, so
 // parallel requests for the same (type, e-mail) could all pass the check and queue several e-mails. N processes push
-// the same activation at once, each pausing 200 ms between check and insert: exactly one is queued. PG only
-// (CasaLivre is PostgreSQL only, #137).
+// the same activation at once, each pausing 200 ms between check and insert: exactly one is queued. PostgreSQL only
+// (#137).
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -35,15 +35,11 @@ $race = static function (string $label): void {
     t_eq('', trim($err), "$label: children ran without errors");
     t_eq(1, substr_count($out, '1'), "$label: " . N . ' parallel pushes, exactly one accepted (' . $out . ')');
     t_eq(1, $rows, "$label: exactly one mail_queue row");
-    $q = new SqliteMailQueue(db());
+    $q = new DbMailQueue(db());
     t_eq(false, $q->push('activation', $email), "$label: a later push inside the cooldown is still refused");
     t_eq(true, $q->push('reset', $email), "$label: another type for the same e-mail is accepted");
 };
 
-if (!t_is_pg()) {
-    echo "  SKIPPED (PG only: set TEST_PG_DSN)\n";
-    t_done();
-}
 t_temp_db();
 $race('pgsql');
 t_done();

@@ -190,14 +190,12 @@ final class UserRepository
 
     private static function write(int $id, array $values, array $columns): array
     {
-        $driver = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $jsonFn = $driver === 'pgsql' ? 'json_build_object' : 'json_object';
         $jsonArgs = [];
         foreach ($columns as $column) {
             self::column($column);
             $jsonArgs[] = "'" . $column . "', " . self::q($column);
         }
-        $set = [self::q('audit_hold') . ' = ' . $jsonFn . '(' . implode(', ', $jsonArgs) . ')'];
+        $set = [self::q('audit_hold') . ' = json_build_object(' . implode(', ', $jsonArgs) . ')'];
         $params = [];
         foreach ($values as $column => $value) {
             self::column($column);

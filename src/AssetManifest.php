@@ -64,12 +64,12 @@ final class AssetManifest
     /** @var null|array<string,string> per-process copy of manifest.json (in the queue worker, until the file changes) */
     private static ?array $cache = null;
 
-    /** FileStamp of manifest.json taken just before $cache was loaded. */
-    private static ?string $stamp = null;
+    /** filemtime() of manifest.json taken just before $cache was loaded. */
+    private static ?int $stamp = null;
 
     /**
      * Drops the per-process copy: the next load() reads manifest.json again (e.g. after a rebuild).
-     * $ifChanged (WorkerCaches): only when manifest.json changed since the copy was loaded.
+     * $ifChanged (WorkerCaches): only when manifest.json's mtime differs from the one stored at load.
      */
     public static function clearCache(bool $ifChanged = false): void
     {

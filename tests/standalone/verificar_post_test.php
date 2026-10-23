@@ -8,19 +8,6 @@ require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
 t_temp_db();
-$actDir = sys_get_temp_dir() . '/vpost-act-' . bin2hex(random_bytes(4));
-@mkdir($actDir, 0700, true);
-$actFile = $actDir . '/activity.sqlite';
-putenv('ACTIVITY_DB_PATH=' . $actFile);
-putenv('LOG_DRIVER=sqlite');
-register_shutdown_function(static function () use ($actDir): void {
-    foreach (glob($actDir . '/*') ?: [] as $f) {
-        @unlink($f);
-    }
-    @rmdir($actDir);
-});
-ActivityLog::store();
-$act = static fn () => new PDO('sqlite:' . $actFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $owner = t_seed_owner();
 $pending = static function (string $token, string $expires = '+1 hour'): int {
     $id = UserRepository::insert([
@@ -39,7 +26,7 @@ $state = static function (int $id): array {
     $r = $st->fetch(PDO::FETCH_ASSOC);
     return [$r['status'], (int) $r['tem_token'], $r['activated_at']];
 };
-$verifyLogs = static fn (): int => (int) $act()->query('SELECT COUNT(*) FROM activity_log WHERE action_code = ' . ActivityLog::EMAIL_VERIFY)->fetchColumn();
+$verifyLogs = static fn (): int => t_log_count(ActivityLog::EMAIL_VERIFY);
 $base = t_server();
 $form = static fn (array $r): string => preg_match('/name="_csrf" value="([^"]+)"/', $r['body'], $m) === 1 ? html_entity_decode($m[1]) : '';
 $post = static fn (string $jar, array $data): array => t_http('POST', $base . '/verificar', http_build_query($data), ['Content-Type: application/x-www-form-urlencoded'], $jar);
@@ -113,7 +100,7 @@ foreach (['/', '/busca', '/busca/mapa', '/imoveis/' . $owner['hash'], '/entrar',
     t_eq([$g['status'], ''], [$h['status'], $h['body']], "HEAD $p: mesmo status do GET, sem corpo");
 }
 echo "HEAD na lista não grava activity_log; GET grava como antes\n";
-$allLogs = static fn (): int => (int) $act()->query('SELECT COUNT(*) FROM activity_log')->fetchColumn();
+$allLogs = static fn (): int => t_log_count();
 $headLista = ['/', '/busca', '/busca/mapa', '/imoveis/' . $owner['hash'], '/entrar', '/cadastro', '/senha/esqueci',
     '/api/busca?localidade=Florian%C3%B3polis', '/api/busca', '/api/cidades?q=flo', '/api/imoveis/' . $owner['hash']];
 foreach ($headLista as $p) {
@@ -127,7 +114,7 @@ foreach (['/api/busca?localidade=Florian%C3%B3polis', '/api/imoveis/' . $owner['
     t_eq(200, $g['status'], "GET $p: 200");
     t_eq($a0 + 1, $allLogs(), "GET $p: 1 linha em activity_log");
 }
-$icalLogs = static fn (): int => (int) $act()->query('SELECT COUNT(*) FROM activity_log WHERE action_code = ' . ActivityLog::CALENDAR_EXPORT)->fetchColumn();
+$icalLogs = static fn (): int => t_log_count(ActivityLog::CALENDAR_EXPORT);
 $c0 = $icalLogs();
 foreach (['/verificar', '/senha/redefinir', '/ical/' . $owner['ical_hash'], '/api/ical/' . $owner['ical_hash'], '/conta', '/painel', '/admin/tema',
     '/grupos', '/api/users/eu', '/api/painel', '/imoveis/' . $owner['hash'] . '/calendario', '/nao-existe'] as $p) {

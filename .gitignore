@@ -1,8 +1,6 @@
 .env
 storage/
 public/uploads/
-*.sqlite
-*.sqlite-*
 # Ignore all .patch files
 *.patch
 

@@ -1,5 +1,5 @@
 <?php
-// Testes HTTP do log da API e do 429 (php -S + SQLite temporário).
+// Testes HTTP do log da API e do 429 (php -S + banco PG temporário).
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();

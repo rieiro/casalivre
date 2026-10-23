@@ -117,7 +117,7 @@ ini=$CL_ROOTFS/etc/php8.4/php.ini
 [ -f "$ini" ] || die "php.ini não encontrado em $ini"
 # curl/gd/exif: usados pela app e pela suíte standalone (que precisa rodar aqui dentro).
 sed -i -e 's/^;\(extension=openssl\)/\1/' -e 's/^;\(extension=curl\)/\1/' \
-	-e 's/^;\(extension=gd\)/\1/' -e 's/^;\(extension=exif\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pdo_sqlite\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
+	-e 's/^;\(extension=gd\)/\1/' -e 's/^;\(extension=exif\)/\1/' -e 's/^;\(extension=pdo_pgsql\)/\1/' -e 's/^;\(extension=pgsql\)/\1/' \
 	-e 's/^upload_max_filesize = .*/upload_max_filesize = 16M/' \
 	-e 's/^post_max_size = .*/post_max_size = 20M/' -e 's/^max_file_uploads = .*/max_file_uploads = 20/' \
 	-e 's/^;\(zend_extension=opcache\)/\1/' -e 's/^;\(opcache.enable=\).*/\11/' "$ini"
@@ -127,9 +127,11 @@ if ! as_root php8.4 -m 2>/dev/null | grep -qx redis; then
 	echo 'extension=redis' >"$CL_ROOTFS/etc/php8.4/conf.d/redis.ini"
 fi
 mods=$(as_root php8.4 -m)
-for m in openssl curl gd exif mbstring pdo_pgsql pdo_sqlite redis 'Zend OPcache'; do
+for m in openssl curl gd exif mbstring pdo_pgsql redis 'Zend OPcache'; do
 	grep -qx "$m" <<<"$mods" || die "extensão PHP ausente: $m"
 done
+# PostgreSQL only (2026-10-21): no SQLite driver in the env.
+! grep -qx pdo_sqlite <<<"$mods" || die "pdo_sqlite must not be loaded (PostgreSQL only)"
 
 # https de dentro (critério 13), como o usuário comum, com a validação de CA.
 bwrap_base_args ro-bind

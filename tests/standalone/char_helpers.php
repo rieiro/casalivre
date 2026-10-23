@@ -2,44 +2,29 @@
 // Helpers dos testes de caracterização (char_*_test.php). Só leitura do activity_log e utilidades
 // de formulário web; não alteram código de produção.
 
-/** Liga o activity_log num SQLite temporário (antes de t_server()) e devolve o caminho. */
+/**
+ * O log de atividades está no PostgreSQL do banco temporário (audit.activity_log + audit.audit_log). Mantido por
+ * compatibilidade dos testes: devolve um rótulo; c_mark/c_logs leem o DB_DSN atual (t_log_mark/t_log_rows).
+ */
 function c_activity_file(): string
 {
-    $file = tempnam(sys_get_temp_dir(), 'act') . '.sqlite';
-    putenv('ACTIVITY_DB_PATH=' . $file);
-    return $file;
+    return 'pg';
 }
 
-/** Maior id gravado no activity_log (0 se ainda não existe). */
-function c_mark(string $file): int
+/** Marca do log (created_at da última linha); c_logs($act, $mark) devolve só o que veio depois. */
+function c_mark(string $file): string
 {
-    try {
-        return (int) (new PDO('sqlite:' . $file))->query('SELECT COALESCE(MAX(id), 0) FROM activity_log')->fetchColumn();
-    } catch (Throwable) {
-        return 0;
-    }
+    return t_log_mark();
 }
 
-/** Linhas do activity_log após $since: [['code'=>int,'params'=>array,'anterior'=>mixed,'atual'=>mixed], ...]. */
-function c_logs(string $file, int $since): array
+/** Linhas dos logs após $since: [['code'=>int,'params'=>array,'anterior'=>mixed,'atual'=>mixed, ...], ...]. */
+function c_logs(string $file, string $since): array
 {
-    try {
-        $st = (new PDO('sqlite:' . $file))->prepare('SELECT action_code, params, valor_anterior, valor_atual FROM activity_log WHERE id > ? ORDER BY id');
-        $st->execute([$since]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Throwable) {
-        return [];
-    }
-    return array_map(static fn (array $r): array => [
-        'code' => (int) $r['action_code'],
-        'params' => json_decode((string) $r['params'], true) ?: [],
-        'anterior' => $r['valor_anterior'] === null ? null : json_decode((string) $r['valor_anterior'], true),
-        'atual' => $r['valor_atual'] === null ? null : json_decode((string) $r['valor_atual'], true),
-    ], $rows);
+    return t_log_rows($since);
 }
 
 /** Só os códigos, na ordem. */
-function c_codes(string $file, int $since): array
+function c_codes(string $file, string $since): array
 {
     return array_map(static fn (array $r): int => $r['code'], c_logs($file, $since));
 }

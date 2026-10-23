@@ -13,7 +13,26 @@ final class Valkey
     /** Every key the app writes starts with this prefix (cl_app ACL: ~cl:* only). */
     public const PREFIX = 'cl:';
 
-    public static function connect(): Redis
+    /**
+     * Connect + read timeout (s) of a queue producer in a web request (#160 follow-up): with Valkey frozen an FPM
+     * worker would otherwise hang up to default_socket_timeout (over 20 s measured).
+     */
+    public const PRODUCER_TIMEOUT = 0.5;
+
+    /**
+     * Timeout for the queue connection (MailQueues/ImageQueues::make): PRODUCER_TIMEOUT in a web request, 0 (phpredis
+     * defaults, the long timeout) in the CLI, i.e. the queue workers and cron scripts. $sapi: test hook.
+     */
+    public static function queueTimeout(?string $sapi = null): float
+    {
+        return ($sapi ?? PHP_SAPI) === 'cli' ? 0.0 : self::PRODUCER_TIMEOUT;
+    }
+
+    /**
+     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158; web queue
+     * producers: PRODUCER_TIMEOUT); 0 keeps phpredis defaults (queue workers).
+     */
+    public static function connect(float $timeout = 0.0): Redis
     {
         Db::loadEnv();
         if (!extension_loaded('redis')) {
@@ -30,7 +49,10 @@ final class Valkey
             throw new RuntimeException('VALKEY_PASSWORD_FILE is not readable.');
         }
         $r = new Redis();
-        $r->connect($socket);
+        $r->connect($socket, 0, $timeout);
+        if ($timeout > 0) {
+            $r->setOption(Redis::OPT_READ_TIMEOUT, $timeout);
+        }
         if (!$r->auth([$user, trim($pass)])) {
             throw new RuntimeException('Valkey AUTH failed for ' . $user . '.');
         }
