@@ -145,7 +145,7 @@ Removed 2026-10-21: SQLite removal; moot after the Valkey rate limiter. Two item
 Source: ADR 001 (incl. §11) and `docs/produto/specs/spec-busca-localidade-resolvida.md`. Replaces the old "Sprint 4" items 1–2 (removed 2026-10-21; the SQLite write-concurrency note went with SQLite removal).
 - [ ] Implement ADR 001 search: SQL search with pagination, `places` and `place_search_keys` (SCHEMA 20), search only on a resolved place or map bbox, free-text full scan removed, total-price sort guard (5,000 candidates), demand log with Segurança conditions 1–7. Owner: Programador. Starts after P0-5 (#120) and the `cl_app` ACL PR below are merged.
   - Demand-log redaction (Segurança condition 6) must also cover `src/SearchService.php:33`, which writes the raw filters (including `localidade`) to `activity_log`, and `RequestLog::QUERY_VALUE_ALLOWLIST`, which keeps the values of `q` and `localidade`.
-- [ ] Valkey ACL PR: add `+hlen +hexists` to `cl_app` on `ops/dev-env/services.sh:37` and `+rename` on `services.sh:36` (flush handoff, ADR 001 §11.3/§11.4), plus the prod ACL; add `hlen cl:x` → ok and `hlen x` → NOPERM cases to `ops/dev-env/valkey-acl-check.sh`. Owner: Programador; Segurança informed.
+- [x] (done in #138) Valkey ACL PR: add `+hlen +hexists` to `cl_app` on `ops/dev-env/services.sh:37` and `+rename` on `services.sh:36` (flush handoff, ADR 001 §11.3/§11.4), plus the prod ACL; add `hlen cl:x` → ok and `hlen x` → NOPERM cases to `ops/dev-env/valkey-acl-check.sh`. Owner: Programador; Segurança informed.
 
 Acceptance requirements folded in from the backlog review (2026-10-21):
 - [ ] Map: "Search as I move the map" (ON by default on desktop) and "Search this area" (mobile), bbox in the URL (spec-busca-localidade-resolvida item 6).
