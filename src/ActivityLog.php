@@ -206,7 +206,7 @@ final class ActivityLog
             if ($class === self::OTHER) {
                 self::deferOther($row);
             } elseif ($class === self::SECURITY) {
-                self::insertActivity(self::securityPdo(), [$row]);
+                self::insertSecurity($row);
             } else {
                 self::insertAudit(db(), $row);
             }
@@ -351,8 +351,31 @@ final class ActivityLog
     }
 
     /**
+     * Security row on the cached LOG_DB connection. That session sits idle between events, so a long-running
+     * process (queue worker, PHP-FPM) can lose it while the shared Db connection is still up: the worker only
+     * pings Db, then exits on failure, and never touches this PDO. A connection error drops the cache and the
+     * insert is tried once on a new connection. A second failure, or any other error, propagates to record(),
+     * which logs the class name and does not crash the caller.
+     * @param array<string, mixed> $row
+     */
+    private static function insertSecurity(array $row): void
+    {
+        $pdo = self::securityPdo();
+        try {
+            self::insertActivity($pdo, [$row]);
+        } catch (Throwable $e) {
+            if (!Db::isConnectionError($e)) {
+                throw $e;
+            }
+            self::$securityPdo = null;
+            self::insertActivity(self::securityPdo(), [$row]);
+        }
+    }
+
+    /**
      * Separate connection for security rows (own transaction: a business rollback never removes them). Same DB_DSN,
      * as LOG_DB_USER/LOG_DB_PASSWORD (production: cl_logw, INSERT only); empty LOG_DB_USER = the DB_USER credentials.
+     * Cached for the process. insertSecurity() drops it after a lost connection and opens it again once.
      */
     private static function securityPdo(): PDO
     {
