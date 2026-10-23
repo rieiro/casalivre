@@ -21,7 +21,8 @@ final class PhotoStorage
      * Upload assíncrono: valida o tipo real (finfo: jpeg/png/webp), grava o original FORA do public/
      * (storage/fotos/originais/<uuid>.<ext>, 0600), cria a foto com status processing e enfileira na
      * ImageQueue. Os WebP públicos (/uploads/fotos/<uuid>-<largura>.webp, sem id de usuário nem de
-     * imóvel) são gerados pelo scripts/image-worker.php.
+     * imóvel) são gerados pelo scripts/image-worker.php. O lote abre a fila uma vez (uma conexão
+     * Valkey); se ela falhar, o restante do lote é marcado failed sem conectar de novo.
      */
     public static function storeUploads(int $userId, int $houseId, array $files, ?array &$created = null): int
     {
@@ -39,6 +40,8 @@ final class PhotoStorage
         if (!is_array($names)) {
             return 0;
         }
+        $queue = null;
+        $queueDown = false;
         foreach ($names as $i => $name) {
             if (($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 continue;
@@ -65,7 +68,7 @@ final class PhotoStorage
             }
             @chmod($dir . '/' . $original, 0600);
             $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $existing === 0 && $saved === 0 ? 1 : 0, $existing + $saved);
-            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0));
+            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0), $queue, $queueDown);
             $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => $queued ? 'processing' : 'failed', 'capa' => (int) ($row['is_primary'] ?? 0)];
             $saved++;
         }
@@ -97,19 +100,33 @@ final class PhotoStorage
     }
 
     /**
-     * Pushes the photo to the ImageQueue. If the queue errors (e.g. Valkey down), the photo is marked failed
-     * instead of staying in processing forever with no job; the error is logged without personal data.
+     * Pushes the photo to the ImageQueue. $queue and $queueDown are the upload batch: the first call opens
+     * one queue (one Valkey connection) and the rest reuse it. After the first failure, later photos in that
+     * batch are marked failed and do not connect again. A queue error (e.g. Valkey down) marks the photo
+     * failed instead of leaving it in processing with no job; the error is logged without personal data.
      */
-    public static function enqueueOrFail(int $photoId): bool
+    public static function enqueueOrFail(int $photoId, ?ImageQueue &$queue = null, bool &$queueDown = false): bool
     {
-        try {
-            ImageQueues::make()->push($photoId);
-            return true;
-        } catch (Throwable $e) {
-            error_log('image_queue: push failed for photo #' . $photoId . ' (' . $e::class . ')');
-            db()->prepare("UPDATE photos SET status = 'failed' WHERE id = ? AND status = 'processing'")->execute([$photoId]);
+        if ($queueDown) {
+            self::markEnqueueFailed($photoId);
             return false;
         }
+        try {
+            $queue ??= (self::$queueFactory ?? ImageQueues::make(...))();
+            $queue->push($photoId);
+            return true;
+        } catch (Throwable $e) {
+            $queueDown = true;
+            error_log('image_queue: push failed for photo #' . $photoId . ' (' . $e::class . ')');
+            self::markEnqueueFailed($photoId);
+            return false;
+        }
+    }
+
+    /** Photo left processing with no job (queue down, or skipped after an earlier failure in the batch). */
+    private static function markEnqueueFailed(int $photoId): void
+    {
+        db()->prepare("UPDATE photos SET status = 'failed' WHERE id = ? AND status = 'processing'")->execute([$photoId]);
     }
 
     /**
@@ -132,6 +149,11 @@ final class PhotoStorage
     public static $acceptFile = null;
     /** @var null|callable */
     public static $moveFile = null;
+    /**
+     * Testes: substitui ImageQueues::make() (cada chamada abre uma conexão Valkey). Null usa a fábrica real.
+     * @var null|callable(): ImageQueue
+     */
+    public static $queueFactory = null;
 
     /** Pasta dos originais (fora do public/). */
     public static function originalsDir(): string
