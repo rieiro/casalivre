@@ -8,10 +8,18 @@ if (!class_exists('JsonCache', false)) {
 
 final class CityRepository
 {
+    /**
+     * Bairros DISTINCT do OpenCEP opencep-2.0.1 (database/cep.csv.bz2), no artefato
+     * database/places_neighborhoods.json.bz2. Com as cidades já semeadas, o ensure
+     * não recarrega os bairros quando a tabela já tem esta quantidade.
+     */
+    private const NEIGHBORHOOD_COUNT = 61543;
+
     public static function ensure(PDO $pdo): void
     {
         $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
         if ($count >= 5000) {
+            self::ensureNeighborhoods($pdo);
             return;
         }
         $path = dirname(__DIR__, 2) . '/database/cities.json';
@@ -24,10 +32,30 @@ final class CityRepository
         Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
             $pdo->exec('DELETE FROM places WHERE parent_id IS NOT NULL');
             $pdo->exec('DELETE FROM places');
+            $seen = [];
             foreach ($rows as $row) {
+                // places_city_uf_uk: cities.json repete Armação dos Búzios/RJ (o segundo label é "Búzios").
+                $uk = $row['uf'] . "\0" . fold((string) $row['name']);
+                if (isset($seen[$uk])) {
+                    continue;
+                }
+                $seen[$uk] = true;
                 self::insertPlace($pdo, 'city', null, (string) $row['name'], (string) $row['label'], (string) $row['uf'], $row['lat'], $row['lng'], 0);
             }
             self::seedPilot($pdo);
+            self::seedNeighborhoods($pdo);
+        });
+    }
+
+    /** Cidades já semeadas: carrega bairros só se a contagem ainda não chegou no artefato. */
+    private static function ensureNeighborhoods(PDO $pdo): void
+    {
+        $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn();
+        if ($count >= self::NEIGHBORHOOD_COUNT) {
+            return;
+        }
+        Db::transactional($pdo, static function (PDO $pdo): void {
+            self::seedNeighborhoods($pdo);
         });
     }
 
@@ -95,6 +123,102 @@ final class CityRepository
             }
             self::insertPlace($pdo, 'poi', (int) $parentId, $poi['name'], $poi['name'], $poi['uf'], $poi['lat'], $poi['lng'], 100);
         }
+    }
+
+    /**
+     * Bairros do artefato OpenCEP. parent_id vem de
+     * SELECT id FROM places WHERE type='city' AND uf=? AND name_fold=?
+     * (parent_uf + parent_name_fold; nunca um place_id gravado no arquivo).
+     * lat/lng são o ponto da cidade-pai. Sem cidade, ou em conflito com places_child_uk, a linha é pulada.
+     */
+    private static function seedNeighborhoods(PDO $pdo): void
+    {
+        $rows = self::neighborhoodRows();
+        $parent = $pdo->prepare("SELECT id FROM places WHERE type = 'city' AND uf = ? AND name_fold = ?");
+        $parents = [];
+        $taken = [];
+        foreach ($pdo->query("SELECT parent_id, name_fold FROM places WHERE type = 'neighborhood' AND parent_id IS NOT NULL") as $existing) {
+            $taken[(int) $existing['parent_id'] . "\0" . $existing['name_fold']] = true;
+        }
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $parentUf = (string) ($row['parent_uf'] ?? '');
+            $parentFold = (string) ($row['parent_name_fold'] ?? '');
+            if ($parentUf === '' || $parentFold === '') {
+                continue;
+            }
+            $pkey = $parentUf . "\0" . $parentFold;
+            if (!array_key_exists($pkey, $parents)) {
+                $parent->execute([$parentUf, $parentFold]);
+                $id = $parent->fetchColumn();
+                $parents[$pkey] = $id === false ? null : (int) $id;
+            }
+            $parentId = $parents[$pkey];
+            if ($parentId === null) {
+                continue;
+            }
+            $name = (string) ($row['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $uk = $parentId . "\0" . fold($name);
+            if (isset($taken[$uk])) {
+                continue;
+            }
+            $taken[$uk] = true;
+            self::insertPlace(
+                $pdo,
+                'neighborhood',
+                $parentId,
+                $name,
+                (string) ($row['label'] ?? $name),
+                (string) ($row['uf'] ?? $parentUf),
+                $row['lat'] ?? 0,
+                $row['lng'] ?? 0,
+                (int) ($row['popularity'] ?? 0)
+            );
+        }
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function neighborhoodRows(): array
+    {
+        $path = dirname(__DIR__, 2) . '/database/places_neighborhoods.json.bz2';
+        if (!is_file($path)) {
+            throw new RuntimeException("Arquivo de bairros ausente: $path");
+        }
+        if (!function_exists('bzopen')) {
+            throw new RuntimeException(
+                "Não foi possível descompactar $path: o PHP não tem a extensão bz2. Instale php-bz2 e rode de novo scripts/migrate.php."
+            );
+        }
+        $bz = bzopen($path, 'r');
+        if ($bz === false) {
+            throw new RuntimeException("Não foi possível abrir $path com a extensão bz2 do PHP.");
+        }
+        $json = '';
+        while (!feof($bz)) {
+            $chunk = bzread($bz, 1048576);
+            if ($chunk === false) {
+                $detail = function_exists('bzerrstr') ? (string) bzerrstr($bz) : '';
+                bzclose($bz);
+                throw new RuntimeException('Falha ao descompactar ' . $path . ($detail !== '' ? ': ' . $detail : '.'));
+            }
+            $json .= $chunk;
+        }
+        bzclose($bz);
+        try {
+            $rows = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            throw new RuntimeException("Arquivo de bairros inválido: $path", 0, $e);
+        }
+        unset($json);
+        if (!is_array($rows)) {
+            throw new RuntimeException("Arquivo de bairros inválido: $path");
+        }
+        return $rows;
     }
 
     public static function suggest(string $query, int $limit = 8): array
