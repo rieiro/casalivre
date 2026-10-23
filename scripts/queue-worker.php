@@ -5,7 +5,7 @@ declare(strict_types=1);
 
 // Long-running queue worker (P0-4: runit service queue-worker in ops/dev-env). Loops over the mail and
 // image queues of QUEUE_DRIVER, one batch each, then sleeps. Same batch code as the cron workers
-// (MailWorker/ImageWorker); for sqlite keep using the cron scripts.
+// (MailWorker/ImageWorker); for QUEUE_DRIVER=db the cron scripts also work.
 //   php scripts/queue-worker.php [--once]
 // Exits on SIGTERM between batches (runit `sv stop`). Each iteration is QueueWorkerLoop::tick (clears per-process caches).
 // Exits 1 when the DB connection is lost (tick pings it first; a job interrupted by it is not counted as failed):

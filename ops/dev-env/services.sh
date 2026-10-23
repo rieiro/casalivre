@@ -55,7 +55,7 @@ cat >"$etc/dev-env.env.tmp" <<ENV
 export CL_HOME='$CL_HOME' CL_REPO='$CL_REPO' CL_RUN='$CL_RUN' CL_PG_USER='$pg_user' CL_PG_GROUP='$pg_group'
 export HOME='$CL_HOME' PATH=/usr/bin:/usr/sbin LANG=C.UTF-8
 export PGHOST='$CL_RUN' PGUSER=casalivre_dev PGDATABASE=casalivre
-export APP_ENV=dev DB_DRIVER=pgsql DB_DSN='$dsn'
+export APP_ENV=dev DB_DSN='$dsn'
 export VALKEY_SOCKET='$CL_RUN/valkey.sock' VALKEY_USER=cl_app VALKEY_PASSWORD_FILE='$secret' QUEUE_DRIVER=valkey
 ENV
 mv "$etc/dev-env.env.tmp" "$etc/dev-env.env"
@@ -66,7 +66,6 @@ cat >"$etc/php-fpm-env.conf.tmp" <<ENV
 [www]
 env[PATH] = /usr/bin:/usr/sbin
 env[APP_ENV] = dev
-env[DB_DRIVER] = pgsql
 env[DB_DSN] = "$dsn"
 env[VALKEY_SOCKET] = $CL_RUN/valkey.sock
 env[VALKEY_USER] = cl_app

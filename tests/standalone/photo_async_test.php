@@ -210,13 +210,20 @@ $st = db()->prepare('SELECT status FROM photos WHERE id = ?');
 $st->execute([(int) ($qFail['id'] ?? 0)]);
 t_eq('failed', $st->fetchColumn(), 'queue push error: photo failed in the DB, not stuck in processing');
 db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) ($qFail['id'] ?? 0)]);
+// A second original with EXIF/GPS (PhotoStorage::migrateLegacy is gone: no data migration, 2026-10-21).
+$exifFile = $tmp . '/exif.jpg';
+file_put_contents($exifFile, $jpegWithExif(60, 30, 1));
+t_ok(PhotoStorage::enqueueOriginal($h2, $exifFile, 0, 1) !== null, 'jpeg with EXIF queued');
 $st = db()->prepare('SELECT status, path FROM photos WHERE property_id = ? ORDER BY sort_order');
+$st->execute([$h2]);
+t_eq(['processing', 'processing'], array_column($st->fetchAll(), 'status'), 'seed and EXIF jpeg in processing');
 @unlink($lock);
 $rep = ImageWorker::run(ImageQueues::make(), $lock);
-t_eq(1, $rep['enviados'] ?? null, 'worker gera os WebP do seed');
+t_eq(2, $rep['enviados'] ?? null, 'worker gera os WebP do seed e do jpeg com EXIF');
 $st->execute([$h2]);
 $after = $st->fetchAll();
-t_ok($after[0]['status'] === 'ready' && preg_match('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $after[0]['path']) === 1, 'seed pronto em /uploads/fotos/<uuid>');
+t_ok($after[0]['status'] === 'ready' && $after[1]['status'] === 'ready' && preg_match('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $after[1]['path']) === 1, 'seed e jpeg prontos em /uploads/fotos/<uuid>');
+t_ok(!str_contains((string) file_get_contents(PhotoStorage::$public . '/' . basename(photo_variant((string) $after[1]['path'], 'full'))), 'GPSMARKER'), 'jpeg regravado sem EXIF');
 
 echo "imóvel inativado\n";
 $files2 = [];
@@ -228,7 +235,7 @@ foreach ($after as $r) {
     }
 }
 $pend = PhotoStorage::enqueueOriginal($h2, $seedFile, 0, 9);
-t_eq(3, count(array_filter($files2, 'is_file')), '3 WebP públicos antes');
+t_eq(6, count(array_filter($files2, 'is_file')), '6 WebP públicos antes');
 t_ok(HouseService::remove((int) $owner['user_id'], $h2), 'HouseService::remove inativa');
 t_eq(0, count(array_filter($files2, 'is_file')), 'WebP públicos apagados ao inativar');
 t_ok(!is_file(PhotoStorage::$originals . '/' . PhotoRepository::findById((int) $pend['id'])['uuid'] . '.png'), 'original pendente apagado');

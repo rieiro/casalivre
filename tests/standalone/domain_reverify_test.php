@@ -44,7 +44,7 @@ $mails = [];
 $rev = new DomainReverification($fake, static function (string $to) use (&$mails): void {
     $mails[] = [$to];
 });
-$codes = static fn (int $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
+$codes = static fn (string $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
 $name = '_casalivre.imob.example.com';
 $t0 = gmmktime(12, 0, 0, 1, 10, 2027);
 $h = 3600;

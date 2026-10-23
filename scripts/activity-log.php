@@ -3,6 +3,12 @@
 
 declare(strict_types=1);
 
+// Recent rows of audit.activity_log (security + other) through the DEFINER function audit.activity_recent, as a
+// login with casalivre_ops_logread (SET ROLE; OPS_DB_USER/OPS_DB_PASSWORD, empty = DB_USER). Each call writes an
+// ACTIVITY_LOG_READ row to audit.audit_log. Admin codes live in audit.audit_log: read them with the DEFINER
+// function audit.audit_recent(code, limit) (same role, same audited-read contract).
+// Uso: php scripts/activity-log.php [--codigo=N] [--limite=N]
+
 require_once dirname(__DIR__) . '/src/Db.php';
 require_once dirname(__DIR__) . '/src/ActivityLog.php';
 
@@ -18,25 +24,29 @@ foreach (array_slice($argv, 1) as $arg) {
     }
 }
 
-echo "Log de atividades (" . (getenv('LOG_DRIVER') ?: 'sqlite') . ")\n";
+echo "Log de atividades (PostgreSQL, audit.activity_log)\n";
 foreach (ActivityLog::CATALOG as $id => $label) {
-    echo str_pad((string) $id, 3, ' ', STR_PAD_LEFT) . "  $label\n";
+    echo str_pad((string) $id, 3, ' ', STR_PAD_LEFT) . "  $label  [" . ActivityLog::classOf($id) . "]\n";
 }
 echo str_repeat('-', 72) . "\n";
 
-foreach (ActivityLog::store()->recent($limit, $code) as $row) {
-    $when = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string) $row['created_at']);
-    $stamp = $when ? $when->format('d/m/Y H:i:s') : (string) $row['created_at'];
-    $actor = $row['actor_id'] !== null && $row['actor_id'] !== '' ? 'user=' . $row['actor_id'] : 'visitante';
-    echo $stamp . '  [' . $row['action_code'] . '] ' . $row['action'] . '  ' . $actor . '  ip=' . $row['ip'] . "\n";
-    $params = $row['params'];
-    if ($params !== []) {
-        echo '    ' . json_encode($params, JSON_UNESCAPED_UNICODE) . "\n";
+$pdo = Db::connectAs('OPS_DB_USER', 'OPS_DB_PASSWORD');
+$pdo->exec('SET ROLE casalivre_ops_logread');
+$st = $pdo->prepare('SELECT * FROM audit.activity_recent(?::smallint, ?)');
+$st->bindValue(1, $code, $code === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+$st->bindValue(2, $limit, PDO::PARAM_INT);
+$st->execute();
+foreach ($st as $row) {
+    $actor = $row['actor_kind'] === 'user' ? 'user=' . bin2hex((string) (is_resource($row['actor_ref']) ? stream_get_contents($row['actor_ref']) : $row['actor_ref'])) : (string) $row['actor_kind'];
+    $label = ActivityLog::CATALOG[(int) $row['code']] ?? '?';
+    echo $row['created_at'] . '  [' . $row['code'] . '] ' . $label . '  ' . $actor . "\n";
+    if ($row['payload'] !== '{}') {
+        echo '    ' . $row['payload'] . "\n";
     }
-    if (!empty($row['valor_anterior'])) {
-        echo '    anterior=' . $row['valor_anterior'] . "\n";
+    if ($row['before_value'] !== null) {
+        echo '    anterior=' . $row['before_value'] . "\n";
     }
-    if (!empty($row['valor_atual'])) {
-        echo '    atual=' . $row['valor_atual'] . "\n";
+    if ($row['after_value'] !== null) {
+        echo '    atual=' . $row['after_value'] . "\n";
     }
 }

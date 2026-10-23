@@ -17,18 +17,18 @@ interface ImageQueue extends JobQueue
 
 final class ImageQueues
 {
-    /** Queue from QUEUE_DRIVER (sqlite by default, or valkey). */
+    /** Queue from QUEUE_DRIVER (db by default: the image_queue table in PostgreSQL; or valkey). */
     public static function make(): ImageQueue
     {
         return match (Queues::driver()) {
-            'sqlite' => new SqliteImageQueue(db()),
+            'db' => new DbImageQueue(db()),
             'valkey' => new ValkeyImageQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
 }
 
 /** Fila na tabela image_queue do banco da aplicação. */
-final class SqliteImageQueue extends SqlJobQueue implements ImageQueue
+final class DbImageQueue extends SqlJobQueue implements ImageQueue
 {
     protected function table(): string
     {

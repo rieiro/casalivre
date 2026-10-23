@@ -23,6 +23,7 @@ function snap_norm(string $s, array $fixos = []): string
     $s = preg_replace('/("csrf":")[0-9a-f]+/', '$1<CSRF>', $s);
     $s = preg_replace('/(nonce=["\']?|\'nonce-)[A-Za-z0-9+\/=_-]{8,}/', '$1<NONCE>', $s);
     $s = preg_replace('/token=[0-9a-f]{16,}/', 'token=<TOKEN>', $s);
+    $s = preg_replace('/\b[0-9a-f]{64}\b/', '<HASH64>', $s);
     $s = preg_replace('/\b[0-9a-f]{32}\b/', '<HASH32>', $s);
     $s = preg_replace('/\b[0-9a-f]{16}\b/', '<HASH16>', $s);
     $s = preg_replace('/CL-[0-9A-F]{8}/', 'CL-<REF>', $s);
@@ -159,7 +160,7 @@ snap('html-erro-413-upload', snap_headers($r) . "\n" . snap_norm(str_replace($fr
 
 // 500 do ExceptionShield (página própria com <style> inline): servidor com banco inacessível.
 $dsn = (string) getenv('DB_DSN');
-putenv('DB_DSN=sqlite:/proc/casalivre-snapshot-sem-banco/x.sqlite');
+putenv('DB_DSN=pgsql:host=/proc/casalivre-snapshot-sem-banco;dbname=x;connect_timeout=2');
 $quebrado = t_server();
 putenv('DB_DSN=' . $dsn);
 $r = t_http('GET', $quebrado . '/api/busca?' . $loc);

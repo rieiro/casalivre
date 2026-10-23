@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """E2E (navegador headless) da issue #20: editar camas por quarto e comodidades.
 
-Uso: python tests/e2e/issue20_rooms.py <base_url> <sqlite> <email> <senha> <hash> <dir_prints> <before|after>
+Uso: python tests/e2e/issue20_rooms.py <base_url> <pgsql_dsn> <email> <senha> <hash> <dir_prints> <before|after>
 Requer: pip install playwright && python -m playwright install chromium
 Sai com 0 se o comportamento do modo for o esperado (after: salva; before: só registra o erro).
 """
 import json
-import sqlite3
+import os
+import subprocess
 import sys
 
 from playwright.sync_api import sync_playwright
@@ -67,8 +68,10 @@ with sync_playwright() as p:
         check(bool(msgs) and "Recarregue" in msgs[0] and not sent, f"sem conversor: erro visível e nada enviado ({msgs[:1]}, {len(sent)} req)")
     browser.close()
 
-con = sqlite3.connect(db)
-row = con.execute("SELECT rooms, bedrooms, beds, amenities FROM properties WHERE public_hash = ?", (ref,)).fetchone()
+# PostgreSQL only: lê pelo PHP/PDO (DB_USER do ambiente), sem driver Python.
+php_read = ('$p = new PDO($argv[1], getenv("DB_USER") ?: null); $s = $p->prepare("SELECT rooms, bedrooms, beds, amenities'
+            ' FROM properties WHERE public_hash = ?"); $s->execute([$argv[2]]); echo json_encode($s->fetch(PDO::FETCH_NUM));')
+row = json.loads(subprocess.run(["php", "-r", php_read, db, ref], check=True, capture_output=True, text=True, env=os.environ).stdout)
 saved_rooms = json.loads(row[0] or "[]")
 amen = json.loads(row[3] or "{}")
 beds_per_room = [len(r.get("beds", [])) for r in saved_rooms]

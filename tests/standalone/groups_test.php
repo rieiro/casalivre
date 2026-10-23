@@ -5,20 +5,16 @@
 // CSRF; entradas validadas; toda mudança vai para o activity_log (user_id pseudonimizado).
 require __DIR__ . '/lib.php';
 
-/** Trigger que aborta o INSERT em group_members do usuário (SQLite: TEMP TRIGGER; PG: função + trigger, com SQLSTATE). */
+/** Trigger que aborta o INSERT em group_members do usuário (função + trigger, com SQLSTATE). */
 function t_fail_trigger(string $name, int $userId, string $msg, string $pgState): void
 {
-    if (t_is_pg()) {
-        db()->exec("CREATE FUNCTION t_$name() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.user_id = $userId THEN RAISE EXCEPTION '$msg' USING ERRCODE = '$pgState'; END IF; RETURN NEW; END \$\$");
-        db()->exec("CREATE TRIGGER $name BEFORE INSERT ON group_members FOR EACH ROW EXECUTE FUNCTION t_$name()");
-        return;
-    }
-    db()->exec("CREATE TEMP TRIGGER $name BEFORE INSERT ON group_members WHEN NEW.user_id = $userId BEGIN SELECT RAISE(ABORT, '$msg'); END");
+    db()->exec("CREATE FUNCTION t_$name() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.user_id = $userId THEN RAISE EXCEPTION '$msg' USING ERRCODE = '$pgState'; END IF; RETURN NEW; END \$\$");
+    db()->exec("CREATE TRIGGER $name BEFORE INSERT ON group_members FOR EACH ROW EXECUTE FUNCTION t_$name()");
 }
 
 function t_drop_fail_trigger(string $name): void
 {
-    db()->exec(t_is_pg() ? "DROP TRIGGER $name ON group_members; DROP FUNCTION t_$name()" : "DROP TRIGGER $name");
+    db()->exec("DROP TRIGGER $name ON group_members; DROP FUNCTION t_$name()");
 }
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Acoes/GrupoAdmin.php';
@@ -63,9 +59,9 @@ $login = static function (string $email, string $password) use ($base, &$jars): 
 [$jX, $cX] = $login($outro['email'], $outro['password']);
 [$jO, $cO] = $login($owner['email'], $owner['password']);
 $groupCount = static fn (): int => (int) db()->query('SELECT COUNT(*) FROM groups')->fetchColumn();
-$codes = static fn (int $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
+$codes = static fn (string $mark, int $code): array => array_values(array_filter(c_logs($act, $mark), static fn ($l) => $l['code'] === $code));
 $isGroupCode = static fn (int $c): bool => $c >= ActivityLog::GROUP_CREATE && $c <= ActivityLog::GROUP_DOMAIN_UNVERIFIED;
-$noGroupLog = static function (int $mark, string $msg) use ($act, $isGroupCode): void {
+$noGroupLog = static function (string $mark, string $msg) use ($act, $isGroupCode): void {
     t_eq([], array_values(array_filter(c_codes($act, $mark), $isGroupCode)), $msg . ': sem log de grupo');
 };
 
@@ -260,7 +256,7 @@ $l = $codes($mark, ActivityLog::GROUP_MEMBER_SET);
 t_eq(3, count($l), 'três GROUP_MEMBER_SET (incluir, trocar papel, incluir; o repetido não loga)');
 t_eq([null, ['papel' => 'membro']], [$l[0]['anterior'], $l[1]['anterior']], 'troca de papel com anterior');
 $uidLog = $l[0]['params']['user_id'] ?? null;
-t_ok($uidLog === null || preg_match('/^[a-f0-9]{16}$/', (string) $uidLog) === 1, 'user_id nunca em claro no log (HMAC com LOG_SALT ou omitido)');
+t_ok($uidLog === null || preg_match('/^[a-f0-9]{64}$/', (string) $uidLog) === 1, 'user_id nunca em claro no log (HMAC com LOG_SALT ou omitido)');
 $adminPage = t_http('GET', $base . '/admin/grupos/imob-sul', null, [], $jA)['body'];
 t_ok(str_contains($adminPage, e($gestor['email'])), 'admin vê os membros');
 
@@ -394,12 +390,9 @@ t_eq(302, c_form($base, '/admin/grupos/imob-sul/membros/remover', ['_csrf' => $c
 t_eq(1, count($codes($mark, ActivityLog::GROUP_MEMBER_REMOVE)), 'segunda remoção não gera log');
 // Corrida: a leitura ainda vê o membro, mas o DELETE não apaga nada (outra requisição chegou antes).
 db()->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$g1['id'], $gestor['id'], 'membro']);
-if (t_is_pg()) { // BEFORE DELETE que devolve NULL = RAISE(IGNORE) do SQLite
-    db()->exec('CREATE FUNCTION t_outra_remocao() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.user_id = ' . (int) $gestor['id'] . ' THEN RETURN NULL; END IF; RETURN OLD; END $$');
-    db()->exec('CREATE TRIGGER outra_remocao BEFORE DELETE ON group_members FOR EACH ROW EXECUTE FUNCTION t_outra_remocao()');
-} else {
-    db()->exec('CREATE TEMP TRIGGER outra_remocao BEFORE DELETE ON group_members WHEN OLD.user_id = ' . (int) $gestor['id'] . ' BEGIN SELECT RAISE(IGNORE); END');
-}
+// BEFORE DELETE que devolve NULL: o DELETE não apaga a linha
+db()->exec('CREATE FUNCTION t_outra_remocao() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.user_id = ' . (int) $gestor['id'] . ' THEN RETURN NULL; END IF; RETURN OLD; END $$');
+db()->exec('CREATE TRIGGER outra_remocao BEFORE DELETE ON group_members FOR EACH ROW EXECUTE FUNCTION t_outra_remocao()');
 $rr = GrupoAdmin::removeMember(['id' => $admin['id'], 'is_admin' => 1, 'status' => 'active'], $g1, (string) $gestor['id']);
 t_drop_fail_trigger('outra_remocao');
 t_eq(['ok', false, []], [$rr->tipo, $rr->dados['mudou'] ?? null, $rr->eventos], 'removeMember com DELETE sem linha (corrida): sem log');

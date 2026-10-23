@@ -28,11 +28,11 @@ final class MailQueues
     public const MAX_ATTEMPTS = Queues::MAX_ATTEMPTS;
     public const BACKOFF = Queues::BACKOFF;
 
-    /** Fila configurada em QUEUE_DRIVER (padrão sqlite). */
+    /** Queue from QUEUE_DRIVER (db, the default: the mail_queue table in PostgreSQL; or valkey). */
     public static function make(): MailQueue
     {
         return match (Queues::driver()) {
-            'sqlite' => new SqliteMailQueue(db()),
+            'db' => new DbMailQueue(db()),
             'valkey' => new ValkeyMailQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
@@ -49,8 +49,8 @@ final class MailQueues
     }
 }
 
-/** Fila na tabela mail_queue do banco da aplicação (SQLite, mas SQL portável para pgsql). */
-final class SqliteMailQueue extends SqlJobQueue implements MailQueue
+/** Queue in the mail_queue table of the app database (PostgreSQL). */
+final class DbMailQueue extends SqlJobQueue implements MailQueue
 {
     protected function table(): string
     {
@@ -123,7 +123,7 @@ final class ValkeyMailQueue extends ValkeyJobQueue implements MailQueue
         }
         // Cooldown: atomic SET NX EX on the HMAC key (no address in the key) before the insert, so concurrent
         // pushes cannot both pass. If the insert fails, the key is removed so a retry is accepted.
-        $cd = $this->key('cd:' . SqliteMailQueue::cooldownKey($type, $recipient));
+        $cd = $this->key('cd:' . DbMailQueue::cooldownKey($type, $recipient));
         if ($this->r->set($cd, '1', ['nx', 'ex' => MailQueues::cooldownSeconds($type)]) !== true) {
             return false;
         }

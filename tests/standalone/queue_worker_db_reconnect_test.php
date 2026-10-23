@@ -10,10 +10,6 @@ require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/helpers.php';
 require_once CL_ROOT . '/src/QueueWorkerLoop.php';
 
-if (!t_is_pg()) {
-    echo "  SKIPPED (PG only: set TEST_PG_DSN)\n";
-    t_done();
-}
 putenv('QUEUE_DRIVER');
 putenv('SMTP_HOST');
 t_temp_db();
@@ -172,6 +168,9 @@ if ($status['running']) {
 }
 proc_close($proc);
 t_eq([false, 1], [$status['running'], $status['exitcode']], 'SIGTERM: exit 1');
+if ($status['exitcode'] !== 1) {
+    echo '  worker stderr: ' . str_replace("\n", "\n    ", trim((string) file_get_contents($stderr))) . "\n";
+}
 @unlink($stderr);
 
 echo "QueueWorkerLoop::dbLost: random 5-30 s\n";

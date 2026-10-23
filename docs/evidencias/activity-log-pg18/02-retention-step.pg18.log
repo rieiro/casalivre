@@ -1,0 +1,340 @@
+# BD evidence 02-retention-step.sql (same DB, after 01)
+CREATE TABLE public.purge_runs (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, job text, started_at timestamptz, finished_at timestamptz, rows bigint, skipped_restrict int NOT NULL DEFAULT 0, skipped_hold int NOT NULL DEFAULT 0, status text, error text);
+CREATE TABLE
+CREATE TABLE public.legal_holds (id bigint PRIMARY KEY, subject_type text, closed_at timestamptz);
+CREATE TABLE
+GRANT SELECT ON public.legal_holds TO casalivre_retention; GRANT INSERT ON public.purge_runs TO casalivre_retention;
+GRANT
+GRANT
+SET ROLE casalivre_retention;
+SET
+CREATE FUNCTION audit.activity_retention_step(p_held_refs bytea[], p_dry_run boolean DEFAULT true)
+RETURNS TABLE(leaf text, held bigint, dropped boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, pg_temp SET timezone = 'UTC' SET lock_timeout = '200ms' AS $$
+DECLARE r record; v_held bigint := 0; v_t0 timestamptz := clock_timestamp();
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(hashtext('activity_retention')) THEN RAISE EXCEPTION 'activity_retention already running'; END IF;
+  IF p_held_refs IS NULL OR EXISTS (SELECT 1 FROM unnest(p_held_refs) x WHERE octet_length(x) IS DISTINCT FROM 32) THEN RAISE EXCEPTION 'bad held refs'; END IF;
+  IF cardinality(p_held_refs) = 0 AND EXISTS (SELECT 1 FROM public.legal_holds WHERE closed_at IS NULL AND subject_type = 'user') THEN RAISE EXCEPTION 'open user holds but no refs'; END IF;
+  IF EXISTS (SELECT 1 FROM audit.activity_log_security_default) OR EXISTS (SELECT 1 FROM audit.activity_log_other_default) THEN RAISE EXCEPTION 'DEFAULT partition not empty'; END IF;
+  SELECT c.relname::text AS leaf, CASE p.relname WHEN 'activity_log_security' THEN interval '90 days' ELSE interval '14 days' END AS keep, c.reltuples
+    INTO r
+    FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent
+   WHERE p.relnamespace = 'audit'::regnamespace AND p.relname IN ('activity_log_security','activity_log_other')
+     AND c.relname ~ '_p\d{8}$'
+     AND (to_date(substring(c.relname from '_p(\d{8})$'),'YYYYMMDD') + 1)::timestamp AT TIME ZONE 'UTC'
+         <= now() - CASE p.relname WHEN 'activity_log_security' THEN interval '90 days' ELSE interval '14 days' END
+   ORDER BY substring(c.relname from '_p(\d{8})$'), c.relname LIMIT 1;
+  IF NOT FOUND THEN RETURN; END IF;
+  IF p_dry_run THEN RETURN QUERY SELECT r.leaf, 0::bigint, false; RETURN; END IF;
+  EXECUTE format('INSERT INTO audit.activity_log_held SELECT *, now() FROM audit.%I WHERE actor_ref = ANY($1) ON CONFLICT (id) DO NOTHING', r.leaf) USING p_held_refs;
+  GET DIAGNOSTICS v_held = ROW_COUNT;
+  EXECUTE format('DROP TABLE audit.%I', r.leaf);
+  DELETE FROM audit.activity_log_held h WHERE h.actor_ref <> ALL (p_held_refs)
+     AND h.created_at < now() - CASE h.retention_class WHEN 'security' THEN interval '90 days' ELSE interval '14 days' END;
+  INSERT INTO public.purge_runs (job, started_at, finished_at, rows, skipped_hold, status)
+  VALUES ('activity_retention', v_t0, clock_timestamp(), greatest(r.reltuples, 0)::bigint, v_held, 'ok');
+  RETURN QUERY SELECT r.leaf, v_held, true;
+END $$;
+CREATE FUNCTION
+RESET ROLE;
+RESET
+-- seed: held user row 20 days ago in other, plus an unheld row
+INSERT INTO audit.activity_log (id,created_at,code,retention_class,actor_kind,actor_ref,actor_key_version) VALUES
+ (gen_random_uuid(), now()-interval '20 days', 5,'other','user', decode(repeat('ab',32),'hex'),1),
+ (gen_random_uuid(), now()-interval '20 days', 5,'other','anon', NULL, NULL);
+INSERT 0 2
+SELECT * FROM audit.activity_retention_step(ARRAY[]::bytea[], true);
+             leaf             | held | dropped 
+------------------------------+------+---------
+ activity_log_other_p20260713 |    0 | f
+(1 row)
+
+INSERT INTO legal_holds VALUES (1,'user',NULL);
+INSERT 0 1
+SELECT * FROM audit.activity_retention_step(ARRAY[]::bytea[], false);  -- expect refusal
+psql:storage/02-retention-step.sql:40: ERROR:  open user holds but no refs
+CONTEXT:  PL/pgSQL function activity_retention_step(bytea[],boolean) line 6 at RAISE
+DO $$ DECLARE n int := 0; r record; BEGIN LOOP SELECT * INTO r FROM audit.activity_retention_step(ARRAY[decode(repeat('ab',32),'hex')], false); EXIT WHEN r.leaf IS NULL; n := n+1; END LOOP; RAISE NOTICE 'dropped % leaves', n; END $$;
+psql:storage/02-retention-step.sql:41: NOTICE:  dropped 96 leaves
+DO
+SELECT count(*) held FROM audit.activity_log_held; SELECT count(*) live FROM audit.activity_log;
+ held 
+------
+    1
+(1 row)
+
+ live 
+------
+    1
+(1 row)
+
+SELECT min(relname), count(*) FROM pg_class WHERE relname ~ '^activity_log_other_p'; SELECT min(relname), count(*) FROM pg_class WHERE relname ~ '^activity_log_security_p';
+             min              | count 
+------------------------------+-------
+ activity_log_other_p20261007 |    89
+(1 row)
+
+               min               | count 
+---------------------------------+-------
+ activity_log_security_p20260723 |   393
+(1 row)
+
+SELECT count(*), sum(skipped_hold) FROM purge_runs;
+ count | sum 
+-------+-----
+    96 |   1
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM audit.activity_log WHERE code=5 ORDER BY id DESC LIMIT 50;
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Merge Append
+         Sort Key: activity_log.id DESC
+         ->  Index Scan Backward using activity_log_other_p20261007_code_id_idx on activity_log_other_p20261007 activity_log_1
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261008_code_id_idx on activity_log_other_p20261008 activity_log_2
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261009_code_id_idx on activity_log_other_p20261009 activity_log_3
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261010_code_id_idx on activity_log_other_p20261010 activity_log_4
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261011_code_id_idx on activity_log_other_p20261011 activity_log_5
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261012_code_id_idx on activity_log_other_p20261012 activity_log_6
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261013_code_id_idx on activity_log_other_p20261013 activity_log_7
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261014_code_id_idx on activity_log_other_p20261014 activity_log_8
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261015_code_id_idx on activity_log_other_p20261015 activity_log_9
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261016_code_id_idx on activity_log_other_p20261016 activity_log_10
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261017_code_id_idx on activity_log_other_p20261017 activity_log_11
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261018_code_id_idx on activity_log_other_p20261018 activity_log_12
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261019_code_id_idx on activity_log_other_p20261019 activity_log_13
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261020_code_id_idx on activity_log_other_p20261020 activity_log_14
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261021_code_id_idx on activity_log_other_p20261021 activity_log_15
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261022_code_id_idx on activity_log_other_p20261022 activity_log_16
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261023_code_id_idx on activity_log_other_p20261023 activity_log_17
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261024_code_id_idx on activity_log_other_p20261024 activity_log_18
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261025_code_id_idx on activity_log_other_p20261025 activity_log_19
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261026_code_id_idx on activity_log_other_p20261026 activity_log_20
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261027_code_id_idx on activity_log_other_p20261027 activity_log_21
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_p20261028_code_id_idx on activity_log_other_p20261028 activity_log_22
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_other_default_code_id_idx on activity_log_other_default activity_log_23
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260723_code_id_idx on activity_log_security_p20260723 activity_log_24
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260724_code_id_idx on activity_log_security_p20260724 activity_log_25
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260725_code_id_idx on activity_log_security_p20260725 activity_log_26
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260726_code_id_idx on activity_log_security_p20260726 activity_log_27
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260727_code_id_idx on activity_log_security_p20260727 activity_log_28
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260728_code_id_idx on activity_log_security_p20260728 activity_log_29
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260729_code_id_idx on activity_log_security_p20260729 activity_log_30
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260730_code_id_idx on activity_log_security_p20260730 activity_log_31
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260731_code_id_idx on activity_log_security_p20260731 activity_log_32
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260801_code_id_idx on activity_log_security_p20260801 activity_log_33
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260802_code_id_idx on activity_log_security_p20260802 activity_log_34
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260803_code_id_idx on activity_log_security_p20260803 activity_log_35
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260804_code_id_idx on activity_log_security_p20260804 activity_log_36
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260805_code_id_idx on activity_log_security_p20260805 activity_log_37
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260806_code_id_idx on activity_log_security_p20260806 activity_log_38
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260807_code_id_idx on activity_log_security_p20260807 activity_log_39
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260808_code_id_idx on activity_log_security_p20260808 activity_log_40
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260809_code_id_idx on activity_log_security_p20260809 activity_log_41
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260810_code_id_idx on activity_log_security_p20260810 activity_log_42
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260811_code_id_idx on activity_log_security_p20260811 activity_log_43
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260812_code_id_idx on activity_log_security_p20260812 activity_log_44
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260813_code_id_idx on activity_log_security_p20260813 activity_log_45
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260814_code_id_idx on activity_log_security_p20260814 activity_log_46
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260815_code_id_idx on activity_log_security_p20260815 activity_log_47
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260816_code_id_idx on activity_log_security_p20260816 activity_log_48
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260817_code_id_idx on activity_log_security_p20260817 activity_log_49
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260818_code_id_idx on activity_log_security_p20260818 activity_log_50
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260819_code_id_idx on activity_log_security_p20260819 activity_log_51
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260820_code_id_idx on activity_log_security_p20260820 activity_log_52
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260821_code_id_idx on activity_log_security_p20260821 activity_log_53
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260822_code_id_idx on activity_log_security_p20260822 activity_log_54
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260823_code_id_idx on activity_log_security_p20260823 activity_log_55
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260824_code_id_idx on activity_log_security_p20260824 activity_log_56
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260825_code_id_idx on activity_log_security_p20260825 activity_log_57
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260826_code_id_idx on activity_log_security_p20260826 activity_log_58
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260827_code_id_idx on activity_log_security_p20260827 activity_log_59
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260828_code_id_idx on activity_log_security_p20260828 activity_log_60
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260829_code_id_idx on activity_log_security_p20260829 activity_log_61
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260830_code_id_idx on activity_log_security_p20260830 activity_log_62
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260831_code_id_idx on activity_log_security_p20260831 activity_log_63
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260901_code_id_idx on activity_log_security_p20260901 activity_log_64
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260902_code_id_idx on activity_log_security_p20260902 activity_log_65
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260903_code_id_idx on activity_log_security_p20260903 activity_log_66
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260904_code_id_idx on activity_log_security_p20260904 activity_log_67
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260905_code_id_idx on activity_log_security_p20260905 activity_log_68
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260906_code_id_idx on activity_log_security_p20260906 activity_log_69
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260907_code_id_idx on activity_log_security_p20260907 activity_log_70
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260908_code_id_idx on activity_log_security_p20260908 activity_log_71
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260909_code_id_idx on activity_log_security_p20260909 activity_log_72
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260910_code_id_idx on activity_log_security_p20260910 activity_log_73
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260911_code_id_idx on activity_log_security_p20260911 activity_log_74
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260912_code_id_idx on activity_log_security_p20260912 activity_log_75
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260913_code_id_idx on activity_log_security_p20260913 activity_log_76
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260914_code_id_idx on activity_log_security_p20260914 activity_log_77
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260915_code_id_idx on activity_log_security_p20260915 activity_log_78
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260916_code_id_idx on activity_log_security_p20260916 activity_log_79
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260917_code_id_idx on activity_log_security_p20260917 activity_log_80
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260918_code_id_idx on activity_log_security_p20260918 activity_log_81
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260919_code_id_idx on activity_log_security_p20260919 activity_log_82
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260920_code_id_idx on activity_log_security_p20260920 activity_log_83
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260921_code_id_idx on activity_log_security_p20260921 activity_log_84
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260922_code_id_idx on activity_log_security_p20260922 activity_log_85
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260923_code_id_idx on activity_log_security_p20260923 activity_log_86
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260924_code_id_idx on activity_log_security_p20260924 activity_log_87
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260925_code_id_idx on activity_log_security_p20260925 activity_log_88
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260926_code_id_idx on activity_log_security_p20260926 activity_log_89
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260927_code_id_idx on activity_log_security_p20260927 activity_log_90
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260928_code_id_idx on activity_log_security_p20260928 activity_log_91
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260929_code_id_idx on activity_log_security_p20260929 activity_log_92
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20260930_code_id_idx on activity_log_security_p20260930 activity_log_93
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261001_code_id_idx on activity_log_security_p20261001 activity_log_94
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261002_code_id_idx on activity_log_security_p20261002 activity_log_95
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261003_code_id_idx on activity_log_security_p20261003 activity_log_96
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261004_code_id_idx on activity_log_security_p20261004 activity_log_97
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261005_code_id_idx on activity_log_security_p20261005 activity_log_98
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261006_code_id_idx on activity_log_security_p20261006 activity_log_99
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261007_code_id_idx on activity_log_security_p20261007 activity_log_100
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261008_code_id_idx on activity_log_security_p20261008 activity_log_101
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261009_code_id_idx on activity_log_security_p20261009 activity_log_102
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261010_code_id_idx on activity_log_security_p20261010 activity_log_103
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261011_code_id_idx on activity_log_security_p20261011 activity_log_104
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261012_code_id_idx on activity_log_security_p20261012 activity_log_105
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261013_code_id_idx on activity_log_security_p20261013 activity_log_106
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261014_code_id_idx on activity_log_security_p20261014 activity_log_107
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261015_code_id_idx on activity_log_security_p20261015 activity_log_108
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261016_code_id_idx on activity_log_security_p20261016 activity_log_109
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261017_code_id_idx on activity_log_security_p20261017 activity_log_110
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261018_code_id_idx on activity_log_security_p20261018 activity_log_111
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261019_code_id_idx on activity_log_security_p20261019 activity_log_112
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261020_code_id_idx on activity_log_security_p20261020 activity_log_113
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261021_code_id_idx on activity_log_security_p20261021 activity_log_114
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261022_code_id_idx on activity_log_security_p20261022 activity_log_115
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261023_code_id_idx on activity_log_security_p20261023 activity_log_116
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261024_code_id_idx on activity_log_security_p20261024 activity_log_117
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261025_code_id_idx on activity_log_security_p20261025 activity_log_118
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261026_code_id_idx on activity_log_security_p20261026 activity_log_119
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261027_code_id_idx on activity_log_security_p20261027 activity_log_120
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_p20261028_code_id_idx on activity_log_security_p20261028 activity_log_121
+               Index Cond: (code = 5)
+         ->  Index Scan Backward using activity_log_security_default_code_id_idx on activity_log_security_default activity_log_122
+               Index Cond: (code = 5)
+(247 rows)
+

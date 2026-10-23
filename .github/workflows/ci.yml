@@ -17,17 +17,52 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.4']
+    # PostgreSQL only (#137): the suite runs on PG 18, as casalivre_dev (CREATEDB, NOSUPERUSER), like the dev env.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo, pdo_sqlite, sqlite3, curl, mbstring, fileinfo, gd, redis
+          extensions: pdo, pdo_pgsql, curl, mbstring, fileinfo, gd, redis
           tools: none
           coverage: none
       - name: php -l
         run: |
           find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l > /tmp/lint.txt || { grep -v '^No syntax errors' /tmp/lint.txt; exit 1; }
+      - name: PostgreSQL roles (ops/dev-env/pg-roles.sql, as postgres)
+        env:
+          PGUSER: postgres
+          PGPASSWORD: ci-postgres
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -d postgres -f ops/dev-env/pg-roles.sql
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c "ALTER ROLE casalivre_dev PASSWORD 'ci-casalivre-dev'"
+          psql -X -tAc "SELECT version()" -d postgres
+      - name: Schema loads from scratch (database/schema.pgsql.sql + migrate.php)
+        env:
+          PGUSER: postgres
+          PGPASSWORD: ci-postgres
+          DB_DSN: pgsql:host=127.0.0.1;port=5432;dbname=casalivre_ci
+          DB_USER: casalivre_dev
+          DB_PASSWORD: ci-casalivre-dev
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c "CREATE DATABASE casalivre_ci OWNER casalivre_dev"
+          PGUSER=casalivre_dev PGPASSWORD=ci-casalivre-dev psql -X -q -v ON_ERROR_STOP=1 -d casalivre_ci -f database/schema.pgsql.sql
+          php scripts/migrate.php
       # IpRateLimiter (#158) counts on Valkey: unix socket only and the cl_app ACL of ops/dev-env/services.sh
       # (same command allowlist, ~cl:* only); without it the limiter would fail closed on signup/reset.
       - name: Valkey (cl_app ACL)
@@ -44,6 +79,9 @@ jobs:
       - name: Testes standalone
         env:
           LOG_SALT: ci-salt-nao-usar-em-producao-0123456789abcdef
+          TEST_PG_DSN: pgsql:host=127.0.0.1;port=5432;dbname=postgres
+          TEST_PG_USER: casalivre_dev
+          TEST_PG_PASSWORD: ci-casalivre-dev
           VALKEY_SOCKET: /tmp/vk/valkey.sock
           VALKEY_USER: cl_app
           VALKEY_PASSWORD_FILE: /tmp/vk/app.secret

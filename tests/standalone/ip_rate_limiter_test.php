@@ -115,9 +115,8 @@ ini_set('error_log', $log);
 $stamps = sys_get_temp_dir() . '/cl-iprl-stamp-' . bin2hex(random_bytes(4));
 mkdir($stamps, 0700);
 IpRateLimiter::$stampDir = $stamps;
-$actDb = (string) tempnam(sys_get_temp_dir(), 'iprlact');
-putenv('ACTIVITY_DB_PATH=' . $actDb);
-putenv('LOG_DRIVER=sqlite');
+require_once CL_ROOT . '/src/Db.php';
+t_temp_db(); // the security-class activity row goes to audit.activity_log (PostgreSQL only, #137)
 $_SERVER['REMOTE_ADDR'] = '203.0.113.77';
 IpRateLimiter::$connector = static fn (): Redis => throw new RedisException('Connection refused');
 foreach (IpRateLimiter::FAIL_CLOSED_BUCKETS as $b) {
@@ -147,13 +146,15 @@ $lines = array_values(array_filter(explode("\n", (string) file_get_contents($log
 t_eq(1, count($lines), 'many failures in a row: one log line per LOG_EVERY s per worker');
 t_ok(str_contains($lines[0] ?? '', 'fail-closed') && str_contains($lines[0] ?? '', 'RedisException'), 'log line names the mode and exception class');
 t_ok(!str_contains((string) file_get_contents($log), '203.0.113'), 'log line has no IP');
-$rows = ActivityLog::store()->recent(10, ActivityLog::VALKEY_UNAVAILABLE);
-t_eq(1, count($rows), 'one VALKEY_UNAVAILABLE activity row (Segurança #160 d: own code)');
+$rows = array_values(array_filter(t_log_rows(), static fn (array $r): bool => $r['code'] === ActivityLog::VALKEY_UNAVAILABLE));
+t_eq(1, count($rows), 'one VALKEY_UNAVAILABLE activity row (security class, Segurança #160 d)');
+t_eq(ActivityLog::SECURITY, $rows[0]['class'] ?? null, 'VALKEY_UNAVAILABLE is security (audit.activity_log)');
 $got = array_intersect_key($rows[0]['params'] ?? [], ['excecao' => 1, 'modo' => 1, 'rota' => 1]);
 ksort($got);
 t_eq(['excecao' => 'RedisException', 'modo' => 'fail-closed', 'rota' => '/senha/esqueci'], $got, 'activity params: bucket, mode, exception class');
-t_eq([], ActivityLog::store()->recent(10, ActivityLog::INTERNAL_ERROR), 'no INTERNAL_ERROR row for a Valkey outage');
-t_eq(48, ActivityLog::VALKEY_UNAVAILABLE, 'code 48 (47 is ACTIVITY_LOG_READ in #148)');
+$internal = array_values(array_filter(t_log_rows(), static fn (array $r): bool => $r['code'] === ActivityLog::INTERNAL_ERROR));
+t_eq(0, count($internal), 'no INTERNAL_ERROR row for a Valkey outage');
+t_eq(48, ActivityLog::VALKEY_UNAVAILABLE, 'code 48 (47 is ACTIVITY_LOG_READ)');
 t_ok(isset(ActivityLog::CATALOG[ActivityLog::VALKEY_UNAVAILABLE]), 'code in the catalog (activity_actions seed)');
 t_ok(!str_contains(json_encode($rows[0]['params']) ?: '', '203.0.113'), 'activity params have no IP');
 // A new worker (or a minute later): logs again.
@@ -224,7 +225,6 @@ IpRateLimiter::disconnect();
 
 ini_set('error_log', $prevLog);
 @unlink($log);
-@unlink($actDb);
 exec('rm -rf ' . escapeshellarg($stamps));
 IpRateLimiter::$stampDir = null;
 t_done();

@@ -3,146 +3,21 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/LogPrivacy.php';
+require_once __DIR__ . '/Redact.php';
+require_once __DIR__ . '/Uuid.php';
 
-interface ActivityStore
-{
-    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void;
-
-    public function recent(int $limit = 50, ?int $code = null): array;
-}
-
-final class SqliteActivityStore implements ActivityStore
-{
-    private PDO $pdo;
-
-    public function __construct(?string $path = null)
-    {
-        $path ??= dirname(__DIR__) . '/storage/logs/activity.sqlite';
-        $dir = dirname($path);
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-            throw new RuntimeException('Não foi possível criar storage/logs.');
-        }
-        $this->pdo = new PDO('sqlite:' . $path, null, null, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-        $this->pdo->exec('PRAGMA busy_timeout = 8000');
-        $this->pdo->exec('PRAGMA journal_mode = WAL');
-        $this->pdo->exec('PRAGMA synchronous = NORMAL');
-        $sql = file_get_contents(dirname(__DIR__) . '/database/activity.sql') ?: '';
-        foreach (array_filter(array_map('trim', explode(';', $sql))) as $statement) {
-            $this->pdo->exec($statement);
-        }
-        $columns = [];
-        foreach ($this->pdo->query('PRAGMA table_info(activity_log)') as $col) {
-            $columns[$col['name']] = true;
-        }
-        if (!isset($columns['valor_anterior'])) {
-            $this->pdo->exec('ALTER TABLE activity_log ADD COLUMN valor_anterior TEXT');
-        }
-        if (!isset($columns['valor_atual'])) {
-            $this->pdo->exec('ALTER TABLE activity_log ADD COLUMN valor_atual TEXT');
-        }
-    }
-
-    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
-    {
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO activity_log (created_at, action_code, action, actor_id, ip, user_agent, params, valor_anterior, valor_atual)
-             VALUES (:created_at, :code, :action, :actor_id, :ip, :user_agent, :params, :valor_anterior, :valor_atual)'
-        );
-        $stmt->execute([
-            'created_at' => date('Y-m-d H:i:s'),
-            'code' => $code,
-            'action' => $action,
-            'actor_id' => $actorId,
-            'ip' => $ip,
-            'user_agent' => $userAgent,
-            'params' => json_encode($params, JSON_UNESCAPED_UNICODE) ?: '{}',
-            'valor_anterior' => $valorAnterior,
-            'valor_atual' => $valorAtual,
-        ]);
-    }
-
-    public function recent(int $limit = 50, ?int $code = null): array
-    {
-        $limit = max(1, min(500, $limit));
-        if ($code === null) {
-            $stmt = $this->pdo->query('SELECT * FROM activity_log ORDER BY id DESC LIMIT ' . $limit);
-        } else {
-            $stmt = $this->pdo->prepare('SELECT * FROM activity_log WHERE action_code = :code ORDER BY id DESC LIMIT ' . $limit);
-            $stmt->execute(['code' => $code]);
-        }
-        $rows = $stmt->fetchAll();
-        foreach ($rows as &$row) {
-            $decoded = json_decode((string) $row['params'], true);
-            $row['params'] = is_array($decoded) ? $decoded : [];
-        }
-        unset($row);
-        return $rows;
-    }
-}
-
-final class MongoActivityStore implements ActivityStore
-{
-    private string $uri;
-    private string $db;
-
-    public function __construct()
-    {
-        if (!class_exists(\MongoDB\Driver\Manager::class)) {
-            throw new RuntimeException('Extensão mongodb ausente. No Void: sudo xbps-install -S php-mongodb e habilite extension=mongodb.');
-        }
-        $this->uri = getenv('LOG_MONGO_URI') ?: 'mongodb://127.0.0.1:27017';
-        $this->db = getenv('LOG_MONGO_DB') ?: 'casalivre';
-    }
-
-    public function append(int $code, string $action, ?string $actorId, array $params, string $ip, string $userAgent, ?string $valorAnterior = null, ?string $valorAtual = null): void
-    {
-        $bulk = new \MongoDB\Driver\BulkWrite();
-        $bulk->insert([
-            'created_at' => date('Y-m-d H:i:s'),
-            'action_code' => $code,
-            'action' => $action,
-            'actor_id' => $actorId,
-            'ip' => $ip,
-            'user_agent' => $userAgent,
-            'params' => $params,
-            'valor_anterior' => $valorAnterior,
-            'valor_atual' => $valorAtual,
-        ]);
-        $this->manager()->executeBulkWrite($this->db . '.activity_log', $bulk);
-    }
-
-    public function recent(int $limit = 50, ?int $code = null): array
-    {
-        $query = $code === null ? [] : ['action_code' => $code];
-        $cursor = $this->manager()->executeQuery(
-            $this->db . '.activity_log',
-            new \MongoDB\Driver\Query($query, [
-                'sort' => ['created_at' => -1],
-                'limit' => max(1, min(500, $limit)),
-            ])
-        );
-        $rows = [];
-        foreach ($cursor as $doc) {
-            $row = (array) $doc;
-            $row['params'] = isset($row['params']) ? (array) $row['params'] : [];
-            unset($row['_id']);
-            $rows[] = $row;
-        }
-        return $rows;
-    }
-
-    private function manager(): \MongoDB\Driver\Manager
-    {
-        static $manager = null;
-        if (!$manager instanceof \MongoDB\Driver\Manager) {
-            $manager = new \MongoDB\Driver\Manager($this->uri);
-        }
-        return $manager;
-    }
-}
+/**
+ * Activity log on PostgreSQL (spec-activity-log-pg.md, final; §13 wins over §4-§11). Three routes by class
+ * (activity_actions.retention_class, mirrored in CLASSES):
+ * - admin    -> audit.audit_log on the main connection, synchronously (5 years, yearly partitions);
+ * - security -> audit.activity_log on a SEPARATE connection (LOG_DB_USER, production cl_logw), statement_timeout
+ *               500 ms, own transaction (90 days, daily partitions dropped by audit.activity_retention_step);
+ * - other    -> buffered and flushed once at shutdown (after fastcgi_finish_request) as one multi-row INSERT on the
+ *               main connection (14 days). This path never carries security codes (deferOther() refuses them).
+ * The app only INSERTs (no SELECT); reads go through the DEFINER functions audit.activity_recent/activity_by_actor.
+ * actor_ref is the full 32-byte HMAC (LogPrivacy::userRef) with actor_key_version; no IP and no user agent.
+ * access_event_id is one server-made UUIDv7 per request (beginRequest()), never taken from X-Request-Id.
+ */
 
 final class ActivityLog
 {
@@ -192,8 +67,9 @@ final class ActivityLog
     public const GROUP_DOMAIN_VERIFY_START = 44;
     public const GROUP_DOMAIN_VERIFIED = 45;
     public const GROUP_DOMAIN_UNVERIFIED = 46;
-    // 47 is taken by ACTIVITY_LOG_READ in #148 (PG-only ActivityLog).
-    /** IpRateLimiter could not reach Valkey (Segurança #160): own code, not INTERNAL_ERROR. */
+    /** Written only by the DEFINER read functions (audit.activity_recent/activity_by_actor), never by PHP. */
+    public const ACTIVITY_LOG_READ = 47;
+    /** IpRateLimiter could not reach Valkey (Segurança #160): own code, not INTERNAL_ERROR. 47 is ACTIVITY_LOG_READ. */
     public const VALKEY_UNAVAILABLE = 48;
 
     public const CATALOG = [
@@ -243,21 +119,79 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFY_START => 'Novo token de verificação DNS do domínio do grupo pelo admin',
         self::GROUP_DOMAIN_VERIFIED => 'Domínio do grupo verificado por DNS TXT',
         self::GROUP_DOMAIN_UNVERIFIED => 'Domínio do grupo perdeu a verificação (reverificação DNS TXT)',
+        self::ACTIVITY_LOG_READ => 'Leitura do log de atividades (ops, função DEFINER)',
         self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
     ];
 
-    public static function store(): ActivityStore
+    public const ADMIN = 'admin';
+    public const SECURITY = 'security';
+    public const OTHER = 'other';
+
+    /**
+     * Retention class of every CATALOG code (SVU §1.5; spec §13 Q1: LOGIN_OK/LOGOUT/LOGIN_FAIL are security until
+     * PR-LOG-2 moves them to access_log). Seeded into activity_actions.retention_class; a test fails if a code is
+     * missing. A code without a class would be admin (classOf()).
+     */
+    public const CLASSES = [
+        self::LOGIN_OK => self::SECURITY, self::LOGIN_FAIL => self::SECURITY, self::LOGOUT => self::SECURITY,
+        self::REGISTER => self::ADMIN, self::SEARCH => self::OTHER, self::ACCOUNT_UPDATE => self::ADMIN,
+        self::ACCOUNT_DELETE => self::ADMIN, self::PROPERTY_CREATE => self::ADMIN, self::PROPERTY_UPDATE => self::ADMIN,
+        self::PROPERTY_DELETE => self::ADMIN, self::PHOTO_ADD => self::ADMIN, self::PHOTO_DELETE => self::ADMIN,
+        self::CALENDAR_UPDATE => self::ADMIN, self::CALENDAR_IMPORT => self::OTHER, self::CALENDAR_EXPORT => self::OTHER,
+        self::REVIEW => self::ADMIN, self::PROPERTY_VIEW => self::OTHER, self::EMAIL_VERIFY => self::SECURITY,
+        self::PASSWORD_RESET_ASK => self::SECURITY, self::PASSWORD_RESET => self::SECURITY,
+        self::LOGIN_LOCKED => self::SECURITY, self::LOCALE => self::OTHER, self::CALENDAR_PRICE => self::ADMIN,
+        self::CALENDAR_BLOCK => self::ADMIN, self::CALENDAR_UNBLOCK => self::ADMIN, self::CALENDAR_FEED_ADD => self::ADMIN,
+        self::CALENDAR_FEED_REMOVE => self::ADMIN, self::CALENDAR_MIN_NIGHTS => self::ADMIN, self::CALENDAR_SYNC => self::OTHER,
+        self::INTERNAL_ERROR => self::SECURITY, self::PHOTO_COVER => self::ADMIN, self::THEME_CHANGE => self::ADMIN,
+        self::GROUP_CREATE => self::ADMIN, self::GROUP_UPDATE => self::ADMIN, self::GROUP_DOMAIN_ADD => self::ADMIN,
+        self::GROUP_DOMAIN_REMOVE => self::ADMIN, self::GROUP_MEMBER_SET => self::ADMIN, self::GROUP_MEMBER_REMOVE => self::ADMIN,
+        self::GROUP_INVITE => self::ADMIN, self::GROUP_INVITE_CANCEL => self::ADMIN, self::GROUP_INVITE_ACCEPT => self::ADMIN,
+        self::GROUP_INVITE_REJECT => self::ADMIN, self::GROUP_PROPERTY_REMOVE => self::ADMIN,
+        self::GROUP_DOMAIN_VERIFY_START => self::ADMIN, self::GROUP_DOMAIN_VERIFIED => self::SECURITY,
+        self::GROUP_DOMAIN_UNVERIFIED => self::SECURITY, self::ACTIVITY_LOG_READ => self::ADMIN,
+        self::VALKEY_UNAVAILABLE => self::SECURITY,
+    ];
+
+    /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
+    public const MAX_ROW_BYTES = 4096;
+
+    private static ?string $accessEventId = null;
+    /** @var list<array<string, mixed>> other rows waiting for the shutdown INSERT */
+    private static array $otherBuffer = [];
+    private static bool $flushRegistered = false;
+    private static ?PDO $securityPdo = null;
+    private static string $securityDsn = '';
+    /** null: defer "other" rows to shutdown except in the CLI (cron/workers write at once). Tests may force it. */
+    public static ?bool $deferOther = null;
+
+    public static function classOf(int $code): string
     {
-        static $store = null;
-        if ($store instanceof ActivityStore) {
-            return $store;
+        return self::CLASSES[$code] ?? self::ADMIN;
+    }
+
+    /** Request start (public/index.php): one server-made UUIDv7, used only as access_event_id (spec §13 Q2). */
+    public static function beginRequest(): string
+    {
+        return self::$accessEventId = Uuid::v7();
+    }
+
+    /** access_event_id of this request/process (created on first use when beginRequest() did not run, e.g. CLI). */
+    public static function accessEventId(): string
+    {
+        return self::$accessEventId ??= Uuid::v7();
+    }
+
+    /** Seed of activity_actions (Db::migrate): code, Portuguese label and retention class. Idempotent. */
+    public static function seedActions(PDO $pdo): void
+    {
+        $st = $pdo->prepare('INSERT INTO activity_actions (code, description, retention_class) VALUES (?, ?, ?)
+            ON CONFLICT (code) DO UPDATE SET description = excluded.description, retention_class = excluded.retention_class
+            WHERE activity_actions.description IS DISTINCT FROM excluded.description
+               OR activity_actions.retention_class IS DISTINCT FROM excluded.retention_class');
+        foreach (self::CATALOG as $code => $description) {
+            $st->execute([$code, $description, self::classOf($code)]);
         }
-        Db::loadEnv();
-        $driver = getenv('LOG_DRIVER') ?: 'sqlite';
-        // ACTIVITY_DB_PATH: caminho alternativo do SQLite de atividades (testes); padrão storage/logs/activity.sqlite.
-        $path = getenv('ACTIVITY_DB_PATH') ?: null;
-        $store = $driver === 'mongodb' ? new MongoActivityStore() : new SqliteActivityStore($path);
-        return $store;
     }
 
     public static function record(int $code, array $params = [], mixed $valorAnterior = null, mixed $valorAtual = null): void
@@ -266,29 +200,197 @@ final class ActivityLog
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'HEAD') {
             return;
         }
+        $class = self::classOf($code);
         try {
-            $params = self::safeParams($params, $code);
-            if (in_array($code, self::FIELD_NAMES_ONLY, true)) {
-                $fields = self::changedFieldNames($valorAnterior, $valorAtual);
-                $valorAnterior = null;
-                $valorAtual = $fields === [] ? null : ['campos_alterados' => $fields];
+            $row = self::buildRow($code, $params, $valorAnterior, $valorAtual);
+            if ($class === self::OTHER) {
+                self::deferOther($row);
+            } elseif ($class === self::SECURITY) {
+                self::insertActivity(self::securityPdo(), [$row]);
+            } else {
+                self::insertAudit(db(), $row);
             }
-            $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
-            $params['canal'] = str_starts_with(parse_url($uri, PHP_URL_PATH) ?: '', '/api') ? 'api' : 'web';
-            self::store()->append(
-                $code,
-                self::CATALOG[$code] ?? 'Ação não catalogada',
-                isset($_SESSION['user_id']) ? LogPrivacy::user((int) $_SESSION['user_id']) : null,
-                $params,
-                LogPrivacy::ip((string) ($_SERVER['REMOTE_ADDR'] ?? '')),
-                (string) (LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')) ?? ''),
-                self::encodePrevious($valorAnterior),
-                self::encodePrevious($valorAtual)
-            );
         } catch (Throwable $e) {
-            // Sinaliza sem dados (a mensagem pode conter parâmetros).
-            error_log('CasaLivre: falha ao gravar log de atividades (' . $e::class . ').');
+            // Never silent, never with data (the message may carry parameters).
+            error_log('CasaLivre ALERT: activity log write failed (class ' . $class . ', code ' . $code . ', ' . $e::class . ').');
         }
+    }
+
+    /**
+     * Row for audit.activity_log / audit.audit_log (allowlisted payload, before/after as JSON text, no IP/UA).
+     * No created_at: the DB sets it (DEFAULT statement_timestamp(); the app roles cannot insert that column).
+     * @return array<string, mixed>
+     */
+    public static function buildRow(int $code, array $params = [], mixed $valorAnterior = null, mixed $valorAtual = null): array
+    {
+        $params = self::safeParams($params, $code);
+        if (in_array($code, self::FIELD_NAMES_ONLY, true)) {
+            $fields = self::changedFieldNames($valorAnterior, $valorAtual);
+            $valorAnterior = null;
+            $valorAtual = $fields === [] ? null : ['campos_alterados' => $fields];
+        }
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        $params['canal'] = str_starts_with(parse_url($uri, PHP_URL_PATH) ?: '', '/api') ? 'api' : 'web';
+        $ref = isset($_SESSION['user_id']) ? LogPrivacy::userRef((int) $_SESSION['user_id']) : null;
+        $kind = $ref !== null ? 'user' : (PHP_SAPI === 'cli' ? 'system' : 'anon');
+        $payload = self::json($params === [] ? new stdClass() : $params);
+        $before = self::jsonValue($valorAnterior);
+        $after = self::jsonValue($valorAtual);
+        if (self::pgJsonBytes($payload) + self::pgJsonBytes($before) + self::pgJsonBytes($after) > self::MAX_ROW_BYTES) {
+            // The CHECK must never abort a transaction (spec §8.6).
+            [$payload, $before, $after] = ['{"truncated": true}', null, null];
+        }
+        return [
+            'id' => Uuid::v7(),
+            'code' => $code,
+            'retention_class' => self::classOf($code),
+            'actor_kind' => $kind,
+            'actor_ref' => $ref,
+            'actor_key_version' => $ref === null ? null : LogPrivacy::keyVersion(),
+            'access_event_id' => self::accessEventId(),
+            'payload' => $payload,
+            'before_value' => $before,
+            'after_value' => $after,
+        ];
+    }
+
+    /**
+     * Queues an "other" row for the shutdown INSERT (or writes it at once in the CLI). Refuses any other class:
+     * the shutdown path must never carry security (or admin) codes (spec §13 Q3).
+     */
+    public static function deferOther(array $row): void
+    {
+        if (($row['retention_class'] ?? null) !== self::OTHER) {
+            throw new LogicException('only "other" rows may use the shutdown INSERT');
+        }
+        if (!(self::$deferOther ?? PHP_SAPI !== 'cli')) {
+            self::insertActivity(db(), [$row]);
+            return;
+        }
+        self::$otherBuffer[] = $row;
+        if (!self::$flushRegistered) {
+            self::$flushRegistered = true;
+            register_shutdown_function(static function (): void {
+                if (function_exists('fastcgi_finish_request')) {
+                    fastcgi_finish_request();
+                }
+                self::flushOther();
+            });
+        }
+    }
+
+    /** @return list<array<string, mixed>> rows waiting for the shutdown INSERT (tests). */
+    public static function pendingOther(): array
+    {
+        return self::$otherBuffer;
+    }
+
+    /** Shutdown: one multi-row INSERT of the buffered "other" rows on the main connection. */
+    public static function flushOther(): void
+    {
+        $rows = array_values(array_filter(self::$otherBuffer, static fn (array $r): bool => ($r['retention_class'] ?? null) === self::OTHER));
+        self::$otherBuffer = [];
+        if ($rows === []) {
+            return;
+        }
+        try {
+            $pdo = db();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack(); // an unfinished business transaction is lost anyway; the BI rows are not
+            }
+            self::insertActivity($pdo, $rows);
+        } catch (Throwable $e) {
+            error_log('CasaLivre: ' . count($rows) . ' "other" activity row(s) lost at shutdown (' . $e::class . ').');
+        }
+    }
+
+    /** INSERT of security/other rows into audit.activity_log (one statement, one or many rows). */
+    public static function insertActivity(PDO $pdo, array $rows): void
+    {
+        $values = [];
+        foreach ($rows as $row) {
+            if (!in_array($row['retention_class'] ?? null, [self::SECURITY, self::OTHER], true)) {
+                throw new LogicException('audit.activity_log takes only security/other rows');
+            }
+            $values[] = '(?::uuid, ?, ?, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?::jsonb)';
+        }
+        $st = $pdo->prepare('INSERT INTO audit.activity_log (id, code, retention_class, actor_kind, actor_ref,
+            actor_key_version, access_event_id, payload, before_value, after_value) VALUES ' . implode(', ', $values));
+        $i = 0;
+        foreach ($rows as $row) {
+            self::bindCommon($st, $i, $row);
+            $st->bindValue(++$i, $row['access_event_id']);
+            $st->bindValue(++$i, $row['payload']);
+            $st->bindValue(++$i, $row['before_value'], $row['before_value'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $st->bindValue(++$i, $row['after_value'], $row['after_value'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        }
+        $st->execute();
+    }
+
+    /** INSERT of one admin row into audit.audit_log. */
+    public static function insertAudit(PDO $pdo, array $row): void
+    {
+        $st = $pdo->prepare('INSERT INTO audit.audit_log (id, code, retention_class, actor_kind, actor_ref,
+            actor_key_version, payload, before_value, after_value) VALUES (?::uuid, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb)');
+        $i = 0;
+        self::bindCommon($st, $i, $row);
+        $st->bindValue(++$i, $row['payload']);
+        $st->bindValue(++$i, $row['before_value'], $row['before_value'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        $st->bindValue(++$i, $row['after_value'], $row['after_value'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        $st->execute();
+    }
+
+    private static function bindCommon(PDOStatement $st, int &$i, array $row): void
+    {
+        $st->bindValue(++$i, $row['id']);
+        $st->bindValue(++$i, (int) $row['code'], PDO::PARAM_INT);
+        $st->bindValue(++$i, $row['retention_class']);
+        $st->bindValue(++$i, $row['actor_kind']);
+        $st->bindValue(++$i, $row['actor_ref'], $row['actor_ref'] === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $st->bindValue(++$i, $row['actor_key_version'], $row['actor_key_version'] === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+    }
+
+    /**
+     * Separate connection for security rows (own transaction: a business rollback never removes them). Same DB_DSN,
+     * as LOG_DB_USER/LOG_DB_PASSWORD (production: cl_logw, INSERT only); empty LOG_DB_USER = the DB_USER credentials.
+     */
+    private static function securityPdo(): PDO
+    {
+        $dsn = Db::dsn();
+        if (self::$securityPdo instanceof PDO && self::$securityDsn === $dsn) {
+            return self::$securityPdo;
+        }
+        $pdo = Db::connectAs('LOG_DB_USER', 'LOG_DB_PASSWORD');
+        $pdo->exec("SET statement_timeout = '500ms'");
+        self::$securityDsn = $dsn;
+        return self::$securityPdo = $pdo;
+    }
+
+    private static function json(mixed $value): string
+    {
+        return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /** Upper bound of octet_length(jsonb::text): PG prints a space after every ':' and ','. */
+    private static function pgJsonBytes(?string $json): int
+    {
+        return $json === null ? 0 : strlen($json) + substr_count($json, ':') + substr_count($json, ',');
+    }
+
+    /** before/after value as JSON text (allowlisted map, or a scalar of at most 200 chars); null when empty. */
+    public static function jsonValue(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_array($value)) {
+            $safe = self::cleanList($value, 0);
+            return $safe === [] ? null : self::json($safe);
+        }
+        if (is_scalar($value)) {
+            return self::json(is_string($value) ? mb_substr($value, 0, 200) : $value);
+        }
+        return null;
     }
 
     /** Chaves de identidade: nunca gravadas em claro (HMAC com LOG_SALT ou IP truncado). */
@@ -307,9 +409,9 @@ final class ActivityLog
         self::LOGIN_LOCKED => ['email', 'tentativas'],
         self::LOGOUT => [],
         self::REGISTER => ['email'],
-        self::SEARCH => ['localidade', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
+        self::SEARCH => ['localidade', 'place_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
         self::ACCOUNT_UPDATE => ['email'],
-        self::ACCOUNT_DELETE => ['email', 'ip'],
+        self::ACCOUNT_DELETE => ['email'],   // sem IP (nem /24) num payload de 5 anos (Segurança #148)
         self::PROPERTY_CREATE => ['titulo'],
         self::PROPERTY_UPDATE => ['titulo', 'cidade'],
         self::PROPERTY_DELETE => ['titulo', 'estado', 'inativado_em'],
@@ -385,6 +487,15 @@ final class ActivityLog
             }
             $clean[$key] = self::cleanValue($key, $value, 0);
         }
+        if ($code === self::SEARCH && array_key_exists('localidade', $clean)) {
+            // Demand-log redaction (spec §13 Q8; docs/lgpd/lia-demand-log.md item 1).
+            $term = is_string($clean['localidade']) ? Redact::searchTerm($clean['localidade']) : null;
+            if ($term === null) {
+                unset($clean['localidade']);
+            } else {
+                $clean['localidade'] = $term;
+            }
+        }
         return array_filter($clean, static fn ($v) => $v !== self::DROP);
     }
 
@@ -447,20 +558,10 @@ final class ActivityLog
         return array_values(array_unique($names));
     }
 
+    /** Old name kept for callers/tests: JSON text of the allowlisted value (see jsonValue()). */
     public static function encodePrevious(mixed $value): ?string
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        if (is_array($value)) {
-            $safe = self::cleanList($value, 0);
-            $json = json_encode($safe, JSON_UNESCAPED_UNICODE);
-            return $json === false || $json === '[]' || $json === '{}' ? null : $json;
-        }
-        if (is_scalar($value)) {
-            return is_string($value) ? mb_substr($value, 0, 200) : (string) $value;
-        }
-        return null;
+        return self::jsonValue($value);
     }
 }
 

@@ -252,10 +252,9 @@ final class GroupRepository
         return $row && ($row['status'] ?? 'active') === 'active' ? $row : null;
     }
 
-    /** Violação de UNIQUE (SQLite 23000 + "UNIQUE", pgsql 23505). */
+    /** Violação de UNIQUE (23505). */
     public static function isUniqueViolation(PDOException $e): bool
     {
-        $code = (string) (($e->errorInfo[0] ?? null) ?: $e->getCode());
-        return $code === '23505' || ($code === '23000' && str_contains($e->getMessage(), 'UNIQUE'));
+        return (string) (($e->errorInfo[0] ?? null) ?: $e->getCode()) === '23505';
     }
 }

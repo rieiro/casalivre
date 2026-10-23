@@ -180,7 +180,9 @@ $logs = c_logs($act, $m);
 t_eq([ActivityLog::LOGIN_OK], array_column($logs, 'code'), 'web: sucesso grava LOGIN_OK');
 // O e-mail nunca é gravado em claro: sai como HMAC com LOG_SALT (null sem LOG_SALT). O esperado depende do
 // ambiente (a CI define LOG_SALT); calcula no mesmo ambiente do servidor. O canal vem em params.canal.
-t_eq(['email' => LogPrivacy::email($u['email']), 'canal' => 'web'], $logs[0]['params'], 'web: LOGIN_OK params = {email:HMAC (null sem LOG_SALT), canal:web}');
+$p0 = $logs[0]['params'];
+ksort($p0); // jsonb não guarda a ordem das chaves
+t_eq(['canal' => 'web', 'email' => LogPrivacy::email($u['email'])], $p0, 'web: LOGIN_OK params = {email:HMAC (null sem LOG_SALT), canal:web}');
 t_ok(!in_array(strtolower($u['email']), array_map('strtolower', array_map('strval', $logs[0]['params'])), true), 'web: LOGIN_OK sem e-mail em claro');
 $jar2 = tempnam(sys_get_temp_dir(), 'jar');
 $csrf2 = c_csrf($base, $jar2);

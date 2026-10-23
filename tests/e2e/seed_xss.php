@@ -1,18 +1,18 @@
 <?php
-// Cria um banco SQLite com um proprietário e um imóvel com foto com caminho malicioso (fix/xss-views).
-// Uso: php tests/e2e/seed_xss.php <arquivo.sqlite>  -> imprime JSON {email, password, hash}
+// Carrega o schema PG num banco VAZIO (DSN) e cria um proprietário e um imóvel com foto com caminho malicioso (fix/xss-views).
+// Uso: DB_USER=... php tests/e2e/seed_xss.php <pgsql:dsn de um banco vazio>  -> imprime JSON {email, password, hash}
 declare(strict_types=1);
 $root = dirname(__DIR__, 2);
-$file = $argv[1] ?? '';
-if ($file === '') {
-    fwrite(STDERR, "uso: seed_xss.php <arquivo.sqlite>\n");
+$dsn = $argv[1] ?? '';
+if (!str_starts_with($dsn, 'pgsql:')) {
+    fwrite(STDERR, "uso: seed_xss.php <pgsql:dsn de um banco vazio> (PostgreSQL only)\n");
     exit(2);
 }
-@unlink($file);
-(new PDO('sqlite:' . $file))->exec((string) file_get_contents($root . '/database/schema.sql'));
-putenv('DB_DRIVER=sqlite');
-putenv('DB_DSN=sqlite:' . $file);
+(new PDO($dsn, getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]))
+    ->exec((string) file_get_contents($root . '/database/schema.pgsql.sql'));
+putenv('DB_DSN=' . $dsn);
 require_once $root . '/src/Db.php';
+Db::migrateNow();
 require_once $root . '/src/Settings.php';
 require_once $root . '/src/I18n.php';
 require_once $root . '/src/UserRepository.php';

@@ -32,14 +32,14 @@ final class Queues
     public const BACKOFF = [1 => 60, 2 => 300, 3 => 900];
 
     /**
-     * Queue driver (QUEUE_DRIVER: sqlite, the default, or valkey). Single switch point, used by the
+     * Queue driver (QUEUE_DRIVER: db, the default, a table in PostgreSQL; or valkey). Single switch point, used by the
      * MailQueues::make()/ImageQueues::make() factories; producers and workers do not change.
      */
     public static function driver(): string
     {
         Db::loadEnv();
-        $driver = strtolower(trim((string) (getenv('QUEUE_DRIVER') ?: 'sqlite')));
-        if (!in_array($driver, ['sqlite', 'valkey'], true)) {
+        $driver = strtolower(trim((string) (getenv('QUEUE_DRIVER') ?: 'db')));
+        if (!in_array($driver, ['db', 'valkey'], true)) {
             throw new RuntimeException('QUEUE_DRIVER não suportado: ' . $driver);
         }
         return $driver;
@@ -52,7 +52,7 @@ final class Queues
 }
 
 /**
- * Fila numa tabela do banco da aplicação (SQL portável sqlite/pgsql). A tabela tem: id, status,
+ * Fila numa tabela do banco da aplicação (PostgreSQL). A tabela tem: id, status,
  * attempts, last_error, next_attempt_at, created_at, updated_at e as colunas de dados (dataColumns()).
  */
 abstract class SqlJobQueue implements JobQueue

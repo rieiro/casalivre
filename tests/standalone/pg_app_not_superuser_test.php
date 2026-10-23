@@ -1,13 +1,9 @@
 <?php
 // P0-3b (L2 of the #111 review): on PG the app connection (db(), DB_DSN/DB_USER) must not be a superuser.
-// In the dev env the app connects as casalivre_dev (CREATEDB, NOSUPERUSER). Skipped on SQLite.
+// In the dev env the app connects as casalivre_dev (CREATEDB, NOSUPERUSER).
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 
-if (!t_is_pg()) {
-    echo "  SKIPPED (PG only: set TEST_PG_DSN)\n";
-    t_done();
-}
 t_temp_db();
 require_once CL_ROOT . '/src/helpers.php';
 $row = db()->query('SELECT current_user AS who, rolsuper FROM pg_roles WHERE rolname = current_user')->fetch(PDO::FETCH_ASSOC);
