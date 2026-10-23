@@ -24,25 +24,34 @@ final class CityRepository
         Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
             $pdo->exec('DELETE FROM places WHERE parent_id IS NOT NULL');
             $pdo->exec('DELETE FROM places');
-            $insert = $pdo->prepare("INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES ('city', NULL, ?, ?, ?, ?, ?, ?, 0) RETURNING id");
-            $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', 0)');
             foreach ($rows as $row) {
-                $name = (string) $row['name'];
-                $insert->execute([
-                    $name,
-                    fold($name),
-                    (string) $row['label'],
-                    (string) $row['uf'],
-                    $row['lat'],
-                    $row['lng'],
-                ]);
-                $id = (int) $insert->fetchColumn();
-                foreach (self::searchKeys($name) as $key) {
-                    $keyIns->execute([$id, $key]);
-                }
+                self::insertPlace($pdo, 'city', null, (string) $row['name'], (string) $row['label'], (string) $row['uf'], $row['lat'], $row['lng'], 0);
             }
             self::seedPilot($pdo);
         });
+    }
+
+    /**
+     * Inserts one place and its name keys. Statements stay prepared for the PDO that first called this.
+     *
+     * @param int|float|string $lat
+     * @param int|float|string $lng
+     */
+    private static function insertPlace(PDO $pdo, string $type, ?int $parentId, string $name, string $label, string $uf, int|float|string $lat, int|float|string $lng, int $popularity): void
+    {
+        static $bound = null;
+        static $insert = null;
+        static $keyIns = null;
+        if ($bound !== $pdo) {
+            $bound = $pdo;
+            $insert = $pdo->prepare('INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id');
+            $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', ?)');
+        }
+        $insert->execute([$type, $parentId, $name, fold($name), $label, $uf, $lat, $lng, $popularity]);
+        $id = (int) $insert->fetchColumn();
+        foreach (self::searchKeys($name) as $key) {
+            $keyIns->execute([$id, $key, $popularity]);
+        }
     }
 
     /**
@@ -78,20 +87,13 @@ final class CityRepository
             ['name' => 'Praia do Forte', 'parent' => 'Mata de São João', 'uf' => 'BA', 'lat' => -12.5766, 'lng' => -38.0002],
         ];
         $parent = $pdo->prepare("SELECT id FROM places WHERE type = 'city' AND name_fold = ? AND uf = ? ORDER BY id LIMIT 1");
-        $insert = $pdo->prepare("INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES ('poi', ?, ?, ?, ?, ?, ?, ?, 100) RETURNING id");
-        $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', 100)');
         foreach ($pilots as $poi) {
             $parent->execute([fold($poi['parent']), $poi['uf']]);
             $parentId = $parent->fetchColumn();
             if ($parentId === false) {
                 continue;
             }
-            $name = $poi['name'];
-            $insert->execute([(int) $parentId, $name, fold($name), $name, $poi['uf'], $poi['lat'], $poi['lng']]);
-            $id = (int) $insert->fetchColumn();
-            foreach (self::searchKeys($name) as $key) {
-                $keyIns->execute([$id, $key]);
-            }
+            self::insertPlace($pdo, 'poi', (int) $parentId, $poi['name'], $poi['name'], $poi['uf'], $poi['lat'], $poi['lng'], 100);
         }
     }
 

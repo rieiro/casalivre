@@ -8,8 +8,14 @@ require_once __DIR__ . '/CityRepository.php';
 
 final class HouseRepository
 {
-    /** properties.* plus the display city (name, UF) from places. city_place_id replaced properties.city. */
-    private const SQL_WITH_CITY = "SELECT p.*, (c.name || ', ' || rtrim(c.uf)) AS city FROM properties p JOIN places c ON c.id = p.city_place_id";
+    /** Display city "Name, UF" from places aliased as c. */
+    public const CITY_LABEL_SQL = "(c.name || ', ' || rtrim(c.uf))";
+
+    /** properties p.city_place_id → places c. */
+    public const JOIN_CITY_SQL = 'JOIN places c ON c.id = p.city_place_id';
+
+    /** properties.* plus the display city. city_place_id replaced properties.city. */
+    public const SQL_WITH_CITY = 'SELECT p.*, ' . self::CITY_LABEL_SQL . ' AS city FROM properties p ' . self::JOIN_CITY_SQL;
 
     public static function insert(array $house): int
     {
@@ -237,7 +243,7 @@ final class HouseRepository
             $stmt->execute([(int) $place['id']]);
             return $stmt->fetchAll();
         }
-        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE (c.name || ', ' || rtrim(c.uf)) = ? AND p.status = 'active' ORDER BY p.id ASC");
+        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE ' . self::CITY_LABEL_SQL . " = ? AND p.status = 'active' ORDER BY p.id ASC");
         $stmt->execute([$city]);
         return $stmt->fetchAll();
     }
