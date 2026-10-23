@@ -47,8 +47,9 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
    - `needs:money`: ledger, split, prices, payments, payouts, Pix keys; follow [money-standards](../docs/money-standards.md). Requires `approved:review` + `approved:db`, plus `approved:security` if payments, webhooks or Pix keys are touched.
    - Docs-only: no labels; `ops/tools/check-doc-links.sh` passes, then Gerente merges.
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
+2b. Programador code PRs (`needs:review` from the Programador): Revisor reviews first. Other reviewers (Teste, Arquitetura, BD, Segurança, UI, etc.) do not start until `approved:review` is on the current head (Revisor `VERDICT review @sha: APPROVED`); on CHANGES / `changes:review` they stay off until Revisor approves a later head. Docs-only PRs (no labels) are unchanged.
 3. The author fixes, pushes, and restores `needs:<role>` for each role that requested changes.
-3b. On a new head, the author messages only the reviewers whose label it restored; not Gerente.
+3b. On a new head, the author messages only the reviewers whose label it restored; not Gerente. On a Programador code PR, message Revisor first; other reviewers only after Revisor APPROVED that head.
 4. When all required approvals are present, the last approver adds `ready-to-merge`. Before merging, Gerente checks one verdict comment per `approved:*` label.
 4b. Reviewers report only via the verdict comment. The last approver sends Gerente one line: `ready-to-merge #N @sha7`.
 5. A conflict-free develop merge that doesn't touch reviewed files keeps the approvals; only Teste reruns (`needs:test`).

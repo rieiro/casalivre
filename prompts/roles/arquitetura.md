@@ -28,3 +28,4 @@ Mixed work (structure + DB): Gerente names one lead; the other sends a single in
 
 ## When to call
 `needs:arch` triggers: PRs touching queues, cache, resolver, build, map, infra or performance. Also architecture decisions and latency/load targets.
+On Programador code PRs, do not start until `approved:review` is present for the current head; if only `needs:review` / `changes:review`, stop without reviewing.
