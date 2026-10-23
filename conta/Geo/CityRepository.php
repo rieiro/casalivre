@@ -10,12 +10,9 @@ final class CityRepository
 {
     public static function ensure(PDO $pdo): void
     {
-        $count = (int) $pdo->query('SELECT COUNT(*) FROM cities')->fetchColumn();
+        $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
         if ($count >= 5000) {
             return;
-        }
-        if ($count > 0) {
-            $pdo->exec('DELETE FROM cities');
         }
         $path = dirname(__DIR__, 2) . '/database/cities.json';
         $rows = json_decode((string) file_get_contents($path), true);
@@ -25,19 +22,77 @@ final class CityRepository
         // Pode rodar dentro da transação do migrate() (DEF-008): Db::transactional usa SAVEPOINT quando já há
         // uma transação aberta.
         Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
-            $stmt = $pdo->prepare('INSERT INTO cities (name, uf, label, lat, lng, name_fold, label_fold) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $pdo->exec('DELETE FROM places WHERE parent_id IS NOT NULL');
+            $pdo->exec('DELETE FROM places');
+            $insert = $pdo->prepare("INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES ('city', NULL, ?, ?, ?, ?, ?, ?, 0) RETURNING id");
+            $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', 0)');
             foreach ($rows as $row) {
-                $stmt->execute([
-                    $row['name'],
-                    $row['uf'],
-                    $row['label'],
+                $name = (string) $row['name'];
+                $insert->execute([
+                    $name,
+                    fold($name),
+                    (string) $row['label'],
+                    (string) $row['uf'],
                     $row['lat'],
                     $row['lng'],
-                    fold((string) $row['name']),
-                    fold((string) $row['label']),
                 ]);
+                $id = (int) $insert->fetchColumn();
+                foreach (self::searchKeys($name) as $key) {
+                    $keyIns->execute([$id, $key]);
+                }
             }
+            self::seedPilot($pdo);
         });
+    }
+
+    /**
+     * Word-suffix keys of a folded name (ADR 001 §11.2). Stopwords never start a key; they stay inside one.
+     *
+     * @return list<string>
+     */
+    public static function searchKeys(string $name): array
+    {
+        $fold = preg_replace('/\s+/', ' ', fold($name)) ?? '';
+        if ($fold === '') {
+            return [];
+        }
+        $words = explode(' ', $fold);
+        $stop = ['de' => true, 'da' => true, 'do' => true, 'das' => true, 'dos' => true, 'e' => true];
+        $keys = [];
+        $count = count($words);
+        for ($i = 0; $i < $count; $i++) {
+            if ($words[$i] === '' || isset($stop[$words[$i]])) {
+                continue;
+            }
+            $keys[] = implode(' ', array_slice($words, $i));
+        }
+        return array_values(array_unique($keys));
+    }
+
+    /** Beaches named in the place spec (Geribá, Ferradura, Praia do Forte). Parents are cities from cities.json. */
+    private static function seedPilot(PDO $pdo): void
+    {
+        $pilots = [
+            ['name' => 'Praia de Geribá', 'parent' => 'Armação dos Búzios', 'uf' => 'RJ', 'lat' => -22.7783, 'lng' => -41.9164],
+            ['name' => 'Praia da Ferradura', 'parent' => 'Armação dos Búzios', 'uf' => 'RJ', 'lat' => -22.7712, 'lng' => -41.8848],
+            ['name' => 'Praia do Forte', 'parent' => 'Mata de São João', 'uf' => 'BA', 'lat' => -12.5766, 'lng' => -38.0002],
+        ];
+        $parent = $pdo->prepare("SELECT id FROM places WHERE type = 'city' AND name_fold = ? AND uf = ? ORDER BY id LIMIT 1");
+        $insert = $pdo->prepare("INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES ('poi', ?, ?, ?, ?, ?, ?, ?, 100) RETURNING id");
+        $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', 100)');
+        foreach ($pilots as $poi) {
+            $parent->execute([fold($poi['parent']), $poi['uf']]);
+            $parentId = $parent->fetchColumn();
+            if ($parentId === false) {
+                continue;
+            }
+            $name = $poi['name'];
+            $insert->execute([(int) $parentId, $name, fold($name), $name, $poi['uf'], $poi['lat'], $poi['lng']]);
+            $id = (int) $insert->fetchColumn();
+            foreach (self::searchKeys($name) as $key) {
+                $keyIns->execute([$id, $key]);
+            }
+        }
     }
 
     public static function suggest(string $query, int $limit = 8): array
@@ -113,7 +168,9 @@ final class CityRepository
         self::ensure(db());
         $cities = [];
         $seenStates = [];
-        foreach (db()->query('SELECT name, uf, label, lat, lng, name_fold, label_fold FROM cities ORDER BY name, uf') as $row) {
+        foreach (db()->query("SELECT id, name, uf, label, lat, lng, name_fold FROM places WHERE type = 'city' ORDER BY name, uf, id") as $row) {
+            $row['uf'] = rtrim((string) $row['uf']);
+            $row['label_fold'] = fold((string) $row['label']);
             $cities[] = $row;
             $seenStates[$row['uf']] = self::STATES[$row['uf']] ?? $row['uf'];
         }
@@ -140,7 +197,9 @@ final class CityRepository
             return $data;
         }
         $decoded = JsonCache::read('cities.json');
-        if (is_array($decoded) && isset($decoded['cities'], $decoded['states'])) {
+        $first = is_array($decoded) ? ($decoded['cities'][0] ?? null) : null;
+        if (is_array($decoded) && isset($decoded['cities'], $decoded['states'])
+            && is_array($first) && isset($first['id'], $first['name_fold'], $first['label_fold'])) {
             $data = $decoded;
             return $data;
         }

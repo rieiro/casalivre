@@ -194,7 +194,7 @@ final class GroupRepository
      */
     public static function searchSource(int $groupId): array
     {
-        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activePropertyStrict() . ' ORDER BY id ASC');
+        $st = db()->prepare("SELECT p.*, (c.name || ', ' || rtrim(c.uf)) AS city FROM properties p JOIN places c ON c.id = p.city_place_id WHERE p.group_id = ? AND " . self::activePropertyStrict('p') . ' ORDER BY p.id ASC');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
@@ -202,7 +202,7 @@ final class GroupRepository
     /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     public static function properties(int $groupId): array
     {
-        $st = db()->prepare('SELECT id, public_hash, title, city FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY title, id');
+        $st = db()->prepare("SELECT p.id, p.public_hash, p.title, (c.name || ', ' || rtrim(c.uf)) AS city FROM properties p JOIN places c ON c.id = p.city_place_id WHERE p.group_id = ? AND " . self::activeProperty('p') . ' ORDER BY p.title, p.id');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
@@ -217,7 +217,7 @@ final class GroupRepository
     /** Convites pendentes do grupo (imóveis ativos). @return list<array> */
     public static function invites(int $groupId): array
     {
-        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, p.city FROM group_property_invites i JOIN properties p ON p.id = i.property_id WHERE i.group_id = ? AND ' . self::activeProperty('p') . ' ORDER BY p.title, p.id');
+        $st = db()->prepare("SELECT p.id, p.public_hash, p.title, (c.name || ', ' || rtrim(c.uf)) AS city FROM group_property_invites i JOIN properties p ON p.id = i.property_id JOIN places c ON c.id = p.city_place_id WHERE i.group_id = ? AND " . self::activeProperty('p') . ' ORDER BY p.title, p.id');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
