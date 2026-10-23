@@ -65,7 +65,6 @@ final class ThemeSet
     /** Lock/ocupado: 40001 (serialização), 40P01 (deadlock), 55P03 (lock). */
     private static function ocupado(PDOException $e): bool
     {
-        $code = (string) (($e->errorInfo[0] ?? null) ?: $e->getCode());
-        return in_array($code, ['40001', '40P01', '55P03'], true);
+        return in_array(Db::sqlState($e), ['40001', '40P01', '55P03'], true);
     }
 }
