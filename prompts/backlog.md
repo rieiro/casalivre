@@ -10,6 +10,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 - [x] (done in #164) Remove `PhotoStorage::migrateLegacy` and its callers/tests (legacy `/uploads/users/` photo migration; no data migration, decision 2026-10-21). Owner: Programador.
 - [ ] Remove the leftover `pkg.php-sqlite` pin from `ops/dev-env` `versions.lock` (PostgreSQL only). Source: Arquitetura #162. Sprint: cleanup. Owner: Programador.
 - [ ] Same ops PR as the pin removal: `provision.sh` refreshes the package index when re-provisioning after a pin bump (today the workaround is deleting `.provisioned`), and the CI Valkey step PINGs as `cl_app` instead of only waiting for the socket. Estimate 1 h. Source: Arquitetura #162/#174. Sprint: cleanup. Owner: Programador.
+- [ ] Add `Db::sqlState(PDOException): ?string` and use it at the four call sites that still read SQLSTATE differently (`src/Db.php` ~224 and ~248, `src/GroupRepository.php` ~258, `src/Acoes/ThemeSet.php` ~68). Source: Revisor (larger than #148). Sprint: cleanup. Owner: Programador.
 
 After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP items that touch the code it changes, plus a fixed slice of the remaining backlog of about 20% of the sprint's effort. A new item must name its sprint or it is dropped; Gerente reviews this list once per sprint.
 
