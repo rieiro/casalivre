@@ -36,6 +36,7 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$html
 // Expected mail for a theme: the same body rendered with that theme's brand.php.
 $header = static fn (string $theme): string => MailHtml::render('Aviso', "Texto\n\nhttps://casalivre.example/", Theme::brand($theme));
 t_eq('ok', ThemeSet::run('contraste', Theme::current(), Theme::available())->tipo, 'platform theme: contraste');
+t_backdate($files[1]);
 
 echo "tick 1: manifest lists contraste\n";
 t_ok($mail->push('activation', 'm1@casalivre.test'), 'job 1 queued');
@@ -47,6 +48,7 @@ echo "manifest rebuilt without contraste\n";
 $m = AssetManifest::load();
 unset($m['/assets/themes/contraste.css']);
 file_put_contents(AssetManifest::file(), AssetManifest::encode($m));
+t_backdate(AssetManifest::file());
 t_ok($mail->push('activation', 'm2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::tick($mail, null, $dir);
 t_ok(!array_key_exists('/assets/themes/contraste.css', AssetManifest::load()), 'tick 2: rebuilt manifest seen');

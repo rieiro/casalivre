@@ -69,6 +69,8 @@ final class ActivityLog
     public const GROUP_DOMAIN_UNVERIFIED = 46;
     /** Written only by the DEFINER read functions (audit.activity_recent/activity_by_actor), never by PHP. */
     public const ACTIVITY_LOG_READ = 47;
+    /** IpRateLimiter could not reach Valkey (Segurança #160): own code, not INTERNAL_ERROR. 47 is ACTIVITY_LOG_READ. */
+    public const VALKEY_UNAVAILABLE = 48;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -118,6 +120,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFIED => 'Domínio do grupo verificado por DNS TXT',
         self::GROUP_DOMAIN_UNVERIFIED => 'Domínio do grupo perdeu a verificação (reverificação DNS TXT)',
         self::ACTIVITY_LOG_READ => 'Leitura do log de atividades (ops, função DEFINER)',
+        self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
     ];
 
     public const ADMIN = 'admin';
@@ -147,6 +150,7 @@ final class ActivityLog
         self::GROUP_INVITE_REJECT => self::ADMIN, self::GROUP_PROPERTY_REMOVE => self::ADMIN,
         self::GROUP_DOMAIN_VERIFY_START => self::ADMIN, self::GROUP_DOMAIN_VERIFIED => self::SECURITY,
         self::GROUP_DOMAIN_UNVERIFIED => self::SECURITY, self::ACTIVITY_LOG_READ => self::ADMIN,
+        self::VALKEY_UNAVAILABLE => self::SECURITY,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -429,6 +433,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFY_START => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas', 'motivo'],
+        self::VALKEY_UNAVAILABLE => ['rota', 'modo', 'excecao'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

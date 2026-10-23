@@ -22,7 +22,7 @@ final class ImageQueues
     {
         return match (Queues::driver()) {
             'db' => new DbImageQueue(db()),
-            'valkey' => new ValkeyImageQueue(Valkey::connect()),
+            'valkey' => new ValkeyImageQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
 }

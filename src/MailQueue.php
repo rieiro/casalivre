@@ -33,7 +33,7 @@ final class MailQueues
     {
         return match (Queues::driver()) {
             'db' => new DbMailQueue(db()),
-            'valkey' => new ValkeyMailQueue(Valkey::connect()),
+            'valkey' => new ValkeyMailQueue(Valkey::connect(Valkey::queueTimeout())),
         };
     }
 

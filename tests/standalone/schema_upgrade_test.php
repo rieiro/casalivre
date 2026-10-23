@@ -24,7 +24,7 @@ $p->exec("DELETE FROM settings");
 t_eq(0, $code, "versão 0: migrate.php sai com 0 ($text)");
 t_eq('20', $version($p), 'versão 0 -> 20');
 t_ok((int) $p->query("SELECT COUNT(*) FROM settings WHERE skey = 'theme'")->fetchColumn() === 1, 'seeds aplicados');
-t_eq(47, (int) $p->query('SELECT COUNT(*) FROM activity_actions')->fetchColumn(), 'activity_actions: 47 códigos com classe');
+t_eq(48, (int) $p->query('SELECT COUNT(*) FROM activity_actions')->fetchColumn(), 'activity_actions: 48 códigos com classe');
 
 echo "banco já em 20\n";
 [$code] = $migrate();

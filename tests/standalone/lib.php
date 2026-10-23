@@ -70,6 +70,17 @@ function t_done(): never
 }
 
 /**
+ * Gives $file a new mtime one second older than the previous call's (#192): the worker file caches reload when the
+ * mtime differs, and a test writes in the same second as the load, which filemtime() (1 s) cannot tell apart.
+ */
+function t_backdate(string $file): void
+{
+    static $mtime = null;
+    $mtime = ($mtime ?? time() - 3600) - 1;
+    touch($file, $mtime);
+}
+
+/**
  * Prepara um banco temporário (DB_DSN) com o schema do projeto (PostgreSQL only, #137). Exige TEST_PG_DSN
  * (ex.: pgsql:host=/run/pg;dbname=postgres; ops/dev-env/test-pg.sh define): cria casalivre_t_<pid>_<rand>, carrega
  * schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim. Deve ser chamado antes de qualquer acesso a db().

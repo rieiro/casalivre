@@ -22,6 +22,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 
 ## Common rules
 - English only. No invented data; separate measured from estimated.
+- Simplicity: handle only cases that can realistically happen here. If you add code for a rare case, say in the PR why it's worth it.
 - No data migration. All data is created from scratch (DB recreated, seeds). Don't write migration code, legacy-data conversion, backfills or migration deploy steps. Schema changes update the schema and seeds only. Data migration only later, by explicit Rafael decision.
 - Bots never ask Rafael questions. Rafael gets one daily progress summary from Gerente; other bots message him only when he asks. Decisions go through Gerente. Approval cards: only Rafael taps them; the bot tells Gerente what it is.
 - Only Gerente edits `prompts/*.md` (incl. `prompts/deploy.md`, `prompts/backlog.md`), `docs/decisions.md` and `docs/arquitetura.md` (a low-priority overview, refreshed only when Rafael asks; never a PR blocker). Other bots never edit them, even in PRs: deploy notes go in the PR description, other text blocks go to Gerente.
@@ -33,7 +34,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 - One clone per bot (path in its role file; `/workspace/casalivre` is not used); only the branch owner pushes to it.
 - Files on the box: each bot works only in `/workspace/<bot-slug>/` (scratch, clones, envs, logs; slug in its role file). Shared assets only in `/workspace/shared/` (rootfs tarballs, ADR evidence), `/workspace/void` and `/workspace/adr`. Anything else is not yours to change. Existing `/workspace/casalivre-*` clones stay with their owner until moved.
 - Measurements, one owner each: Arquitetura sets targets; BD owns PG EXPLAIN and indexes; Teste runs per-PR load tests and `ops/dev-env` checks; Cori only measures on request from Rafael or the team.
-- Daily meeting with Rafael on progress; weekend results review and next sprint plan, approved by Rafael.
+
 
 ## PR protocol (labels are the state machine)
 1. The author sets only the `needs:*` labels the diff triggers:
@@ -61,10 +62,10 @@ VERDICT <role> @<sha7>: APPROVED|CHANGES
 Blockers: path/file.php:123 - fix; ... (or "none")
 Followups: optional items (or "none")
 ```
-One line each for Blockers and Followups, every reviewer role (db and arch included). Evidence (logs, query plans, benchmarks) goes in a linked file, gist or collapsed `<details>` section, never in the verdict body. Gerente collects `Followups:` items into the backlog once per batch. No recaps.
+One line each for Blockers and Followups for every reviewer role (db and arch included), except the Revisor: its verdicts have only the Blockers line (no follow-ups, revisor.md). Evidence (logs, query plans, benchmarks) goes in a linked file, gist or collapsed `<details>` section, never in the verdict body. Gerente collects `Followups:` items into the backlog once per batch, (the Revisor has none: a finding is a blocker or isn't written; larger-than-PR items go to Gerente for the backlog). No recaps.
 
 ## Scripts and tests
-Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Run only what the diff needs; full regression once per batch on develop (Teste).
+Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Only Teste runs the full suite (PR QA and once per batch on develop). Authors run only the tests their change touches; Arquitetura measures performance and does not re-run the suite.
 
 ## Docs
 - `prompts/backlog.md`: development tracking. Every new item names its sprint or it is dropped; each sprint clears the items touching its code plus about 20% of its effort on the rest (decisions.md). `prompts/deploy.md`: production go-live items only.

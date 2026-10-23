@@ -14,8 +14,23 @@ final class Valkey
     public const PREFIX = 'cl:';
 
     /**
-     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158); 0 keeps
-     * phpredis defaults (queues and workers).
+     * Connect + read timeout (s) of a queue producer in a web request (#160 follow-up): with Valkey frozen an FPM
+     * worker would otherwise hang up to default_socket_timeout (over 20 s measured).
+     */
+    public const PRODUCER_TIMEOUT = 0.5;
+
+    /**
+     * Timeout for the queue connection (MailQueues/ImageQueues::make): PRODUCER_TIMEOUT in a web request, 0 (phpredis
+     * defaults, the long timeout) in the CLI, i.e. the queue workers and cron scripts. $sapi: test hook.
+     */
+    public static function queueTimeout(?string $sapi = null): float
+    {
+        return ($sapi ?? PHP_SAPI) === 'cli' ? 0.0 : self::PRODUCER_TIMEOUT;
+    }
+
+    /**
+     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158; web queue
+     * producers: PRODUCER_TIMEOUT); 0 keeps phpredis defaults (queue workers).
      */
     public static function connect(float $timeout = 0.0): Redis
     {

@@ -41,10 +41,12 @@ t_ok($mail->push('activation', 'b1@casalivre.test'), 'job 1 queued');
 QueueWorkerLoop::tick($mail, null, $dir);
 t_ok(($html[0] ?? '') === $header('padrao'), 'tick 1: padrao brand');
 t_eq('ok', ThemeSet::run('contraste', Theme::current(), Theme::available())->tipo, 'admin switches the theme to contraste (DB + settings.json)');
+t_backdate($cacheFile);
 t_ok($mail->push('activation', 'b2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::tick($mail, null, $dir);
 t_ok(($html[1] ?? '') === $header('contraste'), 'tick 2: contraste brand');
 t_eq('ok', ThemeSet::run('padrao', 'contraste', Theme::available())->tipo, 'theme back to padrao');
+t_backdate($cacheFile);
 
 echo "link expiry minutes (email_verify_minutes / password_reset_minutes)\n";
 MailWorker::$deliver = null;
@@ -69,6 +71,7 @@ $upd = db()->prepare('UPDATE settings SET value = ? WHERE skey = ?');
 $upd->execute(['180', 'email_verify_minutes']);
 $upd->execute(['90', 'password_reset_minutes']);
 Settings::refresh(); // what scripts/refresh-settings-cache.php does after a settings change (another process)
+t_backdate($cacheFile);
 [$sent, $p, $r] = $round();
 t_eq(2, $sent, 'tick 2: activation and reset delivered');
 t_eq(180, $minutes($p, 'activation_expires_at'), 'tick 2: activation link expires in the new 180 min');
