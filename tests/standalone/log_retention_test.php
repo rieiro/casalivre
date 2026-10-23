@@ -82,7 +82,11 @@ $run = CL_ROOT . '/deploy/runit/casalivre-log-retention/run';
 t_ok(is_file($run) && is_executable($run), 'deploy/runit/casalivre-log-retention/run existe e é executável');
 exec('sh -n ' . escapeshellarg($run) . ' 2>&1', $o, $code);
 t_eq(0, $code, 'script runit com sintaxe sh válida');
-t_ok(str_contains((string) file_get_contents($run), 'scripts/log-retention.php'), 'runit chama scripts/log-retention.php');
+$runBody = (string) file_get_contents($run);
+t_ok(str_contains($runBody, 'scripts/log-retention.php'), 'runit chama scripts/log-retention.php');
+t_ok(!preg_match('/\|\|\s*echo/', $runBody), 'runit não engole o código de saída (sem || echo)');
+t_ok(str_contains($runBody, 'exit "$status"'), 'saída diferente de zero volta para o runit');
+t_ok(is_executable(CL_ROOT . '/deploy/runit/casalivre-log-retention/finish'), 'finish alerta a saída diferente de zero');
 
 echo "scripts/log-retention.php: LOG_JOB_DB_USER obrigatório fora de dev (Arquitetura #148)\n";
 $script = CL_ROOT . '/scripts/log-retention.php';

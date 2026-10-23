@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-finish casalivre-log-retention 86400 "$@"

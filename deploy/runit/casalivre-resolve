@@ -1,0 +1,55 @@
+#!/bin/sh
+# casalivre-resolve [--print] HELPER [args...]
+#
+# One lookup for the runit helpers. Order: ALERT_BIN (alert only),
+# $CASALIVRE_RUNIT_BIN/HELPER, the directory of this file, /usr/local/sbin/HELPER.
+# --print writes the path and exits. Otherwise exec the helper, or, if it is
+# missing: finish pages and exits 0 (runit must still restart); anything else
+# exits 1.
+casalivre_bin() {
+  name=$1
+  origin=$2
+  case $name in
+    ''|*[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  if [ "$name" = casalivre-alert ] && [ -n "${ALERT_BIN:-}" ] && [ -x "$ALERT_BIN" ]; then
+    printf '%s\n' "$ALERT_BIN"
+    return 0
+  fi
+  if [ -n "${CASALIVRE_RUNIT_BIN:-}" ] && [ -x "$CASALIVRE_RUNIT_BIN/$name" ]; then
+    printf '%s\n' "$CASALIVRE_RUNIT_BIN/$name"
+    return 0
+  fi
+  if [ -n "$origin" ] && [ -x "$origin/$name" ]; then
+    printf '%s\n' "$origin/$name"
+    return 0
+  fi
+  if [ -x "/usr/local/sbin/$name" ]; then
+    printf '%s\n' "/usr/local/sbin/$name"
+    return 0
+  fi
+  return 1
+}
+
+if [ "${0##*/}" != casalivre-resolve ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+origin=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ "${1:-}" = --print ]; then
+  casalivre_bin "${2:-}" "$origin"
+  exit $?
+fi
+
+helper=${1:-}
+shift 2>/dev/null || true
+service=${1:-casalivre}
+if ! bin=$(casalivre_bin "$helper" "$origin"); then
+  echo "$service: $helper not installed" >&2
+  if [ "$helper" = casalivre-finish ]; then
+    logger -t casalivre -p user.err "$service: ALERT finish helper missing" 2>/dev/null || true
+    exit 0
+  fi
+  exit 1
+fi
+exec "$bin" "$@"
