@@ -76,6 +76,14 @@ jobs:
           docker run -d --name valkey -v /tmp/vk:/vk valkey/valkey:9 valkey-server --port 0 --unixsocket /vk/valkey.sock --unixsocketperm 777 --aclfile /vk/valkey.acl
           for i in $(seq 50); do [ -S /tmp/vk/valkey.sock ] && break; sleep 0.2; done
           [ -S /tmp/vk/valkey.sock ] || { docker logs valkey; exit 1; }
+          # Socket existence is not readiness: AUTH and PING as cl_app must succeed.
+          reply=
+          for i in $(seq 50); do
+            reply=$(docker exec valkey valkey-cli -s /vk/valkey.sock --user cl_app --pass "$(cat /tmp/vk/app.secret)" PING 2>/dev/null || true)
+            [ "$reply" = PONG ] && break
+            sleep 0.2
+          done
+          [ "$reply" = PONG ] || { echo "cl_app AUTH/PING failed: ${reply:-<empty>}"; docker logs valkey; exit 1; }
       - name: Testes standalone
         env:
           LOG_SALT: ci-salt-nao-usar-em-producao-0123456789abcdef
