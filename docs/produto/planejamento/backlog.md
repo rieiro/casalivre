@@ -399,9 +399,9 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 
 ### G19 — Noites vazias entre reservas (só a cor no calendário)
 - **Problema:** com mínimo de 3 noites ou mais (comum no Réveillon e no Carnaval), as noites livres entre reservas ficam impossíveis de reservar, e no calendário do anfitrião elas parecem uma noite livre qualquer.
-- **Solução (decisão do Rafael, 2026-10-22):** o único comportamento é pintar, no calendário do anfitrião, as noites vazias que o mínimo de estadia impede de reservar, numa cor distinta que marca o conflito. Não há alerta de nenhum tipo, nem ao anfitrião nem ao nó acima. Não há relaxamento automático do mínimo de estadia. As noites continuam impossíveis de reservar.
+- **Solução (decisão do Rafael, 2026-10-22):** o único comportamento é pintar, no calendário do anfitrião, as noites vazias que o mínimo de estadia impede de reservar, numa cor distinta que marca o conflito. Não há alerta de nenhum tipo, nem ao anfitrião nem ao nó acima. Não há relaxamento automático do mínimo de estadia. As noites continuam impossíveis de reservar. A tela (spec-06 §3) é o status **Intervalo curto** (`unbookable_gap`), rótulo "Indisponível · intervalo curto", só no calendário do anfitrião (mensal e multicalendário). A célula pinta só o que a API marca e continua selecionável.
 - **Critérios de aceite:**
-  1. Com mínimo de 5 noites e 2 noites livres entre duas reservas, essas 2 noites aparecem no calendário do anfitrião numa cor distinta, diferente da noite reservada e da noite livre que dá para reservar.
+  1. Com mínimo de 5 noites e 2 noites livres entre duas reservas, essas 2 noites aparecem no calendário do anfitrião como Intervalo curto (spec-06 §3): rótulo "Indisponível · intervalo curto", distinto de Bloqueado e de Aguardando.
   2. Noites livres que podem ser reservadas com o mínimo vigente não usam essa cor.
   3. Ninguém recebe alerta, aviso ou banner por causa dessas noites: nem o anfitrião, nem o nó acima.
   4. Essas noites não aceitam uma estadia abaixo do mínimo; o mínimo não é relaxado.
@@ -457,7 +457,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - Pagamentos como N linhas por reserva, não um `paid_at` (G12).
 - O snapshot guarda o `max_nights` do anúncio e o teto da plataforma de 30 noites (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
 - Uma oferta ou solicitação pré-aprovada leva o canal de origem (G11).
-- Regras de disponibilidade por imóvel, com modelos por nó e valores sazonais pelos períodos de datas, avaliadas num lugar só e dentro das metas de velocidade do ADR 001 (G18). As noites vazias que o mínimo impede de reservar aparecem só como cor distinta no calendário do anfitrião, sem alerta e sem relaxar o mínimo (G19).
+- Regras de disponibilidade por imóvel, com modelos por nó e valores sazonais pelos períodos de datas, avaliadas num lugar só e dentro das metas de velocidade do ADR 001 (G18). As noites vazias que o mínimo impede de reservar aparecem só como status Intervalo curto no calendário do anfitrião (spec-06 §3), sem alerta e sem relaxar o mínimo (G19).
 - Cadastro de anúncio (P10): campos estruturados de divulgação de câmera externa (sim/não + local) e monitor de ruído (sim/não + só decibéis), com a confirmação obrigatória de "sem câmeras internas, sem gravação de áudio, sem reconhecimento facial" para publicar (G6); forma de check-in como enum (G7).
 
 ## Itens adiados
