@@ -21,6 +21,9 @@ interface JobQueue
     /** Falha: conta a tentativa e reagenda (backoff); devolve true se desistiu (status failed). */
     public function fail(int $id, string $error = ''): bool;
 
+    /** Desiste sem contar outra tentativa (a reserva órfã já chegou a MAX_ATTEMPTS). */
+    public function giveUp(int $id, string $error = 'stale'): void;
+
     /** Apaga sent/failed mais antigos que $days dias. Devolve quantos apagou. */
     public function purge(int $days): int;
 }
@@ -92,8 +95,9 @@ abstract class SqlJobQueue implements JobQueue
     {
         $t = $this->table();
         $now = self::now();
-        // Reserva órfã (worker morreu no meio): volta para pending depois de STALE_SECONDS.
-        $this->pdo->prepare("UPDATE $t SET status = 'pending', updated_at = ? WHERE status = 'processing' AND updated_at < ?")
+        // Reserva órfã (worker morreu no meio): volta para pending depois de STALE_SECONDS e conta uma tentativa,
+        // para um item que sempre derruba o worker não ser reprocessado sem limite (Queues::MAX_ATTEMPTS).
+        $this->pdo->prepare("UPDATE $t SET status = 'pending', attempts = attempts + 1, updated_at = ? WHERE status = 'processing' AND updated_at < ?")
             ->execute([$now, self::now(-static::STALE_SECONDS)]);
         $st = $this->pdo->prepare('SELECT id, attempts, ' . implode(', ', $this->dataColumns()) . " FROM $t
             WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at, id LIMIT " . max(1, $limit));
@@ -149,6 +153,12 @@ abstract class SqlJobQueue implements JobQueue
         $this->pdo->prepare("UPDATE $t SET status = 'pending', attempts = ?, last_error = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?")
             ->execute([$attempts, $error, self::now(Queues::backoffSeconds($attempts)), self::now(), $id]);
         return false;
+    }
+
+    public function giveUp(int $id, string $error = 'stale'): void
+    {
+        $this->pdo->prepare('UPDATE ' . $this->table() . " SET status = 'failed'" . $this->clearSql() . ', last_error = ?, updated_at = ? WHERE id = ?')
+            ->execute([substr($error, 0, 200), self::now(), $id]);
     }
 
     public function purge(int $days): int

@@ -29,6 +29,7 @@ foreach ($scripts as $path) {
 }
 $workerRun = (string) file_get_contents("$root/casalivre-queue-worker/run");
 t_ok(str_contains($workerRun, 'exec 2>&1') && str_contains($workerRun, 'exec chpst -u') && str_contains($workerRun, 'scripts/queue-worker.php'), 'queue worker: chpst, stderr merged, queue-worker.php');
+t_ok(str_contains($workerRun, '-d zend.exception_ignore_args=1'), 'queue worker php does not keep exception arguments');
 t_ok(!str_contains($workerRun, '|| echo'), 'queue worker run does not swallow the exit code');
 $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
 t_ok(!preg_match('/\|\|\s*echo/', $retentionRun) && str_contains($retentionRun, 'exit "$status"') && str_contains($retentionRun, 'sleep 86400'), 'log-retention: failure exits, success still sleeps 24h');

@@ -3,14 +3,22 @@
 
 declare(strict_types=1);
 
+// Argument values must not show up in a stack trace (same setting as public/index.php).
+// The runit `run` scripts also pass -d zend.exception_ignore_args=1.
+ini_set('zend.exception_ignore_args', '1');
+
 // Long-running queue worker (P0-4: runit service queue-worker in ops/dev-env). Loops over the mail and
 // image queues of QUEUE_DRIVER, one batch each, then sleeps. Same batch code as the cron workers
 // (MailWorker/ImageWorker); for QUEUE_DRIVER=db the cron scripts also work.
 //   php scripts/queue-worker.php [--once]
 // Exits on SIGTERM between batches (runit `sv stop`). Each iteration is QueueWorkerLoop::tick (clears per-process caches).
+// Queues are opened inside the loop. Valkey down at start is a RedisException: one ALERT, reconnect every second,
+// no exit (a startup try would exit 255 and runit would restart it every second).
 // Exits 1 when the DB connection is lost (tick pings it first; a job interrupted by it is not counted as failed):
-// runit restarts the worker with a fresh connection. Before exiting it logs an ALERT line and sleeps 5-30 s
-// (QueueWorkerLoop::dbLost), so a PG outage does not restart the worker every second.
+// QueueWorkerLoop::dbLost logs an ALERT and sleeps 5-30 s, so a PG outage does not restart the worker every second.
+// Any other exception (including a Valkey AUTH or secret-file failure): class name only, same backoff, exit 1.
+// A job whose ack was lost stays reserved and is sent again after STALE_SECONDS (at-least-once). That reclaim
+// counts as an attempt, so retries stop at Queues::MAX_ATTEMPTS.
 
 $root = dirname(__DIR__);
 require_once $root . '/src/Db.php';
@@ -28,26 +36,31 @@ if (function_exists('pcntl_async_signals')) {
     });
 }
 @mkdir($root . '/storage', 0700, true);
-$dbLost = static function (Throwable $e): never {
-    if (!Db::isConnectionError($e)) {
-        throw $e;
-    }
-    QueueWorkerLoop::dbLost($e);
-    exit(1);
-};
-try {
-    $mail = MailQueues::make(); // the SQL queues connect here: PG down at start is a lost DB too
-    $image = ImageQueues::make();
-} catch (Throwable $e) {
-    $dbLost($e);
-}
+$mail = null;
+$image = null;
 $webp = function_exists('imagewebp') && (gd_info()['WebP Support'] ?? false);
 echo 'queue-worker: driver ' . Queues::driver() . ($webp ? '' : ' (no WebP: image queue skipped)') . "\n";
 do {
+    $reports = [];
     try {
+        $mail ??= MailQueues::make();
+        $image ??= ImageQueues::make();
         $reports = QueueWorkerLoop::tick($mail, $webp ? $image : null, $root . '/storage');
+        QueueWorkerLoop::valkeyUp();
     } catch (Throwable $e) {
-        $dbLost($e);
+        if ($e instanceof RedisException) {
+            $mail = $image = null; // reconnect on the next iteration
+            if (QueueWorkerLoop::valkeyDown($e, $once, $stop)) {
+                exit(1);
+            }
+            continue;
+        }
+        if (Db::isConnectionError($e)) {
+            QueueWorkerLoop::dbLost($e);
+        } else {
+            QueueWorkerLoop::unexpected($e);
+        }
+        exit(1);
     }
     foreach ($reports as $q => $report) {
         if ($report !== null && ($report['enviados'] + $report['ignorados'] + $report['falhas']) > 0) {

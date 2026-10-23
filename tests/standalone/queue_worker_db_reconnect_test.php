@@ -17,8 +17,7 @@ $dsn = (string) getenv('DB_DSN');
 $other = new PDO($dsn, getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 /** Drops the worker's (this process's) DB session, as a PG restart does. */
 $kill = static function () use ($other): void {
-    $pid = (int) db()->query('SELECT pg_backend_pid()')->fetchColumn();
-    $other->query("SELECT pg_terminate_backend($pid)");
+    t_pg_terminate_backend($other, (int) db()->query('SELECT pg_backend_pid()')->fetchColumn());
     usleep(100000);
 };
 /** What runit does after the worker exits: a new process, so a new DB connection and new queue objects. */
@@ -71,6 +70,7 @@ t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'b retried once its reservation
 sort($sent);
 t_eq(['a@casalivre.test', 'b@casalivre.test', 'c@casalivre.test'], $sent, 'every job delivered exactly once (none lost, none duplicated)');
 t_eq(['sent', 'sent', 'sent'], array_column($rows(), 'status'), 'all three sent');
+t_eq([0, 1, 0], array_map('intval', array_column($rows(), 'attempts')), 'only the reclaimed reservation counted an attempt');
 
 echo "connection dropped between ticks (PG restart while idle)\n";
 $mail->push('activation', 'd@casalivre.test');
@@ -98,6 +98,7 @@ $mk = static function (string $state, string $msg): PDOException {
 t_ok(Db::isConnectionError($mk('08006', 'connection to server failed')), '08006 is a connection error');
 t_ok(Db::isConnectionError($mk('57P01', 'terminating connection due to administrator command')), '57P01 is a connection error');
 t_ok(Db::isConnectionError(new RuntimeException('wrap', 0, $mk('HY000', 'SQLSTATE[HY000]: General error: 7 no connection to the server'))), 'HY000 "no connection to the server", wrapped');
+t_ok(Db::isConnectionError($mk('HY000', 'SQLSTATE[HY000]: General error: 7 FATAL:  terminating connection due to administrator command')), 'HY000 administrator terminate is a connection error');
 t_ok(!Db::isConnectionError($mk('23505', 'duplicate key value')), 'unique violation is not');
 t_ok(!Db::isConnectionError($mk('HY000', 'General error: 7 some other failure')), 'other HY000 is not');
 t_ok(!Db::isConnectionError(new RuntimeException('SMTP down')), 'non-PDO error is not (still a job failure)');
@@ -116,7 +117,7 @@ for ($i = 0; $i < 100 && $worker === []; $i++) {
 }
 t_eq(1, count($worker), 'worker connected');
 foreach ($worker as $p) {
-    $other->query('SELECT pg_terminate_backend(' . (int) $p . ')');
+    t_pg_terminate_backend($other, (int) $p);
 }
 // Arquitetura #167: no exit right away (runit would restart it every second during a PG outage). It sleeps 5-30 s,
 // so it is still running 2 s later with the ALERT line already written; SIGTERM (sv stop) ends the sleep, exit 1.

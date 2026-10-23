@@ -2,4 +2,5 @@
 # Waits for the Valkey socket so it does not crash-loop on start.
 [ -S "$CL_RUN/valkey.sock" ] || { sleep 0.2; exit 1; }
 cd "$CL_REPO" || exit 1
-exec php8.4 scripts/queue-worker.php 2>&1
+# zend.exception_ignore_args: a stack trace must not include argument values (the script sets it too).
+exec php8.4 -d zend.exception_ignore_args=1 scripts/queue-worker.php 2>&1

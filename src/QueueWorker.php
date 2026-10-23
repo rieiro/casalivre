@@ -8,7 +8,9 @@ require_once __DIR__ . '/Db.php';
 /**
  * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
  * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. Erro de conexão com o banco (Db::isConnectionError)
- * não conta como falha do item: o lote para e a exceção sobe (o worker de longa duração sai e o runit o reinicia).
+ * ou com o Valkey (RedisException) não conta como falha do item: o lote para e a exceção sobe (o worker longo reconecta
+ * no Valkey, ou sai para o runit reiniciar no caso do banco). Uma reserva órfã reaproveitada já contou uma tentativa;
+ * em MAX_ATTEMPTS o item é desistido sem nova entrega.
  */
 final class QueueWorker
 {
@@ -53,14 +55,25 @@ final class QueueWorker
                     break;
                 }
                 $job = $jobs[0];
+                if ((int) $job['attempts'] >= Queues::MAX_ATTEMPTS) {
+                    $queue->giveUp((int) $job['id'], 'stale');
+                    $report['falhas']++;
+                    $report['desistencias']++;
+                    error_log($label . ' #' . $job['id'] . ' desistido após ' . Queues::MAX_ATTEMPTS . ' tentativas (stale)');
+                    if ($onGiveUp !== null) {
+                        $onGiveUp($job, new RuntimeException('stale'));
+                    }
+                    continue;
+                }
                 try {
                     $done = $handle($job);
                     $queue->ack($job['id']);
                     $report[$done ? 'enviados' : 'ignorados']++;
                 } catch (Throwable $e) {
-                    if (Db::isConnectionError($e)) {
-                        // DB connection lost: not the job's fault, so no fail()/attempt. The job stays reserved and
-                        // goes back to the queue as a stale reservation; the worker exits (scripts/queue-worker.php).
+                    if (Db::isConnectionError($e) || $e instanceof RedisException) {
+                        // DB connection lost, or Valkey unreachable (QUEUE_DRIVER=valkey): not the job's fault, so no
+                        // fail()/attempt. The job stays reserved and goes back to the queue as a stale reservation
+                        // (at-least-once: a job sent before a lost ack is sent again); scripts/queue-worker.php handles it.
                         throw $e;
                     }
                     $report['falhas']++;

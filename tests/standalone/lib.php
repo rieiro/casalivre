@@ -197,6 +197,12 @@ function t_pg_admin(string $adminDsn): PDO
     return new PDO($adminDsn, getenv('TEST_PG_USER') ?: null, getenv('TEST_PG_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 
+/** Terminates one PostgreSQL backend (pg_terminate_backend) from another connection of the same role. */
+function t_pg_terminate_backend(PDO $pdo, int $pid): void
+{
+    $pdo->query('SELECT pg_terminate_backend(' . $pid . ')');
+}
+
 /**
  * Drops a test database. WITH (FORCE) first; if PG denies it (e.g. "permission denied to terminate process"
  * on a backend casalivre_dev may not signal), closes the test's own connection and retries without FORCE

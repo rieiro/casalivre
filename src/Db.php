@@ -237,7 +237,8 @@ final class Db
     /**
      * Lost or unreachable DB connection (not a query/data error), anywhere in the exception chain: SQLSTATE class 08
      * (connection exception), 57P01-57P03 (admin/crash shutdown, cannot connect now), or the pgsql driver's
-     * HY000 for a dropped session ("server closed the connection unexpectedly", "no connection to the server").
+     * HY000 for a dropped session ("server closed the connection unexpectedly", "no connection to the server",
+     * "terminating connection due to administrator command").
      */
     public static function isConnectionError(Throwable $e): bool
     {
@@ -250,7 +251,11 @@ final class Db
                 return true;
             }
             $msg = $e->getMessage();
-            if ($state === 'HY000' && (str_contains($msg, 'server closed the connection') || str_contains($msg, 'no connection to the server'))) {
+            // pdo_pgsql often reports a dropped session as HY000, including an administrator terminate
+            // (pg_terminate_backend / server shutdown) whose SQLSTATE would otherwise be 57P01.
+            if ($state === 'HY000' && (str_contains($msg, 'server closed the connection')
+                || str_contains($msg, 'no connection to the server')
+                || str_contains($msg, 'terminating connection due to administrator command'))) {
                 return true;
             }
         }
