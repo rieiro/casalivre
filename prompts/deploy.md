@@ -156,7 +156,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 - [ ] `* * * * *  php /srv/casalivre/scripts/image-worker.php` (memory_limit ≥ 256M no CLI)
 - [ ] `0 * * * *  php /srv/casalivre/scripts/sync-calendars.php`
 - [ ] `17 * * * *  php /srv/casalivre/scripts/verify-domains.php >> /var/log/casalivre/verify-domains.log 2>&1`
-- [ ] `15 3 * * *  php /srv/casalivre/scripts/log-retention.php` (ou runit deploy/runit/casalivre-log-retention)
+- [ ] Log retention: prefer the runit services in **Jobs agendados** below (not a bare cron). Cron `15 3 * * * php …/log-retention.php` only if runit is unavailable.
 - [ ] Avisos de domínio (log 46) exigem admin ativo, mail-worker rodando e SMTP configurado.
 
 **nginx / DNS / TLS (domínios de grupo)**
@@ -239,8 +239,37 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 ## Jobs agendados (usuário do php-fpm)
 
-- [ ] **Retenção de logs (14 dias, aprovada)**: runit `deploy/runit/casalivre-log-retention` (`cp -r` para `/etc/sv/`, `ln -s` em `/var/service/`, `conf` com `APP_DIR`, `APP_USER`, `RETENTION_DAYS`, `PHP_BIN`) ou cron `15 3 * * * php scripts/log-retention.php`. Cobre `storage/logs/api/api-*`, o `activity_log` no PostgreSQL, `error.log`, `calendar-sync.log` e `php.log`. Confirmar a primeira execução (`sv status` e saída do script).
-- [ ] runit service log dirs (`svlogd`, including the queue worker's) are `0700`, owned by the service user, and keep 14 days. Worker errors are logged as one ALERT line with no DSN, host or secrets (Segurança #167, #174).
+- [ ] **Queue worker and log retention (runit, Void).** Install the helpers once, then both services. `conf` is optional, mode 0640 root:root, and holds no secrets (the app reads `APP_DIR/.env`).
+
+      sudo install -d -m 0755 /usr/local/sbin
+      sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
+        deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish \
+        /usr/local/sbin/
+      # keep an existing conf if you already have one
+      sudo cp -a /etc/sv/casalivre-log-retention/conf /tmp/casalivre-log-retention.conf 2>/dev/null || true
+      sudo rm -rf /etc/sv/casalivre-log-retention /etc/sv/casalivre-queue-worker
+      sudo cp -a deploy/runit/casalivre-log-retention /etc/sv/
+      sudo cp -a deploy/runit/casalivre-queue-worker /etc/sv/
+      sudo cp -a /tmp/casalivre-log-retention.conf /etc/sv/casalivre-log-retention/conf 2>/dev/null || true
+      sudo ln -sfn /etc/sv/casalivre-log-retention /var/service/casalivre-log-retention
+      sudo ln -sfn /etc/sv/casalivre-queue-worker /var/service/casalivre-queue-worker
+
+      Optional `/etc/sv/<service>/conf`:
+        APP_DIR=/srv/casalivre
+        APP_USER=casalivre
+        LOG_GROUP=casalivre
+        PHP_BIN=/usr/bin/php
+        RETENTION_DAYS=14          # log-retention only
+        RESTART_DELAY=86400        # log-retention only; seconds before a failed run is tried again
+        LOG_DIR=/var/log/casalivre/queue-worker   # or .../log-retention
+        ALERT_THROTTLE=900
+        ALERT_CMD=/usr/local/sbin/your-pager      # optional absolute path, no shell
+
+- [ ] Log dirs: `/var/log/casalivre` is `0711` root:root (traversable, not listable). `/var/log/casalivre/queue-worker` and `/var/log/casalivre/log-retention` are `0700`, owned by the service user, and keep about 14 days (`t86400`, `n14`). Do not remove that rotation from the seeded `config` (it is written only when `config` is missing). Worker errors stay one ALERT line with no DSN, host, or secrets.
+
+- [ ] Alerts: a line containing `ALERT` is paged from the log service; a non-zero exit is paged from `./finish` (not SIGTERM/SIGINT). Each service is paged at most once per 15 minutes. Every event is still appended to `/var/log/casalivre/alerts.log` (0600 root) and a page also goes to syslog (`logger -t casalivre -p user.err`). `alerts.log` is not rotated by svlogd; add a logrotate rule if it should follow the same 14 days.
+
+- [ ] Check: `sv status casalivre-queue-worker casalivre-log-retention` and the same for `.../log`. Confirm `find /var/log/casalivre/queue-worker /var/log/casalivre/log-retention -type d -prune -printf '%m %u\n'` is `700` and the service user. A bad `PHP_BIN` in conf should exit non-zero, write one page line, and (for the worker) come back; log-retention then sits in `finish` for `RESTART_DELAY` instead of looping.
 - [ ] **Sincronização de calendários**: `0 * * * * php /caminho/casalivre/scripts/sync-calendars.php`, com o usuário do php-fpm (grava no `activity_log`). Agora também remove as noites além do horizonte (`trimHorizon()`), antes feito no GET.
 
 ## Permissões e arquivos
