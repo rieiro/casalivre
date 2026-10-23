@@ -56,7 +56,7 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 
 ## 3. Calendário
 **Visões:** **Mensal por imóvel** (padrão quando o contexto é um imóvel) e **Multicalendário** (padrão quando o contexto é um nó, com uma linha por imóvel e uma coluna por dia, rolagem horizontal por semanas, e o filtro e a busca de imóvel fixos à esquerda).
-**Status de cada dia (com padrão visual, texto e não só cor):**
+**Status de cada dia (com padrão visual, texto e não só cor).** Cada dia tem um só status; eles não se combinam. O campo é `day_status`.
 | Status | Visual | Rótulo |
 |---|---|---|
 | Disponível | fundo liso, com o preço | "Disponível · R$ 450" |
@@ -65,13 +65,12 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 | Aguardando pagamento | pontilhado | "Aguardando pagamento · até 17/10, 10:30" |
 | Bloqueado | hachurado com ícone de cadeado | "Bloqueado · Manutenção" |
 | Intervalo curto | preenchimento suave de `color.warning` (âmbar de aviso) e listras horizontais | "Indisponível · intervalo curto" |
-**Intervalo curto (G19, calendário do anfitrião):** status `unbookable_gap`. É a noite livre entre reservas que o mínimo de estadia impede de reservar. Tela da UI (`/workspace/shared/ui/g19-host-calendar-gap-nights.md`).
-- Só no calendário do anfitrião, na visão mensal e no multicalendário. Não aparece na busca, no calendário do hóspede nem no painel Hoje.
-- O visual é o preenchimento suave do token `color.warning` mais listras horizontais. Não é Bloqueado (hachura com cadeado) nem Aguardando (listra diagonal ou pontilhado). O rótulo é "Indisponível · intervalo curto". O leitor de tela lê a data e esse rótulo. Não depende só da cor.
-- A tela pinta só o dia que a API marca. Não calcula o intervalo.
-- A célula continua selecionável. Vale o mesmo painel de um dia livre: bloquear, desbloquear, preço e mínimo de noites.
+**Intervalo curto (G19, calendário do anfitrião):** noite livre entre reservas que o mínimo de estadia impede de reservar. Tela da UI (`/workspace/shared/ui/g19-host-calendar-gap-nights.md`). Campo confirmado pela Arquitetura.
+- O dia traz `day_status` de primeira classe. Intervalo curto é `day_status: "unbookable_gap"`. Não há objeto `flags`.
+- Os status desta seção são exclusivos. A tela lê só `day_status` (um caminho de pintura). Todo dia que o motor marca como `unbookable_gap` usa a mesma pintura, só no calendário do anfitrião (mensal e multicalendário). Não aparece na busca, no calendário do hóspede nem no painel Hoje. A tela não calcula o intervalo.
+- A pintura é o preenchimento suave do token `color.warning` mais listras horizontais, com o rótulo "Indisponível · intervalo curto". O leitor de tela lê a data e esse rótulo. Não depende só da cor.
+- Continuar selecionável, com o mesmo painel de um dia livre (bloquear, desbloquear, preço e mínimo de noites), é regra desse status.
 - **Não entra:** alerta ao anfitrião ou ao nó acima; relaxamento automático do mínimo de estadia; selo, toast ou chamada no Hoje.
-- **Campo da API (em aberto, Arquitetura):** a UI pinta por um caminho só e não lê os dois ao mesmo tempo. Ainda não está decidido no repositório se o dia vem como `day_status: "unbookable_gap"` ou como `flags.unbookable_gap`. Os dois ficam pendentes até a Arquitetura escolher.
 **Seleção de intervalo:** clicar no 1º e no último dia, ou arrastar. **Alternativa por teclado:** setas para mover, Shift+setas para estender e Enter para abrir o painel. No mobile, tocar no início e no fim, com o botão "Selecionar intervalo".
 **Painel lateral (desktop) ou painel inferior (mobile), para o intervalo selecionado ("20 a 25/12 · 5 noites"):**
 - **Bloquear** ou **desbloquear**, com o motivo (manutenção, uso próprio, outro) e uma **nota**. O **operador** não bloqueia livremente: com a permissão delegada, ele cria só um **bloqueio de manutenção, com motivo obrigatório** e registro no log *[E]*.
@@ -87,9 +86,9 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 4. O preço por canal é só de leitura e bate com o preço que o hóspede vê.
 5. A falha de iCal aparece no calendário e como alerta em Hoje.
 6. O multicalendário mantém fixa a coluna dos imóveis ao rolar, e os dias com reserva continuam visíveis para o operador, que não edita preço.
-7. Com a API marcando o dia como intervalo curto, o mensal e o multicalendário mostram o preenchimento de `color.warning`, as listras horizontais e o rótulo "Indisponível · intervalo curto". Sem a marca da API, o dia não usa esse status.
-8. O leitor de tela anuncia a data e "Indisponível · intervalo curto".
-9. A célula de intervalo curto entra na seleção e abre o mesmo painel de dia livre (bloquear, preço, mínimo).
+7. Com `day_status` `"unbookable_gap"`, o mensal e o multicalendário mostram o preenchimento de `color.warning`, as listras horizontais e o rótulo "Indisponível · intervalo curto". Qualquer outro `day_status` não usa essa pintura. A resposta do dia não traz `flags`.
+8. Dois dias com `day_status` `"unbookable_gap"` usam a mesma pintura. O leitor de tela anuncia a data e "Indisponível · intervalo curto".
+9. A edição igual à de um dia livre é a regra desse status: a célula entra na seleção e abre o painel (bloquear, preço, mínimo).
 10. O mínimo de estadia do imóvel não muda por causa desse status.
 
 ## 3b. Origem da reserva e "Lançar reserva manual"
