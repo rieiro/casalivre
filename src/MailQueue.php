@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/JobQueue.php';
 require_once __DIR__ . '/ValkeyJobQueue.php';
 require_once dirname(__DIR__) . '/conta/Account/Email.php';
@@ -52,6 +53,9 @@ final class MailQueues
 /** Queue in the mail_queue table of the app database (PostgreSQL). */
 final class DbMailQueue extends SqlJobQueue implements MailQueue
 {
+    /** Test hook: runs between the cooldown check and the insert (widens the race window in mail_cooldown_race_test). */
+    public static ?Closure $afterCheck = null;
+
     protected function table(): string
     {
         return 'mail_queue';
@@ -80,18 +84,40 @@ final class DbMailQueue extends SqlJobQueue implements MailQueue
         return hash_hmac('sha256', $type . "\n" . Email::normalize($recipient), $salt);
     }
 
+    /** Namespace (first int4) of the per-cooldown-key advisory locks in push(); distinct from Db::PG_MIGRATE_LOCK. */
+    public const PG_COOLDOWN_LOCK = 718331202;
+
+    /**
+     * Check and insert are serialized per cooldown key (Segurança #88: SELECT-then-INSERT let parallel
+     * requests queue the same mail several times): one transaction with pg_advisory_xact_lock(PG_COOLDOWN_LOCK,
+     * hashtext(key)) held until commit (READ COMMITTED: the check then sees the other request's committed row).
+     * Inside a caller's transaction it joins it (savepoint) and the lock lasts until that transaction ends.
+     */
     public function push(string $type, string $recipient): bool
     {
         if (!in_array($type, self::TYPES, true)) {
             throw new InvalidArgumentException('Tipo de e-mail inválido.');
         }
         $key = self::cooldownKey($type, $recipient);
+        return (bool) Db::transactional($this->pdo, function (PDO $pdo) use ($type, $recipient, $key): bool {
+            $lock = $pdo->prepare('SELECT pg_advisory_xact_lock(' . self::PG_COOLDOWN_LOCK . ', hashtext(?))');
+            $lock->execute([$key]);
+            $lock->closeCursor();
+            return $this->checkAndInsert($type, $recipient, $key);
+        });
+    }
+
+    private function checkAndInsert(string $type, string $recipient, string $key): bool
+    {
         $recent = $this->pdo->prepare('SELECT 1 FROM mail_queue WHERE cooldown_key = ? AND created_at > ? LIMIT 1');
         $recent->execute([$key, self::now(-MailQueues::cooldownSeconds($type))]);
         $hit = $recent->fetchColumn() !== false;
         $recent->closeCursor();
         if ($hit) {
             return false;
+        }
+        if (self::$afterCheck !== null) {
+            (self::$afterCheck)();
         }
         $this->insertJob(['type' => $type, 'recipient' => Email::normalize($recipient), 'cooldown_key' => $key]);
         return true;
