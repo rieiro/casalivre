@@ -27,3 +27,4 @@ PR verdict comment, in the team.md verdict format (one Blockers line with file:l
 
 ## When to call
 Review and re-review when woken with `needs:review` on a PR.
+On Programador code PRs, Revisor reviews before any other role; other roles wait for its APPROVED on that head.

@@ -25,3 +25,4 @@ PR verdict comment (severity, file:line); backlog items and deploy-condition blo
 
 ## When to call
 `needs:security` triggers: PRs touching login/session, upload, public API, personal data, CSP/headers, CSP or error snapshots, external calls, secrets.
+On Programador code PRs, do not start until `approved:review` is present for the current head; if only `needs:review` / `changes:review`, stop without reviewing.

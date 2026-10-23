@@ -26,3 +26,4 @@ PR verdict comment directly on the PR. Gerente: diagnostics, specs with PG DDL, 
 
 ## When to call
 `needs:db` on a PR with schema, indexes, `migrate()` or SQL. New work from Gerente directly: slow query; type/constraint decision; queue or retention affecting the DB; PG config/backup/restore. Other bots may contact BD directly on PR/spec findings.
+On Programador code PRs, do not start until `approved:review` is present for the current head; if only `needs:review` / `changes:review`, stop without reviewing.

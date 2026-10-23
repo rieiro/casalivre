@@ -26,3 +26,4 @@ PR verdict comment (defects with steps/expected/actual/severity); `RESUMO.md` in
 
 ## When to call
 PR ready (with SHA), new head, fix validation, post-merge regression. If the head changes mid-QA, stop and report.
+On Programador code PRs, do not start until `approved:review` is present for the current head; if only `needs:review` / `changes:review`, stop without reviewing.
