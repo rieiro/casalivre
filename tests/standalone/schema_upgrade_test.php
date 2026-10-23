@@ -1,51 +1,58 @@
 <?php
-// Política v19 (banco recriado do zero): o migrate.php NÃO leva bancos antigos (versão 1..18) ao schema atual.
-// Ele aborta com saída 2 e "Recrie o banco do zero", sem tocar no banco. Versão 0 (banco novo, vindo do
-// schema.sql) e versão já atual seguem funcionando. (Antes este teste cobria upgrades v2..v12 -> atual.)
+// PostgreSQL only, sem migração de dados (decisão de 2026-10-21, #137): o migrate.php NÃO leva bancos antigos
+// (versão 1..SCHEMA_VERSION-1) ao schema atual. Ele aborta com saída 2 e "Recrie o banco do zero", sem tocar no
+// banco. Banco novo (schema.pgsql.sql carregado, versão 0) e versão já atual seguem funcionando.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
-t_eq(19, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 19');
-t_eq(19, Db::MIN_UPGRADE_FROM, 'MIN_UPGRADE_FROM = 19');
+t_eq(20, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 20');
+t_ok(!defined('Db::MIN_UPGRADE_FROM'), 'sem MIN_UPGRADE_FROM (sem caminho incremental: uma checagem de versão só)');
 
 $migrate = static function (array $args = []): array {
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);
     return [$code, implode("\n", $out)];
 };
-$master = static fn (PDO $p): array => $p->query("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")->fetchAll(PDO::FETCH_ASSOC);
+$pdo = static fn (): PDO => new PDO((string) getenv('DB_DSN'), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$version = static fn (PDO $p): ?string => ($v = $p->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn()) === false ? null : (string) $v;
+$shape = static fn (PDO $p): array => $p->query("SELECT n.nspname || '.' || c.relname || ':' || c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('public', 'audit') ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN);
 
-echo "banco novo (versão 0, vindo do schema.sql)\n";
-$file = t_temp_sqlite();
+echo "banco novo (schema.pgsql.sql, versão 0)\n";
+t_temp_db(); // carrega o schema e migra em processo
+$p = $pdo();
+$p->exec("DELETE FROM schema_meta");
+$p->exec("DELETE FROM settings");
 [$code, $text] = $migrate();
 t_eq(0, $code, "versão 0: migrate.php sai com 0 ($text)");
-$pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-t_eq(19, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'versão 0 -> 19');
-t_ok((int) $pdo->query("SELECT COUNT(*) FROM settings WHERE skey = 'theme'")->fetchColumn() === 1, 'seeds aplicados');
-$pdo = null;
+t_eq('20', $version($p), 'versão 0 -> 20');
+t_ok((int) $p->query("SELECT COUNT(*) FROM settings WHERE skey = 'theme'")->fetchColumn() === 1, 'seeds aplicados');
+t_eq(48, (int) $p->query('SELECT COUNT(*) FROM activity_actions')->fetchColumn(), 'activity_actions: 48 códigos com classe');
 
-echo "banco já em 19\n";
+echo "banco já em 20\n";
 [$code] = $migrate();
-t_eq(0, $code, 'v19: migrate.php sai com 0');
+t_eq(0, $code, 'v20: migrate.php sai com 0');
 [$code] = $migrate(['--force']);
-t_eq(0, $code, 'v19: migrate.php --force sai com 0');
+t_eq(0, $code, 'v20: migrate.php --force sai com 0');
 
-foreach ([1, 2, 4, 11, 12, 17, 18] as $from) {
+foreach ([1, 12, 18, 19] as $from) {
     echo "banco antigo v$from\n";
-    $file = t_temp_sqlite();
-    $migrate();
-    $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $pdo->exec('PRAGMA user_version = ' . $from);
-    $before = $master($pdo);
-    $pdo = null;
+    $p->exec("UPDATE schema_meta SET value = '$from' WHERE skey = 'schema_version'");
+    $before = $shape($p);
     foreach ([[], ['--force']] as $args) {
         $label = "v$from" . ($args ? ' --force' : '');
         [$code, $text] = $migrate($args);
         t_eq(2, $code, "$label: migrate.php sai com 2");
         t_ok(str_contains($text, 'Recrie o banco do zero'), "$label: mensagem \"Recrie o banco do zero\"");
     }
-    $pdo = new PDO('sqlite:' . $file, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    t_eq($from, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), "v$from: user_version intacto (não carimba 19)");
-    t_eq($before, $master($pdo), "v$from: schema intacto");
-    $pdo = null;
+    t_eq((string) $from, $version($p), "v$from: versão intacta (não carimba 20)");
+    t_eq($before, $shape($p), "v$from: schema intacto");
 }
+$p->exec("UPDATE schema_meta SET value = '20' WHERE skey = 'schema_version'");
 
+echo "migrate() só seeds + versão (sem ALTER, backfill ou conversão)\n";
+$src = (string) file_get_contents(CL_ROOT . '/src/Db.php');
+preg_match('/private static function migrate\(PDO \$pdo\): void\s*\{(.*?)\n    \}\n/s', $src, $m);
+$body = $m[1] ?? '';
+t_ok($body !== '', 'migrate() encontrado');
+foreach (['ALTER', 'UPDATE ', 'CREATE INDEX', 'renameUsers', 'public_hash', 'calendarMonthsDefault'] as $gone) {
+    t_ok(!str_contains($body, $gone), "migrate() sem '$gone'");
+}
 t_done();

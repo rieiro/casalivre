@@ -14,8 +14,29 @@ final class Valkey
     public const PREFIX = 'cl:';
 
     /**
-     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158); 0 keeps
-     * phpredis defaults (queues and workers).
+     * Connect + read timeout (s) of a queue producer in a web request (#160 follow-up): with Valkey frozen an FPM
+     * worker would otherwise hang up to default_socket_timeout (over 20 s measured).
+     */
+    public const PRODUCER_TIMEOUT = 0.5;
+
+    /**
+     * Connect + read timeout (s) for CLI queue workers and cron. A frozen Valkey is noticed in about 5 s instead of
+     * default_socket_timeout (about 60 s).
+     */
+    public const WORKER_TIMEOUT = 5.0;
+
+    /**
+     * Timeout for the queue connection (MailQueues/ImageQueues::make): PRODUCER_TIMEOUT in a web request,
+     * WORKER_TIMEOUT in the CLI (queue worker and cron). $sapi: test hook.
+     */
+    public static function queueTimeout(?string $sapi = null): float
+    {
+        return ($sapi ?? PHP_SAPI) === 'cli' ? self::WORKER_TIMEOUT : self::PRODUCER_TIMEOUT;
+    }
+
+    /**
+     * $timeout > 0 (seconds) bounds both connect and read (IpRateLimiter: 0.1 s, Segurança #158; web producers:
+     * PRODUCER_TIMEOUT; CLI workers: WORKER_TIMEOUT). 0 keeps phpredis defaults.
      */
     public static function connect(float $timeout = 0.0): Redis
     {
@@ -80,7 +101,14 @@ abstract class ValkeyJobQueue implements JobQueue
 
     public function key(string $suffix): string
     {
-        return Valkey::PREFIX . 'q:' . $this->name() . ':' . $suffix;
+        $name = $this->name();
+        // Test isolation (queue_worker_valkey_outage_test). Unset in production: a value here moves cl:q:mail
+        // and cl:q:image off the real keys. Only a short token is accepted, so a bad value does not change them.
+        $ns = getenv('VALKEY_QUEUE_NS');
+        if (is_string($ns) && preg_match('/^[A-Za-z0-9]{1,32}$/', $ns) === 1) {
+            $name = $ns . ':' . $name;
+        }
+        return Valkey::PREFIX . 'q:' . $name . ':' . $suffix;
     }
 
     protected function insertJob(array $data): int
@@ -105,6 +133,7 @@ abstract class ValkeyJobQueue implements JobQueue
      * MULTI under WATCH, so a crash never loses an id and a concurrent promote never duplicates one (EXEC
      * aborts if the zset changed; the next reserve() retries). An id in processing without a reserved score
      * (crash between LMOVE and ZADD in reserve()) gets one now (ZADD NX), so it goes stale and returns to ready.
+     * A stale reclaim increments attempts, so a job that keeps dying stops at Queues::MAX_ATTEMPTS.
      */
     private function promote(): void
     {
@@ -116,7 +145,27 @@ abstract class ValkeyJobQueue implements JobQueue
                 $this->r->zAdd($this->key('reserved'), ['NX'], $now, $id);
             }
         }
-        $this->move('reserved', $now - static::STALE_SECONDS, true);
+        $this->reclaimStale($now - static::STALE_SECONDS);
+    }
+
+    /** Stale reservations back to ready, counting one attempt. Same WATCH/MULTI shape as move(). */
+    private function reclaimStale(int $maxScore): void
+    {
+        $key = $this->key('reserved');
+        $this->r->watch($key);
+        $ids = $this->r->zRangeByScore($key, '-inf', (string) $maxScore) ?: [];
+        if ($ids === []) {
+            $this->r->unwatch();
+            return;
+        }
+        $this->r->multi();
+        foreach ($ids as $id) {
+            $this->r->zRem($key, $id);
+            $this->r->lRem($this->key('processing'), $id, 1);
+            $this->r->hIncrBy($this->key('job:' . $id), 'attempts', 1);
+            $this->r->lPush($this->key('ready'), $id);
+        }
+        $this->r->exec();
     }
 
     /** Atomically moves the ids of zset $set with score <= $max to ready (also out of processing if $fromProcessing). */
@@ -219,6 +268,21 @@ abstract class ValkeyJobQueue implements JobQueue
         }
         $this->r->exec();
         return $giveUp;
+    }
+
+    /** Terminal state of fail()'s give-up, without counting another attempt (the stale reclaim already did). */
+    public function giveUp(int $id, string $error = 'stale'): void
+    {
+        $job = $this->key('job:' . $id);
+        $this->r->multi();
+        $this->queueRelease((string) $id);
+        $this->r->hSet($job, 'status', 'failed');
+        $this->r->hSet($job, 'last_error', self::maskError($error));
+        foreach ($this->clearOnDone() as $f) {
+            $this->r->hDel($job, $f);
+        }
+        $this->r->expire($job, self::DONE_TTL_DAYS * 86400);
+        $this->r->exec();
     }
 
     /** Done items are deleted on ack and given-up ones expire (DONE_TTL_DAYS): nothing to purge. */

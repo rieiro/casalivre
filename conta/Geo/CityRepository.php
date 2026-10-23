@@ -22,8 +22,8 @@ final class CityRepository
         if (!is_array($rows)) {
             return;
         }
-        // Pode rodar dentro do BEGIN IMMEDIATE de Db::pdo() (DEF-008). Db::transactional usa
-        // SAVEPOINT nesse caso: PDO::inTransaction() não enxerga o BEGIN cru no PHP 8.2/8.3.
+        // Pode rodar dentro da transação do migrate() (DEF-008): Db::transactional usa SAVEPOINT quando já há
+        // uma transação aberta.
         Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
             $stmt = $pdo->prepare('INSERT INTO cities (name, uf, label, lat, lng, name_fold, label_fold) VALUES (?, ?, ?, ?, ?, ?, ?)');
             foreach ($rows as $row) {

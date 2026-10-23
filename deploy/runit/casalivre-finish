@@ -1,0 +1,80 @@
+#!/bin/sh
+# casalivre-finish SERVICE DELAY EXITCODE WAITSTATUS
+#
+# runit runs a service's ./finish with the exit code and the low byte of the
+# wait status (0 on a normal exit, the signal number when killed). This helper
+# pages on a real failure, then sleeps DELAY seconds before returning.
+# It always exits 0 so runsv starts ./run again.
+#
+# SIGTERM (15) and SIGINT (2) are sv down, sv restart, and shutdown, including
+# the core-dump bit (signal | 128). Those are not paged. The queue worker
+# passes DELAY 0 (the process already waited 5-30s). log-retention passes
+# 86400 so a failed daily run is not a tight loop. RESTART_DELAY in ./conf
+# or the environment overrides DELAY.
+service=${1:-casalivre}
+svc_delay=${2:-0}
+svc_code=${3:-0}
+svc_sig=${4:-0}
+
+if [ -r ./conf ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./conf
+  set +a
+fi
+
+service=$1
+delay=$svc_delay
+code=$svc_code
+sig=$svc_sig
+if [ -n "${RESTART_DELAY:-}" ]; then
+  delay=$RESTART_DELAY
+fi
+case $delay in
+  ''|*[!0-9]*) delay=$svc_delay ;;
+esac
+case $delay in
+  ''|*[!0-9]*) delay=0 ;;
+esac
+
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+alert=
+if [ -r "$here/casalivre-resolve" ]; then
+  # shellcheck disable=SC1091
+  . "$here/casalivre-resolve"
+  alert=$(casalivre_bin casalivre-alert "$here") || alert=
+fi
+
+page=0
+case $code in
+  0) page=0 ;;
+  -1)
+    case $sig in
+      ''|*[!0-9]*) sig=0 ;;
+    esac
+    sig=$((sig & 127))
+    case $sig in
+      2|15) page=0 ;;
+      *) page=1 ;;
+    esac
+    ;;
+  *) page=1 ;;
+esac
+
+if [ "$page" -eq 1 ]; then
+  if [ "$code" = "-1" ]; then
+    msg="ALERT process died from signal $sig"
+  else
+    msg="ALERT process exited $code"
+  fi
+  if [ -n "$alert" ]; then
+    "$alert" "$service" "$msg" || true
+  else
+    echo "casalivre-finish: casalivre-alert not installed" >&2
+    logger -t casalivre -p user.err "$service: $msg" 2>/dev/null || true
+  fi
+  if [ "$delay" -gt 0 ]; then
+    sleep "$delay"
+  fi
+fi
+exit 0

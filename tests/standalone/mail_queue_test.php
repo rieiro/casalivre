@@ -21,8 +21,10 @@ $lock = sys_get_temp_dir() . '/mwlock-' . bin2hex(random_bytes(3));
 $okDeliver = static fn (): bool => true;
 
 echo "fábrica\n";
-t_ok($q instanceof SqliteMailQueue, 'QUEUE_DRIVER ausente -> SqliteMailQueue');
-foreach (['redis', 'db'] as $drv) {
+t_ok($q instanceof DbMailQueue, 'QUEUE_DRIVER ausente -> DbMailQueue');
+putenv('QUEUE_DRIVER=db');
+t_ok(MailQueues::make() instanceof DbMailQueue, 'QUEUE_DRIVER=db -> DbMailQueue');
+foreach (['redis', 'sqlite'] as $drv) {
     putenv('QUEUE_DRIVER=' . $drv);
     $err = null;
     try {
@@ -118,7 +120,7 @@ flock($h, LOCK_UN);
 fclose($h);
 
 echo "teto de tempo do lote\n";
-t_ok(MailWorker::MAX_RUN_SECONDS < SqliteMailQueue::STALE_SECONDS, 'MAX_RUN_SECONDS < STALE_SECONDS');
+t_ok(MailWorker::MAX_RUN_SECONDS < DbMailQueue::STALE_SECONDS, 'MAX_RUN_SECONDS < STALE_SECONDS');
 db()->exec('DELETE FROM mail_queue');
 foreach (['a', 'b', 'c', 'd'] as $u) {
     $q->push('reset', "$u@casalivre.test");

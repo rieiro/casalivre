@@ -1,13 +1,14 @@
 <?php
-// Deploy limpo: scripts/migrate.php cria o banco a partir de database/schema.sql quando ele não existe,
-// e o carregamento de CEPs dá erro claro quando não há como descompactar o cep.csv.bz2 (antes: 0 CEPs em silêncio).
+// Deploy limpo (PostgreSQL only): scripts/migrate.php num banco sem schema recusa com instrução clara (carregar
+// database/schema.pgsql.sql antes), cria as pastas de runtime e, com o schema, migra; o carregamento de CEPs dá erro
+// claro quando não há como descompactar o cep.csv.bz2 (antes: 0 CEPs em silêncio).
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 
-$dir = sys_get_temp_dir() . '/casalivre-boot-' . bin2hex(random_bytes(4));
-register_shutdown_function(static fn () => @exec('rm -rf ' . escapeshellarg($dir)));
-$file = $dir . '/sub/novo.sqlite';
-$env = array_merge(getenv(), ['DB_DRIVER' => 'sqlite', 'DB_DSN' => 'sqlite:' . $file]);
+$dsn = t_temp_pg_empty();
+$env = array_merge(getenv(), ['DB_DSN' => $dsn, 'DB_USER' => (string) (getenv('TEST_PG_USER') ?: ''), 'DB_PASSWORD' => (string) (getenv('TEST_PG_PASSWORD') ?: '')]);
+$pdo = new PDO($dsn, getenv('TEST_PG_USER') ?: null, getenv('TEST_PG_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$tables = static fn (): int => (int) $pdo->query("SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace")->fetchColumn();
 
 $run = static function (array $cmd, array $env): array {
     $proc = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, CL_ROOT, $env);
@@ -17,23 +18,22 @@ $run = static function (array $cmd, array $env): array {
     return [proc_close($proc), $out];
 };
 
-echo "migrate.php sem banco\n";
+echo "migrate.php sem schema\n";
 [$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
-t_eq(0, $code, 'migrate.php sai com 0 sem banco existente');
-t_ok(str_contains($out, 'database/schema.sql'), 'avisa que criou o banco pelo schema.sql');
-t_ok(is_file($file), 'arquivo do banco criado (inclusive a pasta)');
-$pdo = new PDO('sqlite:' . $file);
-t_eq(Db::SCHEMA_VERSION, (int) $pdo->query('PRAGMA user_version')->fetchColumn(), 'user_version = SCHEMA_VERSION');
-t_ok((int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn() === 1, 'tabela users do schema.sql existe');
+t_eq(2, $code, 'migrate.php sai com 2 num banco vazio');
+t_ok(str_contains($out, 'database/schema.pgsql.sql'), 'mensagem manda carregar database/schema.pgsql.sql');
+t_eq(0, $tables(), 'banco vazio continua vazio (não cria schema_meta nem tabelas)');
 foreach (['storage/mail', 'storage/sessions', 'public/uploads/users'] as $d) {
     t_ok(is_dir(CL_ROOT . '/' . $d), "pasta $d existe");
 }
-$pdo = null;
 
-echo "migrate.php com banco existente (não recarrega o schema)\n";
+echo "migrate.php com o schema carregado\n";
+$pdo->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
+[$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
+t_eq(0, $code, "migrate.php sai com 0 ($out)");
+t_eq((string) Db::SCHEMA_VERSION, (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_version = SCHEMA_VERSION');
 [$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
 t_eq(0, $code, 'segunda execução sai com 0');
-t_ok(!str_contains($out, 'Banco criado'), 'não recria o banco');
 
 echo "CEPs sem bz2 do PHP e sem python3\n";
 if (function_exists('bzopen')) {
@@ -42,8 +42,7 @@ if (function_exists('bzopen')) {
     [$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/load-ceps.php'], $env + ['CEP_PYTHON' => '/nao/existe/python3']);
     t_ok($code !== 0, 'load-ceps.php falha (não importa 0 CEPs em silêncio)');
     t_ok(str_contains($out, 'python3 não foi encontrado') && str_contains($out, 'bz2'), 'mensagem clara cita bz2 e python3');
-    $pdo = new PDO('sqlite:' . $file);
     t_eq(0, (int) $pdo->query('SELECT COUNT(*) FROM ceps')->fetchColumn(), 'nenhum CEP gravado');
 }
-
+$pdo = null;
 t_done();

@@ -30,7 +30,9 @@ final class SearchService
         $facets = [];
         $results = $searched ? SearchService::search($filters, $host, $facets) : [];
         if ($searched && $log) {
-            activity(ActivityLog::SEARCH, $filters + ['resultados' => count($results)]);
+            // place_id: the resolved place (today the cities row of CityRepository::match; places.id with ADR 001).
+            $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
+            activity(ActivityLog::SEARCH, $filters + ['place_id' => isset($place['id']) ? (int) $place['id'] : null, 'resultados' => count($results)]);
         }
         return [$filters, $results, $searched, $facets];
     }

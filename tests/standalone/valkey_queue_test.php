@@ -8,6 +8,7 @@ require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/MailQueue.php';
 require_once CL_ROOT . '/src/ImageQueue.php';
+require_once CL_ROOT . '/src/QueueWorker.php';
 
 if (!extension_loaded('redis') || (string) getenv('VALKEY_SOCKET') === '') {
     echo "  SKIPPED (needs phpredis and VALKEY_SOCKET: run via ops/dev-env/test-pg.sh)\n";
@@ -44,6 +45,7 @@ $q = new class ($r, $tag) extends ValkeyJobQueue {
     }
 };
 $cleanup = static function () use ($r, $q): void {
+    putenv('VALKEY_QUEUE_NS');
     $keys = [$q->key('seq'), $q->key('ready'), $q->key('processing'), $q->key('reserved'), $q->key('delayed')];
     for ($i = 1; $i <= 10; $i++) {
         $keys[] = $q->key('job:' . $i);
@@ -62,6 +64,15 @@ echo "key prefix\n";
 foreach (['seq', 'ready', 'processing', 'reserved', 'delayed', 'job:1'] as $s) {
     t_ok(str_starts_with($q->key($s), 'cl:q:test-' . $tag . ':'), "key($s) under cl:q:");
 }
+putenv('VALKEY_QUEUE_NS=tisolation1');
+$mq = new ValkeyMailQueue($r);
+$iq = new ValkeyImageQueue($r);
+t_eq('cl:q:tisolation1:mail:ready', $mq->key('ready'), 'VALKEY_QUEUE_NS moves the mail queue off cl:q:mail');
+t_eq('cl:q:tisolation1:image:ready', $iq->key('ready'), 'VALKEY_QUEUE_NS moves the image queue off cl:q:image');
+putenv('VALKEY_QUEUE_NS=../mail');
+t_eq('cl:q:mail:ready', $mq->key('ready'), 'an unsafe namespace is ignored');
+putenv('VALKEY_QUEUE_NS');
+t_eq('cl:q:mail:ready', $mq->key('ready'), 'unset namespace keeps cl:q:mail');
 
 echo "enqueue / reserve / ack\n";
 $a = $q->push('one');
@@ -102,7 +113,33 @@ $q->reserve(1);
 $r->zAdd($q->key('reserved'), time() - ValkeyJobQueue::STALE_SECONDS - 1, (string) $c);
 $got = $q->reserve(1);
 t_eq($c, $got[0]['id'] ?? null, 'stale job reserved again');
+t_eq(1, $got[0]['attempts'] ?? null, 'stale reclaim counts an attempt');
 $q->ack($c);
+
+echo "stale reclaim stops at MAX_ATTEMPTS\n";
+$bound = $q->push('bound');
+$q->reserve(1);
+for ($i = 1; $i < Queues::MAX_ATTEMPTS; $i++) {
+    $r->zAdd($q->key('reserved'), 1, (string) $bound);
+    $got = $q->reserve(1);
+    t_eq([$bound, $i], [$got[0]['id'] ?? null, $got[0]['attempts'] ?? null], "reclaim $i still queued, attempt counted");
+}
+$r->zAdd($q->key('reserved'), 1, (string) $bound);
+$handled = 0;
+$givenUp = 0;
+$rep = QueueWorker::run($q, sys_get_temp_dir() . '/vkbound-' . $tag . '.lock', static function () use (&$handled): bool {
+    $handled++;
+    return true;
+}, 1, 7, 30, static function () use (&$givenUp): void {
+    $givenUp++;
+}, 'test-queue');
+t_eq(0, $handled, 'no delivery once attempts reached MAX_ATTEMPTS');
+t_eq(1, $givenUp, 'give-up hook runs (image worker deletes the original there)');
+t_eq(1, $rep['desistencias'] ?? null, 'reported as a give-up');
+t_eq('failed', $r->hGet($q->key('job:' . $bound), 'status'), 'status failed');
+t_eq((string) Queues::MAX_ATTEMPTS, (string) $r->hGet($q->key('job:' . $bound), 'attempts'), 'attempts stays at MAX_ATTEMPTS');
+t_eq(false, array_key_exists('recipient', $r->hGetAll($q->key('job:' . $bound))), 'recipient cleared');
+t_eq(0, (int) $r->lLen($q->key('ready')) + (int) $r->lLen($q->key('processing')), 'not left queued or reserved');
 
 echo "crash windows (Architecture #118)\n";
 // Crash between LMOVE and ZADD in reserve(): id in processing with no reserved score.
@@ -133,7 +170,7 @@ t_eq(0, (int) $r->lLen($q->key('processing')) + (int) $r->zCard($q->key('reserve
 echo "mail cooldown (HMAC key, SET NX EX before the insert, DEL if it fails)\n";
 $mq = new ValkeyMailQueue($r);
 $mail = 'cd-' . $tag . '@casalivre.test';
-$cdKey = $mq->key('cd:' . SqliteMailQueue::cooldownKey('reset', $mail));
+$cdKey = $mq->key('cd:' . DbMailQueue::cooldownKey('reset', $mail));
 $r->del($cdKey);
 $beforeSeq = (int) $r->get($mq->key('seq'));
 t_eq(true, $mq->push('reset', $mail), 'first push ok');

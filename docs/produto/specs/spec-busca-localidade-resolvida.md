@@ -54,11 +54,11 @@ Source: UI review of this spec. Applies to home and search (spec-01 §1–2) and
    AC: after a pan with search on, the URL has `bbox` and no `local_id`; × restores `local_id` and its results.
 7. **URL and history.** The canonical URL holds `local_id` or `bbox` (4 decimals), dates, guests, filters and sort. Picking a place or running "Search this area" uses `pushState`; the cursor and the scroll position use `replaceState` (ADR 001 §5c).
    AC: Back returns to the previous place or area with its list and scroll; a shared URL gives the same results; an old `localidade=` URL goes through items 3–4 and never to an error page.
-8. **"Lowest total price" sort: the server decides.** Decision by Gerente (Produto + Arquitetura), 2026-10-16. This is a performance guard only.
-   - **Server rule:** the sort runs when the filtered set has **≤ 5,000 candidates**. Above that, the server returns the default order with `sort_unavailable: "zoom_in"`. This response is final, even for a city, a neighborhood or a small map area.
-   - **Client hint, not the guard:** on the map, the option is **visible but disabled** below **zoom 13 on desktop** and **zoom 12 on mobile**, unless a city or neighborhood is fixed. These zoom levels are calculated, not measured. Inline explanation, tied to the option with `aria-describedby`: "Zoom in to sort by total price", with a "Zoom in" action and a "Pick a city" link. The option is never hidden without saying why.
-   - **Fallback on `sort_unavailable: "zoom_in"`** (or when the hint applies while the sort is active): the list shows Relevance; a polite live region announces "Sorted by relevance. Zoom in to sort by total price."; the same text stays next to the sort control until the user zooms in or changes the sort.
-   AC: (1) with a city above 5,000 candidates, the server response causes the fallback and the inline text, even though the client offered the sort; (2) below zoom 13 (desktop) or 12 (mobile) without a fixed city or neighborhood, the option is disabled with the text; (3) the fallback is announced once.
+8. **"Lowest total price" sort: the server decides.** Decision by Gerente (Produto + Arquitetura), 2026-10-16; cap updated by ADR 001 §12.7 G-1a (2026-10-21). This is a performance guard only. Full rules: `docs/produto/specs/spec-busca-ordenacao-filtros.md` §6.
+   - **Server rule:** the sort runs when the filtered set has **≤ 2,000 candidates** (was 5,000). Above that, the server returns the **relevance** order with `sort_unavailable: "zoom_in"`. This response is final, even for a city, a neighborhood or a small map area.
+   - **No client hint:** the option is always enabled; the server decides (ADR 001 §12.7a). The former zoom-13/12 hint is removed.
+   - **Fallback on `sort_unavailable: "zoom_in"`** (`guard: "price_sort"`, `sort_effective: "relevance"`): the list shows Relevance; a polite live region announces "Sorted by relevance. Zoom in or add filters to sort by total price." (on a resolved place: "Sorted by relevance. Add filters to sort by total price."); the same text stays next to the sort control. The fallback holds for the whole cursor chain and ends only on a new search with no cursor (zoom, filter, date, guest or place change) or a sort change. Actions and layout: `spec-busca-ordenacao-filtros.md` §7.2.
+   AC: (1) with a city above 2,000 candidates, the server response causes the relevance fallback and the inline text, even though the client offered the sort; (2) the fallback is announced once.
 9. **Mobile.** The full-screen "Where?" step (spec-01 §1) shows recent places and "Near me" (once it ships) before any typing. "Did you mean" and no-match render inside that step, not on another page.
    AC: at 360 px the selected place and Back stay visible and the keyboard does not cover the options.
 10. **Regional channel.** A regional channel's field starts with the region as a removable chip ("Região dos Lagos ×"). Removing it searches the whole marketplace only if the channel allows it.
@@ -77,7 +77,6 @@ The pt-BR column is the official copy for this spec. These strings go into the i
 | Popular in <region> | Populares em <região> |
 | Search on the map | Buscar no mapa |
 | Map area | Área do mapa |
-| Zoom in to sort by total price | Aproxime o mapa para ordenar pelo preço total |
 | Zoom in | Aproximar |
 | Pick a city | Escolha uma cidade |
 | Not this place? Change | Não é este lugar? Trocar |
@@ -93,7 +92,7 @@ The pt-BR column is the official copy for this spec. These strings go into the i
 | Clear (accessible name of ×) | Limpar |
 | Lowest total price | Menor preço total |
 | Relevance | Relevância |
-| Sorted by relevance. Zoom in to sort by total price. | Ordenado por relevância. Aproxime o mapa para ordenar pelo preço total. |
+| Sorted by relevance. Zoom in or add filters to sort by total price. | Ordenado por relevância. Aproxime o mapa ou adicione filtros para ordenar pelo preço total. |
 | Where? | Onde? |
 | Recent places | Lugares recentes |
 

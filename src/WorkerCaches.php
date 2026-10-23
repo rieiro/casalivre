@@ -19,7 +19,7 @@ require_once __DIR__ . '/I18n.php';
  */
 final class WorkerCaches
 {
-    /** File-backed caches reload only when their source file changed (FileStamp); unchanged files stay in memory. */
+    /** File-backed caches reload only when their source file's mtime differs from the one stored at load (FileStamp); unchanged files stay in memory. */
     public static function refreshIfChanged(): void
     {
         Settings::clearCache(true);

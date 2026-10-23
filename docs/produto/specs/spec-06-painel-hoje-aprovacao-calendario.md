@@ -19,6 +19,7 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
    - **anúncio pausado ou incompleto** ("Faltam 2 itens para publicar");
    - **aviso de confiabilidade** ("3 cancelamentos em 90 dias, em revisão").
    Cada alerta tem uma ação direta.
+   **Intervalo curto (G19) não é alerta:** não entra nos cartões, no resumo, em selo, toast nem chamada.
 6. **Tarefas:** comprovação de força maior pendente (prazo de 7 dias), avaliações a responder e convites aceitos.
 **Por papel:** o proprietário vê os imóveis dele. O gestor vê a sub-árvore dele. O operador vê só Aprovações, Pagamentos (se tiver a delegação "marcar como pago"), Chegadas e Portaria. Os admins veem tudo do escopo, só para leitura.
 **Estados:** carregando (skeleton por cartão; um cartão com erro não derruba os outros: "Não carregou. Tentar novamente"); dia tranquilo ("Nada pendente hoje. Próxima chegada: 18/10."); sem imóveis ("Cadastre seu primeiro imóvel").
@@ -29,6 +30,7 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 4. "Estadia recebida" e "Limpeza recebida" geram registros separados. Com uma só marcada, a reserva continua em Aguardando pagamento.
 5. Um operador sem a delegação não vê os botões de pagamento. Um admin vê os botões desabilitados, com a explicação.
 6. Cada alerta leva à tela que resolve o problema em um clique ou toque.
+7. Um intervalo curto no calendário não cria item em Alertas, nem selo, toast ou chamada.
 
 ## 2. Fila de aprovação e detalhe da solicitação
 **Layout:** no desktop, a lista (ordenada pelo prazo) e o detalhe ao lado. No mobile, a lista e, ao tocar, o detalhe em tela cheia, com as ações fixas no rodapé.
@@ -54,7 +56,7 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 
 ## 3. Calendário
 **Visões:** **Mensal por imóvel** (padrão quando o contexto é um imóvel) e **Multicalendário** (padrão quando o contexto é um nó, com uma linha por imóvel e uma coluna por dia, rolagem horizontal por semanas, e o filtro e a busca de imóvel fixos à esquerda).
-**Status de cada dia (com padrão visual, texto e não só cor):**
+**Status de cada dia (com padrão visual, texto e não só cor).** Cada dia tem um só status; eles não se combinam. O campo é `day_status`.
 | Status | Visual | Rótulo |
 |---|---|---|
 | Disponível | fundo liso, com o preço | "Disponível · R$ 450" |
@@ -62,6 +64,13 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 | Aguardando aprovação | listrado diagonal | "Aguardando aprovação" |
 | Aguardando pagamento | pontilhado | "Aguardando pagamento · até 17/10, 10:30" |
 | Bloqueado | hachurado com ícone de cadeado | "Bloqueado · Manutenção" |
+| Intervalo curto | preenchimento suave de `color.warning` (âmbar de aviso) e listras horizontais | "Indisponível · intervalo curto" |
+**Intervalo curto (G19, calendário do anfitrião):** noite livre entre reservas que o mínimo de estadia impede de reservar. Tela da UI (`/workspace/shared/ui/g19-host-calendar-gap-nights.md`). Campo confirmado pela Arquitetura.
+- O dia traz `day_status` de primeira classe. Intervalo curto é `day_status: "unbookable_gap"`. Não há objeto `flags`.
+- Os status desta seção são exclusivos. A tela lê só `day_status` (um caminho de pintura). Todo dia que o motor marca como `unbookable_gap` usa a mesma pintura, só no calendário do anfitrião (mensal e multicalendário). Não aparece na busca, no calendário do hóspede nem no painel Hoje. A tela não calcula o intervalo.
+- A pintura é o preenchimento suave do token `color.warning` mais listras horizontais, com o rótulo "Indisponível · intervalo curto". O leitor de tela lê a data e esse rótulo. Não depende só da cor.
+- Continuar selecionável, com o mesmo painel de um dia livre (bloquear, desbloquear, preço e mínimo de noites), é regra desse status.
+- **Não entra:** alerta ao anfitrião ou ao nó acima; relaxamento automático do mínimo de estadia; selo, toast ou chamada no Hoje.
 **Seleção de intervalo:** clicar no 1º e no último dia, ou arrastar. **Alternativa por teclado:** setas para mover, Shift+setas para estender e Enter para abrir o painel. No mobile, tocar no início e no fim, com o botão "Selecionar intervalo".
 **Painel lateral (desktop) ou painel inferior (mobile), para o intervalo selecionado ("20 a 25/12 · 5 noites"):**
 - **Bloquear** ou **desbloquear**, com o motivo (manutenção, uso próprio, outro) e uma **nota**. O **operador** não bloqueia livremente: com a permissão delegada, ele cria só um **bloqueio de manutenção, com motivo obrigatório** e registro no log *[E]*.
@@ -77,6 +86,10 @@ Base: `sprints.md` (S7: reserva P2, critérios 1 a 23; D3 bloqueia a S7), `backl
 4. O preço por canal é só de leitura e bate com o preço que o hóspede vê.
 5. A falha de iCal aparece no calendário e como alerta em Hoje.
 6. O multicalendário mantém fixa a coluna dos imóveis ao rolar, e os dias com reserva continuam visíveis para o operador, que não edita preço.
+7. Com `day_status` `"unbookable_gap"`, o mensal e o multicalendário mostram o preenchimento de `color.warning`, as listras horizontais e o rótulo "Indisponível · intervalo curto". Qualquer outro `day_status` não usa essa pintura. A resposta do dia não traz `flags`.
+8. Dois dias com `day_status` `"unbookable_gap"` usam a mesma pintura. O leitor de tela anuncia a data e "Indisponível · intervalo curto".
+9. A edição igual à de um dia livre é a regra desse status: a célula entra na seleção e abre o painel (bloquear, preço, mínimo).
+10. O mínimo de estadia do imóvel não muda por causa desse status.
 
 ## 3b. Origem da reserva e "Lançar reserva manual"
 **Toda reserva nasce de uma solicitação** com a **origem** registrada: **Pedido** (aprovação manual), **Imediata** (reserva instantânea), **OTA** (iCal ou parceiro) ou **Manual** (lançada pelo anfitrião). A origem aparece como **rótulo** ("Origem: Manual") no painel Hoje, na fila, no detalhe da reserva (aqui e na spec-09) e no calendário.
@@ -129,7 +142,7 @@ Fonte: `/workspace/casalivre-seguranca-evidence/specs-ui-04-06/relatorio.md`. O 
 5. (06-5) O cartão do painel não mostra nenhum dado de documento.
 6. (06-6) O detalhe da solicitação mostra só o selo de verificação, nunca o documento.
 
-**Questões jurídicas** (decididas no `juridico/parecer-J1-J35.md`):
+**Questões jurídicas** (decididas no [`parecer-J1-J35.md`](../juridico/parecer-J1-J35.md)):
 - [decidido, parecer J9] **J9**: A base legal para coletar e repassar os documentos dos hóspedes à portaria (legítimo interesse ou execução de contrato? regra do condomínio?) e o papel do condomínio (controlador independente?). → **Decisão:** base art. 7º V (**execução do contrato**); o condomínio é controlador independente; só os campos exigidos; repasse por canal controlado.
 - [decidido, parecer J10] **J10**: O prazo de guarda após o check-out e se há obrigação de registro de hóspedes (ex.: ficha de hóspede da Lei 11.771/2008, que se aplica a meios de hospedagem; confirmar se vale para locação por temporada, Lei 8.245 art. 48). **Validar com jurídico.** → **Decisão:** a **ficha de hóspede (FNRH) não se aplica** à locação por temporada; conferir as normas municipais.
 - [decidido, parecer J11] **J11**: Dados de menores (art. 14 da LGPD; ECA). → **Decisão:** dados de menores só quando a portaria exigir, sem consentimento específico; **declaração do adulto responsável** (ECA arts. 82 e 83).

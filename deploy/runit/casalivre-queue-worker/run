@@ -1,0 +1,24 @@
+#!/bin/sh
+# runit service: CasaLivre queue worker (mail and image queues).
+# Install (Void), full steps in the deploy checklist:
+#   sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
+#     deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish /usr/local/sbin/
+#   sudo cp -a deploy/runit/casalivre-queue-worker /etc/sv/
+#   sudo ln -s /etc/sv/casalivre-queue-worker /var/service/
+# Optional /etc/sv/casalivre-queue-worker/conf (mode 0640, no secrets; the app reads .env):
+#   APP_DIR=/srv/casalivre  APP_USER=casalivre  PHP_BIN=/usr/bin/php
+#   LOG_DIR=/var/log/casalivre/queue-worker  ALERT_THROTTLE=900
+#   ALERT_CMD=/usr/local/sbin/your-pager
+# stdout and stderr go to the log service (svlogd). A line containing ALERT is
+# paged from there. A non-zero exit is paged by ./finish; runit then restarts
+# this process. The worker already sleeps 5-30s before exit on a lost DB.
+# zend.exception_ignore_args: a stack trace must not include argument values (the script sets it too).
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+PHP_BIN="${PHP_BIN:-php}"
+
+cd "$APP_DIR" || exit 1
+exec chpst -u "$APP_USER" "$PHP_BIN" -d zend.exception_ignore_args=1 scripts/queue-worker.php
+exit 1

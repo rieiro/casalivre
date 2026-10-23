@@ -12,8 +12,9 @@ require_once $root . '/src/helpers.php';
 require_once $root . '/src/CepRepository.php';
 require_once $root . '/src/CityRepository.php';
 
-if (!is_file($root . '/storage/db/casalivre.sqlite') && (getenv('DB_DRIVER') ?: 'sqlite') === 'sqlite' && !getenv('DB_DSN')) {
-    fwrite(STDERR, "Banco não encontrado. Rode scripts/setup.sh antes.\n");
+Db::loadEnv();
+if (!getenv('DB_DSN')) {
+    fwrite(STDERR, "DB_DSN não definido (só PostgreSQL). Rode ops/dev-env/db-setup.sh ou configure o .env antes.\n");
     exit(1);
 }
 if (CepRepository::count() < 1) {

@@ -27,3 +27,4 @@ Produto: screen specs and UX research for each story, attached before Produto ha
 
 ## When to call
 Produto calls UI for screens, navigation, states, microcopy and accessibility of a story. Gerente calls UI for UX review of what was built. `needs:ui` on PRs that change screens.
+On Programador code PRs, do not start until `approved:review` is present for the current head; if only `needs:review` / `changes:review`, stop without reviewing.

@@ -448,7 +448,7 @@ final class HouseRepository
 
     public static function syncExternalUrl(int $propertyId, int $userId): array
     {
-        $json = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? 'json_build_object' : 'json_object';
+        $json = 'json_build_object';
         $sql = 'UPDATE ' . ReturningWrite::q('properties')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('external_ical_url', " . ReturningWrite::q('external_ical_url') . '), '
             . ReturningWrite::q('external_ical_url') . " = COALESCE((SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id LIMIT 1), '')"
@@ -562,10 +562,7 @@ final class HouseRepository
 
     private static function insertMissingDays(int $propertyId, string $start, string $end, int $blocked, ?int $price, ?int $minNights, string $origin, bool $guard): array
     {
-        $driver = (string) db()->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $series = $driver === 'pgsql'
-            ? "WITH RECURSIVE days(day) AS (SELECT CAST(? AS date) UNION ALL SELECT CAST(day + 1 AS date) FROM days WHERE day < CAST(? AS date))" // calendar_days.day é DATE no PG
-            : "WITH RECURSIVE days(day) AS (SELECT ? UNION ALL SELECT date(day, '+1 day') FROM days WHERE day < ?)";
+        $series = "WITH RECURSIVE days(day) AS (SELECT CAST(? AS date) UNION ALL SELECT CAST(day + 1 AS date) FROM days WHERE day < CAST(? AS date))"; // calendar_days.day é DATE
         $guardSql = $guard
             ? " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva'))"
             : '';

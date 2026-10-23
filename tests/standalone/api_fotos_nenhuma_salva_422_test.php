@@ -15,7 +15,7 @@ require_once CL_ROOT . '/src/ActivityLog.php';
 require_once CL_ROOT . '/src/Acoes/PhotoAdd.php';
 
 t_temp_db();
-$act = c_activity_file(); // ACTIVITY_DB_PATH antes do php -S
+$act = c_activity_file(); // log no PG do banco temporário
 $owner = t_seed_owner();
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');

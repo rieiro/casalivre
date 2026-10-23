@@ -14,7 +14,7 @@ db()->exec('UPDATE users SET is_admin = 1 WHERE id = ' . (int) $admin['id']);
 $envFile = (string) tempnam(sys_get_temp_dir(), 'env');
 file_put_contents($envFile, "\n");
 $run = static function (array $env) use ($envFile): array {
-    $base = ['PATH' => (string) getenv('PATH'), 'DB_DRIVER' => (string) (getenv('DB_DRIVER') ?: 'sqlite'), 'DB_DSN' => (string) getenv('DB_DSN'), 'DB_USER' => (string) getenv('DB_USER'), 'CASALIVRE_ENV_FILE' => $envFile, 'SMTP_HOST' => ''];
+    $base = ['PATH' => (string) getenv('PATH'), 'DB_DSN' => (string) getenv('DB_DSN'), 'DB_USER' => (string) getenv('DB_USER'), 'DB_PASSWORD' => (string) getenv('DB_PASSWORD'), 'CASALIVRE_ENV_FILE' => $envFile, 'SMTP_HOST' => ''];
     $p = proc_open([PHP_BINARY, CL_ROOT . '/scripts/mail-worker.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, CL_ROOT, array_merge($base, $env));
     $out = stream_get_contents($pipes[1]);
     $err = stream_get_contents($pipes[2]);

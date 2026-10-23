@@ -8,7 +8,8 @@ require_once __DIR__ . '/LogPrivacy.php';
 /**
  * Log estruturado por requisição da API (JSON por linha), gravado localmente.
  *
- * - request_id: reaproveita X-Request-Id válido do cliente ou gera um novo; devolvido no header.
+ * - request_id: o access_event_id da requisição (UUIDv7 do servidor, ActivityLog::accessEventId()); devolvido no
+ *   header X-Request-Id. O X-Request-Id do cliente é ignorado (spec activity_log §13 Q2).
  * - Chaves sensíveis são omitidas; texto livre tem CPF/cartão/e-mail mascarados (no PHP, antes de gravar).
  * - Caminhos com hash de 32 hex (ical_hash) viram {hash}; URLs em texto livre viram [url].
  * - user, user_agent e URLs viram HMAC com LOG_SALT (obrigatório; sem ele são omitidos). IP truncado (/24, /48).
@@ -16,7 +17,6 @@ require_once __DIR__ . '/LogPrivacy.php';
  * - Rotação diária (api-AAAA-MM-DD.log) + corte por tamanho; arquivos antigos são apagados.
  * - Diretório 0700 e arquivos 0600.
  *
- * Fluent Bit, banco de log separado e outbox ficam para a próxima sprint.
  */
 final class RequestLog
 {
@@ -44,8 +44,8 @@ final class RequestLog
         }
         self::$started = true;
         self::$start = microtime(true);
-        $incoming = (string) ($_SERVER['HTTP_X_REQUEST_ID'] ?? '');
-        self::$requestId = preg_match('/^[A-Za-z0-9._-]{8,64}$/', $incoming) === 1 ? $incoming : bin2hex(random_bytes(16));
+        require_once __DIR__ . '/ActivityLog.php';
+        self::$requestId = ActivityLog::accessEventId();
         if (!headers_sent()) {
             header('X-Request-Id: ' . self::$requestId);
         }

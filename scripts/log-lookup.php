@@ -4,15 +4,22 @@
 declare(strict_types=1);
 
 // Busca registros de um usuário nos logs pseudonimizados.
-// Uso: php scripts/log-lookup.php <user_id> [--root=/caminho/do/app]
-// Calcula o HMAC do id com LOG_SALT (mesma função de RequestLog/ActivityLog: LogPrivacy::user)
-// e procura em: activity_log (SQLite e, se LOG_DRIVER=mongodb, MongoDB) e storage/logs/api/api-*.
+// Uso: php scripts/log-lookup.php <user_id> [--root=/caminho/do/app] [--pagina=N]
+// Calcula o HMAC do id com LOG_SALT (mesma função de RequestLog/ActivityLog: LogPrivacy::user/userRef)
+// e procura em: audit.activity_log (+ _held) pela função DEFINER audit.activity_by_actor, como um login com
+// casalivre_ops_logread (SET ROLE; OPS_DB_USER/OPS_DB_PASSWORD, vazio = DB_USER), e em storage/logs/api/api-*.
+// O activity_by_actor devolve no máximo 500 linhas por chamada (mais novas primeiro): o script pagina com before_id
+// (o menor id da página anterior); --pagina=N (1..500, padrão 500) muda o tamanho da página. Cada página é uma
+// leitura auditada (uma linha ACTIVITY_LOG_READ).
 // Recusa rodar sem LOG_SALT. Saída: uma linha JSON por registro encontrado.
 
 $root = dirname(__DIR__);
 $userId = null;
+$pageSize = 500;
 foreach (array_slice($argv, 1) as $arg) {
-    if (str_starts_with($arg, '--root=')) {
+    if (str_starts_with($arg, '--pagina=')) {
+        $pageSize = max(1, min(500, (int) substr($arg, 9)));
+    } elseif (str_starts_with($arg, '--root=')) {
         $root = rtrim(substr($arg, 7), '/');
     } elseif (ctype_digit($arg)) {
         $userId = (int) $arg;
@@ -38,33 +45,25 @@ $emit = static function (string $source, array $row) use (&$found): void {
     echo json_encode(['fonte' => $source] + $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
 };
 
-// 1) activity_log SQLite
-$sqlite = $root . '/storage/logs/activity.sqlite';
-if (is_file($sqlite)) {
-    $pdo = new PDO('sqlite:' . $sqlite, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-    $stmt = $pdo->prepare('SELECT * FROM activity_log WHERE actor_id = ? ORDER BY created_at');
-    $stmt->execute([$ref]);
-    foreach ($stmt as $row) {
-        $emit('activity.sqlite', $row);
+// 1) audit.activity_log (security + other) e audit.activity_log_held. Cada chamada grava ACTIVITY_LOG_READ no audit_log.
+$pdo = Db::connectAs('OPS_DB_USER', 'OPS_DB_PASSWORD');
+$pdo->exec('SET ROLE casalivre_ops_logread');
+$stmt = $pdo->prepare('SELECT id, created_at, code, retention_class, actor_kind, payload, before_value, after_value FROM audit.activity_by_actor(?::bytea[], ?::uuid, ?)');
+$refs = Db::byteaArrayLiteral([(string) LogPrivacy::userRef($userId)]);
+$before = null;
+do {
+    $stmt->bindValue(1, $refs);
+    $stmt->bindValue(2, $before, $before === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->bindValue(3, $pageSize, PDO::PARAM_INT);
+    $stmt->execute();
+    $page = $stmt->fetchAll();
+    foreach ($page as $row) {
+        $emit('activity_log', $row);
     }
-}
+    $before = $page === [] ? null : (string) $page[count($page) - 1]['id'];
+} while (count($page) === $pageSize);
 
-// 2) activity_log MongoDB
-if ((getenv('LOG_DRIVER') ?: 'sqlite') === 'mongodb') {
-    if (!class_exists(\MongoDB\Driver\Manager::class)) {
-        fwrite(STDERR, "Aviso: LOG_DRIVER=mongodb mas a extensão mongodb não está disponível; Mongo ignorado.\n");
-    } else {
-        $manager = new \MongoDB\Driver\Manager(getenv('LOG_MONGO_URI') ?: 'mongodb://127.0.0.1:27017');
-        $cursor = $manager->executeQuery((getenv('LOG_MONGO_DB') ?: 'casalivre') . '.activity_log', new \MongoDB\Driver\Query(['actor_id' => $ref], ['sort' => ['created_at' => 1]]));
-        foreach ($cursor as $doc) {
-            $row = json_decode((string) json_encode($doc), true) ?: [];
-            unset($row['_id']);
-            $emit('activity.mongo', $row);
-        }
-    }
-}
-
-// 3) logs JSON da API
+// 2) logs JSON da API
 $files = glob($root . '/storage/logs/api/api-*') ?: [];
 sort($files);
 foreach ($files as $file) {

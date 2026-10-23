@@ -3,16 +3,22 @@
 
 declare(strict_types=1);
 
+// Argument values must not show up in a stack trace (same setting as public/index.php).
+// The runit `run` scripts also pass -d zend.exception_ignore_args=1.
+ini_set('zend.exception_ignore_args', '1');
+
 // Long-running queue worker (P0-4: runit service queue-worker in ops/dev-env). Loops over the mail and
 // image queues of QUEUE_DRIVER, one batch each, then sleeps. Same batch code as the cron workers
-// (MailWorker/ImageWorker); for sqlite keep using the cron scripts.
+// (MailWorker/ImageWorker); for QUEUE_DRIVER=db the cron scripts also work.
 //   php scripts/queue-worker.php [--once]
 // Exits on SIGTERM between batches (runit `sv stop`). Each iteration is QueueWorkerLoop::tick (clears per-process caches).
+// Queues are opened inside the loop. Valkey down at start is a RedisException: one ALERT, reconnect every second,
+// no exit (a startup try would exit 255 and runit would restart it every second).
 // Exits 1 when the DB connection is lost (tick pings it first; a job interrupted by it is not counted as failed):
-// runit restarts the worker with a fresh connection.
-// Valkey unreachable (QUEUE_DRIVER=valkey, RedisException): one line when the outage starts and one when it ends, no
-// stack trace and no exit; the queues are reconnected on the next iteration (every second). A job whose ack was lost
-// stays reserved and is sent again after STALE_SECONDS (at-least-once).
+// QueueWorkerLoop::dbLost logs an ALERT and sleeps 5-30 s, so a PG outage does not restart the worker every second.
+// Any other exception (including a Valkey AUTH or secret-file failure): class name only, same backoff, exit 1.
+// A job whose ack was lost stays reserved and is sent again after STALE_SECONDS (at-least-once). That reclaim
+// counts as an attempt, so retries stop at Queues::MAX_ATTEMPTS.
 
 $root = dirname(__DIR__);
 require_once $root . '/src/Db.php';
@@ -32,7 +38,6 @@ if (function_exists('pcntl_async_signals')) {
 @mkdir($root . '/storage', 0700, true);
 $mail = null;
 $image = null;
-$valkeyDown = false;
 $webp = function_exists('imagewebp') && (gd_info()['WebP Support'] ?? false);
 echo 'queue-worker: driver ' . Queues::driver() . ($webp ? '' : ' (no WebP: image queue skipped)') . "\n";
 do {
@@ -41,29 +46,20 @@ do {
         $mail ??= MailQueues::make();
         $image ??= ImageQueues::make();
         $reports = QueueWorkerLoop::tick($mail, $webp ? $image : null, $root . '/storage');
-        if ($valkeyDown) {
-            $valkeyDown = false;
-            fwrite(STDERR, "queue-worker: Valkey reachable again, resuming\n");
-        }
+        QueueWorkerLoop::valkeyUp();
     } catch (Throwable $e) {
         if ($e instanceof RedisException) {
-            if (!$valkeyDown) {
-                $valkeyDown = true;
-                fwrite(STDERR, 'queue-worker: ALERT Valkey unavailable (' . $e::class . '), retrying every second' . "\n");
-            }
-            if ($once) {
-                exit(1);
-            }
             $mail = $image = null; // reconnect on the next iteration
-            if (!$stop) {
-                sleep(1);
+            if (QueueWorkerLoop::valkeyDown($e, $once, $stop)) {
+                exit(1);
             }
             continue;
         }
-        if (!Db::isConnectionError($e)) {
-            throw $e;
+        if (Db::isConnectionError($e)) {
+            QueueWorkerLoop::dbLost($e);
+        } else {
+            QueueWorkerLoop::unexpected($e);
         }
-        fwrite(STDERR, 'queue-worker: DB connection lost (' . $e::class . '), exiting so runit restarts the worker' . "\n");
         exit(1);
     }
     foreach ($reports as $q => $report) {

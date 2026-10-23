@@ -1,8 +1,8 @@
 <?php
 // #142 (Rafael): the queue worker must not re-read settings.json, manifest.json or translations.json on every tick.
-// WorkerCaches::refreshIfChanged reloads a cache only when its file's stamp (mtime, inode, size) changed. Here each file
-// is altered in place with the same size and its old mtime put back, so its stamp is unchanged: if the next tick
-// re-read it, the altered value would show up.
+// WorkerCaches::refreshIfChanged reloads a cache only when its file's mtime differs from the one stored at load (#192).
+// Here each file is altered in place and its old mtime put back: if the next tick re-read it, the altered value would
+// show up.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -39,7 +39,7 @@ t_eq('20', $first['settings'] ?? null, 'tick 1: results_per_page from settings.j
 t_eq('Buscar', $first['i18n'] ?? null, 'tick 1: nav.search from translations.json');
 t_ok(is_string($first['manifest'] ?? null) && strlen($first['manifest']) === AssetManifest::HASH_LEN, 'tick 1: app.css hash from manifest.json');
 
-// Same-size in-place edits, old mtime restored: the stamp does not change.
+// In-place edits, old mtime restored: the stamp does not change.
 // [anchors to skip to, from, to]
 $alter = [
     'settings' => [['"results_per_page"'], '"value": "20"', '"value": "29"'],
@@ -60,7 +60,7 @@ foreach ($files as $k => $f) {
     fwrite($fh, $to);
     fclose($fh);
     touch($f, $st['mtime']);
-    t_eq(FileStamp::of($f), $st['mtime'] . ':' . $st['ino'] . ':' . $st['size'], "$k: stamp unchanged (same mtime, inode, size)");
+    t_eq($st['mtime'], FileStamp::of($f), "$k: stamp unchanged (same mtime)");
     t_ok(str_contains((string) file_get_contents($f), $to), "$k: file content altered");
 }
 

@@ -70,43 +70,44 @@ function t_done(): never
 }
 
 /**
- * Prepara um banco temporário (DB_DSN) com o schema do projeto.
- * Padrão: SQLite. Com TEST_PG_DSN (ex.: pgsql:host=/run/pg;dbname=postgres, P0-3) cria o banco
- * casalivre_t_<pid>_<rand> no PG, carrega schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim.
- * Deve ser chamado antes de qualquer acesso a db(). Retorna o arquivo SQLite ou o DSN do banco PG.
+ * Gives $file a new mtime one second older than the previous call's (#192): the worker file caches reload when the
+ * mtime differs, and a test writes in the same second as the load, which filemtime() (1 s) cannot tell apart.
+ */
+function t_backdate(string $file): void
+{
+    static $mtime = null;
+    $mtime = ($mtime ?? time() - 3600) - 1;
+    touch($file, $mtime);
+}
+
+/**
+ * Prepara um banco temporário (DB_DSN) com o schema do projeto (PostgreSQL only, #137). Exige TEST_PG_DSN
+ * (ex.: pgsql:host=/run/pg;dbname=postgres; ops/dev-env/test-pg.sh define): cria casalivre_t_<pid>_<rand>, carrega
+ * schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim. Deve ser chamado antes de qualquer acesso a db().
+ * Retorna o DSN do banco.
  */
 function t_temp_db(): string
 {
     $pgAdmin = (string) getenv('TEST_PG_DSN');
-    if ($pgAdmin !== '') {
-        return t_temp_pg($pgAdmin);
+    if ($pgAdmin === '') {
+        fwrite(STDERR, "TEST_PG_DSN is required (PostgreSQL only): run ops/dev-env/test-pg.sh or set TEST_PG_DSN/TEST_PG_USER.\n");
+        exit(2);
     }
-    return t_temp_sqlite();
+    return t_temp_pg($pgAdmin);
 }
 
-/** Banco SQLite temporário mesmo com TEST_PG_DSN (testes do caminho SQLite: PRAGMA, sqlite_master, arquivo). */
-function t_temp_sqlite(): string
+/** Banco PG temporário VAZIO (sem schema, sem DB_DSN): cria e apaga no shutdown. Retorna o DSN. */
+function t_temp_pg_empty(): string
 {
-    $dir = sys_get_temp_dir() . '/casalivre-test-' . bin2hex(random_bytes(4));
-    mkdir($dir, 0700, true);
-    $file = $dir . '/test.sqlite';
-    $pdo = new PDO('sqlite:' . $file);
-    $pdo->exec((string) file_get_contents(CL_ROOT . '/database/schema.sql'));
-    putenv('DB_DRIVER=sqlite');
-    putenv('DB_DSN=sqlite:' . $file);
-    register_shutdown_function(static function () use ($dir): void {
-        foreach (glob($dir . '/*') ?: [] as $f) {
-            @unlink($f);
-        }
-        @rmdir($dir);
-    });
-    return $file;
-}
-
-/** true quando a suíte roda em PG (TEST_PG_DSN definido). */
-function t_is_pg(): bool
-{
-    return (string) getenv('TEST_PG_DSN') !== '';
+    $adminDsn = (string) getenv('TEST_PG_DSN');
+    if ($adminDsn === '') {
+        fwrite(STDERR, "TEST_PG_DSN is required (PostgreSQL only).\n");
+        exit(2);
+    }
+    $name = 'casalivre_t_' . getmypid() . '_' . bin2hex(random_bytes(3));
+    t_pg_admin($adminDsn)->exec("CREATE DATABASE $name");
+    register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
+    return preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
 }
 
 /** Banco PG temporário: cria, carrega o schema, migra (seeds + versão) e apaga no shutdown. */
@@ -121,20 +122,85 @@ function t_temp_pg(string $adminDsn): string
     $dsn = preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
     register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
     (new PDO($dsn, $user, $pass, $opts))->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
-    putenv('DB_DRIVER=pgsql');
     putenv('DB_DSN=' . $dsn);
     $user !== null && putenv('DB_USER=' . $user);
     $pass !== null && putenv('DB_PASSWORD=' . $pass);
-    // Em processo, como no SQLite (migrate() carrega Settings, I18n, ActivityLog...).
+    // Em processo (migrate() carrega Settings, I18n, ActivityLog...).
     require_once CL_ROOT . '/src/Db.php';
     Db::migrateNow();
     return $dsn;
+}
+
+/**
+ * Conexão de teste ao banco temporário (DB_DSN) como $role (SET ROLE; o login de teste é membro com SET TRUE).
+ * casalivre_retention é o dono do schema audit: só os testes leem as tabelas de log assim; o app só tem INSERT.
+ */
+function t_pg_as(string $role, ?string $dsn = null): PDO
+{
+    $pdo = new PDO($dsn ?? (string) getenv('DB_DSN'), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+    $pdo->exec('SET ROLE ' . $role);
+    return $pdo;
+}
+
+/**
+ * Linhas dos dois logs (audit.activity_log + audit.audit_log) do banco temporário, em ordem de gravação
+ * (created_at, id), lidas como o dono do schema audit.
+ * @return list<array{id: string, created_at: string, code: int, class: string, actor_kind: string, actor_ref: ?string,
+ *   actor_key_version: ?int, access_event_id: ?string, params: array, anterior: mixed, atual: mixed}>
+ */
+function t_log_rows(?string $sinceCreatedAt = null, ?string $dsn = null): array
+{
+    $pdo = t_pg_as('casalivre_retention', $dsn);
+    $cols = "id::text AS id, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') AS created_at, code, retention_class,
+        actor_kind, encode(actor_ref, 'hex') AS actor_ref, actor_key_version, %s AS access_event_id, payload::text AS payload,
+        before_value::text AS before_value, after_value::text AS after_value";
+    $where = $sinceCreatedAt === null ? '' : " WHERE created_at > ?::timestamp AT TIME ZONE 'UTC'";
+    $st = $pdo->prepare('SELECT * FROM (SELECT ' . sprintf($cols, 'access_event_id::text') . ' FROM audit.activity_log' . $where
+        . ' UNION ALL SELECT ' . sprintf($cols, 'NULL::text') . ' FROM audit.audit_log' . $where . ') x ORDER BY created_at, id');
+    $st->execute($sinceCreatedAt === null ? [] : [$sinceCreatedAt, $sinceCreatedAt]);
+    return array_map(static fn (array $r): array => [
+        'id' => (string) $r['id'],
+        'created_at' => (string) $r['created_at'],
+        'code' => (int) $r['code'],
+        'class' => (string) $r['retention_class'],
+        'actor_kind' => (string) $r['actor_kind'],
+        'actor_ref' => $r['actor_ref'],
+        'actor_key_version' => $r['actor_key_version'] === null ? null : (int) $r['actor_key_version'],
+        'access_event_id' => $r['access_event_id'],
+        'params' => json_decode((string) $r['payload'], true) ?: [],
+        'anterior' => $r['before_value'] === null ? null : json_decode((string) $r['before_value'], true),
+        'atual' => $r['after_value'] === null ? null : json_decode((string) $r['after_value'], true),
+    ], $st->fetchAll());
+}
+
+/** Quantas linhas há nos dois logs (todas ou só de $code), lidas como o dono do schema audit. */
+function t_log_count(?int $code = null, ?string $dsn = null): int
+{
+    $q = 'SELECT count(*) FROM (SELECT code FROM audit.activity_log UNION ALL SELECT code FROM audit.audit_log) x'
+        . ($code === null ? '' : ' WHERE code = ' . $code);
+    return (int) t_pg_as('casalivre_retention', $dsn)->query($q)->fetchColumn();
+}
+
+/** Marca (relógio do banco agora, UTC) para t_log_rows($mark): só o que for gravado depois. */
+function t_log_mark(?string $dsn = null): string
+{
+    usleep(1000);
+    return (string) t_pg_as('casalivre_retention', $dsn)->query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US')")->fetchColumn();
 }
 
 /** Admin PDO for the test PG (TEST_PG_DSN/USER/PASSWORD). */
 function t_pg_admin(string $adminDsn): PDO
 {
     return new PDO($adminDsn, getenv('TEST_PG_USER') ?: null, getenv('TEST_PG_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+}
+
+/** Terminates one PostgreSQL backend (pg_terminate_backend) from another connection of the same role. */
+function t_pg_terminate_backend(PDO $pdo, int $pid): void
+{
+    $pdo->query('SELECT pg_terminate_backend(' . $pid . ')');
 }
 
 /**
@@ -198,7 +264,7 @@ function t_server(): string
     $port = (int) substr(strrchr((string) stream_socket_get_name($sock, false), ':'), 1);
     fclose($sock);
     $nonce = bin2hex(random_bytes(16));
-    $env = array_merge(getenv(), ['DB_DRIVER' => (string) (getenv('DB_DRIVER') ?: 'sqlite'), 'DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
+    $env = array_merge(getenv(), ['DB_DSN' => (string) getenv('DB_DSN'), 'T_SERVER_NONCE' => $nonce]);
     // APP_URL fixa (obrigatória fora de dev/local); o teste pode definir outra antes de subir o servidor.
     $env['APP_URL'] = (string) (getenv('APP_URL') ?: 'http://127.0.0.1:' . $port);
     // GEO_SALT é obrigatório fora de dev/local (GeoSalt::enforce); o teste pode definir outro (inclusive vazio).

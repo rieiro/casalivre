@@ -1,6 +1,6 @@
 # Proposta de sequência de sprints (RASCUNHO, 16/10/2026)
 **Para o Bot Gerente Geral.** É uma proposta de produto, não uma ordem: o Gerente define o como e o quando, e o Rafael aprova o plano semanal.
-Premissa: Sprint 4 (ADR 001, T1–T7 + T1b) e a correção de XSS ALTA já aprovadas, e feitas antes. **Ajustes de produto na S4** (`avaliacao-sprint4.md`): vitrine genérica (T3, T6), função única de disponibilidade (T3), preço total + por noite (T5), medição no PG 18 (T1 e no fechamento). **Recomendação (D19): P0 antes do ADR 001 ou no início da S4**, para medir o ADR uma vez só no PG 18 + PHP-FPM. **Só PostgreSQL (decisão do Rafael de 21/10, substitui a D18):** SQLite e MongoDB saem do projeto.
+Premissa: Sprint 4 (ADR 001, T1–T7 + T1b) e a correção de XSS ALTA já aprovadas, e feitas antes. **Ajustes de produto na S4** (`avaliacao-sprint4.md`): vitrine genérica (T3, T6), função única de disponibilidade (T3), preço total + por noite (T5), medição no PG 18 (T1 e no fechamento). **Recomendação (D19): P0 antes do ADR 001 ou no início da S4**, para medir o ADR uma vez só no PG 18 + PHP-FPM. **Só PostgreSQL (decisão do Rafael de 21/10, substitui a D18).**
 Duração e esforço são estimativas.
 
 ## Sprint 5 — Infra (P0) + árvore de gestão e canais (P2a) + métricas (P1)

@@ -23,7 +23,7 @@ elif [[ -f "$ROOT/.env.example" ]]; then
   mv "$tmp" "$ENV_FILE"
   echo ".env criado a partir de .env.example (APP_ENV=production; use dev só em máquina local)"
 else
-  printf 'APP_ENV=production\nAPP_URL=http://127.0.0.1:8080\nPHP_BIN=%s\nGEO_SALT=\nDB_DRIVER=sqlite\nDB_DSN=\nDB_USER=\nDB_PASSWORD=\nLOG_DRIVER=sqlite\nLOG_MONGO_URI=\nLOG_MONGO_DB=\nLOG_SALT=\nSTRIPE_SECRET_KEY=\nPAGARME_API_KEY=\nAWS_ACCESS_KEY_ID=\nAWS_SECRET_ACCESS_KEY=\n' "$PHP_BIN" > "$ENV_FILE"
+  printf 'APP_ENV=production\nAPP_URL=http://127.0.0.1:8080\nPHP_BIN=%s\nGEO_SALT=\nDB_DSN=\nDB_USER=\nDB_PASSWORD=\nLOG_DB_USER=\nLOG_DB_PASSWORD=\nLOG_SALT=\nLOG_SALT_KEY_VERSION=1\nSTRIPE_SECRET_KEY=\nPAGARME_API_KEY=\nAWS_ACCESS_KEY_ID=\nAWS_SECRET_ACCESS_KEY=\n' "$PHP_BIN" > "$ENV_FILE"
   echo ".env criado do zero (sem .env.example): $ENV_FILE"
 fi
 

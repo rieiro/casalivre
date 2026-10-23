@@ -140,6 +140,13 @@ ops/dev-env/db-setup.sh --no-seed
 - `sv/` (versionado): corpo dos `run`; o `services.sh` copia para
   `$CL_HOME/sv/` com um cabeçalho que carrega `$CL_HOME/etc/dev-env.env`
   (0600). Os serviços não herdam o env do host.
+- **log-retention**: roda `scripts/log-retention.php` uma vez por dia como
+  `cl_retention_job` (peer no socket, mapa `casalivre`, como `casalivre_dev`;
+  o mesmo papel que a produção usa em `LOG_JOB_DB_USER`): cria as partições do
+  log (uma por transação), move linhas achadas numa DEFAULT para a folha certa,
+  roda o passo de retenção e o `audit.log_partitions_health()`. Dry-run (não
+  remove partições) a menos que `CL_LOG_RETENTION_APPLY=1` em
+  `$CL_HOME/etc/log-retention.conf`.
 - **postgresql**: `initdb -U postgres` no primeiro start, só socket Unix
   (`listen_addresses=''`; `port=5432` só nomeia o socket `.s.PGSQL.5432`).
   Socket em `$CL_RUN` (0700), modo 0770 com o grupo do bot; `timezone=UTC`.
@@ -159,7 +166,7 @@ ops/dev-env/db-setup.sh --no-seed
   o resto `reject`. Sem root não há usuário do SO `postgres`: o `pg_ident`
   liga o uid do bot a `postgres` (admin) e o do bot/FPM (mesmo uid aqui) a
   `casalivre_dev`.
-- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`, `DB_DRIVER`,
+- **php-fpm**: `clear_env = yes`; o app recebe só `APP_ENV=dev`,
   `DB_DSN` (socket), `VALKEY_SOCKET`, `VALKEY_USER`, `VALKEY_PASSWORD_FILE` e `QUEUE_DRIVER=valkey` via `etc/php-fpm-env.conf` (0600).
 - **nginx**: espera o socket do FPM; só ele escuta em porta (`CL_PORT_HTTP`).
 - **valkey**: `--port 0` (só socket, 0660), `--aclfile etc/valkey.acl` (0600,
