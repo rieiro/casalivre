@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS places (
 CREATE INDEX IF NOT EXISTS idx_places_name_fold ON places (name_fold);
 CREATE INDEX IF NOT EXISTS idx_places_parent ON places (parent_id);
 CREATE UNIQUE INDEX IF NOT EXISTS places_child_uk ON places (parent_id, type, name_fold) WHERE parent_id IS NOT NULL;
+-- Substitui o places_root_uk do ADR (UNIQUE (type, name_fold) nas raízes), que rejeitava homônimos entre UFs.
+CREATE UNIQUE INDEX IF NOT EXISTS places_city_uf_uk
+  ON places (uf, name_fold) WHERE type = 'city';
 
 CREATE TABLE IF NOT EXISTS place_search_keys (
     place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
