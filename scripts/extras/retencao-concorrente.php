@@ -62,7 +62,7 @@ require_once $root . '/src/Db.php';
 Db::loadEnv();
 function pdo(): PDO
 {
-    return new PDO(Db::dsn(), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    return Db::connectAs('DB_USER', 'DB_PASSWORD');
 }
 
 // Limpa sobras do limite por IP deixadas pelo CASOS (IpRateLimiter no Valkey, loopback), para o login abaixo não cair em 429.
