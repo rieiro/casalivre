@@ -232,8 +232,8 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   - campo no anúncio para cadastro e taxa municipais.
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
-## Competitor gaps (reviewed 2026-10-21)
-Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 21/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
+## Competitor gaps (reviewed 2026-10-21 and 2026-10-22)
+Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 22/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
 
 | # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -241,9 +241,11 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G7 | Forma de check-in | 6 | 1 | 80% | 0,25 | 19,2 | Should | S7 (P10) | aprovado com mudança |
 | G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga e rede decididas pelo Rafael (2026-10-21) |
 | G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
+| G18 | Regras de disponibilidade | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes de fechar a disponibilidade da busca (restrição já no ADR 001) | aprovado com mudança (I 1 → 2; 6,4 → 12,8) |
 | G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
 | G10 | Consequência para o anfitrião que deixa expirar | 6 | 1 | 80% | 0,5 | 9,6 | Should | S7 | aprovado com mudança |
+| G20 | Reserva dupla entre canais pelo iCal | 3 | 2 | 80% | 0,5 | 9,6 | **Must** | antes da S7 | aprovado com mudança (nota mantida, sobe para Must) |
 | G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
@@ -253,6 +255,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
 | G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
+| G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | piloto (alerta); depois do piloto (relaxamento automático) | alterado pelo Negócios |
 | G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
 
 ### G9 — Bloqueio durante a aprovação (S7)
@@ -389,6 +392,47 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 ### G17 — Tarifa não reembolsável
 - **Rejeitado por ora** (RICE 0,5): o direito de 7 dias do CDC (J35) provavelmente anula o desconto; rever depois do Jurídico sobre o CDC art. 49.
 
+### G18 — Regras de disponibilidade (antes de fechar a disponibilidade da busca)
+- **Problema:** a spec-03 §3 cita "mínimo e máximo de noites e antecedência" sem valores, comportamento nem aceite; a spec-06 §3 só tem mínimo de noites por período. Faltam **tempo de preparação** (folga de limpeza entre estadias, importante quando a limpeza é um prestador separado pago pelo hóspede), **janela de reserva** (até quando à frente), **corte no mesmo dia** e **dias da semana sem chegada / sem saída** (por exemplo, sábado a sábado na alta temporada).
+- **Solução (aprovada pelo Negócios com mudança):** regras definidas **por imóvel**: mínimo e máximo de noites (dentro do teto de 30 noites, G13), antecedência (0 a 7 dias, com hora de corte no mesmo dia), noites de preparação (0 a 2), janela de reserva (3 a 24 meses) e dias da semana permitidos para chegada e saída. **Modelos no nível do nó:** o franqueado ou parceiro define padrões regionais para os seus imóveis (isso absorve a nota de "conjuntos de regras para vários anúncios"). **Valores sazonais** reaproveitam os períodos de datas da S7 (por exemplo, mínimo maior no Réveillon e no Carnaval; spec-07 B1). Motivo do Negócios: o mínimo de estadia na alta temporada é um controle central de receita na região do piloto, e os modelos por nó reduzem o trabalho de configuração do franqueado.
+- **Restrição de velocidade da busca (já agora):** a verificação de disponibilidade da busca precisa aplicar essas regras, junto com mínimo/máximo de noites e o teto de 30 noites, sem quebrar as metas de velocidade do ADR 001 (regra do Rafael de 2026-10-21). **Arquitetura e BD confirmam** que as regras cabem nas metas e dizem se são pré-calculadas nos dados de noites reserváveis ou avaliadas na consulta. A avaliação do mínimo de estadia fica num lugar só (G19 depende disso).
+- **Critérios de aceite:**
+  1. Cada imóvel tem mínimo e máximo de noites, antecedência (0 a 7 dias, com hora de corte no mesmo dia), noites de preparação (0 a 2), janela de reserva (3 a 24 meses) e dias de chegada e de saída permitidos; nenhum máximo passa de 30 noites.
+  2. Um imóvel sem valor próprio herda o modelo do nó acima; o valor do imóvel substitui o do modelo.
+  3. Um período sazonal (período de datas da S7) sobrescreve as regras do imóvel nas suas datas; por exemplo, um mínimo de 5 noites no Réveillon vale só nessas datas.
+  4. A busca e o checkout recusam datas que violam qualquer regra: antecedência menor que a configurada, check-in depois da janela, chegada ou saída num dia não permitido, estadia fora do mínimo/máximo, e noites dentro da preparação de outra reserva.
+  5. Com 1 noite de preparação, a noite seguinte ao check-out de uma reserva não aparece disponível.
+  6. Arquitetura e BD registram no ADR 001 como as regras entram na disponibilidade da busca, dentro das metas de velocidade, antes de a frente fechar.
+- **Prioridade:** Should, antes de fechar a disponibilidade da busca; a restrição de velocidade vale já no ADR 001. RICE 12,8 (R 4, I 2, C 80%, E 0,5; o Negócios subiu I de 1 para 2). Fonte: competitors.md G18 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb updating your availability](https://www.airbnb.com/resources/hosting-homes/a/updating-your-availability-708), [Airbnb booking settings](https://www.airbnb.com/help/article/3728), [Airbnb controlling your pricing](https://www.airbnb.co.in/resources/hosting-homes/a/controlling-your-pricing-648), [Booking.com adding and managing restrictions](https://partner.booking.com/en-us/help/reservations/restrictions/adding-and-managing-restrictions), [Booking.com setting reservation restrictions](https://partner.booking.com/en-us/help/reservations/restrictions/setting-reservation-restrictions-your-property).
+
+### G19 — Noites vazias entre reservas (piloto: alerta)
+- **Problema:** com mínimo de 3 noites ou mais (comum no Réveillon e no Carnaval), 1 a 2 noites livres entre reservas ficam impossíveis de reservar, e o anfitrião não é avisado.
+- **Solução (alterada pelo Negócios):** **no piloto**, um alerta simples ao anfitrião **e ao nó acima** quando sobram 1 ou 2 noites que não podem ser reservadas. **Depois do piloto**, uma regra opcional que relaxa o mínimo de estadia para essas noites (um parâmetro, **desligado por padrão**). Motivo do Negócios: o alerta dá ao franqueado uma ação concreta que preenche noites; a automação pode esperar.
+- **Critérios de aceite:**
+  1. (Piloto) Com mínimo de 5 noites e 2 noites livres entre duas reservas, o anfitrião e o nó acima recebem o alerta, que mostra as datas e o mínimo que impede a reserva.
+  2. (Piloto) Noites livres que podem ser reservadas com o mínimo vigente não geram alerta.
+  3. (Depois do piloto) Com a regra ligada, essas noites aceitam uma estadia que as ocupa por inteiro, mesmo abaixo do mínimo; com a regra no padrão (desligada), nada muda.
+  4. O cálculo usa a mesma avaliação de mínimo de estadia da G18.
+- **Prioridade:** Could; alerta no piloto, relaxamento automático depois do piloto. RICE 0,75 (R 3, I 0,5, C 50%, E 1; mantido). Fonte: competitors.md G19 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb updating your availability](https://www.airbnb.com/resources/hosting-homes/a/updating-your-availability-708), [Booking.com dynamic restriction rules](https://partner.booking.com/en-gb/help/reservations/restrictions/setting-dynamic-restriction-rules).
+
+### G20 — Reserva dupla entre canais pelo iCal (Must, antes da S7)
+- **Problema:** as OTAs leem a exportação da casalivre só a cada 2 a 3 h, e a casalivre importa em intervalos, então uma reserva do Airbnb/Booking e uma da casalivre podem cair nas mesmas noites. As specs não dizem o que acontece quando um bloqueio importado de OTA se sobrepõe a uma solicitação pendente ou reserva confirmada da casalivre (quem é avisado, se o hóspede da casalivre é informado, se conta como cancelamento do anfitrião), nem se o **feed de exportação inclui as datas seguradas** (aguardando aprovação/pagamento, G9).
+- **Solução (aprovada pelo Negócios com mudança):** (1) a exportação inclui toda noite que bloqueia uma reserva da casalivre, inclusive solicitações aguardando aprovação ou pagamento; (2) uma importação que se sobrepõe a uma solicitação ou reserva da casalivre gera um **registro de conflito** e um alerta no Hoje e na reserva, e **nunca sobrescreve** a reserva; (3) se o anfitrião então cancela, é cancelamento do anfitrião pela spec-09 §5, com `responsible` = anfitrião (campo da G14), sem força maior; (4) dica ao anfitrião no cadastro do anúncio para sincronizar nos dois sentidos. Mudanças do Negócios: o **intervalo de importação é um parâmetro** (tão curto quanto a origem permitir); o alerta de conflito vai ao anfitrião **e ao nó acima**, com **prazo de resolução**; a **realocação vai primeiro para um imóvel comparável da mesma rede**, para a reserva ficar conosco. Depois: sincronização direta por channel manager ou API, como complemento pago opcional. O Jurídico confirma o remédio do lado do hóspede (só reembolso ou ajuda para realocar). Motivo do Negócios: os proprietários do piloto vão anunciar em vários canais, e uma reserva dupla prejudica a confiança no site direto mais do que a nota mostra.
+- **Critérios de aceite:**
+  1. O feed iCal exportado do imóvel inclui as noites de reservas confirmadas e de solicitações pendentes de aprovação ou pagamento, e as remove quando liberadas.
+  2. Uma importação que se sobrepõe a uma solicitação ou reserva da casalivre cria um registro de conflito, alerta o anfitrião e o nó acima no Hoje e na reserva, com o prazo de resolução, e não altera nem cancela a reserva.
+  3. Se o anfitrião cancela depois do conflito, o cancelamento tem `responsible` = anfitrião (G14) e conta na métrica dele; força maior não se aplica.
+  4. O intervalo de importação é um parâmetro; mudá-lo muda a frequência sem mudar código.
+  5. Ao resolver o conflito, a realocação oferece primeiro imóveis comparáveis da mesma rede.
+  6. O cadastro do anúncio mostra a dica de sincronizar nos dois sentidos.
+- **Prioridade:** **Must, antes da S7** (RICE 9,6 mantido: R 3, I 2, C 80%, E 0,5). Fonte: competitors.md G20 (`/workspace/produto/competitors.md`, 22/10), revisão do Negócios ("Day 6", `/workspace/negocios/review-gaps-g1-g17.md`). Referências: [Airbnb sync calendars](https://www.airbnb.com/help/article/99), [Booking.com synchronise calendars](https://partner.booking.com/en-gb/help/rates-availability/extranet-calendar/how-synchronise-your-calendars-across-channels), [Booking.com handling double bookings](https://partner.booking.com/en-gb/help/reservations/overbookings-no-shows/handling-overbookings).
+
+**Notas de 22/10 (não são gaps novos):**
+- **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
+- **Pedidos acima do máximo de noites:** continuam como nota (G13; teto de 30 noites, G-5).
+- **Mínimo por dia da semana:** coberto pelos períodos da spec-07 B1 mais os dias de chegada da G18.
+- **Conjuntos de regras para vários anúncios:** absorvidos pelos modelos por nó da G18.
+
 ### Restrições para a S7
 - O cancelamento guarda `initiated_by` e `responsible` em campos separados; taxa, métrica, reembolso e comissão leem `responsible` (G14), com referência opcional a um evento disruptivo (G15).
 - O bloqueio de solicitação pendente é visível para a disponibilidade do ADR 001 e sai nos feeds iCal do imóvel; a expiração libera na mesma transação (G9).
@@ -398,6 +442,8 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - Pagamentos como N linhas por reserva, não um `paid_at` (G12).
 - O snapshot guarda o `max_nights` do anúncio e o teto da plataforma de 30 noites (G13) e a política resolvida por (imóvel, canal, check-in) (G16).
 - Uma oferta ou solicitação pré-aprovada leva o canal de origem (G11).
+- A exportação iCal inclui as noites seguradas (G9, G20); uma importação que se sobrepõe a uma solicitação ou reserva da casalivre cria um registro de conflito e nunca a sobrescreve; o intervalo de importação é parâmetro (G20).
+- Regras de disponibilidade por imóvel, com modelos por nó e valores sazonais pelos períodos de datas, avaliadas num lugar só e dentro das metas de velocidade do ADR 001 (G18, G19).
 - Cadastro de anúncio (P10): campos estruturados de divulgação de câmera externa (sim/não + local) e monitor de ruído (sim/não + só decibéis), com a confirmação obrigatória de "sem câmeras internas, sem gravação de áudio, sem reconhecimento facial" para publicar (G6); forma de check-in como enum (G7).
 
 ## Itens adiados
