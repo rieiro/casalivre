@@ -1,0 +1,86 @@
+#!/bin/sh
+# casalivre-alert SERVICE MESSAGE
+#
+# Pages one service at a time. Every event is appended to ALERT_LOG. Syslog
+# (and ALERT_CMD, when set) fire at most once per ALERT_THROTTLE seconds
+# (default 900) for that service, so a restart loop does not page on every
+# exit. ALERT_CMD is an executable path, run as:
+#   ALERT_CMD SERVICE MESSAGE
+# with no shell. Always exits 0: a pager problem must not stop runit.
+umask 077
+
+if [ $# -lt 2 ]; then
+  echo "usage: casalivre-alert SERVICE MESSAGE" >&2
+  exit 0
+fi
+
+service=$1
+case $service in
+  *[!A-Za-z0-9._-]*) service=unknown ;;
+esac
+
+message=$(printf '%s' "$2" | tr '\r\n' '  ' | cut -c1-400)
+if [ -z "$message" ]; then
+  exit 0
+fi
+
+ALERT_LOG=${ALERT_LOG:-/var/log/casalivre/alerts.log}
+ALERT_STAMP_DIR=${ALERT_STAMP_DIR:-/run/casalivre/alert-stamps}
+throttle=${ALERT_THROTTLE:-900}
+case $throttle in
+  ''|*[!0-9]*) throttle=900 ;;
+esac
+
+alert_dir=$(dirname "$ALERT_LOG")
+mkdir -p "$alert_dir" "$ALERT_STAMP_DIR" 2>/dev/null || true
+if [ "$(id -u)" -eq 0 ]; then
+  case $ALERT_LOG in
+    /var/log/casalivre/*)
+      # Traversable, not listable, so a service user can reach its own 0700 log dir.
+      chmod 0711 "$alert_dir" 2>/dev/null || true
+      chown root:root "$alert_dir" 2>/dev/null || true
+      ;;
+  esac
+  chmod 0700 "$ALERT_STAMP_DIR" 2>/dev/null || true
+fi
+
+stamp="$ALERT_STAMP_DIR/$service"
+prev=0
+if [ -f "$stamp" ]; then
+  prev=$(cat "$stamp" 2>/dev/null || echo 0)
+fi
+case $prev in
+  ''|*[!0-9]*) prev=0 ;;
+esac
+now=$(date +%s 2>/dev/null || echo 0)
+case $now in
+  ''|*[!0-9]*) now=0 ;;
+esac
+
+kind=skip
+if [ "$now" -lt "$prev" ] || [ $((now - prev)) -ge "$throttle" ]; then
+  kind=page
+  printf '%s\n' "$now" > "$stamp" 2>/dev/null || true
+fi
+
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u)
+printf '%s %s %s %s\n' "$ts" "$service" "$kind" "$message" >> "$ALERT_LOG" 2>/dev/null || true
+chmod 0600 "$ALERT_LOG" 2>/dev/null || true
+
+if [ "$kind" != page ]; then
+  exit 0
+fi
+
+logger_bin=${LOGGER_BIN:-logger}
+if [ -n "$logger_bin" ] && command -v "$logger_bin" >/dev/null 2>&1; then
+  "$logger_bin" -t casalivre -p user.err "$service: $message" || true
+fi
+
+if [ -n "${ALERT_CMD:-}" ]; then
+  if [ -x "$ALERT_CMD" ]; then
+    "$ALERT_CMD" "$service" "$message" || true
+  else
+    printf '%s %s %s %s\n' "$ts" "$service" "skip" "ALERT_CMD is not executable" >> "$ALERT_LOG" 2>/dev/null || true
+  fi
+fi
+exit 0

@@ -1,0 +1,173 @@
+#!/bin/sh
+# casalivre-svlogd SERVICE DEFAULT_LOG_DIR
+#
+# Log service body for the CasaLivre runit services. runsv's cwd is service/log
+# and stdin is the service's stdout.
+#
+# ALERT lines are paged here, as they are read, by casalivre-alert. svlogd then
+# stores the same stream. svlogd's own "e" pattern only copies a match to its
+# stderr; paging in this process does not wait for rotation and does not depend
+# on that stderr. Non-zero exits are paged by casalivre-finish, not here.
+#
+# The log directory is 0700 and owned by the service user. svlogd later chmod's
+# a rotated file to 0755; the directory mode is what keeps it private. Rotation
+# (seeded once, then left for the operator): daily, 14 old files (~14 days),
+# 100000000-byte cap. Do not point LOG_DIR at a directory this script should
+# not chmod.
+service=$1
+default_dir=$2
+
+case $service in
+  ''|*[!A-Za-z0-9._-]*)
+    echo "casalivre-svlogd: bad service name" >&2
+    exit 1
+    ;;
+esac
+
+if [ -r ../conf ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ../conf
+  set +a
+fi
+
+APP_USER=${APP_USER:-casalivre}
+LOG_USER=${LOG_USER:-$APP_USER}
+LOG_GROUP=${LOG_GROUP:-$LOG_USER}
+LOG_DIR=${LOG_DIR:-$default_dir}
+FIFO_DIR=${FIFO_DIR:-/run/casalivre}
+
+if [ -z "$LOG_DIR" ] || [ "$LOG_DIR" = / ]; then
+  echo "casalivre-svlogd: LOG_DIR is empty" >&2
+  exit 1
+fi
+
+parent=$(dirname "$LOG_DIR")
+case $parent in
+  /|/var|/var/log|/tmp|/run|/run/casalivre)
+    echo "casalivre-svlogd: refusing to chmod $parent" >&2
+    exit 1
+    ;;
+esac
+
+umask 077
+mkdir -p "$parent" "$LOG_DIR" || {
+  echo "casalivre-svlogd: cannot create $LOG_DIR" >&2
+  exit 1
+}
+chmod 0700 "$LOG_DIR" || exit 1
+
+if [ ! -s "$LOG_DIR/config" ]; then
+  cat > "$LOG_DIR/config" <<'EOF'
+# Seeded on first start. Edit in place; this file is not overwritten.
+# s: rotate current at this many bytes. n: keep this many old files.
+# t: rotate at least this often (seconds). n14 + t86400 is about 14 days.
+# ALERT lines are paged by casalivre-svlogd before they reach svlogd.
+s100000000
+n14
+t86400
+EOF
+fi
+chmod 0600 "$LOG_DIR/config" || exit 1
+
+if ! id "$LOG_USER" >/dev/null 2>&1; then
+  echo "casalivre-svlogd: user $LOG_USER does not exist" >&2
+  exit 1
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+  chown root:root "$parent" || exit 1
+  chmod 0711 "$parent" || exit 1
+  chown "$LOG_USER:$LOG_GROUP" "$LOG_DIR" "$LOG_DIR/config" || exit 1
+else
+  me=$(id -un)
+  if [ "$LOG_USER" != "$me" ]; then
+    echo "casalivre-svlogd: need root to run svlogd as $LOG_USER" >&2
+    exit 1
+  fi
+  chmod 0711 "$parent" 2>/dev/null || chmod 0700 "$parent" || exit 1
+  chown "$LOG_USER:$LOG_GROUP" "$LOG_DIR" "$LOG_DIR/config" || exit 1
+fi
+
+command -v svlogd >/dev/null 2>&1 || {
+  echo "casalivre-svlogd: svlogd not found" >&2
+  exit 1
+}
+command -v chpst >/dev/null 2>&1 || {
+  echo "casalivre-svlogd: chpst not found" >&2
+  exit 1
+}
+
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -n "${ALERT_BIN:-}" ] && [ -x "$ALERT_BIN" ]; then
+  alert=$ALERT_BIN
+elif [ -x "$here/casalivre-alert" ]; then
+  alert=$here/casalivre-alert
+elif [ -x /usr/local/sbin/casalivre-alert ]; then
+  alert=/usr/local/sbin/casalivre-alert
+else
+  alert=
+  echo "casalivre-svlogd: casalivre-alert not found; logging without paging" >&2
+fi
+
+mkdir -p "$FIFO_DIR" || {
+  echo "casalivre-svlogd: cannot create $FIFO_DIR" >&2
+  exit 1
+}
+chmod 0700 "$FIFO_DIR" || exit 1
+fifo="$FIFO_DIR/${service}.fifo"
+rm -f "$fifo"
+mkfifo -m 0600 "$fifo" || exit 1
+
+# Hold the fifo open (7), then split a write end (8, this process) and a read
+# end (9, svlogd). Close 7 so it is not a second writer.
+exec 7<>"$fifo" || exit 1
+exec 8>"$fifo" || exit 1
+exec 9<"$fifo" || exit 1
+exec 7>&-
+rm -f "$fifo"
+
+# svlogd must not keep a write end, or it never sees EOF. Close our fifo fds
+# in the child after stdin is the read end. dash only supports fds 0-9.
+# stdout and stderr stay the log service's.
+(
+  exec 0<&9 || exit 1
+  n=3
+  while [ "$n" -le 9 ]; do
+    eval "exec ${n}<&-" 2>/dev/null || true
+    n=$((n + 1))
+  done
+  exec chpst -u "$LOG_USER:$LOG_GROUP" svlogd -tt "$LOG_DIR"
+) &
+spid=$!
+exec 9<&-
+
+sleep 0.1
+if ! kill -0 "$spid" 2>/dev/null; then
+  echo "casalivre-svlogd: svlogd exited during start" >&2
+  wait "$spid" 2>/dev/null || true
+  exec 8>&-
+  exit 1
+fi
+
+trap 'kill "$spid" 2>/dev/null || true; exit 0' TERM INT
+trap '' PIPE
+
+rc=0
+while IFS= read -r line || [ -n "$line" ]; do
+  case $line in
+    *ALERT*)
+      if [ -n "$alert" ]; then
+        "$alert" "$service" "$line" || true
+      fi
+      ;;
+  esac
+  printf '%s\n' "$line" >&8 || {
+    rc=1
+    break
+  }
+done
+
+exec 8>&-
+wait "$spid" 2>/dev/null || true
+exit "$rc"

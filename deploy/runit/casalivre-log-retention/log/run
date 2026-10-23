@@ -1,0 +1,16 @@
+#!/bin/sh
+# svlogd da retenção e alerta de linhas com ALERT (o mesmo mecanismo do worker).
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+bin=
+if [ -n "${CASALIVRE_RUNIT_BIN:-}" ] && [ -x "${CASALIVRE_RUNIT_BIN}/casalivre-svlogd" ]; then
+  bin="${CASALIVRE_RUNIT_BIN}/casalivre-svlogd"
+elif [ -x /usr/local/sbin/casalivre-svlogd ]; then
+  bin=/usr/local/sbin/casalivre-svlogd
+elif [ -x "$here/../../casalivre-svlogd" ]; then
+  bin="$here/../../casalivre-svlogd"
+fi
+if [ -z "$bin" ]; then
+  echo "casalivre-log-retention/log: instale deploy/runit/casalivre-svlogd em /usr/local/sbin" >&2
+  exit 1
+fi
+exec "$bin" casalivre-log-retention /var/log/casalivre/log-retention

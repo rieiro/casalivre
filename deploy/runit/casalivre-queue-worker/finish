@@ -1,0 +1,18 @@
+#!/bin/sh
+# runit: ./finish EXITCODE WAITSTATUS
+# Page a real failure, then return so runit restarts the worker at once.
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+bin=
+if [ -n "${CASALIVRE_RUNIT_BIN:-}" ] && [ -x "${CASALIVRE_RUNIT_BIN}/casalivre-finish" ]; then
+  bin="${CASALIVRE_RUNIT_BIN}/casalivre-finish"
+elif [ -x /usr/local/sbin/casalivre-finish ]; then
+  bin=/usr/local/sbin/casalivre-finish
+elif [ -x "$here/../casalivre-finish" ]; then
+  bin="$here/../casalivre-finish"
+fi
+if [ -z "$bin" ]; then
+  echo "casalivre-queue-worker/finish: casalivre-finish not installed" >&2
+  logger -t casalivre -p user.err "casalivre-queue-worker: ALERT finish helper missing" 2>/dev/null || true
+  exit 0
+fi
+exec "$bin" casalivre-queue-worker 0 "$@"

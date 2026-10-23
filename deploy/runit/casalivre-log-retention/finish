@@ -1,0 +1,19 @@
+#!/bin/sh
+# runit: ./finish CÓDIGO STATUS
+# Alerta na hora se a retenção saiu diferente de zero e espera 86400s
+# (RESTART_DELAY no conf ou no ambiente) antes de o runit tentar de novo.
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+bin=
+if [ -n "${CASALIVRE_RUNIT_BIN:-}" ] && [ -x "${CASALIVRE_RUNIT_BIN}/casalivre-finish" ]; then
+  bin="${CASALIVRE_RUNIT_BIN}/casalivre-finish"
+elif [ -x /usr/local/sbin/casalivre-finish ]; then
+  bin=/usr/local/sbin/casalivre-finish
+elif [ -x "$here/../casalivre-finish" ]; then
+  bin="$here/../casalivre-finish"
+fi
+if [ -z "$bin" ]; then
+  echo "casalivre-log-retention/finish: casalivre-finish não instalado" >&2
+  logger -t casalivre -p user.err "casalivre-log-retention: ALERT finish helper missing" 2>/dev/null || true
+  exit 0
+fi
+exec "$bin" casalivre-log-retention 86400 "$@"
