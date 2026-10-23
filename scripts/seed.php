@@ -84,7 +84,7 @@ for ($i = 1; $i <= 5; $i++) {
             'title' => $title,
             'description' => $description,
             'summary' => summary_from($description, 45),
-            'city' => $known['label'],
+            'city_place_id' => (int) $known['id'],
             'address' => compose_address((string) $place['street'], $number, ''),
             'cep' => $place['cep'],
             'street' => $place['street'],

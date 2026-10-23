@@ -100,7 +100,7 @@ foreach ($cities as $index => $city) {
             'title' => $title,
             'description' => $description,
             'summary' => summary_from($description, 45),
-            'city' => $city['label'],
+            'city_place_id' => (int) $city['id'],
             'address' => compose_address((string) $place['street'], $houseNumber, ''),
             'cep' => $place['cep'],
             'street' => $place['street'],
@@ -174,8 +174,12 @@ function massive_reviews(PDOStatement $review, int $houseId): void
 function massive_cities(int $needed): array
 {
     $known = [];
-    foreach (db()->query('SELECT name, uf, label, lat, lng, name_fold FROM cities') as $row) {
-        $known[$row['name_fold'] . '|' . strtolower((string) $row['uf'])] = $row;
+    foreach (db()->query("SELECT id, name, uf, label, lat, lng, name_fold FROM places WHERE type = 'city' ORDER BY id") as $row) {
+        $key = $row['name_fold'] . '|' . strtolower(rtrim((string) $row['uf']));
+        if (!isset($known[$key])) {
+            $row['uf'] = rtrim((string) $row['uf']);
+            $known[$key] = $row;
+        }
     }
     $picked = [];
     $seen = [];
@@ -188,6 +192,7 @@ function massive_cities(int $needed): array
         $seen[$key] = true;
         $city = $known[$key];
         $picked[] = [
+            'id' => (int) $city['id'],
             'cep_city' => (string) $row['city'],
             'uf' => (string) $row['uf'],
             'label' => (string) $city['label'],

@@ -4,9 +4,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
+require_once __DIR__ . '/CityRepository.php';
 
 final class HouseRepository
 {
+    /** Display city "Name, UF" from places aliased as c. */
+    public const CITY_LABEL_SQL = "(c.name || ', ' || rtrim(c.uf))";
+
+    /** properties p.city_place_id → places c. */
+    public const JOIN_CITY_SQL = 'JOIN places c ON c.id = p.city_place_id';
+
+    /** properties.* plus the display city. city_place_id replaced properties.city. */
+    public const SQL_WITH_CITY = 'SELECT p.*, ' . self::CITY_LABEL_SQL . ' AS city FROM properties p ' . self::JOIN_CITY_SQL;
+
     public static function insert(array $house): int
     {
         return (int) self::insertRow($house)['id'];
@@ -15,13 +25,15 @@ final class HouseRepository
     public static function insertRow(array $house): array
     {
         $hash = bin2hex(random_bytes(8));
+        $placeId = self::cityPlaceId($house);
+        $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
         $stmt = db()->prepare('INSERT INTO properties (
-            user_id, title, description, summary, city, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
+            user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
             nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING id, title, description, summary, city, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, status');
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, status');
         $stmt->execute([
-            $house['user_id'], $house['title'], $house['description'], $house['summary'], $house['city'],
+            $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
             $house['address'], $house['cep'] ?? '', $house['street'] ?? '', $house['address_number'] ?? '', $house['address_complement'] ?? '',
             $house['lat'], $house['lng'], $house['bedrooms'], $house['beds'], $house['rooms'] ?? '[]', $house['max_guests'],
             $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
@@ -29,7 +41,60 @@ final class HouseRepository
             max(0, (int) ($house['cleaning_fee'] ?? 0)),
             $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, date('Y-m-d H:i:s'),
         ]);
-        return $stmt->fetch() ?: [];
+        $row = $stmt->fetch() ?: [];
+        if ($row !== []) {
+            $row['city'] = self::cityText($placeId);
+        }
+        return $row;
+    }
+
+    /** Resolves the city string still passed by forms and tests, or uses city_place_id when the caller already has it. */
+    private static function cityPlaceId(array $house): int
+    {
+        $id = (int) ($house['city_place_id'] ?? 0);
+        if ($id > 0) {
+            return $id;
+        }
+        $place = CityRepository::match((string) ($house['city'] ?? ''));
+        if (!$place || !isset($place['id'])) {
+            throw new RuntimeException('Cidade não encontrada.');
+        }
+        return (int) $place['id'];
+    }
+
+    private static function optionalPlaceId(array $house, string $key): ?int
+    {
+        if (!array_key_exists($key, $house) || $house[$key] === null || $house[$key] === '') {
+            return null;
+        }
+        return (int) $house[$key];
+    }
+
+    private static function cityText(int $placeId): string
+    {
+        static $cache = [];
+        if (isset($cache[$placeId])) {
+            return $cache[$placeId];
+        }
+        $stmt = db()->prepare("SELECT name || ', ' || rtrim(uf) FROM places WHERE id = ?");
+        $stmt->execute([$placeId]);
+        return $cache[$placeId] = rtrim((string) $stmt->fetchColumn());
+    }
+
+    /** @param list<array{old: array, new: array}> $pairs */
+    private static function exposeCity(array $pairs): array
+    {
+        foreach ($pairs as &$pair) {
+            foreach (['old', 'new'] as $side) {
+                if (!array_key_exists('city_place_id', $pair[$side])) {
+                    continue;
+                }
+                $pair[$side]['city'] = self::cityText((int) $pair[$side]['city_place_id']);
+                unset($pair[$side]['city_place_id']);
+            }
+        }
+        unset($pair);
+        return $pairs;
     }
 
     private static function calendarMonths(array $house): int
@@ -46,11 +111,11 @@ final class HouseRepository
     {
         $months = self::calendarMonths($house);
         $fee = max(0, (int) ($house['cleaning_fee'] ?? 0));
-        return ReturningWrite::update('properties', [
+        return self::exposeCity(ReturningWrite::update('properties', [
             'title' => $house['title'],
             'description' => $house['description'],
             'summary' => $house['summary'],
-            'city' => $house['city'],
+            'city_place_id' => self::cityPlaceId($house),
             'address' => $house['address'],
             'cep' => $house['cep'] ?? '',
             'street' => $house['street'] ?? '',
@@ -73,10 +138,10 @@ final class HouseRepository
             'garage' => $house['garage'],
             'amenities' => $house['amenities'] ?? '{}',
         ], 'id = ? AND user_id = ?', [$id, $userId], ['id'], [
-            'title', 'description', 'summary', 'city', 'address', 'cep', 'nightly_price', 'cleaning_fee',
+            'title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee',
             'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
             'pool', 'bbq', 'garage', 'amenities', 'status',
-        ]);
+        ]));
     }
 
     public static function clearBlockedAfter(int $propertyId, string $day): array
@@ -97,7 +162,7 @@ final class HouseRepository
 
     public static function find(int $id): ?array
     {
-        $stmt = db()->prepare('SELECT * FROM properties WHERE id = ?');
+        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE p.id = ?');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -105,7 +170,7 @@ final class HouseRepository
 
     public static function findByUser(int $userId, int $id): ?array
     {
-        $stmt = db()->prepare("SELECT * FROM properties WHERE id = ? AND user_id = ? AND COALESCE(NULLIF(status, ''), 'active') = 'active'");
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND p.user_id = ? AND COALESCE(NULLIF(p.status, ''), 'active') = 'active'");
         $stmt->execute([$id, $userId]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -130,7 +195,7 @@ final class HouseRepository
         if (!preg_match('/^[a-f0-9]{16}$/', $hash)) {
             return null;
         }
-        $stmt = db()->prepare('SELECT * FROM properties WHERE public_hash = ?');
+        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE p.public_hash = ?');
         $stmt->execute([$hash]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -152,7 +217,7 @@ final class HouseRepository
 
     public static function findByIcalHash(string $hash): ?array
     {
-        $stmt = db()->prepare('SELECT * FROM properties WHERE ical_hash = ?');
+        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE p.ical_hash = ?');
         $stmt->execute([$hash]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -160,33 +225,40 @@ final class HouseRepository
 
     public static function listByUser(int $userId): array
     {
-        $stmt = db()->prepare("SELECT * FROM properties WHERE user_id = ? AND status = 'active' ORDER BY id DESC");
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.user_id = ? AND p.status = 'active' ORDER BY p.id DESC");
         $stmt->execute([$userId]);
         return $stmt->fetchAll();
     }
 
     public static function all(): array
     {
-        return db()->query("SELECT * FROM properties WHERE status = 'active' ORDER BY id ASC")->fetchAll();
+        return db()->query(self::SQL_WITH_CITY . " WHERE p.status = 'active' ORDER BY p.id ASC")->fetchAll();
     }
 
     public static function byCity(string $city): array
     {
-        $stmt = db()->prepare("SELECT * FROM properties WHERE city = ? AND status = 'active' ORDER BY id ASC");
+        $place = CityRepository::match($city);
+        if ($place && isset($place['id'])) {
+            $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.city_place_id = ? AND p.status = 'active' ORDER BY p.id ASC");
+            $stmt->execute([(int) $place['id']]);
+            return $stmt->fetchAll();
+        }
+        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE ' . self::CITY_LABEL_SQL . " = ? AND p.status = 'active' ORDER BY p.id ASC");
         $stmt->execute([$city]);
         return $stmt->fetchAll();
     }
 
     public static function inactivate(int $id, int $userId, string $at): array
     {
-        return ReturningWrite::update(
+        $changed = ReturningWrite::update(
             'properties',
             ['status' => 'inactive', 'inactivated_at' => $at],
             "id = ? AND user_id = ? AND status = 'active'",
             [$id, $userId],
             ['id'],
-            ['title', 'description', 'summary', 'city', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
+            ['title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
         );
+        return self::exposeCity($changed);
     }
 
     public static function updateMinNights(int $id, int $minNights): array

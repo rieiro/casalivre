@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Acoes/GrupoValidacao.php';
+require_once __DIR__ . '/HouseRepository.php';
 
 /**
  * Leituras do modelo de grupos (Sprint 3, PR 6): groups, group_members, group_domains, group_property_invites e
@@ -194,7 +195,7 @@ final class GroupRepository
      */
     public static function searchSource(int $groupId): array
     {
-        $st = db()->prepare('SELECT * FROM properties WHERE group_id = ? AND ' . self::activePropertyStrict() . ' ORDER BY id ASC');
+        $st = db()->prepare(HouseRepository::SQL_WITH_CITY . ' WHERE p.group_id = ? AND ' . self::activePropertyStrict('p') . ' ORDER BY p.id ASC');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
@@ -202,7 +203,7 @@ final class GroupRepository
     /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
     public static function properties(int $groupId): array
     {
-        $st = db()->prepare('SELECT id, public_hash, title, city FROM properties WHERE group_id = ? AND ' . self::activeProperty() . ' ORDER BY title, id');
+        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM properties p ' . HouseRepository::JOIN_CITY_SQL . ' WHERE p.group_id = ? AND ' . self::activeProperty('p') . ' ORDER BY p.title, p.id');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
@@ -217,7 +218,7 @@ final class GroupRepository
     /** Convites pendentes do grupo (imóveis ativos). @return list<array> */
     public static function invites(int $groupId): array
     {
-        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, p.city FROM group_property_invites i JOIN properties p ON p.id = i.property_id WHERE i.group_id = ? AND ' . self::activeProperty('p') . ' ORDER BY p.title, p.id');
+        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM group_property_invites i JOIN properties p ON p.id = i.property_id ' . HouseRepository::JOIN_CITY_SQL . ' WHERE i.group_id = ? AND ' . self::activeProperty('p') . ' ORDER BY p.title, p.id');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }
