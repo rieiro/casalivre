@@ -255,6 +255,6 @@ final class GroupRepository
     /** Violação de UNIQUE (23505). */
     public static function isUniqueViolation(PDOException $e): bool
     {
-        return (string) (($e->errorInfo[0] ?? null) ?: $e->getCode()) === '23505';
+        return Db::sqlState($e) === '23505';
     }
 }

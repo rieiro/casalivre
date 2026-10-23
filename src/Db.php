@@ -219,9 +219,21 @@ final class Db
         return $value === false ? 0 : (int) $value;
     }
 
+    /** SQLSTATE from errorInfo[0] when that is a 5-character code, else from getCode(); null if neither is. */
+    public static function sqlState(PDOException $e): ?string
+    {
+        $candidates = [isset($e->errorInfo[0]) ? $e->errorInfo[0] : null, $e->getCode()];
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && preg_match('/\A[0-9A-Z]{5}\z/', $candidate) === 1) {
+                return $candidate;
+            }
+        }
+        return null;
+    }
+
     public static function isUndefinedTable(PDOException $e): bool
     {
-        return (string) $e->getCode() === '42P01' || (($e->errorInfo[0] ?? null) === '42P01');
+        return self::sqlState($e) === '42P01';
     }
 
     /**
@@ -246,7 +258,7 @@ final class Db
             if (!$e instanceof PDOException) {
                 continue;
             }
-            $state = (string) ($e->errorInfo[0] ?? $e->getCode());
+            $state = self::sqlState($e) ?? '';
             if (str_starts_with($state, '08') || in_array($state, ['57P01', '57P02', '57P03'], true)) {
                 return true;
             }
