@@ -196,6 +196,12 @@ Source: spec-03; `docs/produto/planejamento/sprints.md`. The wizard decides its 
 - [ ] The edit page HTML (44 KB) is slimmed down in the wizard rewrite.
 
 ## Review follow-ups
+
+### Places neighborhoods (#210, SCHEMA 22)
+- [ ] Búzios: `places_city_uf_uk` drops the duplicate Búzios row (`database/cities.json` has two Armação dos Búzios/RJ rows; the second label is "Búzios"), so `CityRepository::match('Búzios')` returns null. Produto decides alias vs a dual city row. Source: #210. Sprint: ADR 001. Owner: Produto.
+- [ ] `CityRepository::ensureNeighborhoods` top-up on an existing DB. Source: Teste followup from #210. Sprint: ADR 001. Owner: Teste.
+- [ ] `CepRepository::ensureTable` runtime `CREATE TABLE` is DDL outside `database/schema.pgsql.sql`. Move it into the schema and the seeds (no migration). Source: Teste followup from #210. Sprint: ADR 001. Owner: Teste.
+
 - [ ] (low, UX only) Reuse the activation/reset token when the mail job is retried, so the first email's link keeps working. Two valid tokens never exist today: the hash column per purpose is overwritten (`AccountFlow::issueLink:192-205`). Source: Segurança #167/#174. Sprint: the next sprint that touches `AccountFlow`. Owner: Programador.
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.

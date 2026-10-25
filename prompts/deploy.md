@@ -16,13 +16,19 @@ Tudo o que é preciso para subir o sistema em produção: servidor, variáveis, 
 Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price sums, stopped traffic) are left out.
 
 ### Clean deploy (Cori, #95/#98)
-- [ ] On a new server, `php scripts/migrate.php` creates the folders (#98); the PG schema is loaded first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist.
-- [ ] Install `php-bz2` for `load-ceps.php` and `refresh-settings-cache.php` (CepRepository). `python3` is the fallback (optional `CEP_PYTHON`); with neither, the scripts fail with a clear error.
+- [ ] On a new server, `php -d extension=bz2 scripts/migrate.php` creates the folders (#98) and seeds places, including `database/places_neighborhoods.json.bz2`. Load the PG schema first (see below). Still check that `storage/mail`, `storage/sessions` and `public/uploads/users` exist. Omit `-d extension=bz2` only when bz2 is already enabled in that php.ini.
+- [ ] Install `php-bz2`. Production php.ini does not enable the extension (same as `ops/dev-env`; see `ops/dev-env/db-setup.sh` and `ops/dev-env/README.md`). The package supplies the `.so`; each CLI run that opens a bz2 artifact passes `-d extension=bz2` unless that php.ini already loads bz2.
+  - `scripts/migrate.php` opens `database/places_neighborhoods.json.bz2` on a seed run. `Db::migrateStep` calls `Db::migrate` → `CityRepository::ensure` when `schema_meta` is absent (version 0, right after `psql -f database/schema.pgsql.sql`) or the run is `--force`. A stored version from 1 up to but not including `Db::SCHEMA_VERSION` aborts with `SchemaDesatualizado` before the seed. On that new database the city count is under 5000, so `ensure` calls `seedNeighborhoods`. `CityRepository::ensureNeighborhoods` is the other opener: once at least 5000 cities are seeded, a later `ensure` opens the file while the neighborhood count is below 61543 (`NEIGHBORHOOD_COUNT`). `CityRepository::neighborhoodRows` (`conta/Geo/CityRepository.php`) uses `bzopen` only. This path has no python3 fallback; the error tells you to rerun with `php -d extension=bz2`. Command: `php -d extension=bz2 scripts/migrate.php`.
+  - `scripts/refresh-settings-cache.php` calls `CityRepository::refresh` → `ensure` (same neighborhood rule, including the top-up under 61543) and may open `database/cep.csv.bz2` from `CepRepository::ensureLoaded`. Command: `php -d extension=bz2 scripts/refresh-settings-cache.php`.
+  - `scripts/load-ceps.php` opens `database/cep.csv.bz2`. `CepRepository::openSource` (`conta/Geo/CepRepository.php`) uses the bz2 extension when it is loaded, and otherwise python3 (`CEP_PYTHON`). `ops/dev-env/db-setup.sh` runs `php8.4 -d extension=bz2 scripts/load-ceps.php`. Production command: `php -d extension=bz2 scripts/load-ceps.php`. With neither the extension nor python3, the script fails with a clear error.
+  - `scripts/start.sh` runs `scripts/load-ceps.php` with no `-d extension=bz2` and does not run `scripts/migrate.php`, so that process does not open `database/places_neighborhoods.json.bz2`. The CEP load from `scripts/start.sh` succeeds when that PHP already has bz2, or when python3 is on `PATH`. Production does not use `scripts/start.sh` (`php -S`).
+  - `ops/dev-env/db-setup.sh` runs `php8.4 scripts/seed.php` with no `-d`. `scripts/seed.php`, `scripts/seed_massive.php`, `scripts/seed-users.php` and `scripts/seed-owners.php` do not open the bz2 artifacts. `ops/dev-env/test-pg.sh` passes `-d extension=bz2` to standalone tests: the dev php.ini matches production, and the neighborhood seed needs the extension, as load-ceps does.
 - [ ] Tiles permissions: with `storage/` at 0711 owned by casalivre, nginx cannot read `storage/tiles/brasil.pmtiles`. Set the tiles path permissions or move the tiles out of `storage/`.
 
-### Migrate and schema (#99, #100, SCHEMA 19)
-- [ ] No data migration (docs/decisions.md, 2026-10-21): on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php scripts/migrate.php` (seeds and version only), then the seeds.
-- [ ] Every deploy: run `php scripts/migrate.php` before releasing traffic. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
+### Migrate and schema (#99, #100, SCHEMA 19; #210 SCHEMA 22)
+- [ ] No data migration (docs/decisions.md, 2026-10-21): on a new PG, run `psql -f database/schema.pgsql.sql` BEFORE `php -d extension=bz2 scripts/migrate.php` (seeds and version only), then the seeds. This migrate decompresses `database/places_neighborhoods.json.bz2`. Omit `-d extension=bz2` only when bz2 is already enabled in php.ini.
+- [ ] (#210, SCHEMA 22) Recreate only, no migration: `psql -f database/schema.pgsql.sql` then `php -d extension=bz2 scripts/migrate.php`.
+- [ ] Every deploy: run `php -d extension=bz2 scripts/migrate.php` before releasing traffic, unless bz2 is already enabled in php.ini. The flag is required when that run seeds (new database or `--force`). A later run that finds `schema_meta` already at `Db::SCHEMA_VERSION` does not open the bz2 file. Exit codes: 0 ok, 1 version below expected, 2 failure (message on STDERR). Anything other than 0: do not release traffic.
 - [ ] On PG, web and workers do not migrate; they only check `schema_meta`. If the DB is behind, the site answers 503 (Retry-After: 60). Never delete the `schema_meta` table.
 - [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD).
 - [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
@@ -43,6 +49,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] **Log do nginx**: `log_format` sem query string e com `/ical/` e `/api/ical/` redigidos (ou `access_log off` nessas rotas).
 - [ ] **IP real atrás de proxy/LB**: configurar `real_ip` no nginx. Rate limit (60 req/min por IP e endpoint) e IP truncado nos logs dependem do `REMOTE_ADDR` real.
 - [ ] **PHP 8.4** (única versão testada) com `pdo_pgsql`, `mbstring`, `openssl` (obrigatória para SMTP com STARTTLS/TLS; sem ela, o envio falha com "Falha no TLS"), `curl`, `gd`, `xml`. Sem `php-curl`, os feeds iCal ficam NOK.
+- [ ] **`php-bz2`** on the production install. php.ini does not enable it; CLI commands that open the bz2 artifacts pass `-d extension=bz2` (Clean deploy, above).
 - [ ] **OPcache no php-fpm de produção**: `opcache.enable=1` e `opcache.validate_timestamps=0`, com reload do php-fpm a cada deploy (sem o reload, o código antigo continua em memória).
 - [ ] **`zend.exception_ignore_args = On`** no `php.ini` ou pool do php-fpm (o app também força via `ini_set` em `public/index.php`).
 - [ ] **Saída HTTPS (443) e DNS** liberados para os feeds iCal (só https desde o #91; a porta 80 não é necessária). O `CalendarSync::fetch` recusa IPs internos e não usa proxy (`CURLOPT_NOPROXY='*'`); com saída só via proxy, a importação falha (NOK).
@@ -142,7 +149,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 **Ordem do deploy**
 - [ ] Código → `php scripts/build-assets.php && php scripts/build-assets.php --check` (manifesto, `public/assets/themes/<tema>.css`, `map-style.json`; sai com 1 se algum `brand.php` for inválido) → pré-compressão (brotli/gzip, sem o .pmtiles) → `systemctl reload php8.4-fpm`.
-- [ ] `php scripts/refresh-settings-cache.php` e, para o primeiro admin, `php scripts/set-admin.php <email>`. Tema da plataforma em /admin/tema.
+- [ ] `php -d extension=bz2 scripts/refresh-settings-cache.php` (unless bz2 is already enabled in php.ini; this run can open `database/places_neighborhoods.json.bz2` and `database/cep.csv.bz2`) e, para o primeiro admin, `php scripts/set-admin.php <email>`. Tema da plataforma em /admin/tema.
 
 **.env**
 - [ ] `APP_URL` obrigatório em produção e **https://** (links de e-mail, links de grupo e raiz da plataforma). Sem ele válido o mail-worker não inicia: escreve `mail-worker: APP_URL não configurada.` / `APP_URL inválida.` no stderr, sai com código 2 e não toca na fila. Conferir o .env lido pelo cron e monitorar o código de saída.
@@ -224,8 +231,9 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
 
 ## Banco de dados (PostgreSQL)
 
-- [ ] **Preparação de ambiente novo**: `psql -f database/schema.pgsql.sql` → `php scripts/migrate.php` → `load-ceps.php` → seeds (`seed.php`, `seed_massive.php`, `seed-users.php`, `seed-owners.php`). O `migrate.php` falha em banco vazio, sem o schema carregado. Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
+- [ ] **Preparação de ambiente novo**: `psql -f database/schema.pgsql.sql` → `php -d extension=bz2 scripts/migrate.php` → `php -d extension=bz2 scripts/load-ceps.php` → seeds (`php scripts/seed.php`, `php scripts/seed_massive.php`, `php scripts/seed-users.php`, `php scripts/seed-owners.php`; these four do not open the bz2 artifacts). Omit `-d extension=bz2` only when bz2 is already enabled in php.ini. O `migrate.php` falha em banco vazio, sem o schema carregado. Os seeds não precisam de `LOG_SALT` e não precisaram de alteração nesta sprint.
 - [ ] **No data migration** (docs/decisions.md, 2026-10-21): if the schema changes, recreate the DB (schema + seeds). `Db::SCHEMA_VERSION` still bumps.
+- [ ] **(#210, SCHEMA 22) Recreate only, no migration:** `psql -f database/schema.pgsql.sql` then `php -d extension=bz2 scripts/migrate.php`.
 - [ ] **Backup**: plano de backup do PostgreSQL (dump, PITR e restauração testada) definido pelo Banco de Dados.
 - [ ] **Regra de desenvolvimento**: aumentar `Db::SCHEMA_VERSION` sempre que mudar o schema, `Db::migrate()` ou os dados base (`database/messages.php`, `Settings::defaults`, cidades, catálogo do ActivityLog).
 
