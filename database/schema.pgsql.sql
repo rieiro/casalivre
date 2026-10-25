@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token) WHERE activation_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_prop_place_active ON properties (city_place_id, id) INCLUDE (max_guests) WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS idx_prop_geo_active ON properties USING gist (point(lng, lat)) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_prop_latlng_active ON properties (lat, lng) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_properties_user ON properties(user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);
 CREATE INDEX IF NOT EXISTS idx_properties_group ON properties(group_id);
