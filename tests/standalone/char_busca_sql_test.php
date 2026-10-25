@@ -288,6 +288,10 @@ $radius = same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radi
 t_ok(in_array($near, $radius['ids'], true), 'bbox + haversine keeps a house 2 km away in another city');
 t_ok(!in_array($far, $radius['ids'], true), 'a house at the other city center stays out of the radius');
 $byGroup = same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
+$withGroup = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga']);
+$withoutGrupo = $withGroup->filters();
+unset($withoutGrupo['grupo']);
+t_eq($withoutGrupo, $withGroup->pageFilters(), 'pageFilters drops grupo');
 $byHost = same(['localidade' => 'Florianópolis, SC'], 'ga.example.com', 'verified host matches the old group source');
 t_eq($byGroup['ids'], $byHost['ids'], 'storefront and public search return the same rows');
 t_eq([$scored, $pool], $byGroup['ids'], 'group is the two linked houses');

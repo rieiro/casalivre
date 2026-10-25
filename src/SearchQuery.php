@@ -74,6 +74,14 @@ final class SearchQuery
         return $filters;
     }
 
+    /** Page views must not copy a foreign `grupo` into links; the storefront API URL forces the path group. */
+    public function pageFilters(): array
+    {
+        $filters = $this->filters();
+        unset($filters['grupo']);
+        return $filters;
+    }
+
     public function filtersHash(): string
     {
         $amenidades = $this->amenidades;

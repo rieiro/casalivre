@@ -361,11 +361,8 @@ if ($path === '/busca/mapa' && $method === 'GET') {
     // Página do mapa (MapLibre + PMTiles): só o esqueleto; os pins vêm de /api/busca no navegador (GeoJSON com
     // clusters). A busca é registrada uma vez, pela API; a página não roda a busca no servidor.
     $search = SearchQuery::fromRequest($_GET);
-    // The page form never carried grupo; the storefront API URL sets the path group.
-    $filters = $search->filters();
-    unset($filters['grupo']);
     view('map', [
-        'filters' => $filters,
+        'filters' => $search->pageFilters(),
         'searched' => $search->searched(),
     ]);
     return null;
@@ -374,11 +371,8 @@ if ($path === '/busca/mapa' && $method === 'GET') {
 if ($path === '/busca' && $method === 'GET') {
     // Resultados vêm da API (/api/busca). A view só monta o formulário e carrega via JS.
     $search = SearchQuery::fromRequest($_GET);
-    // The page form never carried grupo; the storefront API URL sets the path group.
-    $filters = $search->filters();
-    unset($filters['grupo']);
     view('search', [
-        'filters' => $filters,
+        'filters' => $search->pageFilters(),
         'results' => [],
         'searched' => $search->searched(),
         'use_api' => true,
@@ -420,11 +414,8 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
     }
     if ($vSuffix === '/busca' || $vSuffix === '/busca/mapa') {
         $search = SearchQuery::fromRequest($_GET);
-        // The page form never carried grupo; the storefront API URL sets the path group.
-        $filters = $search->filters();
-        unset($filters['grupo']);
         view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
-            'filters' => $filters, 'searched' => $search->searched(), 'use_api' => true, 'vitrine_api' => $vApi,
+            'filters' => $search->pageFilters(), 'searched' => $search->searched(), 'use_api' => true, 'vitrine_api' => $vApi,
         ]);
         return null;
     }
