@@ -18,9 +18,7 @@ $run = static function (array $cmd, array $env): array {
     return [proc_close($proc), $out];
 };
 
-$migrateCmd = t_php_needs_bz2_flag()
-    ? [PHP_BINARY, '-d', 'extension=bz2', CL_ROOT . '/scripts/migrate.php']
-    : [PHP_BINARY, CL_ROOT . '/scripts/migrate.php'];
+$migrateCmd = array_merge(t_php_cmd(), [CL_ROOT . '/scripts/migrate.php']);
 
 echo "migrate.php sem schema\n";
 [$code, $out] = $run($migrateCmd, $env);

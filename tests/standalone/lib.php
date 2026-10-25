@@ -9,6 +9,7 @@ declare(strict_types=1);
  */
 
 const CL_ROOT = __DIR__ . '/../..';
+require_once __DIR__ . '/php_cmd.php';
 
 // Isola os testes do .env real da raiz: Db::loadEnv lê CASALIVRE_ENV_FILE (herdado por php -S e
 // subprocessos). Padrão: um .env vazio temporário; um teste pode apontar para o seu antes de subir o servidor.
@@ -78,20 +79,6 @@ function t_backdate(string $file): void
     static $mtime = null;
     $mtime = ($mtime ?? time() - 3600) - 1;
     touch($file, $mtime);
-}
-
-/**
- * True when a fresh php process (php.ini only, no -d) does not load bz2.
- * Child scripts such as migrate.php do not inherit -d extension=bz2 from the parent.
- */
-function t_php_needs_bz2_flag(): bool
-{
-    static $need = null;
-    if ($need !== null) {
-        return $need;
-    }
-    exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(extension_loaded("bz2") ? 0 : 1);'), $_, $code);
-    return $need = $code !== 0;
 }
 
 /**

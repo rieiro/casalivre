@@ -49,7 +49,8 @@ final class CityRepository
             self::seedNeighborhoods($pdo);
         });
         // O reseed troca os ids. O cache cities.json de outro banco não pode sobreviver.
-        self::forgetCitiesCache();
+        self::$citiesCache = null;
+        JsonCache::delete('cities.json');
     }
 
     /** Cidades já semeadas: carrega bairros só se a contagem ainda não chegou no artefato. */
@@ -194,7 +195,7 @@ final class CityRepository
         if (!is_file($path)) {
             throw new RuntimeException("Arquivo de bairros ausente: $path");
         }
-        if (!function_exists('bzopen') || !function_exists('bzread') || !function_exists('bzclose')) {
+        if (!function_exists('bzopen')) {
             throw new RuntimeException(
                 'Não foi possível descompactar ' . $path
                 . ': o PHP não tem a extensão bz2. Rode com php -d extension=bz2'
@@ -321,15 +322,6 @@ final class CityRepository
     {
         $data = self::cached();
         return $data['cities'] ?? [];
-    }
-
-    private static function forgetCitiesCache(): void
-    {
-        self::$citiesCache = null;
-        $path = JsonCache::path('cities.json');
-        if (is_file($path)) {
-            unlink($path);
-        }
     }
 
     private static function cached(): array

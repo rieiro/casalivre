@@ -36,4 +36,12 @@ final class JsonCache
             @unlink($tmp);
         }
     }
+
+    public static function delete(string $name): void
+    {
+        $path = self::path($name);
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
 }
