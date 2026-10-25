@@ -327,6 +327,20 @@ t_eq([], $datesOnly['items'], 'dates without a place do not scan every house');
 t_eq(0, $datesOnly['iteracoes'], 'dates without a place run no listing query');
 
 echo "cursor and request log\n";
+$cursorHash = SearchQuery::fromRequest(['localidade' => 'Gramado, RS'])->filtersHash();
+t_eq(2147483647, SearchQuery::lastId(SearchQuery::cursor(2147483647, $cursorHash), $cursorHash), 'int4 max last_id is accepted');
+$cursorError = static function (string $cursor) use ($cursorHash): string {
+    try {
+        SearchQuery::lastId($cursor, $cursorHash);
+    } catch (InvalidSearchCursor $e) {
+        return $e::class;
+    }
+    return '';
+};
+$tamperedError = $cursorError(SearchQuery::cursor(1, $cursorHash) . 'x');
+t_eq(InvalidSearchCursor::class, $tamperedError, 'tampered cursor is InvalidSearchCursor');
+t_eq($tamperedError, $cursorError(SearchQuery::cursor(2147483648, $cursorHash)), 'last_id 2147483648 is rejected like a tampered cursor');
+t_eq($tamperedError, $cursorError(SearchQuery::cursor(9999999999, $cursorHash)), 'a much larger last_id is rejected like a tampered cursor');
 $base = t_server();
 $pageUrl = $base . '/api/busca?localidade=' . rawurlencode('Gramado, RS');
 $open = t_http('GET', $pageUrl);
@@ -334,7 +348,11 @@ $openBody = json_decode($open['body'], true);
 t_eq(200, $open['status'], 'search 200');
 $cursor = (string) ($openBody['next_cursor'] ?? '');
 t_ok($cursor !== '', 'HTTP page has next_cursor');
-t_eq(400, t_http('GET', $pageUrl . '&cursor=' . rawurlencode($cursor . 'x'))['status'], 'tampered cursor is 400');
+$tamperedHttp = t_http('GET', $pageUrl . '&cursor=' . rawurlencode($cursor . 'x'));
+t_eq(400, $tamperedHttp['status'], 'tampered cursor is 400');
+$overflowHttp = t_http('GET', $pageUrl . '&cursor=' . rawurlencode(SearchQuery::cursor(2147483648, $cursorHash)));
+t_eq(400, $overflowHttp['status'], 'last_id above int4 max is 400');
+t_eq($tamperedHttp['body'], $overflowHttp['body'], 'overflow cursor returns the same error as a tampered cursor');
 t_eq(400, t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Florianópolis, SC') . '&cursor=' . rawurlencode($cursor))['status'], 'cursor with different filters is 400');
 $next = t_http('GET', $pageUrl . '&cursor=' . rawurlencode($cursor));
 t_eq(200, $next['status'], 'same filters accept the cursor');

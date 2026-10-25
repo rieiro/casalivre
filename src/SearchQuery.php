@@ -7,6 +7,8 @@ final class SearchQuery
 {
     public const VERSION = 1;
     public const SORT = 'id';
+    /** PostgreSQL integer (int4) maximum. A larger last_id overflows the id bind. */
+    public const LAST_ID_MAX = 2147483647;
 
     /**
      * @param list<string> $amenidades
@@ -123,6 +125,7 @@ final class SearchQuery
             || ($data['sort'] ?? null) !== self::SORT
             || !is_int($data['last_id'] ?? null)
             || $data['last_id'] < 1
+            || $data['last_id'] > self::LAST_ID_MAX
             || !is_string($hash)
             || !hash_equals($filtersHash, $hash)) {
             throw new InvalidSearchCursor();
