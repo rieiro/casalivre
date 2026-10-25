@@ -19,3 +19,9 @@ function t_php_cmd(): array
     $cmd = $code === 0 ? [PHP_BINARY] : [PHP_BINARY, '-d', 'extension=bz2'];
     return $cmd;
 }
+
+/** Shell-escaped prefix from t_php_cmd(), ready to concatenate in front of a command. */
+function t_php_shell(): string
+{
+    return implode(' ', array_map('escapeshellarg', t_php_cmd()));
+}

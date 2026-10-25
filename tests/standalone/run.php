@@ -4,7 +4,7 @@ require_once __DIR__ . '/php_cmd.php';
 $fail = 0;
 foreach (glob(__DIR__ . '/*_test.php') ?: [] as $file) {
     echo '== ' . basename($file) . "\n";
-    passthru(implode(' ', array_map('escapeshellarg', t_php_cmd())) . ' ' . escapeshellarg($file), $code);
+    passthru(t_php_shell() . ' ' . escapeshellarg($file), $code);
     $fail += $code !== 0 ? 1 : 0;
 }
 // PG (TEST_PG_DSN): drop test databases left over by processes that have finished.
