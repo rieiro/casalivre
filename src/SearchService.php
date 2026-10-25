@@ -31,12 +31,9 @@ final class SearchService
         $results = $searched ? SearchService::search($filters, $host, $facets) : [];
         if ($searched && $log) {
             // place_id: the resolved place (today the cities row of CityRepository::match; places.id with ADR 001).
-            // Free text is not logged (ADR 001 §11.3 condition 6): drop localidade and q; keep structured filters.
+            // Free text is dropped by ActivityLog::ALLOWED_PARAMS (ADR 001 §11.3 cond. 6).
             $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
-            activity(ActivityLog::SEARCH, array_diff_key($filters, ['localidade' => true, 'q' => true]) + [
-                'place_id' => isset($place['id']) ? (int) $place['id'] : null,
-                'resultados' => count($results),
-            ]);
+            activity(ActivityLog::SEARCH, $filters + ['place_id' => isset($place['id']) ? (int) $place['id'] : null, 'resultados' => count($results)]);
         }
         return [$filters, $results, $searched, $facets];
     }

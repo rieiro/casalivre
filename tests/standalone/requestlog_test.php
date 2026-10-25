@@ -136,7 +136,7 @@ t_ok(isset($p['autor']) && $p['autor'] !== 'Maria Souza' && $p['nota'] === 5 && 
 $p = ActivityLog::safeParams(['url' => 'https://www.airbnb.com/calendar/ical/1.ics?s=SEGREDO', 'novas' => 2, 'token' => 't'], ActivityLog::CALENDAR_SYNC);
 t_ok(!str_contains((string) json_encode($p), 'SEGREDO') && $p['novas'] === 2 && !isset($p['token']), 'CALENDAR_SYNC: URL pseudonimizada, chave fora da lista omitida');
 $p = ActivityLog::safeParams(['amenidades' => ['pool', 'bbq'], 'localidade' => 'Floripa', 'q' => 'x'], ActivityLog::SEARCH);
-t_eq(['amenidades' => ['pool', 'bbq'], 'localidade' => 'floripa'], $p, 'SEARCH: lista permitida mantida, q omitido');
+t_eq(['amenidades' => ['pool', 'bbq']], $p, 'SEARCH: allowlist kept; localidade and q dropped');
 
 echo "ActivityLog: valor_anterior/atual por allowlist\n";
 $j = (string) ActivityLog::encodePrevious(['title' => 'Casa', 'description' => 'Fale comigo 48999990000', 'address' => 'Rua A, 1', 'cep' => '88000000',

@@ -25,29 +25,24 @@ $cityBody = json_decode($requests['city']['body'], true);
 t_eq($city, $cityBody['filters']['localidade'] ?? null, 'response still returns localidade');
 
 $ids = [];
+$api = [];
 foreach ($requests as $name => $r) {
-    preg_match('/^X-Request-Id:\s*(\S+)/mi', $r['headers'], $m);
-    $ids[$name] = $m[1] ?? '';
+    $entry = log_entry($logDir, $r['headers']);
+    $ids[$name] = is_array($entry) ? (string) ($entry['request_id'] ?? '') : '';
     t_ok($ids[$name] !== '', "$name: X-Request-Id");
+    if (is_array($entry)) {
+        $api[$ids[$name]] = $entry;
+    }
 }
 
 $activity = [];
-$api = [];
-for ($i = 0; $i < 30 && (count($activity) < 3 || count($api) < 3); $i++) {
+for ($i = 0; $i < 30 && count($activity) < 3; $i++) {
     foreach (t_log_rows($mark) as $row) {
         if ($row['code'] === ActivityLog::SEARCH && in_array($row['access_event_id'], $ids, true)) {
             $activity[$row['access_event_id']] = $row;
         }
     }
-    foreach (glob($logDir . '/api-*') ?: [] as $file) {
-        foreach (file($file, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
-            $row = json_decode($line, true);
-            if (is_array($row) && in_array($row['request_id'] ?? null, $ids, true)) {
-                $api[$row['request_id']] = $row;
-            }
-        }
-    }
-    if (count($activity) < 3 || count($api) < 3) {
+    if (count($activity) < 3) {
         usleep(100000);
     }
 }

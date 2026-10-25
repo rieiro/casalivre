@@ -7,23 +7,6 @@ $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 $logDir = CL_ROOT . '/storage/logs/api';
 
-function log_entry(string $dir, string $headers): ?array
-{
-    if (!preg_match('/^X-Request-Id:\s*(\S+)/mi', $headers, $m)) {
-        return null;
-    }
-    usleep(200000);
-    foreach (glob($dir . '/api-*') ?: [] as $f) {
-        foreach (file($f) ?: [] as $line) {
-            $row = json_decode($line, true);
-            if (($row['request_id'] ?? null) === $m[1]) {
-                return $row;
-            }
-        }
-    }
-    return null;
-}
-
 echo "respostas dos middlewares são registradas\n";
 $r = t_http('POST', $base . '/api/sessao', json_encode(['email' => $owner['email'], 'password' => 'errada-123']), ['Content-Type: application/json'], $jar);
 t_eq(419, $r['status'], 'POST sem CSRF -> 419');
