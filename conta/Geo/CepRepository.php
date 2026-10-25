@@ -64,10 +64,7 @@ final class CepRepository
         }
         if ($count > 0) {
             db()->exec('DELETE FROM ceps');
-            $json = JsonCache::path('cep.json');
-            if (is_file($json)) {
-                unlink($json);
-            }
+            JsonCache::delete('cep.json');
         }
         $source = dirname(__DIR__, 2) . '/database/cep.csv.bz2';
         if (!is_file($source)) {

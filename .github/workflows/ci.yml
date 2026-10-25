@@ -38,7 +38,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo, pdo_pgsql, curl, mbstring, fileinfo, gd, redis
+          extensions: pdo, pdo_pgsql, curl, mbstring, fileinfo, gd, redis, bz2
           tools: none
           coverage: none
       - name: php -l

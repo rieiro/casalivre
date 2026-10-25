@@ -9,6 +9,7 @@ declare(strict_types=1);
  */
 
 const CL_ROOT = __DIR__ . '/../..';
+require_once __DIR__ . '/php_cmd.php';
 
 // Isola os testes do .env real da raiz: Db::loadEnv lê CASALIVRE_ENV_FILE (herdado por php -S e
 // subprocessos). Padrão: um .env vazio temporário; um teste pode apontar para o seu antes de subir o servidor.

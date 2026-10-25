@@ -49,5 +49,6 @@ if [ $# -eq 0 ]; then
 	exit
 fi
 rc=0
-for f in "$@"; do run "$bin" "tests/standalone/$(basename "$f")" || rc=1; done
+# bz2 is not in php.ini (same as production). The neighborhood seed needs it, like load-ceps.
+for f in "$@"; do run "$bin" -d extension=bz2 "tests/standalone/$(basename "$f")" || rc=1; done
 exit $rc

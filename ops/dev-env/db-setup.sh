@@ -54,8 +54,8 @@ if ! envsh 'psql -tAc "SELECT to_regclass('\''public.schema_meta'\'')" | grep -q
 	log "carregando database/schema.pgsql.sql"
 	envsh 'psql -q -v ON_ERROR_STOP=1 -f database/schema.pgsql.sql'
 fi
-envsh 'php8.4 scripts/migrate.php'
-# bz2 só nesta chamada (o php.ini fica igual ao da produção).
+# bz2 só nestas chamadas (o php.ini fica igual ao da produção, sem a extensão).
+envsh 'php8.4 -d extension=bz2 scripts/migrate.php'
 envsh 'php8.4 -d extension=bz2 scripts/load-ceps.php'
 if [ "$seed" -eq 1 ]; then
 	if [ "$(envsh 'psql -tAc "SELECT count(*) FROM users"')" = 0 ]; then

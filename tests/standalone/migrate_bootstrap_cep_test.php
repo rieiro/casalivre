@@ -18,8 +18,10 @@ $run = static function (array $cmd, array $env): array {
     return [proc_close($proc), $out];
 };
 
+$migrateCmd = array_merge(t_php_cmd(), [CL_ROOT . '/scripts/migrate.php']);
+
 echo "migrate.php sem schema\n";
-[$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
+[$code, $out] = $run($migrateCmd, $env);
 t_eq(2, $code, 'migrate.php sai com 2 num banco vazio');
 t_ok(str_contains($out, 'database/schema.pgsql.sql'), 'mensagem manda carregar database/schema.pgsql.sql');
 t_eq(0, $tables(), 'banco vazio continua vazio (não cria schema_meta nem tabelas)');
@@ -29,10 +31,10 @@ foreach (['storage/mail', 'storage/sessions', 'public/uploads/users'] as $d) {
 
 echo "migrate.php com o schema carregado\n";
 $pdo->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
-[$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
+[$code, $out] = $run($migrateCmd, $env);
 t_eq(0, $code, "migrate.php sai com 0 ($out)");
 t_eq((string) Db::SCHEMA_VERSION, (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_version = SCHEMA_VERSION');
-[$code, $out] = $run([PHP_BINARY, CL_ROOT . '/scripts/migrate.php'], $env);
+[$code, $out] = $run($migrateCmd, $env);
 t_eq(0, $code, 'segunda execução sai com 0');
 
 echo "CEPs sem bz2 do PHP e sem python3\n";
