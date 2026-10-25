@@ -60,9 +60,10 @@ foreach (['email' => $email, 'digits' => $digits] as $name => $secret) {
     $blob = json_encode([$act['params'] ?? null, $req['query'] ?? null], JSON_UNESCAPED_UNICODE);
     t_ok($blob !== false && !str_contains($blob, $secret), "$name: '$secret' is in neither log");
     t_ok(!array_key_exists('localidade', $act['params'] ?? []), "$name: activity_log has no localidade");
-    t_eq(null, $req['query']['localidade'] ?? 'missing', "$name: request log stores localidade as null");
+    t_ok(is_array($req['query'] ?? null) && array_key_exists('localidade', $req['query']) && $req['query']['localidade'] === null, "$name: request log stores localidade as null");
 }
-t_eq(null, $api[$ids['email']]['query']['q'] ?? 'missing', 'request log stores q as null');
+$emailQuery = $api[$ids['email']]['query'] ?? [];
+t_ok(is_array($emailQuery) && array_key_exists('q', $emailQuery) && $emailQuery['q'] === null, 'request log stores q as null');
 
 $logged = $activity[$ids['city']]['params'] ?? [];
 t_eq($placeId, $logged['place_id'] ?? null, 'place_id of the resolved city');
@@ -71,7 +72,8 @@ t_ok(is_int($logged['resultados'] ?? null), 'resultados stays');
 t_ok(!array_key_exists('localidade', $logged) && !array_key_exists('q', $logged), 'resolved city: no localidade or q in activity_log');
 $cityLogs = json_encode([$logged, $api[$ids['city']]['query'] ?? null], JSON_UNESCAPED_UNICODE);
 t_ok($cityLogs !== false && !str_contains($cityLogs, $city) && !str_contains($cityLogs, 'armacao dos buzios'), 'city text is not in the logs');
-t_eq(null, $api[$ids['city']]['query']['localidade'] ?? 'missing', 'city: request log stores localidade as null');
-t_eq('2', $api[$ids['city']]['query']['hospedes'] ?? null, 'city: request log stores hospedes');
+$cityQuery = $api[$ids['city']]['query'] ?? [];
+t_ok(is_array($cityQuery) && array_key_exists('localidade', $cityQuery) && $cityQuery['localidade'] === null, 'city: request log stores localidade as null');
+t_eq('2', $cityQuery['hospedes'] ?? null, 'city: request log stores hospedes');
 
 t_done();
