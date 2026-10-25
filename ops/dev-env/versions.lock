@@ -12,5 +12,5 @@ pkg.php-redis=php8.4-redis-6.2.0_1
 pkg.postgresql=postgresql18-18.6_1
 pkg.postgresql-client=postgresql18-client-18.6_1
 pkg.valkey=valkey-9.1.2_1
-pkg.nginx=nginx-1.30.5_1
-pkg.nodejs=nodejs-24.18.0_1
+pkg.nginx=nginx-1.30.6_1
+pkg.nodejs=nodejs-24.22.1_1
