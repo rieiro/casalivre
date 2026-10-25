@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/LogPrivacy.php';
-require_once __DIR__ . '/Redact.php';
 require_once __DIR__ . '/Uuid.php';
 
 /**
@@ -432,7 +431,7 @@ final class ActivityLog
         self::LOGIN_LOCKED => ['email', 'tentativas'],
         self::LOGOUT => [],
         self::REGISTER => ['email'],
-        self::SEARCH => ['localidade', 'place_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
+        self::SEARCH => ['place_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max', 'score_min', 'amenidades', 'resultados'],
         self::ACCOUNT_UPDATE => ['email'],
         self::ACCOUNT_DELETE => ['email'],   // sem IP (nem /24) num payload de 5 anos (Segurança #148)
         self::PROPERTY_CREATE => ['titulo'],
@@ -509,15 +508,6 @@ final class ActivityLog
                 continue;
             }
             $clean[$key] = self::cleanValue($key, $value, 0);
-        }
-        if ($code === self::SEARCH && array_key_exists('localidade', $clean)) {
-            // Demand-log redaction (spec §13 Q8; docs/lgpd/lia-demand-log.md item 1).
-            $term = is_string($clean['localidade']) ? Redact::searchTerm($clean['localidade']) : null;
-            if ($term === null) {
-                unset($clean['localidade']);
-            } else {
-                $clean['localidade'] = $term;
-            }
         }
         return array_filter($clean, static fn ($v) => $v !== self::DROP);
     }

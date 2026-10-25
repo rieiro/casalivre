@@ -60,7 +60,7 @@ echo "roteamento (CLI grava na hora)\n";
 $mark = t_log_mark();
 $aev = ActivityLog::beginRequest();
 ActivityLog::record(ActivityLog::LOGIN_FAIL, ['email' => 'a@b.com']);
-ActivityLog::record(ActivityLog::SEARCH, ['localidade' => 'Floripa']);
+ActivityLog::record(ActivityLog::SEARCH, ['place_id' => 1]);
 ActivityLog::record(ActivityLog::THEME_CHANGE, ['tema' => 'contraste', 'tema_anterior' => 'padrao']);
 $rows = t_log_rows($mark);
 t_eq([[2, 'security'], [5, 'other'], [32, 'admin']], array_map(static fn ($r) => [$r['code'], $r['class']], $rows), 'security e other no activity_log, admin no audit_log');
@@ -85,7 +85,7 @@ try {
 t_eq('LogicException', $thrown, 'deferOther recusa código admin');
 ActivityLog::$deferOther = true;
 $m2 = t_log_mark();
-ActivityLog::deferOther(ActivityLog::buildRow(ActivityLog::SEARCH, ['localidade' => 'x']));
+ActivityLog::deferOther(ActivityLog::buildRow(ActivityLog::SEARCH, ['place_id' => 1]));
 t_eq(1, count(ActivityLog::pendingOther()), 'other fica no buffer até o shutdown');
 t_eq([], t_log_rows($m2), 'nada gravado antes do flush');
 ActivityLog::flushOther();
@@ -458,13 +458,8 @@ t_ok(array_filter($frames, static fn ($f) => preg_match('#^[A-Za-z0-9_./-]+\.php
 $row = ActivityLog::buildRow(ActivityLog::INTERNAL_ERROR, ['mensagem' => $msg, 'rastreio' => $frames, 'arquivo' => 'src/x.php']);
 t_ok(str_contains($row['payload'], 'rastreio') && !str_contains($row['payload'], 'joao@'), 'INTERNAL_ERROR: payload com mensagem redigida e rastreio');
 
-echo "Q8: SEARCH redigido, place_id\n";
-t_eq(['localidade' => 'florianopolis sc'], ActivityLog::safeParams(['localidade' => '  Florianópolis   SC '], ActivityLog::SEARCH), 'termo: minúsculas, sem acento, espaços colapsados');
-foreach (['joao@x.com', 'https://x.test/a', 'www.exemplo.com', '48 99999-0000', '529.982.247-25', 'rua 123456'] as $bad) {
-    t_eq([], ActivityLog::safeParams(['localidade' => $bad], ActivityLog::SEARCH), "termo descartado: '$bad'");
-}
-t_eq(64, mb_strlen((string) (ActivityLog::safeParams(['localidade' => str_repeat('ab ', 40)], ActivityLog::SEARCH)['localidade'] ?? '')), 'termo limitado a 64 caracteres');
-t_eq(['place_id' => 12], ActivityLog::safeParams(['place_id' => 12], ActivityLog::SEARCH), 'place_id permitido no SEARCH');
+echo "Q8: SEARCH drops localidade and q; place_id stays\n";
+t_eq(['place_id' => 12], ActivityLog::safeParams(['localidade' => 'Floripa', 'q' => 'x', 'place_id' => 12], ActivityLog::SEARCH), 'SEARCH drops localidade and q; place_id stays');
 
 echo "HTTP: access_event_id do servidor, X-Request-Id ignorado (Q2)\n";
 $base = t_server();

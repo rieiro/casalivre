@@ -70,25 +70,4 @@ final class Redact
         $text = preg_replace('/(?<!\d)\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}(?!\d)/', '{cnpj}', $text) ?? $text;
         return preg_replace('/\d{6,}/', '{num}', $text) ?? $text;
     }
-
-    /**
-     * Search term for logs (demand-log redaction, docs/lgpd/lia-demand-log.md item 1 and §4.6): null when the raw
-     * text looks like an email, URL, phone, CPF/CNPJ or has 6+ digits in total; otherwise folded (lowercase, no
-     * accents), single spaces, at most 64 chars.
-     */
-    public static function searchTerm(string $raw): ?string
-    {
-        if (preg_match('/@|:\/\/|\bwww\./i', $raw) === 1 || preg_match_all('/\d/', $raw) >= 6) {
-            return null;
-        }
-        $t = mb_strtolower(trim($raw));
-        $t = strtr($t, [
-            'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
-            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i', 'ó' => 'o', 'ò' => 'o', 'õ' => 'o', 'ô' => 'o', 'ö' => 'o',
-            'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ç' => 'c', 'ñ' => 'n',
-        ]);
-        $t = trim(preg_replace('/\s+/u', ' ', $t) ?? $t);
-        $t = mb_substr($t, 0, 64);
-        return $t === '' ? null : $t;
-    }
 }

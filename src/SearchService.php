@@ -31,6 +31,7 @@ final class SearchService
         $results = $searched ? SearchService::search($filters, $host, $facets) : [];
         if ($searched && $log) {
             // place_id: the resolved place (today the cities row of CityRepository::match; places.id with ADR 001).
+            // Free text is dropped by ActivityLog::ALLOWED_PARAMS (ADR 001 §11.3 cond. 6).
             $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
             activity(ActivityLog::SEARCH, $filters + ['place_id' => isset($place['id']) ? (int) $place['id'] : null, 'resultados' => count($results)]);
         }

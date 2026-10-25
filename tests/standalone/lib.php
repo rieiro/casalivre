@@ -329,6 +329,24 @@ function t_http(string $method, string $url, ?string $body = null, array $header
     return ['status' => $status, 'headers' => substr($raw, 0, $size), 'body' => substr($raw, $size)];
 }
 
+/** API request-log row for the X-Request-Id in $headers, or null when the header or the line is missing. */
+function log_entry(string $dir, string $headers): ?array
+{
+    if (!preg_match('/^X-Request-Id:\s*(\S+)/mi', $headers, $m)) {
+        return null;
+    }
+    usleep(200000);
+    foreach (glob($dir . '/api-*') ?: [] as $f) {
+        foreach (file($f) ?: [] as $line) {
+            $row = json_decode($line, true);
+            if (($row['request_id'] ?? null) === $m[1]) {
+                return $row;
+            }
+        }
+    }
+    return null;
+}
+
 /** Cria usuário ativo + imóvel no banco temporário (in-process). */
 function t_seed_owner(): array
 {
