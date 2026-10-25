@@ -15,6 +15,15 @@ final class CityRepository
      */
     private const NEIGHBORHOOD_COUNT = 61543;
 
+    /**
+     * Nomes alternativos (dobrados) que match() resolve para "name_fold, uf" da cidade oficial. O alias
+     * nunca é exibido nem vira linha em places; não há busca por sufixo, para "Cabo" não achar Arraial do Cabo.
+     */
+    private const ALIASES = [
+        'buzios' => 'armacao dos buzios, rj',
+        'buzios, rj' => 'armacao dos buzios, rj',
+    ];
+
     /** Cópia em processo de storage/cache/cities.json. Some depois de recriar as cidades, para um id de outro banco não ficar. */
     private static ?array $citiesCache = null;
 
@@ -35,14 +44,7 @@ final class CityRepository
         Db::transactional($pdo, static function (PDO $pdo) use ($rows): void {
             $pdo->exec('DELETE FROM places WHERE parent_id IS NOT NULL');
             $pdo->exec('DELETE FROM places');
-            $seen = [];
             foreach ($rows as $row) {
-                // places_city_uf_uk: cities.json repete Armação dos Búzios/RJ (o segundo label é "Búzios").
-                $uk = $row['uf'] . "\0" . fold((string) $row['name']);
-                if (isset($seen[$uk])) {
-                    continue;
-                }
-                $seen[$uk] = true;
                 self::insertPlace($pdo, 'city', null, (string) $row['name'], (string) $row['label'], (string) $row['uf'], $row['lat'], $row['lng'], 0);
             }
             self::seedPilot($pdo);
@@ -264,6 +266,7 @@ final class CityRepository
         if ($fold === '') {
             return null;
         }
+        $fold = self::ALIASES[preg_replace('/\s*,\s*/', ', ', $fold)] ?? $fold;
         if (preg_match('/^(.+),\s*([a-z]{2})$/', $fold, $parts)) {
             foreach (self::list() as $row) {
                 if ($row['name_fold'] === $parts[1] && strtolower((string) $row['uf']) === $parts[2]) {
