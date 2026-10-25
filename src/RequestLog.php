@@ -161,9 +161,9 @@ final class RequestLog
         return $out;
     }
 
-    /** Chaves de query cujo VALOR pode ser gravado (demais: só o nome da chave, valor null). */
+    /** Query keys whose value may be stored. Free-text `q` and `localidade` are name-only (value null). */
     public const QUERY_VALUE_ALLOWLIST = [
-        'q', 'localidade', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
+        'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
         'score_min', 'amenidade', 'pagina', 'ordem', 'locale', 'cal_view',
     ];
 

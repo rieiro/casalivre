@@ -42,7 +42,7 @@ t_ok($e !== null && !str_contains(json_encode($e), $owner['ical_hash']), 'ical_h
 t_ok($e !== null && $e['query'] === [] && !str_contains(json_encode($e), 'SECRETQ'), 'query de rota iCal gravada vazia');
 $r = t_http('GET', $base . '/api/cidades?q=flo&t=SECRETQ');
 $e = log_entry($logDir, $r['headers']);
-t_eq(['q' => 'flo', 't' => null], $e['query'] ?? null, 'query fora da allowlist: só o nome da chave');
+t_eq(['q' => null, 't' => null], $e['query'] ?? null, 'q e chave fora da allowlist: só o nome');
 
 echo "POST/PUT /api/users sem dados pessoais no log\n";
 $pii = ['name' => 'Maria PIISilva', 'email' => 'piimaria@x.com', 'password' => 'Senha-PII-123', 'password_confirm' => 'Senha-PII-123',
