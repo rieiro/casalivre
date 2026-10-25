@@ -233,7 +233,7 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
 ## Competitor gaps (reviewed 2026-10-21 to 2026-10-23)
-Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 23/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026; G21 a G23 aprovados com mudança). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). O Rafael decidiu em 2026-10-22, depois dessa revisão: G10 (penalidade do anfitrião por solicitação expirada) e G20 (reserva dupla pelo iCal) não entram no backlog; a G19 não avisa ninguém e não relaxa o mínimo, só pinta a noite vazia no calendário do anfitrião. RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
+Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 25/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026; G21 a G23 e G27 aprovados com mudança). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). O Rafael decidiu em 2026-10-22, depois dessa revisão: G10 (penalidade do anfitrião por solicitação expirada) e G20 (reserva dupla pelo iCal) não entram no backlog; a G19 não avisa ninguém e não relaxa o mínimo, só pinta a noite vazia no calendário do anfitrião. RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
 
 | # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -252,6 +252,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
+| G27 | Respostas do anfitrião publicadas como FAQ do anúncio | — | — | — | — | 3,6 | Should | depois da S7, antes da P8 | aprovado com mudança (2,4 → 3,6) |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
 | G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
@@ -441,6 +442,19 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   4. Solicitação recusada ou expirada encerra a conversa na hora, só leitura, sem essa janela.
   5. N é parâmetro de nó ou canal; o padrão da plataforma é 14.
 - **Prioridade:** Should, antes da S9. RICE 6,4. Fonte: competitors.md G23 (`/workspace/produto/competitors.md`), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`).
+
+### G27 — Respostas do anfitrião publicadas como FAQ do anúncio (Should, depois da S7, antes da P8)
+- **Problema:** o hóspede faz as mesmas perguntas antes de reservar (G21), e o anfitrião responde uma a uma. O Booking.com mostra publicamente as respostas do anfitrião às perguntas antes da reserva. O assistente futuro (P8) precisa de respostas confirmadas pelo anfitrião para citar, em vez de inventar.
+- **Solução (aprovada pelo Negócios com mudança), sem IA:** o anfitrião escolhe, resposta a resposta, se ela vira uma entrada pública de FAQ no anúncio. Os nomes e os dados do hóspede nunca aparecem. O anfitrião edita ou esconde a entrada quando quiser. **A mais, pelo Negócios:** (1) o nó tem modelos de FAQ que o imóvel sobrescreve; (2) quando a mesma pergunta chega 2 ou mais vezes no mesmo imóvel, o anfitrião vê um convite de um clique "publicar como FAQ" (um contador, sem IA); (3) cada entrada é guardada como texto estruturado com o campo de idioma, para a P8 usar.
+- **Critérios de aceite:**
+  1. O anfitrião publica uma resposta de pergunta como entrada de FAQ no anúncio, e só a escolha dele a torna pública.
+  2. A entrada pública não mostra nome, contato nem outro dado do hóspede que perguntou, e o mascaramento de contatos da G21 continua valendo no texto.
+  3. O anfitrião edita ou esconde a entrada; esconder a tira do anúncio na hora.
+  4. O nó define modelos de FAQ; um imóvel sem entrada própria na mesma pergunta usa o modelo do nó, e a entrada do imóvel sobrescreve o modelo.
+  5. Quando a mesma pergunta chega 2 ou mais vezes no mesmo imóvel, o anfitrião vê o convite "publicar como FAQ" com um clique. A contagem é um contador simples, sem IA, e o convite some quando ele publica ou dispensa.
+  6. Cada entrada guarda pergunta, resposta e idioma em texto estruturado, de modo que a P8 leia só entradas publicadas.
+  7. Mostrar o FAQ não acrescenta consulta à busca nem muda as metas de velocidade do ADR 001 (só a página do anúncio lê as entradas).
+- **Prioridade:** Should, depois da S7 e antes da P8. RICE 3,6 (o Negócios subiu de 2,4). Depende da G21. Fonte: competitors.md G27 (`/workspace/produto/competitors.md`, 25/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`). Referência: respostas públicas do anfitrião no Booking.com.
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
