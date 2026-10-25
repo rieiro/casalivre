@@ -114,7 +114,7 @@ php scripts/run-casos-de-teste.php
   15 3 * * *  php /caminho/casalivre/scripts/log-retention.php
   ```
 - **Falhas de escrita** do log de requisições incrementam `RequestLog::$writeFailures` e geram `error_log` sem dados.
-- **Query string no log da API:** rotas de iCal (`/api/ical/…`, `/ical/…`, `*.ics`) gravam a query vazia. Nas demais, só as chaves de `RequestLog::QUERY_VALUE_ALLOWLIST` (`q`, `localidade`, `checkin`, `checkout`, `hospedes`, …) têm o valor gravado. As outras chaves aparecem só pelo nome (valor `null`). Em `/api/ceps` só os nomes das chaves são gravados.
+- **Query string no log da API:** rotas de iCal (`/api/ical/…`, `/ical/…`, `*.ics`) gravam a query vazia. Nas demais, só as chaves de `RequestLog::QUERY_VALUE_ALLOWLIST` (`checkin`, `checkout`, `hospedes`, …) têm o valor gravado. As outras chaves aparecem só pelo nome (valor `null`). Em `/api/ceps` só os nomes das chaves são gravados.
 - **runit (Void Linux):** o serviço `deploy/runit/casalivre-log-retention/run` roda a retenção e dorme 24h; o runit o reinicia, então ela se repete todo dia.
 
   ```
