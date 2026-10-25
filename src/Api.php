@@ -287,13 +287,15 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/busca' && $method === 'GET') {
         require_once __DIR__ . '/SearchQuery.php';
         require_once __DIR__ . '/SearchService.php';
+        $query = SearchQuery::fromRequest($_GET);
+        $cursor = trim((string) ($_GET['cursor'] ?? ''));
         try {
-            $query = SearchQuery::fromRequest($_GET);
+            $afterId = $cursor === '' ? null : SearchQuery::lastId($cursor, $query->filtersHash());
         } catch (InvalidSearchCursor) {
             RequestLog::setBusca(0, 0);
             api_error(400, 'Cursor inválido.');
         }
-        $result = SearchService::run($query, true, $_SERVER['HTTP_HOST'] ?? null);
+        $result = SearchService::search($query, $_SERVER['HTTP_HOST'] ?? null, true, $afterId);
         RequestLog::setBusca($result['iteracoes'], $result['linhas_lidas']);
         $filters = $result['filters'];
         $results = $result['items'];

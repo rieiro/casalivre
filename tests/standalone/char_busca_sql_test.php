@@ -219,11 +219,9 @@ function walk(array $request, mixed $host = null): array
     $cursor = null;
     $seen = [];
     for ($page = 0; $page < 40; $page++) {
-        $req = $request;
-        if ($cursor !== null) {
-            $req['cursor'] = $cursor;
-        }
-        $result = SearchService::search(SearchQuery::fromRequest($req), $host);
+        $query = SearchQuery::fromRequest($request);
+        $afterId = $cursor === null ? null : SearchQuery::lastId($cursor, $query->filtersHash());
+        $result = SearchService::search($query, $host, false, $afterId);
         t_ok($result['iteracoes'] <= SearchService::MAX_QUERIES && $result['linhas_lidas'] <= SearchService::MAX_QUERIES * SearchService::BATCH_SIZE, 'page stays within 4 queries and 240 rows');
         $linhas += $result['linhas_lidas'];
         foreach ($result['items'] as $item) {

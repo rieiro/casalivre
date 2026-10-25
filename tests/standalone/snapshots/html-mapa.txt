@@ -13,7 +13,7 @@ X-Frame-Options: DENY
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CasaLivre</title>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
-    <link rel="stylesheet" href="/assets/app.css?v=b510075a90f1">
+    <link rel="stylesheet" href="/assets/app.css?v=5dd440d3e88d">
     <link rel="stylesheet" href="/assets/themes/padrao.css?v=e297e5b2640d">
     <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=5531df8bf399"></script>
 </head>

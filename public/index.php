@@ -360,23 +360,27 @@ if ($path === '/' && $method === 'GET') {
 if ($path === '/busca/mapa' && $method === 'GET') {
     // Página do mapa (MapLibre + PMTiles): só o esqueleto; os pins vêm de /api/busca no navegador (GeoJSON com
     // clusters). A busca é registrada uma vez, pela API; a página não roda a busca no servidor.
-    $filters = search_filters_from_query();
+    $search = SearchQuery::fromRequest($_GET);
+    // The page form never carried grupo; the storefront API URL sets the path group.
+    $filters = $search->filters();
+    unset($filters['grupo']);
     view('map', [
         'filters' => $filters,
-        'searched' => $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '',
+        'searched' => $search->searched(),
     ]);
     return null;
 }
 
 if ($path === '/busca' && $method === 'GET') {
     // Resultados vêm da API (/api/busca). A view só monta o formulário e carrega via JS.
-    $filters = search_filters_from_query();
-    $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
+    $search = SearchQuery::fromRequest($_GET);
+    // The page form never carried grupo; the storefront API URL sets the path group.
+    $filters = $search->filters();
+    unset($filters['grupo']);
     view('search', [
         'filters' => $filters,
         'results' => [],
-        'searched' => $searched,
-        'facets' => [],
+        'searched' => $search->searched(),
         'use_api' => true,
     ]);
     return null;
@@ -415,10 +419,12 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
         return null;
     }
     if ($vSuffix === '/busca' || $vSuffix === '/busca/mapa') {
-        $filters = search_filters_from_query();
-        $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
+        $search = SearchQuery::fromRequest($_GET);
+        // The page form never carried grupo; the storefront API URL sets the path group.
+        $filters = $search->filters();
+        unset($filters['grupo']);
         view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
-            'filters' => $filters, 'searched' => $searched, 'use_api' => true, 'vitrine_api' => $vApi,
+            'filters' => $filters, 'searched' => $search->searched(), 'use_api' => true, 'vitrine_api' => $vApi,
         ]);
         return null;
     }

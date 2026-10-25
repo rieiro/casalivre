@@ -19,17 +19,9 @@ final class SearchService
     /**
      * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int}
      */
-    public static function run(SearchQuery $query, bool $log, mixed $host): array
+    public static function search(SearchQuery $query, mixed $host, bool $log = false, ?int $afterId = null): array
     {
-        return self::search($query, $host, $log);
-    }
-
-    /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int}
-     */
-    public static function search(SearchQuery $query, mixed $host, bool $log = false): array
-    {
-        $result = self::find($query, $host);
+        $result = self::find($query, $host, $afterId);
         if ($log && $query->searched()) {
             require_once __DIR__ . '/ActivityLog.php';
             activity(ActivityLog::SEARCH, $query->filters() + [
@@ -44,7 +36,7 @@ final class SearchService
     /**
      * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int,place_id:?int}
      */
-    private static function find(SearchQuery $query, mixed $host): array
+    private static function find(SearchQuery $query, mixed $host, ?int $afterId): array
     {
         $out = [
             'filters' => $query->filters(),
@@ -89,7 +81,7 @@ final class SearchService
             static fn (string $key): bool => in_array($key, $known, true)
         ));
         $page = [];
-        $after = $query->lastId;
+        $after = $afterId;
         $hasMore = true;
         $read = 0;
         $queries = 0;
@@ -101,7 +93,6 @@ final class SearchService
                 array_pop($fetched);
             }
             if ($fetched === []) {
-                $hasMore = false;
                 break;
             }
             $ids = array_map(static fn (array $row): int => (int) $row['id'], $fetched);
@@ -129,8 +120,8 @@ final class SearchService
         $out['items'] = $page;
         $out['iteracoes'] = $queries;
         $out['linhas_lidas'] = $read;
-        if ($hasMore && $read > 0) {
-            $out['next_cursor'] = SearchQuery::cursor((int) $after, $query->filtersHash());
+        if ($hasMore) {
+            $out['next_cursor'] = SearchQuery::cursor($after, $query->filtersHash());
         }
         return $out;
     }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** Typed public-search input. Built from the request in Api.php; SearchService does not read $_GET. */
+/** Typed public-search input. Built from the request; SearchService does not read $_GET. */
 final class SearchQuery
 {
     public const VERSION = 1;
@@ -22,7 +22,6 @@ final class SearchQuery
         public readonly float $scoreMin,
         public readonly array $amenidades,
         public readonly ?string $grupo,
-        public readonly ?int $lastId,
     ) {
     }
 
@@ -36,7 +35,7 @@ final class SearchQuery
         $grupo = array_key_exists('grupo', $request)
             ? (is_string($request['grupo']) ? $request['grupo'] : '')
             : null;
-        $query = new self(
+        return new self(
             trim((string) ($request['localidade'] ?? '')),
             (string) ($request['checkin'] ?? ''),
             (string) ($request['checkout'] ?? ''),
@@ -47,24 +46,6 @@ final class SearchQuery
             (float) ($request['score_min'] ?? 0),
             $amenidades,
             $grupo,
-            null,
-        );
-        $cursor = trim((string) ($request['cursor'] ?? ''));
-        if ($cursor === '') {
-            return $query;
-        }
-        return new self(
-            $query->localidade,
-            $query->checkin,
-            $query->checkout,
-            $query->hospedes,
-            $query->raio,
-            $query->precoMin,
-            $query->precoMax,
-            $query->scoreMin,
-            $query->amenidades,
-            $query->grupo,
-            self::lastId($cursor, $query->filtersHash()),
         );
     }
 

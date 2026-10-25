@@ -1,17 +1,10 @@
 <?php
 $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma
-$facets = $facets ?? [];
 $query = search_query($filters);
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
-$listed = array_fill_keys(array_values(array_filter($facets, 'is_string')), true);
-$popular = [];
-foreach (Amenities::keys() as $key) {
-    if (isset($listed[$key]) || in_array($key, $filters['amenidades'], true)) {
-        $popular[] = $key;
-    }
-}
+$popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades']));
 ?>
 <section class="wrap search-page">
     <form class="search search-query" method="get" action="<?= e($base) ?>/busca">

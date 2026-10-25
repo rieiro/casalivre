@@ -196,7 +196,6 @@ footer { padding: var(--space-16); }
 .filters-panel h2 { margin: 0; font-size: 1.05rem; }
 .filter-list { display: grid; gap: var(--space-6); }
 .filter-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-8); align-items: center; font-weight: 500; font-size: .9rem; }
-.filter-list b { color: var(--muted); font-weight: 600; }
 .pager { display: flex; flex-wrap: wrap; gap: var(--space-6); margin-top: var(--space-16); }
 .pager a, .pager span { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--space-10); border: 1px solid var(--line); border-radius: var(--radius-8); background: var(--surface); text-decoration: none; color: var(--ink); }
 .pager .is-on { background: var(--brand); color: var(--surface); border-color: var(--brand); }

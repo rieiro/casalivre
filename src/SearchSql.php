@@ -26,7 +26,7 @@ final class SearchSql
     {
         $km = $radiusKm + 1;
         $dLat = $km / 111.32;
-        $dLng = $km / (111.32 * max(0.01, abs(cos(deg2rad($lat)))));
+        $dLng = $km / (111.32 * cos(deg2rad($lat)));
         return ['s' => $lat - $dLat, 'n' => $lat + $dLat, 'w' => $lng - $dLng, 'e' => $lng + $dLng];
     }
 
@@ -69,7 +69,6 @@ final class SearchSql
     public static function batch(?int $placeId, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit): array
     {
         [$where, $params] = self::where($placeId, $groupId, $guests, $bbox, $checkin, $checkout, $afterId);
-        $limit = max(1, $limit);
         $stmt = db()->prepare(HouseRepository::SQL_WITH_CITY . " WHERE $where ORDER BY p.id ASC LIMIT $limit");
         $stmt->execute($params);
         return $stmt->fetchAll();

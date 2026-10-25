@@ -185,8 +185,8 @@ t_eq([200, [$hB['hash']]], $api("$q&grupo=outro"), 'plataforma, grupo=B: inalter
 
 require_once CL_ROOT . "/src/SearchService.php";
 echo "SearchService: host obrigatório\n";
+t_ok(!method_exists(SearchService::class, 'run'), 'SearchService::run removed');
 $pr = static fn (string $m, string $n): ReflectionParameter => array_values(array_filter((new ReflectionMethod('SearchService', $m))->getParameters(), static fn ($p) => $p->getName() === $n))[0];
-t_ok(!$pr('run', 'host')->isOptional() && !$pr('run', 'log')->isOptional(), 'run(bool $log, mixed $host): sem padrão');
 t_ok(!$pr('search', 'host')->isOptional(), 'search(..., mixed $host, ...): sem padrão');
 
 echo "B3: domínio verificado sem ?grupo= força o grupo do domínio\n";

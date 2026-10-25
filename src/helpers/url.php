@@ -80,22 +80,6 @@ function safe_search_return(?string $value): string
     return is_string($query) && $query !== '' ? $path . '?' . $query : $path;
 }
 
-/** Filtros da busca lidos da query string (páginas /busca e /busca/mapa; a busca em si é da API). */
-function search_filters_from_query(): array
-{
-    return [
-        'localidade' => trim((string) ($_GET['localidade'] ?? '')),
-        'checkin' => (string) ($_GET['checkin'] ?? ''),
-        'checkout' => (string) ($_GET['checkout'] ?? ''),
-        'hospedes' => (int) ($_GET['hospedes'] ?? 0),
-        'raio' => (int) ($_GET['raio'] ?? 0),
-        'preco_min' => (int) ($_GET['preco_min'] ?? 0),
-        'preco_max' => (int) ($_GET['preco_max'] ?? 0),
-        'score_min' => (float) ($_GET['score_min'] ?? 0),
-        'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
-    ];
-}
-
 function property_ref(array $property): string
 {
     return HouseRepository::ensurePublicHash($property);

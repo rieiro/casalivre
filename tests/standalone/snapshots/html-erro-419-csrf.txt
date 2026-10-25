@@ -6,4 +6,4 @@ Referrer-Policy: same-origin
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 
-<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido recusado</title><link rel="stylesheet" href="/assets/app.css?v=b510075a90f1"><body class="err-page"><h1>Pedido recusado</h1><p>O token de segurança não confere. Recarregue a página e tente de novo.</p><p><a href="/">Voltar ao início</a></p></body></html>
+<!DOCTYPE html><html lang="pt-BR"><meta charset="utf-8"><title>Pedido recusado</title><link rel="stylesheet" href="/assets/app.css?v=5dd440d3e88d"><body class="err-page"><h1>Pedido recusado</h1><p>O token de segurança não confere. Recarregue a página e tente de novo.</p><p><a href="/">Voltar ao início</a></p></body></html>
