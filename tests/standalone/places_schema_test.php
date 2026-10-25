@@ -48,11 +48,16 @@ foreach ($cities as $city) {
     $cityUk[$city['uf'] . "\0" . fold((string) $city['name'])] = true;
 }
 t_eq(count($cityUk), (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn(), 'uma place city por (uf, name_fold)');
-t_eq(count($cities) - 1, count($cityUk), 'cities.json repete Armação dos Búzios/RJ (label Búzios); places_city_uf_uk fica com a primeira');
+t_eq(count($cities), count($cityUk), 'cities.json não repete (uf, name_fold)');
 t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city' AND rtrim(uf) = 'RJ' AND name_fold = 'armacao dos buzios'")->fetchColumn(), 'um só Armação dos Búzios/RJ');
 $buzios = CityRepository::match('Armação dos Búzios, RJ');
 t_eq('Armação dos Búzios', (string) ($buzios['name'] ?? ''), 'match do nome oficial de Armação dos Búzios');
-t_eq(null, CityRepository::match('Búzios'), 'label "Búzios" do cities.json não vira outra cidade');
+foreach (['Búzios', 'buzios', 'Búzios, RJ', 'BUZIOS,rj'] as $alias) {
+    t_eq((int) $buzios['id'], (int) (CityRepository::match($alias)['id'] ?? 0), "alias \"$alias\" resolve o mesmo place id de Armação dos Búzios");
+}
+t_eq('Armação dos Búzios', (string) CityRepository::match('Búzios')['label'], 'rótulo exibido segue o oficial');
+t_eq(null, CityRepository::match('Búzios, SP'), 'alias só vale para RJ');
+t_eq(2, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi' AND parent_id = " . (int) $buzios['id'])->fetchColumn(), 'Geribá e Ferradura ficam sob a mesma cidade do alias');
 t_eq(3, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), '3 POIs piloto (Geribá, Ferradura, Praia do Forte)');
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), '61543 bairros OpenCEP');
 t_ok((int) $pdo->query("SELECT COUNT(*) FROM place_search_keys k JOIN places p ON p.id = k.place_id WHERE p.type = 'neighborhood'")->fetchColumn() >= 61543, 'cada bairro tem chave de busca');
