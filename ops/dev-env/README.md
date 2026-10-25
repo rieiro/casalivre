@@ -187,8 +187,8 @@ ops/dev-env/db-setup.sh --no-seed
   `QUEUE_DRIVER=valkey` (lists under `cl:q:mail:*`/`cl:q:image:*`, phpredis,
   `cl_app` allowlist only); runit restarts it if it dies.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
-  sem eco no terminal. CEPs: `bz2` só na chamada do `load-ceps.php`; o
-  `php.ini` não muda.
+  sem eco no terminal. CEPs e o migrate (bairros): `bz2` só na chamada
+  (`php8.4 -d extension=bz2`); o `php.ini` não muda.
 - Uploads, iguais à produção (`prompts/deploy.md`): `php.ini` com
   `post_max_size = 20M`, `upload_max_filesize = 16M`, `max_file_uploads = 20`
   (provision); nginx `client_max_body_size 1m` no `server` e `20m` só em

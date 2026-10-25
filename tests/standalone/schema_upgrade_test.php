@@ -8,7 +8,8 @@ t_eq(22, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 22');
 t_ok(!defined('Db::MIN_UPGRADE_FROM'), 'sem MIN_UPGRADE_FROM (sem caminho incremental: uma checagem de versão só)');
 
 $migrate = static function (array $args = []): array {
-    exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);
+    $php = escapeshellarg(PHP_BINARY) . (t_php_needs_bz2_flag() ? ' -d extension=bz2' : '');
+    exec($php . ' ' . escapeshellarg(CL_ROOT . '/scripts/migrate.php') . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);
     return [$code, implode("\n", $out)];
 };
 $pdo = static fn (): PDO => new PDO((string) getenv('DB_DSN'), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);

@@ -81,6 +81,20 @@ function t_backdate(string $file): void
 }
 
 /**
+ * True when a fresh php process (php.ini only, no -d) does not load bz2.
+ * Child scripts such as migrate.php do not inherit -d extension=bz2 from the parent.
+ */
+function t_php_needs_bz2_flag(): bool
+{
+    static $need = null;
+    if ($need !== null) {
+        return $need;
+    }
+    exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(extension_loaded("bz2") ? 0 : 1);'), $_, $code);
+    return $need = $code !== 0;
+}
+
+/**
  * Prepara um banco temporário (DB_DSN) com o schema do projeto (PostgreSQL only, #137). Exige TEST_PG_DSN
  * (ex.: pgsql:host=/run/pg;dbname=postgres; ops/dev-env/test-pg.sh define): cria casalivre_t_<pid>_<rand>, carrega
  * schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim. Deve ser chamado antes de qualquer acesso a db().

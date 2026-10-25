@@ -15,6 +15,9 @@ final class CityRepository
      */
     private const NEIGHBORHOOD_COUNT = 61543;
 
+    /** Cópia em processo de storage/cache/cities.json. Some depois de recriar as cidades, para um id de outro banco não ficar. */
+    private static ?array $citiesCache = null;
+
     public static function ensure(PDO $pdo): void
     {
         $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
@@ -45,6 +48,8 @@ final class CityRepository
             self::seedPilot($pdo);
             self::seedNeighborhoods($pdo);
         });
+        // O reseed troca os ids. O cache cities.json de outro banco não pode sobreviver.
+        self::forgetCitiesCache();
     }
 
     /** Cidades já semeadas: carrega bairros só se a contagem ainda não chegou no artefato. */
@@ -189,9 +194,11 @@ final class CityRepository
         if (!is_file($path)) {
             throw new RuntimeException("Arquivo de bairros ausente: $path");
         }
-        if (!function_exists('bzopen')) {
+        if (!function_exists('bzopen') || !function_exists('bzread') || !function_exists('bzclose')) {
             throw new RuntimeException(
-                "Não foi possível descompactar $path: o PHP não tem a extensão bz2. Instale php-bz2 e rode de novo scripts/migrate.php."
+                'Não foi possível descompactar ' . $path
+                . ': o PHP não tem a extensão bz2. Rode com php -d extension=bz2'
+                . ' (o php.ini de produção não carrega a extensão), como scripts/load-ceps.php.'
             );
         }
         $bz = bzopen($path, 'r');
@@ -316,21 +323,29 @@ final class CityRepository
         return $data['cities'] ?? [];
     }
 
+    private static function forgetCitiesCache(): void
+    {
+        self::$citiesCache = null;
+        $path = JsonCache::path('cities.json');
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+
     private static function cached(): array
     {
-        static $data = null;
-        if (is_array($data)) {
-            return $data;
+        if (is_array(self::$citiesCache)) {
+            return self::$citiesCache;
         }
         $decoded = JsonCache::read('cities.json');
         $first = is_array($decoded) ? ($decoded['cities'][0] ?? null) : null;
         if (is_array($decoded) && isset($decoded['cities'], $decoded['states'])
             && is_array($first) && isset($first['id'], $first['name_fold'], $first['label_fold'])) {
-            $data = $decoded;
-            return $data;
+            self::$citiesCache = $decoded;
+            return self::$citiesCache;
         }
-        $data = self::refresh();
-        return $data;
+        self::$citiesCache = self::refresh();
+        return self::$citiesCache;
     }
 
     private const STATES = [

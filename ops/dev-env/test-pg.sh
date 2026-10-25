@@ -44,10 +44,11 @@ fi
 run /bin/bash "$CL_REPO/ops/dev-env/check-test-deps.sh"
 run "$bin" -r '$u = getenv("TEST_PG_USER") ?: null; new PDO(getenv("TEST_PG_DSN"), $u, getenv("TEST_PG_PASSWORD") ?: null);' \
 	|| die "PG unreachable at $TEST_PG_DSN (is the env up? ops/dev-env/up-bwrap.sh)"
+# bz2 is not in php.ini (same as production). The neighborhood seed needs it, like load-ceps.
 if [ $# -eq 0 ]; then
-	run "$bin" tests/standalone/run.php
+	run "$bin" -d extension=bz2 tests/standalone/run.php
 	exit
 fi
 rc=0
-for f in "$@"; do run "$bin" "tests/standalone/$(basename "$f")" || rc=1; done
+for f in "$@"; do run "$bin" -d extension=bz2 "tests/standalone/$(basename "$f")" || rc=1; done
 exit $rc
