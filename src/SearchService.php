@@ -2,134 +2,194 @@
 
 declare(strict_types=1);
 
-/** Busca pública de imóveis (movido de public/index.php sem alterar os corpos). */
-require_once __DIR__ . '/GroupRepository.php';
 require_once __DIR__ . '/GrupoResolvedor.php';
+require_once __DIR__ . '/SearchQuery.php';
+require_once __DIR__ . '/SearchSql.php';
+require_once __DIR__ . '/Amenities.php';
+require_once __DIR__ . '/PhotoRepository.php';
+require_once __DIR__ . '/helpers.php';
 
+/** Public search on a resolved place: keyset pages from the shared SQL builder. */
 final class SearchService
 {
-    /** $host: Host da requisição (domínio verificado de um grupo); null explícito = sem restrição por domínio. */
-    public static function run(bool $log, mixed $host): array
+    public const PAGE_SIZE = 20;
+    public const BATCH_SIZE = 60;
+    public const MAX_QUERIES = 4;
+
+    /**
+     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int}
+     */
+    public static function run(SearchQuery $query, bool $log, mixed $host): array
     {
-        $filters = [
-            'localidade' => trim((string) ($_GET['localidade'] ?? '')),
-            'checkin' => (string) ($_GET['checkin'] ?? ''),
-            'checkout' => (string) ($_GET['checkout'] ?? ''),
-            'hospedes' => (int) ($_GET['hospedes'] ?? 0),
-            'raio' => (int) ($_GET['raio'] ?? 0),
-            'preco_min' => (int) ($_GET['preco_min'] ?? 0),
-            'preco_max' => (int) ($_GET['preco_max'] ?? 0),
-            'score_min' => (float) ($_GET['score_min'] ?? 0),
-            'amenidades' => array_values(array_filter((array) ($_GET['amenidade'] ?? []), 'is_string')),
-        ];
-        // Vitrine do grupo (PR 8): ?grupo=<slug> restringe aos imóveis ativos do grupo; slug inválido ou inexistente -> nada.
-        if (isset($_GET['grupo'])) {
-            $filters['grupo'] = is_string($_GET['grupo']) ? $_GET['grupo'] : '';
-        }
-        $searched = $filters['localidade'] !== '' || $filters['checkin'] !== '' || $filters['checkout'] !== '';
-        $facets = [];
-        $results = $searched ? SearchService::search($filters, $host, $facets) : [];
-        if ($searched && $log) {
-            // place_id: the resolved place (today the cities row of CityRepository::match; places.id with ADR 001).
-            // Free text is dropped by ActivityLog::ALLOWED_PARAMS (ADR 001 §11.3 cond. 6).
-            $place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
-            activity(ActivityLog::SEARCH, $filters + ['place_id' => isset($place['id']) ? (int) $place['id'] : null, 'resultados' => count($results)]);
-        }
-        return [$filters, $results, $searched, $facets];
+        return self::search($query, $host, $log);
     }
 
-    public static function search(array $filters, mixed $host, ?array &$facets = null): array
+    /**
+     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int}
+     */
+    public static function search(SearchQuery $query, mixed $host, bool $log = false): array
     {
-        $localidade = $filters['localidade'];
-        $center = $localidade !== '' ? CityRepository::match($localidade) : null;
-        if (array_key_exists('grupo', $filters)) {
-            // No domínio verificado do grupo X, ?grupo=<outro grupo> é tratado como grupo inexistente (itens vazios).
-            $group = GrupoResolvedor::grupoDoSlugNoHost($filters['grupo'], $host);
-            $source = $group === null ? [] : GroupRepository::searchSource((int) $group['id']);
-        } elseif (($hostGroup = GrupoResolvedor::doDominio($host)) !== null) {
-            // B3 (pr67): no domínio verificado do grupo X, sem ?grupo= a busca é só de X (o grupo resolvido vence).
-            $source = GroupRepository::searchSource((int) $hostGroup['id']);
-        } else {
-            $source = HouseRepository::all();
+        $result = self::find($query, $host);
+        if ($log && $query->searched()) {
+            require_once __DIR__ . '/ActivityLog.php';
+            activity(ActivityLog::SEARCH, $query->filters() + [
+                'place_id' => $result['place_id'],
+                'resultados' => count($result['items']),
+            ]);
         }
-        $nights = nights_between($filters['checkin'], $filters['checkout']);
-        $centerFold = $center ? fold((string) $center['name']) : '';
-        $labelFold = $center ? fold((string) $center['label']) : '';
-        $displayFold = $center ? fold($center['name'] . ', ' . $center['uf']) : '';
-        $pool = [];
-        foreach ($source as $property) {
-            $cityFold = fold((string) $property['city']);
-            if ($center && $filters['raio'] > 0) {
-                // Raio e distância sobre a coordenada pública (não revela a posição exata).
-                $distance = public_distance_km($center, $property);
-                if ($distance > $filters['raio']) {
+        unset($result['place_id']);
+        return $result;
+    }
+
+    /**
+     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int,place_id:?int}
+     */
+    private static function find(SearchQuery $query, mixed $host): array
+    {
+        $out = [
+            'filters' => $query->filters(),
+            'items' => [],
+            'searched' => $query->searched(),
+            'facets' => $query->searched() ? Amenities::keys() : [],
+            'next_cursor' => null,
+            'total_aprox' => null,
+            'unresolved' => false,
+            'iteracoes' => 0,
+            'linhas_lidas' => 0,
+            'place_id' => null,
+        ];
+        if (!$query->searched()) {
+            return $out;
+        }
+        $place = $query->localidade !== '' ? CityRepository::match($query->localidade) : null;
+        if ($query->localidade !== '' && $place === null) {
+            $out['unresolved'] = true;
+            return $out;
+        }
+        if ($place === null) {
+            return $out;
+        }
+        $out['place_id'] = (int) $place['id'];
+        $groupId = self::groupId($query, $host);
+        if ($groupId === false) {
+            return $out;
+        }
+        $nights = nights_between($query->checkin, $query->checkout);
+        $checkin = $nights[0] ?? null;
+        $checkout = $checkin === null
+            ? null
+            : (new DateTimeImmutable($nights[array_key_last($nights)]))->modify('+1 day')->format('Y-m-d');
+        $bbox = $query->raio > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $query->raio) : null;
+        $placeId = $bbox === null ? (int) $place['id'] : null;
+        $out['total_aprox'] = SearchSql::totalAprox($placeId, $groupId, $query->hospedes, $bbox, $checkin, $checkout);
+
+        $known = Amenities::keys();
+        $wanted = array_values(array_filter(
+            $query->amenidades,
+            static fn (string $key): bool => in_array($key, $known, true)
+        ));
+        $page = [];
+        $after = $query->lastId;
+        $hasMore = true;
+        $read = 0;
+        $queries = 0;
+        while (count($page) < self::PAGE_SIZE && $queries < self::MAX_QUERIES && $hasMore) {
+            $queries++;
+            $fetched = SearchSql::batch($placeId, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1);
+            $hasMore = count($fetched) > self::BATCH_SIZE;
+            if ($hasMore) {
+                array_pop($fetched);
+            }
+            if ($fetched === []) {
+                $hasMore = false;
+                break;
+            }
+            $ids = array_map(static fn (array $row): int => (int) $row['id'], $fetched);
+            $calendars = $nights !== [] ? HouseRepository::calendarForProperties($ids, $nights) : [];
+            $scores = HouseRepository::averageScores($ids);
+            $photos = PhotoRepository::primaryPaths($ids);
+            foreach ($fetched as $property) {
+                $read++;
+                $id = (int) $property['id'];
+                $after = $id;
+                $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $scores[$id] ?? null, $wanted);
+                if ($kept === null) {
                     continue;
                 }
-                $property['distance_km'] = $distance;
-            } elseif ($center && $cityFold !== $centerFold && $cityFold !== $labelFold && $cityFold !== $displayFold) {
-                continue;
-            } elseif (!$center && $localidade !== '' && !str_contains($cityFold . ' ' . fold((string) (house_neighborhood($property) ?? '')), fold($localidade))) {
-                // Só cidade e bairro: buscar no endereço viraria um oráculo ("localidade=Rua X, 123").
-                continue;
-            }
-            if ($filters['hospedes'] > 0 && (int) $property['max_guests'] < $filters['hospedes']) {
-                continue;
-            }
-            $pool[] = $property;
-        }
-        $ids = array_map(static fn (array $property): int => (int) $property['id'], $pool);
-        $calendars = $nights ? HouseRepository::calendarForProperties($ids, $nights) : [];
-        $quoted = [];
-        foreach ($pool as $property) {
-            $id = (int) $property['id'];
-            $quote = $nights
-                ? stay_quote($property, $nights, $calendars[$id] ?? [])
-                : ['nights' => 0, 'total' => (int) $property['nightly_price'], 'nightly' => (int) $property['nightly_price']];
-            if ($nights && $quote === null) {
-                continue;
-            }
-            if ($filters['preco_min'] > 0 && $quote['nightly'] < $filters['preco_min']) {
-                continue;
-            }
-            if ($filters['preco_max'] > 0 && $quote['nightly'] > $filters['preco_max']) {
-                continue;
-            }
-            $property['quote'] = $quote;
-            $quoted[] = $property;
-        }
-        $quotedIds = array_map(static fn (array $property): int => (int) $property['id'], $quoted);
-        $scores = HouseRepository::averageScores($quotedIds);
-        $photos = PhotoRepository::primaryPaths($quotedIds);
-        $wanted = array_values(array_filter(
-            $filters['amenidades'] ?? [],
-            static fn (string $key): bool => in_array($key, Amenities::keys(), true)
-        ));
-        $counts = array_fill_keys(Amenities::keys(), 0);
-        $rows = [];
-        foreach ($quoted as $property) {
-            $id = (int) $property['id'];
-            $score = $scores[$id] ?? null;
-            if ($filters['score_min'] > 0 && ($score === null || $score < $filters['score_min'])) {
-                continue;
-            }
-            $selected = Amenities::selected($property);
-            foreach (Amenities::keys() as $key) {
-                if (!empty($selected[$key])) {
-                    $counts[$key]++;
+                $kept['photo'] = $photos[$id] ?? null;
+                $page[] = $kept;
+                if (count($page) === self::PAGE_SIZE) {
+                    break;
                 }
             }
+            if (count($page) === self::PAGE_SIZE && $after !== (int) $fetched[array_key_last($fetched)]['id']) {
+                $hasMore = true;
+            }
+        }
+        $out['items'] = $page;
+        $out['iteracoes'] = $queries;
+        $out['linhas_lidas'] = $read;
+        if ($hasMore && $read > 0) {
+            $out['next_cursor'] = SearchQuery::cursor((int) $after, $query->filtersHash());
+        }
+        return $out;
+    }
+
+    /** @return int|null|false null = no group filter; false = the requested group does not resolve */
+    private static function groupId(SearchQuery $query, mixed $host): int|null|false
+    {
+        if ($query->grupo !== null) {
+            $group = GrupoResolvedor::grupoDoSlugNoHost($query->grupo, $host);
+            return $group === null ? false : (int) $group['id'];
+        }
+        $hostGroup = GrupoResolvedor::doDominio($host);
+        return $hostGroup === null ? null : (int) $hostGroup['id'];
+    }
+
+    /**
+     * Price, score and amenities stay in PHP. Radius haversine too, after the SQL bbox.
+     *
+     * @param list<string> $nights
+     * @param array<string, array> $calendar
+     * @param list<string> $wanted
+     */
+    private static function keep(array $property, SearchQuery $query, array $nights, array $place, array $calendar, ?float $score, array $wanted): ?array
+    {
+        if ($query->raio > 0) {
+            $distance = public_distance_km($place, $property);
+            if ($distance > $query->raio) {
+                return null;
+            }
+            $property['distance_km'] = $distance;
+        }
+        if ($nights !== []) {
+            $quote = stay_quote($property, $nights, $calendar);
+            if ($quote === null) {
+                return null;
+            }
+        } else {
+            $nightly = (int) $property['nightly_price'];
+            $quote = ['nights' => 0, 'total' => $nightly, 'nightly' => $nightly];
+        }
+        if ($query->precoMin > 0 && $quote['nightly'] < $query->precoMin) {
+            return null;
+        }
+        if ($query->precoMax > 0 && $quote['nightly'] > $query->precoMax) {
+            return null;
+        }
+        if ($query->scoreMin > 0 && ($score === null || $score < $query->scoreMin)) {
+            return null;
+        }
+        if ($wanted !== []) {
+            $selected = Amenities::selected($property);
             foreach ($wanted as $key) {
                 if (empty($selected[$key])) {
-                    continue 2;
+                    return null;
                 }
             }
-            $property['photo'] = $photos[$id] ?? null;
-            $property['score'] = $score;
-            $rows[] = $property;
         }
-        if ($facets !== null) {
-            $facets = $counts;
-        }
-        return $rows;
+        $property['quote'] = $quote;
+        $property['score'] = $score;
+        return $property;
     }
 }

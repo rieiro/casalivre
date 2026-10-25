@@ -154,17 +154,16 @@ $r = t_http('GET', $base . '/g/imob-sul?a=1', null, ['Host: evil.com']);
 t_eq('/g/imob-sul/?a=1', c_location($r), 'Location não usa o Host');
 t_eq(1, preg_match_all('/^Set-Cookie:\s*a=b/mi', $get('/g/imob-sul?x=%0d%0aSet-Cookie:a=b')['headers']) === 0 ? 1 : 0, 'sem header injetado');
 
-echo "status vazio: busca, mapa e página da vitrine com a regra estrita\n";
-// status é NOT NULL (DEFAULT 'active'); '' é o único caso fora de 'active'/'inactive'. Busca/mapa da vitrine
-// (searchSource, activePropertyStrict) e a página (activePropertyByRef) exigem 'active', como a plataforma.
-// A home da vitrine (properties(), activeProperty()) ainda lista '' (backlog).
+echo "status vazio: busca, mapa, página e home da vitrine exigem 'active'\n";
+// status é NOT NULL (DEFAULT 'active'); '' é o único caso fora de 'active'/'inactive'. Busca, mapa,
+// página e a home (properties()) exigem status = 'active'.
 $hE = $house($uid, 'Casa status vazio');
 $link($hE, $gA);
 db()->prepare("UPDATE properties SET status = '' WHERE id = ?")->execute([$hE['id']]);
 [, $ids] = $api('localidade=Florian%C3%B3polis&grupo=imob-sul');
 t_eq([$hA['hash']], $ids, "status '': fora da busca e do mapa da vitrine (mesma API)");
 t_eq(404, $get('/g/imob-sul/imoveis/' . $hE['hash'])['status'], "status '': página na vitrine 404");
-t_ok(str_contains($get('/g/imob-sul/')['body'], $hE['hash']), "status '': ainda aparece na home da vitrine (backlog)");
+t_ok(!str_contains($get('/g/imob-sul/')['body'], $hE['hash']), "status '': fora da home da vitrine");
 [, $all] = $api('localidade=Florian%C3%B3polis');
 t_ok(!in_array($hE['hash'], $all, true), "status '': fora da busca da plataforma");
 t_ok(!in_array($hA2['hash'], $ids, true), "status 'inactive': fora da busca da vitrine");

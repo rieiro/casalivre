@@ -285,7 +285,20 @@ function handle_api(string $path, string $method): void
     // --- Novos endpoints (contratos em prompts/api-contratos.md) ---
 
     if ($path === '/api/busca' && $method === 'GET') {
-        [$filters, $results, $searched, $facets] = SearchService::run(true, $_SERVER['HTTP_HOST'] ?? null);
+        require_once __DIR__ . '/SearchQuery.php';
+        require_once __DIR__ . '/SearchService.php';
+        try {
+            $query = SearchQuery::fromRequest($_GET);
+        } catch (InvalidSearchCursor) {
+            RequestLog::setBusca(0, 0);
+            api_error(400, 'Cursor inválido.');
+        }
+        $result = SearchService::run($query, true, $_SERVER['HTTP_HOST'] ?? null);
+        RequestLog::setBusca($result['iteracoes'], $result['linhas_lidas']);
+        $filters = $result['filters'];
+        $results = $result['items'];
+        $searched = $result['searched'];
+        $facets = $result['facets'];
         $items = array_map(static function (array $item): array {
             // Coordenada pública (#36: deslocamento fixo de 300 a 500 m), nunca a exata; usada pelos pins do mapa.
             $pc = isset($item['lat'], $item['lng']) && $item['lat'] !== null && $item['lng'] !== null
@@ -304,12 +317,18 @@ function handle_api(string $path, string $method): void
                 'lng' => $pc['lng'] ?? null,
             ];
         }, $results);
-        json_out(200, [
+        $payload = [
             'items' => $items,
             'facets' => $facets,
             'searched' => $searched,
             'filters' => $filters,
-        ]);
+            'next_cursor' => $result['next_cursor'],
+            'total_aprox' => $result['total_aprox'],
+        ];
+        if ($result['unresolved']) {
+            $payload['unresolved'] = true;
+        }
+        json_out(200, $payload);
     }
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {

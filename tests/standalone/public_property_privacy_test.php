@@ -38,7 +38,11 @@ db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([
 $count = static fn (string $q): int => count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . rawurlencode($q))['body'], true)['items'] ?? []);
 t_eq(0, $count('Rua A, 1'), 'localidade = rua e número: nenhum resultado');
 t_eq(0, $count('Rua A'), 'localidade = rua: nenhum resultado');
-t_ok($count('Centro') >= 1, 'localidade = bairro: encontra');
+$centro = json_decode(t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Centro'))['body'], true) ?: [];
+t_eq(0, count($centro['items'] ?? []), 'localidade = bairro sem cidade resolvida: nenhum resultado');
+if (CityRepository::match('Centro') === null) {
+    t_eq(true, $centro['unresolved'] ?? false, 'bairro não resolvido não dispara a busca');
+}
 t_ok($count('Florianópolis') >= 1, 'localidade = cidade: encontra');
 
 echo "dono\n";
