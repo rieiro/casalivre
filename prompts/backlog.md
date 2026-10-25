@@ -143,8 +143,16 @@ Removed 2026-10-21: SQLite removal; moot after the Valkey rate limiter. Two item
 
 ## ADR 001 search implementation
 Source: ADR 001 (incl. §11) and `docs/produto/specs/spec-busca-localidade-resolvida.md`. Replaces the old "Sprint 4" items 1–2 (removed 2026-10-21; the SQLite write-concurrency note went with SQLite removal).
-- [ ] Implement ADR 001 search: SQL search with pagination, `places` and `place_search_keys` (SCHEMA 20), search only on a resolved place or map bbox, free-text full scan removed, total-price sort guard (5,000 candidates), demand log with Segurança conditions 1–7. Owner: Programador. Starts after P0-5 (#120) and the `cl_app` ACL PR below are merged.
-  - Demand-log redaction (Segurança condition 6) must also cover `src/SearchService.php:33`, which writes the raw filters (including `localidade`) to `activity_log`, and `RequestLog::QUERY_VALUE_ALLOWLIST`, which keeps the values of `q` and `localidade`.
+- [ ] Implement ADR 001 search: SQL search with pagination, `places` and `place_search_keys` (SCHEMA 20), search only on a resolved place or map bbox, free-text full scan removed, total-price sort guard (5,000 candidates). The demand log, including kind `search`, is PR7 below (Priority: Should; it does not block PR1–PR3). Owner: Programador. Starts after P0-5 (#120) and the `cl_app` ACL PR below are merged.
+  - (#214) Demand-log redaction (Segurança condition 6) is already done: `src/SearchService.php` drops raw `localidade` and `q` from the `SEARCH` activity row, and `RequestLog::QUERY_VALUE_ALLOWLIST` no longer keeps those values. PR7 does not redo it.
+- [ ] PR7 — Demand log, third kind `search` (ADR 001 §11.3). Priority: Should. Does not block PR1–PR3. Owner: Programador. Labels on that implementation PR: `needs:db`, `needs:security`, `needs:legal`, `needs:arch`. Approved 2026-10-25 by Segurança, Arquitetura, BD and Jurídico. Rafael: count searches per resolved place, for trends and hints.
+  - Create `search_demand_daily` with all three kinds at once (`unresolved`, `zero_result`, `search`). No migration: recreate the DB and seeds. Unique index `sdd_search_uk`. DDL is BD's text in ADR 001 §11.4. Schema bump in the same PR (the table is new, so no ALTER).
+  - One daily count per catalog `place_id`: one number per (day, place_id). No guests, dates, price, radius, referrer, device, or anything finer than the day. Do not join the table to logs, accounts, bookings or listing views. If filters are ever added, re-check the LIA. `hits >= 1` (the k ≥ 5 threshold does not apply to a catalog place_id).
+  - Validate `place_id` as an int against the place catalog before HINCRBY; drop anything else.
+  - Valkey key `cl:demand:search:{YYYY-MM-DD}`, field = place_id, EXPIRE 172800, no HLEN cap. Same nightly flush into `search_demand_daily`. No Postgres write on the request path.
+  - Count only page 1 of a resolved place (not cursor pages, not map pans), after the response is flushed. It must never delay or fail a search.
+  - PG rows kept 12 months. The table is readable only by the BI/admin role; writes by the flush worker only.
+  - Product acceptance: an admin report lists the top places by searches per day and per week, with counts, and search responses show no measurable added time.
 - [x] (done in #138) Valkey ACL PR: add `+hlen +hexists` to `cl_app` on `ops/dev-env/services.sh:37` and `+rename` on `services.sh:36` (flush handoff, ADR 001 §11.3/§11.4), plus the prod ACL; add `hlen cl:x` → ok and `hlen x` → NOPERM cases to `ops/dev-env/valkey-acl-check.sh`. Owner: Programador; Segurança informed.
 
 Acceptance requirements folded in from the backlog review (2026-10-21):
@@ -162,6 +170,7 @@ Blockers before the demand log ships (Jurídico, ADR 001 §11 P7 legal verdict):
 - [x] (Done in #131.) Privacy notice: add a "Busca" row to `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text: "Termos buscados sem resultado são registrados de forma agregada e sem identificação (sem conta, IP ou sessão), apenas quando repetidos por pelo menos 5 buscas no dia, para melhorar a oferta de imóveis. Base: legítimo interesse. Guarda: 12 meses." Do not promise "anonymous" for the transient phase. Owner: Jurídico.
 - [x] (Done in #131; ANPD guide v1.0, Feb 2024, verified.) LIA at `docs/lgpd/lia-demand-log.md` (LGPD art. 10 §3): purpose (search coverage and inventory), necessity, balancing (no profiling, no user link, low impact on expectations), safeguards. Check the current version of the ANPD legitimate-interest guide. Owner: Jurídico.
 - Acceptance (Jurídico): both files exist; Segurança items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place. If a frequent term names a third party, delete it manually.
+- Kind `search` (2026-10-25, ADR 001 §11.3): Jurídico updates `docs/lgpd/lia-demand-log.md` separately before PR7 (do not edit it in the ADR or backlog PR). The "Busca" row still covers unsuccessful terms only; the daily per-place count (no account, IP or session) is an input for the end-of-project policy rewrite (#155). Do not edit the privacy notice now.
 
 ## PostgreSQL only (decision 2026-10-21)
 Source: [docs/decisions.md](../docs/decisions.md) (Rafael, 2026-10-21).
