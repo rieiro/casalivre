@@ -348,7 +348,7 @@ CREATE INDEX idx_prop_geo_active ON properties USING gist (point(lng, lat)) WHER
 | P4 | City search should use the place id, not a text compare | Plan: Index Only Scan on `idx_prop_place_active`, 61 rows, 0 heap fetches, 0.06 ms (city with 4.5k active) | `properties.city_place_id` FK + partial index above; neighborhood/POI searches use center + radius (geo index) or `neighborhood_place_id` | Medium (seed/forms write the FK) | High |
 | P5 | Map bbox ("Search this area") now applies to every search | GiST partial on `point(lng,lat)`, id-sorted page, p95: 0.5–1.5 ms up to 260 candidates, 4.1 ms at 1.1k, 11–16 ms at 4.3–5.9k | GiST (core PG, no extension). Radius = bbox prefilter + haversine in PHP (unchanged) | Low | High |
 | P6 | Sort by total price is not indexable; cost grows with candidates | see §11.1 | Guard by candidate count (§11.1) | Low | High (UI needs it) |
-| P7 | Demand log (unresolved text, zero-result places) adds a write per search | Not measured | See §11.3 (approved by Segurança with 7 conditions and by Jurídico) | Low [E] | Medium |
+| P7 | Demand log (unresolved text, zero-result places, and a daily count per resolved place) adds a write per search | Not measured | See §11.3 (conditions 1–7; kind `search` approved 2026-10-25). The `search` count runs after the response is flushed and must not add measurable time | Low [E] | Medium |
 | P8 | Old `localidade=` URLs | spec step 5 | URL redirect only: resolve + 301 to the `local_id` URL (no data migration involved); the cursor (§9) carries `local_id` instead of text | Low | Medium |
 
 ### 11.1 Threshold for sorting by total price (performance guard only)
@@ -402,22 +402,23 @@ JOIN places p ON p.id = k.place_id ORDER BY k.pop DESC, p.id;
 - **p95 (pgbench -c 4, DB only), full-name index before → keys after:** sao 0.39 → 2.96 ms; rio 0.20 → 1.41; geri 0.16 → 0.42; forte 0.16 → 0.41; praia 0.59 → 1.15; worst case "ba" (57.8k matching keys) 12.7 → 27.1; "bair" (55.7k synthetic neighborhoods) 15.1 → 28.6. "b" is 27.4 but is below the 2-char minimum. All under the 50 ms target. The worst cases cost more because `GROUP BY` reads every matching key; real names won't share prefixes like the synthetic "Bairro N" names do [E].
 - Cost: low. Priority: high (acceptance criteria).
 
-### 11.3 Demand log (P7): Segurança conditions 1–7 and Jurídico acceptance
-Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` (approved with conditions), `/workspace/casalivre/juridico/adr001-p7-demand-log-legal.md` (approved, conditional on 1–7).
-1. **Redact before HINCRBY:** fold, trim, cap at 64 chars. Drop the term entirely if it matches an email, URL, phone or CPF/CNPJ, or has ≥ 6 digits in total.
-2. **k-threshold at flush:** persist only terms with a daily count ≥ 5; discard the rest.
+### 11.3 Demand log (P7): Segurança conditions 1–7, Jurídico acceptance, and kind `search`
+Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` (approved with conditions), `/workspace/casalivre/juridico/adr001-p7-demand-log-legal.md` (approved, conditional on 1–7). Kind `search` (below): Segurança, Arquitetura, BD and Jurídico approved 2026-10-25.
+1. **Redact before HINCRBY:** fold, trim, cap at 64 chars. Drop the term entirely if it matches an email, URL, phone or CPF/CNPJ, or has ≥ 6 digits in total. Applies to free text, not to kind `search`.
+2. **k-threshold at flush:** persist only terms with a daily count ≥ 5; discard the rest. Kind `search` is a catalog `place_id`, not free text, so this threshold does not apply to it (`hits >= 1`, below).
 3. **No hashing:** store redacted plaintext plus the threshold (hashing is dictionary-reversible and kills the BI use).
-4. **No user id, IP, session, user location, or time finer than a day.** Zero-result entries store `place_id` only.
-5. **Retention:** Valkey key `cl:demand:{YYYY-MM-DD}` with `EXPIRE 172800`. PG rows kept 12 months, then deleted or rolled up to a monthly top-N.
+4. **No user id, IP, session, user location, or time finer than a day.** Zero-result entries store `place_id` only. Kind `search` stores `place_id` only as well.
+5. **Retention:** Valkey key `cl:demand:{YYYY-MM-DD}` with `EXPIRE 172800` (kind `search` has its own key, below). PG rows kept 12 months, then deleted or rolled up to a monthly top-N.
 6. **Same redaction in `activity_log` search params.** nginx 14-day access-log retention is accepted; never put the query string in any longer-lived log. **Required changes (backlog, PR #139):**
    - `src/SearchService.php:33` writes the raw `$filters` (including `localidade`) to `activity_log` (`activity(ActivityLog::SEARCH, $filters + …)`). Log `local_id` and the other structured filters; `localidade` is either dropped or passed through the same masking as the demand log (condition 1: fold, trim, 64 chars, drop if it looks like email/URL/phone/CPF/CNPJ or has ≥ 6 digits).
    - `src/RequestLog.php:165-166` `QUERY_VALUE_ALLOWLIST` keeps the values of `q` and `localidade`. Remove both from the allowlist (they are then logged as `null`) or route them through the same demand-log masking instead of the generic `mask()`.
    - Test: a search with `localidade=fulano@x.com` or 6+ digits leaves neither value in `activity_log` nor in the request log.
-7. **PG table readable only by the BI/admin role**, not by the app web role. INSERT/UPDATE by the flush worker only.
+   - Status: done in #214. `SearchService` drops `localidade` and `q` from the `SEARCH` activity row; `RequestLog::QUERY_VALUE_ALLOWLIST` no longer keeps those values. PR7 does not redo this.
+7. **PG table readable only by the BI/admin role**, not by the app web role. INSERT/UPDATE by the flush worker only. The same roles cover kind `search`.
 
-**Design rule (Jurídico, art. 12):** `search_demand_daily (day date, kind text CHECK IN ('unresolved','zero_result'), term text NULL, place_id int NULL, count int, PRIMARY KEY …)` has **no user, session or IP columns and no FK to any table that has them**. The only reference allowed is `place_id` → `places`, which has no personal data. Joining it with identifying data is forbidden: art. 12 §2 would make it personal data again. Legal basis for the transient phase (raw text, Valkey ≤ 48 h, activity_log, nginx): legitimate interest, LGPD art. 7 IX and art. 10. **Acceptance:** `docs/lgpd/lia-demand-log.md` (short LIA: purpose, necessity, balancing, safeguards) exists; the "Busca" row is added to `politica-de-privacidade.md` with Jurídico's text (don't promise "anonymous" for the transient phase); items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place.
+**Design rule (Jurídico, art. 12):** `search_demand_daily` (DDL in §11.4) stores `day`, `kind` (`unresolved`, `zero_result`, `search`), `term`, `place_id` and `hits`. It has **no user, session, IP or device columns and no FK to any table that has them**. The only reference allowed is `place_id` → `places`, which has no personal data. Joining it with logs, accounts, bookings or listing views to identify a person is forbidden: art. 12 §2 would make it personal data again. Legal basis for the transient phase (raw text, Valkey ≤ 48 h, activity_log, nginx): legitimate interest, LGPD art. 7 IX and art. 10. **Acceptance:** `docs/lgpd/lia-demand-log.md` (short LIA: purpose, necessity, balancing, safeguards) exists, and Jurídico updates that file separately for kind `search` (this ADR does not edit it); the "Busca" row is in `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text (don't promise "anonymous" for the transient phase). That row still describes unsuccessful terms only. Wording for the daily per-place count waits for the end-of-project policy rewrite (#155, decisions.md 2026-10-21); no policy edit now. Items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place.
 
-**Field cap (ours):** at most **20,000 fields** per daily hash.
+**Field cap (ours):** at most **20,000 fields** on the free-text hash `cl:demand:{YYYY-MM-DD}` only. `cl:demand:search:{YYYY-MM-DD}` has no HLEN cap.
 - Write per event, without Lua, in one `MULTI`: `HLEN`, then branch in PHP. Before the transaction: `$n = HLEN cl:demand:{d}`. If `$n < 20000` or `HEXISTS` is true, `MULTI; HINCRBY cl:demand:{d} {term} 1; EXPIRE cl:demand:{d} 172800; EXEC`. Otherwise, `MULTI; HINCRBY cl:demand:{d} _overflow 1; EXPIRE …; EXEC`.
 - HLEN-then-HINCRBY is not atomic. The overshoot is bounded by concurrent writers (≈ FPM children, tens of fields) and is tolerated; no WATCH loop.
 - **When the cap is reached:** existing terms keep counting, new terms go to `_overflow`, and an `_overflow` > 0 at flush raises a spam alert. Counting into overflow (rather than dropping) keeps the volume signal.
@@ -425,7 +426,22 @@ Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` 
 - Flush: see §11.4 (RENAME → HGETALL → single INSERT … ON CONFLICT DO NOTHING → DEL).
 
 **Valkey ACL change (ours), for the demand-log cap and flush:** `+hlen +hexists` on `ops/dev-env/services.sh:37` and `+rename` on `ops/dev-env/services.sh:36`. Nothing else; keys stay `~cl:*`. Already allowed: `+hincrby +expire +hgetall +del +multi +exec`. Status: merged on develop in #138 (@55bbc43).
-Also add two cases to `ops/dev-env/valkey-acl-check.sh`: `hlen cl:x` → ok, and `hlen x` → NOPERM (key outside `cl:*`). Same change in the prod ACL. Notify Segurança through the Gerente (ACL is their spec, `/workspace/programador-notas/p0-4-valkey-acl.md`).
+Also add two cases to `ops/dev-env/valkey-acl-check.sh`: `hlen cl:x` → ok, and `hlen x` → NOPERM (key outside `cl:*`). Same change in the prod ACL. Notify Segurança through the Gerente (ACL is their spec, `/workspace/programador-notas/p0-4-valkey-acl.md`). Kind `search` needs no new ACL command: the request path uses `HINCRBY` and `EXPIRE` only, and the flush already has `RENAME` and `HGETALL` (#138).
+
+**Kind `search` (Rafael, 2026-10-25):** a daily count of searches per resolved catalog place, for trends and hints. One number per (day, `place_id`). Approved by Segurança, Arquitetura, BD and Jurídico. Jurídico: it fits the same basis (LGPD art. 7 IX and art. 10) at low risk, because a `place_id` is a catalogue entry, not user-typed text. The stored aggregate (day + `place_id` + count) is most likely anonymized (art. 5 III, art. 12). The k ≥ 5 threshold is not legally required here; Segurança set `hits >= 1`.
+
+1. **Shape.** Same persisted fields as the other place kind: day, `place_id`, count. No user, session, IP, device, guests, dates, price, radius, referrer, or time finer than the day. No re-identifying joins (logs, accounts, bookings, listing views; art. 12 §2). If a later change adds filters (dates, party size) per place, re-check the LIA before storing them: combinations can become identifying.
+2. **Validate before HINCRBY.** `place_id` must be an int that exists in the place catalog. Drop anything else. Do not count free text on this key.
+3. **Own Valkey key** `cl:demand:search:{YYYY-MM-DD}`, field = `place_id`, `EXPIRE 172800`. No HLEN cap and no `_overflow`. The same nightly flush writes `search_demand_daily` (§11.4). No Postgres write on the request path. The count is taken at flush from that 48 h key.
+4. **When to count.** Page 1 of a search on a resolved place only. Not a cursor page, not a map pan, and not a bbox with no resolved place. Count after the response is flushed. A Valkey failure or a slow Valkey must never delay or fail the search.
+5. **Retention and roles.** Same as conditions 5 and 7: PG rows kept 12 months, then deleted or rolled up; the table is readable only by the BI/admin role; INSERT/UPDATE by the flush worker only.
+6. **Schema (PR7).** Create `search_demand_daily` with all three kinds at once (`unresolved`, `zero_result`, `search`). The table is new, so there is no `ALTER` and no data migration: recreate the DB and seeds (decisions.md 2026-10-21). Unique index `sdd_search_uk` on `(day, place_id) WHERE kind = 'search'`. The DDL is BD's, in §11.4. `hits >= 1` when `kind = 'search'`; `hits >= 5` for the other kinds.
+7. **Activity-log redaction** (condition 6) is already done in #214. PR7 does not redo it.
+8. **PR7 review labels:** `needs:db`, `needs:security`, `needs:legal`, and `needs:arch`. Priority: Should. It does not block PR1–PR3.
+
+**Product acceptance:** an admin report lists the top places by searches per day and per week, with the counts, and search responses show no measurable added time.
+
+**LIA and privacy notice:** Jurídico updates `docs/lgpd/lia-demand-log.md` separately (purpose, necessity, the persisted `search` aggregate, and a review trigger when `search` gains fields). Do not edit that file in the ADR or backlog PR. The "Busca" row of `docs/produto/juridico/textos/politica-de-privacidade.md` still says unsuccessful search terms only; the matching sentence (daily counts per `place_id`, no account, IP or session) is an input for the end-of-project policy rewrite (#155). No policy edit now.
 
 ### 11.4 Bot Banco de Dados answers folded in, plus the benches it asked for (2026-10-16)
 Source: the BD answers as relayed by the Gerente, then **checked and corrected by the BD (BD-confirmed, 2026-10-16)**. They supersede the open questions in §11 and §11.2; **no BD questions remain open**.
@@ -436,21 +452,27 @@ Source: the BD answers as relayed by the Gerente, then **checked and corrected b
 - **Drop** `properties.city` / `uf` (replaced by `city_place_id` → `places`) and `HouseRepository::byCity`.
 - **`places` constraints:** `CHECK (type IN (...))`, `CHECK (lat BETWEEN -90 AND 90 AND lng BETWEEN -180 AND 180)`, bbox all-null or all-set with `s <= n` and `w <= e`, `CHECK ((type = 'city') = (parent_id IS NULL) OR type = 'region')`, **`CHECK (parent_id IS DISTINCT FROM id)`** (BD-confirmed), and an index on `parent_id`.
 - **`places` dedup (BD-confirmed):** `CREATE UNIQUE INDEX places_root_uk ON places (type, name_fold) WHERE parent_id IS NULL;` and `CREATE UNIQUE INDEX places_child_uk ON places (parent_id, type, name_fold) WHERE parent_id IS NOT NULL;`
-- **`search_demand_daily`, reconciled with Segurança (Segurança wins on privacy):**
+- **`search_demand_daily`, reconciled with Segurança (Segurança wins on privacy).** Kind `search` added 2026-10-25 from BD's DDL (SCHEMA bump with PR7; the table is new, so no ALTER):
 ```sql
+-- ADR 001 §11.3/§11.4 + third kind 'search' (SCHEMA bump with PR7; table is new, so no ALTER)
 CREATE TABLE search_demand_daily (
   day date NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('unresolved','zero_result')),
+  kind text NOT NULL CHECK (kind IN ('unresolved','zero_result','search')),
   term text COLLATE "C" CHECK (term IS NULL OR char_length(term) <= 64),
-  place_id int REFERENCES places(id) ON DELETE CASCADE,       -- the only FK; places has no personal data
-  hits int NOT NULL CHECK (hits >= 5),                         -- k-threshold (Segurança 2)
-  CHECK ((kind = 'unresolved' AND term IS NOT NULL AND place_id IS NULL) OR (kind = 'zero_result' AND place_id IS NOT NULL AND term IS NULL)));
+  place_id int REFERENCES places(id) ON DELETE CASCADE,
+  hits int NOT NULL CHECK (hits >= CASE WHEN kind = 'search' THEN 1 ELSE 5 END),
+  CHECK ((kind = 'unresolved' AND term IS NOT NULL AND place_id IS NULL)
+      OR (kind IN ('zero_result','search') AND place_id IS NOT NULL AND term IS NULL)));
 CREATE UNIQUE INDEX sdd_unresolved_uk ON search_demand_daily (day, term) WHERE kind = 'unresolved';
 CREATE UNIQUE INDEX sdd_zero_uk ON search_demand_daily (day, place_id) WHERE kind = 'zero_result';
--- no user/session/IP/time columns, no other FK (Jurídico art. 12). SELECT: BI/admin role only; INSERT/UPDATE: flush worker role only (Segurança 7).
--- retention: DELETE WHERE day < current_date - interval '12 months' (daily job), or a monthly top-N rollup.
+CREATE UNIQUE INDEX sdd_search_uk ON search_demand_daily (day, place_id) WHERE kind = 'search';
+CREATE INDEX sdd_day_brin ON search_demand_daily USING brin (day);
 ```
-**Flush (BD-confirmed):** once per closed day, hand off with `RENAME cl:demand:{d} cl:demand:{d}:flush`, read it with `HGETALL`, aggregate the full day once in PHP and keep `hits >= 5` (skip `_overflow`). Then run a single `INSERT … ON CONFLICT (day, term) WHERE kind='unresolved' DO NOTHING` (and `ON CONFLICT (day, place_id) WHERE kind='zero_result' DO NOTHING`), then `DEL` the `:flush` key. Never an incremental `hits = hits + EXCLUDED.hits`: a rerun after a crash is idempotent.
+No user, session, IP or device columns, and no FK other than `place_id` → `places` (Jurídico art. 12). SELECT: BI/admin role only; INSERT/UPDATE: flush worker role only (Segurança 7). Retention: delete rows with `day` older than 12 months (daily job), or a monthly top-N rollup.
+
+**Flush (BD-confirmed; kind `search` uses the same nightly job):** once per closed day, for each live key, hand off with `RENAME` to a `:flush` key, read it with `HGETALL`, aggregate that day once in PHP, insert, then `DEL` the `:flush` key. Never `hits = hits + EXCLUDED.hits`: a rerun after a crash is idempotent.
+- `cl:demand:{d}` → `cl:demand:{d}:flush`. Keep `hits >= 5` and skip `_overflow`. One `INSERT … ON CONFLICT (day, term) WHERE kind='unresolved' DO NOTHING`, and `ON CONFLICT (day, place_id) WHERE kind='zero_result' DO NOTHING`.
+- `cl:demand:search:{d}` → `cl:demand:search:{d}:flush`. Fields are catalog `place_id`s (no cap, no `_overflow`). Keep `hits >= 1`. One `INSERT … ON CONFLICT (day, place_id) WHERE kind='search' DO NOTHING`.
 
 **Bench (a): merged LATERAL vs `total.sql`** (dense area, p95 in ms, pgbench -c 4, DB only; `results-lateral.txt`)
 | Candidates | total.sql (LEFT JOIN + GROUP BY + NOT EXISTS) | LATERAL (sum and blocked in one probe) |
