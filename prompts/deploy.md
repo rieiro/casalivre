@@ -33,6 +33,7 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] migrate.php uses `pg_advisory_lock(718331201)` in one transaction; concurrent runs wait. If PgBouncer is added, migrate must connect directly to PG or use `pg_advisory_xact_lock` (BD).
 - [ ] `properties.user_id` FK is RESTRICT (PG raises SQLSTATE 23001, not 23503).
 - [ ] VPS ops (BD): `ALTER ROLE app SET timezone='UTC'` so `created_at` is stored in UTC.
+- [ ] Production PostgreSQL config: `random_page_cost = 1.1` (Rafael approved 2026-10-25 on BD's evidence, #218). The `ops/dev-env` side is a separate code PR (Programador).
 - [ ] PG p50 must be measured; ADR 001 targets after the search PR: p50 < 150 ms and p95 < 500 ms with 10 concurrent users (final target p95 < 300 ms).
 
 ### Dev environment and Valkey (#109–#118, Segurança/Arquitetura)
