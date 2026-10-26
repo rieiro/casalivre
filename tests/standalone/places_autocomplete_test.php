@@ -79,6 +79,14 @@ t_eq('ambiguous', $centro['resolution'], 'Centro tem 9+ hits');
 t_eq(8, count($centro['options']), 'Centro mostra 8 opções');
 t_ok(in_array('Centro', array_column($centro['options'], 'name'), true), 'Centro lista o bairro');
 
+$centroRj = CityRepository::resolve('Centro, RJ');
+$centroRjRows = $centroRj['place'] !== null ? [$centroRj['place']] : $centroRj['options'];
+t_ok($centroRjRows !== [], 'Centro, RJ returns places');
+foreach ($centroRjRows as $option) {
+    t_eq('RJ', $option['uf'], 'typed UF prefix does not offer another state');
+}
+t_ok(!str_contains($sql, 'p.uf ='), 'suggest SQL does not filter uf inside the scan');
+
 $miss = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Xyzabc']), null);
 t_eq(true, $miss['unresolved'], 'Xyzabc é unresolved');
 t_eq('not_found', $miss['resolution'], 'Xyzabc é not_found');

@@ -277,6 +277,26 @@ JOIN places ON places.id = k.place_id
 ORDER BY k.pop DESC, id
 SQL;
 
+    /** Typed UF, applied before LIMIT. Suggest without a UF stays on PREFIX_SQL. UF is bound before ESCAPE. */
+    private const PREFIX_UF_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM (
+    SELECT p.id AS place_id, MAX(k.popularity) AS pop
+    FROM place_search_keys k
+    JOIN places p ON p.id = k.place_id AND p.uf = ?
+    WHERE k.key LIKE ? ESCAPE '\'
+    GROUP BY p.id
+    ORDER BY pop DESC, p.id
+    LIMIT 9
+) k
+JOIN places ON places.id = k.place_id
+ORDER BY k.pop DESC, id
+SQL;
+
+    private const PARENT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM places
+WHERE id = (SELECT parent_id FROM places WHERE id = ?)
+SQL;
+
     private const ALIAS_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM place_search_keys k
 JOIN places ON places.id = k.place_id
@@ -343,6 +363,34 @@ SQL;
         return self::placeRows(self::BY_ID_SQL, [$id])[0] ?? null;
     }
 
+    /** Neighborhood with this folded name under the city, or null. No prefix and no other city. */
+    public static function neighborhoodId(int $cityId, string $name): ?int
+    {
+        $fold = fold($name);
+        if ($fold === '') {
+            return null;
+        }
+        $stmt = db()->prepare("SELECT id FROM places WHERE type = 'neighborhood' AND parent_id = ? AND name_fold = ?");
+        $stmt->execute([$cityId, $fold]);
+        $id = $stmt->fetchColumn();
+        return $id === false ? null : (int) $id;
+    }
+
+    /**
+     * Map frame. A neighborhood's own lat/lng is the parent city's placeholder, so the frame
+     * uses the parent city. A city or a POI uses its own point.
+     *
+     * @param array{id:int,type:string,lat:float,lng:float} $place
+     * @return array{lat:float,lng:float}
+     */
+    public static function mapCenter(array $place): array
+    {
+        if ($place['type'] === 'neighborhood') {
+            $place = self::placeRows(self::PARENT_SQL, [(int) $place['id']])[0];
+        }
+        return ['lat' => (float) $place['lat'], 'lng' => (float) $place['lng']];
+    }
+
     /**
      * Submitted text, via the autocomplete query (fetch 9).
      * 1 hit → place. 2–8 → did_you_mean. 9 → ambiguous (show 8). 0 → not_found.
@@ -393,7 +441,7 @@ SQL;
                 return self::found($prefixed[0]);
             }
         }
-        $hits = self::prefixPlaces($text);
+        $hits = self::prefixPlaces($text, $uf);
         if (count($hits) === 1) {
             return self::found($hits[0]);
         }
@@ -436,9 +484,13 @@ SQL;
     }
 
     /** @return list<array> */
-    private static function prefixPlaces(string $text): array
+    private static function prefixPlaces(string $text, string $uf = ''): array
     {
-        return self::placeRows(self::PREFIX_SQL, [self::likePrefix($text)]);
+        $prefix = self::likePrefix($text);
+        if ($uf === '') {
+            return self::placeRows(self::PREFIX_SQL, [$prefix]);
+        }
+        return self::placeRows(self::PREFIX_UF_SQL, [$uf, $prefix]);
     }
 
     /** @param list<int|string> $params @return list<array> */

@@ -70,9 +70,9 @@ final class SearchService
         $checkout = $checkin === null
             ? null
             : (new DateTimeImmutable($nights[array_key_last($nights)]))->modify('+1 day')->format('Y-m-d');
-        $bbox = $query->raio > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $query->raio) : null;
-        $placeId = $bbox === null ? (int) $place['id'] : null;
-        $out['total_aprox'] = SearchSql::totalAprox($placeId, $groupId, $query->hospedes, $bbox, $checkin, $checkout);
+        $radiusKm = self::radiusKm($place, $query->raio);
+        $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
+        $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout);
 
         $known = Amenities::keys();
         $wanted = array_values(array_filter(
@@ -86,7 +86,7 @@ final class SearchService
         $queries = 0;
         while (count($page) < self::PAGE_SIZE && $queries < self::MAX_QUERIES && $hasMore) {
             $queries++;
-            $fetched = SearchSql::batch($placeId, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1);
+            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1);
             $hasMore = count($fetched) > self::BATCH_SIZE;
             if ($hasMore) {
                 array_pop($fetched);
@@ -102,7 +102,7 @@ final class SearchService
                 $read++;
                 $id = (int) $property['id'];
                 $after = $id;
-                $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $scores[$id] ?? null, $wanted);
+                $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $scores[$id] ?? null, $wanted, $radiusKm);
                 if ($kept === null) {
                     continue;
                 }
@@ -165,6 +165,18 @@ final class SearchService
         return $hostGroup === null ? null : (int) $hostGroup['id'];
     }
 
+    /** Neighborhood coordinates are the parent city's, so a neighborhood is never a radius. An explicit raio wins for a city or a POI; a POI with no raio uses the default. */
+    private static function radiusKm(array $place, int $requested): int
+    {
+        if ($place['type'] === 'neighborhood') {
+            return 0;
+        }
+        if ($requested > 0 || $place['type'] !== 'poi') {
+            return $requested;
+        }
+        return SearchSql::POI_RADIUS_KM;
+    }
+
     /**
      * Price, score and amenities stay in PHP. Radius haversine too, after the SQL bbox.
      *
@@ -172,11 +184,11 @@ final class SearchService
      * @param array<string, array> $calendar
      * @param list<string> $wanted
      */
-    private static function keep(array $property, SearchQuery $query, array $nights, array $place, array $calendar, ?float $score, array $wanted): ?array
+    private static function keep(array $property, SearchQuery $query, array $nights, array $place, array $calendar, ?float $score, array $wanted, int $radiusKm): ?array
     {
-        if ($query->raio > 0) {
+        if ($radiusKm > 0) {
             $distance = public_distance_km($place, $property);
-            if ($distance > $query->raio) {
+            if ($distance > $radiusKm) {
                 return null;
             }
             $property['distance_km'] = $distance;

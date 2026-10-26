@@ -3,11 +3,12 @@ $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' 
 // Mapa da busca: MapLibre GL + PMTiles (basemap Protomaps light, arquivos locais; CSP só 'self').
 // Os pins vêm de /api/busca (coordenada pública do #36) em GeoJSON com clusters; a página não roda a
 // busca no servidor (a API registra a busca uma vez). Sem JS/WebGL/arquivo de tiles: aviso + lista.
-// Centro inicial = centro da cidade com 2 casas (~1 km): só enquadra o mapa, não é coordenada de imóvel.
+// Initial center, 2 decimals (~1 km): the city, the neighborhood's parent city, or the POI itself. It only frames the map.
 $query = search_query($filters);
 $place = !empty($filters['local_id']) ? CityRepository::byId((int) $filters['local_id']) : null;
 $placeLabel = place_label($place, (string) ($filters['localidade'] ?? ''));
-$center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) . ',' . round((float) $place['lng'], 2) : '';
+$framed = $place === null ? null : CityRepository::mapCenter($place);
+$center = $framed === null ? '' : round($framed['lat'], 2) . ',' . round($framed['lng'], 2);
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">
 <section class="wrap map-page">

@@ -108,6 +108,7 @@ final class HouseService
             'description' => $description,
             'summary' => summary_from($description, 45),
             'city_place_id' => (int) $known['id'],
+            'neighborhood_place_id' => CityRepository::neighborhoodId((int) $known['id'], (string) $place['cep_neighborhood']),
             'address' => $address,
             'cep' => $place['cep'],
             'street' => $place['street'],
