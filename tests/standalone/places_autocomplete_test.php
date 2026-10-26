@@ -14,7 +14,7 @@ t_temp_db();
 
 echo "suggest SQL\n";
 $sql = (new ReflectionClass(CityRepository::class))->getReflectionConstant('PREFIX_SQL')->getValue();
-t_ok(is_string($sql) && str_contains($sql, 'MAX(popularity)') && str_contains($sql, 'GROUP BY place_id') && str_contains($sql, 'LIMIT 9'), 'suggest SQL is the §11.2 prefix scan');
+t_ok(is_string($sql) && str_contains($sql, 'MAX(k.popularity)') && str_contains($sql, 'GROUP BY k.place_id') && str_contains($sql, 'LIMIT 9'), 'suggest SQL is the §11.2 prefix scan');
 t_ok(str_contains($sql, "key LIKE ? ESCAPE '\\'"), 'prefix LIKE is escaped');
 t_ok(!str_contains($sql, 'kind'), 'suggest SQL does not read kind');
 

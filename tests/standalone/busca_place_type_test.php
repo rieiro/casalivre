@@ -10,7 +10,6 @@ require_once CL_ROOT . '/src/CepRepository.php';
 
 putenv('GEO_SALT=' . str_repeat('t', 64));
 
-t_eq(3, SearchSql::POI_RADIUS_KM, 'POI default radius is 3 km');
 $cityWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null);
 t_ok(str_contains($cityWhere[0], 'p.city_place_id = ?') && str_contains($cityWhere[0], 'p.id > ?') === false, 'city predicate is city_place_id');
 $cityKey = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, 9);
@@ -87,11 +86,28 @@ $poiLat = (float) $poi['lat'];
 $poiLng = (float) $poi['lng'];
 $poiCity = (int) $poi['city_id'];
 $inside = $insert($poiCity, null, $poiLat, $poiLng, 'Na praia');
+$atPublicKm = static function (float $km, string $title) use ($insert, $poiCity, $poiLat, $poiLng): int {
+    $id = $insert($poiCity, null, $poiLat, $poiLng, $title);
+    $lat = $poiLat + ($km / 111.32);
+    $got = 0.0;
+    for ($i = 0; $i < 12 && abs($got - $km) >= 0.05; $i++) {
+        db()->prepare('UPDATE properties SET lat = ?, lng = ? WHERE id = ?')->execute([$lat, $poiLng, $id]);
+        $public = public_coord($id, $lat, $poiLng);
+        $got = haversine_km($poiLat, $poiLng, $public['lat'], $public['lng']);
+        $lat += ($km - $got) / 111.32;
+    }
+    t_ok(abs($got - $km) < 0.05, $title);
+    return $id;
+};
+$near = $atPublicKm(2.9, 'house sits at 2.9 km');
+$past = $atPublicKm(3.6, 'house sits at 3.6 km');
 $outside = $insert($poiCity, null, $poiLat + (8 / 111.32), $poiLng, 'Fora');
 $otherCityInside = $insert($rioId, null, $poiLat, $poiLng, 'Outra cidade');
-t_eq([$inside, $otherCityInside], $ids(['local_id' => (string) $poiId]), 'POI default radius keeps houses within 3 km and skips the city id');
-t_ok(!in_array($outside, $ids(['local_id' => (string) $poiId]), true), 'a house in the POI city but outside 3 km is excluded');
-t_eq([$inside, $outside, $otherCityInside], $ids(['local_id' => (string) $poiId, 'raio' => '10']), 'an explicit raio replaces the 3 km default');
+$defaultIds = $ids(['local_id' => (string) $poiId]);
+t_eq([$inside, $near, $otherCityInside], $defaultIds, '2.9 km stays inside the default radius, with no city filter');
+t_ok(!in_array($past, $defaultIds, true), '3.6 km is outside the default radius');
+t_ok(!in_array($outside, $defaultIds, true), 'a house in the POI city but 8 km away is excluded');
+t_eq([$inside, $near, $past, $outside, $otherCityInside], $ids(['local_id' => (string) $poiId, 'raio' => '10']), 'an explicit raio replaces the 3 km default');
 $poiResult = SearchService::search(SearchQuery::fromRequest(['local_id' => (string) $poiId]), null);
 t_ok(isset($poiResult['items'][0]['distance_km']), 'POI rows carry distance_km');
 
@@ -148,7 +164,7 @@ $poiParent->execute([$poiCity]);
 $poiParentRow = $poiParent->fetch();
 t_ok($centerOf($poiLat, $poiLng) !== $centerOf((float) $poiParentRow['lat'], (float) $poiParentRow['lng']), 'POI center is not the parent city');
 $poiApi = json_decode(t_http('GET', $base . '/api/busca?local_id=' . $poiId)['body'], true);
-t_eq([$hash($inside), $hash($otherCityInside)], array_column($poiApi['items'], 'id'), 'POI API lists houses inside the radius');
+t_eq([$hash($inside), $hash($near), $hash($otherCityInside)], array_column($poiApi['items'], 'id'), 'POI API lists houses inside the radius');
 t_ok(is_int($poiApi['items'][0]['distance_km']) && is_float($poiApi['items'][0]['lat']), 'POI API keeps distance and public coordinates');
 
 t_done();

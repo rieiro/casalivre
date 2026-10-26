@@ -263,29 +263,16 @@ final class CityRepository
     /**
      * ADR 001 §11.2 autocomplete. Inner scan reads only key, place_id and popularity
      * (index-only on the PK). It does not read kind and does not order aliases first.
+     * %s is an optional UF join, filled in prefixPlaces(). The placeholder sits before ESCAPE.
      */
     private const PREFIX_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM (
-    SELECT place_id, MAX(popularity) AS pop
-    FROM place_search_keys
-    WHERE key LIKE ? ESCAPE '\'
-    GROUP BY place_id
-    ORDER BY pop DESC, place_id
-    LIMIT 9
-) k
-JOIN places ON places.id = k.place_id
-ORDER BY k.pop DESC, id
-SQL;
-
-    /** Typed UF, applied before LIMIT. Suggest without a UF stays on PREFIX_SQL. UF is bound before ESCAPE. */
-    private const PREFIX_UF_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
- FROM (
-    SELECT p.id AS place_id, MAX(k.popularity) AS pop
+    SELECT k.place_id, MAX(k.popularity) AS pop
     FROM place_search_keys k
-    JOIN places p ON p.id = k.place_id AND p.uf = ?
+    %s
     WHERE k.key LIKE ? ESCAPE '\'
-    GROUP BY p.id
-    ORDER BY pop DESC, p.id
+    GROUP BY k.place_id
+    ORDER BY pop DESC, k.place_id
     LIMIT 9
 ) k
 JOIN places ON places.id = k.place_id
@@ -361,12 +348,8 @@ SQL;
     /** Neighborhood with this folded name under the city, or null. No prefix and no other city. */
     public static function neighborhoodId(int $cityId, string $name): ?int
     {
-        $fold = fold($name);
-        if ($fold === '') {
-            return null;
-        }
         $stmt = db()->prepare("SELECT id FROM places WHERE type = 'neighborhood' AND parent_id = ? AND name_fold = ?");
-        $stmt->execute([$cityId, $fold]);
+        $stmt->execute([$cityId, fold($name)]);
         $id = $stmt->fetchColumn();
         return $id === false ? null : (int) $id;
     }
@@ -467,10 +450,8 @@ SQL;
     private static function prefixPlaces(string $text, string $uf = ''): array
     {
         $prefix = self::likePrefix($text);
-        if ($uf === '') {
-            return self::placeRows(self::PREFIX_SQL, [$prefix]);
-        }
-        return self::placeRows(self::PREFIX_UF_SQL, [$uf, $prefix]);
+        $join = $uf === '' ? '' : 'JOIN places p ON p.id = k.place_id AND p.uf = ?';
+        return self::placeRows(sprintf(self::PREFIX_SQL, $join), $uf === '' ? [$prefix] : [$uf, $prefix]);
     }
 
     /** @param list<int|string> $params @return list<array> */

@@ -16,6 +16,7 @@ final class SearchService
     public const PAGE_SIZE = 20;
     public const BATCH_SIZE = 60;
     public const MAX_QUERIES = 4;
+    private const POI_RADIUS_KM = 3;
 
     /**
      * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
@@ -174,7 +175,7 @@ final class SearchService
         if ($requested > 0 || $place['type'] !== 'poi') {
             return $requested;
         }
-        return SearchSql::POI_RADIUS_KM;
+        return self::POI_RADIUS_KM;
     }
 
     /**

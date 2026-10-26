@@ -10,9 +10,6 @@ require_once __DIR__ . '/HouseRepository.php';
  */
 final class SearchSql
 {
-    /** Default radius for a point of interest, until a per-POI radius exists. */
-    public const POI_RADIUS_KM = 3;
-
     /** @param ''|'p'|string $alias */
     public static function active(string $alias = 'p'): string
     {
@@ -36,24 +33,22 @@ final class SearchSql
     /**
      * A city id applies only without a bbox. A neighborhood id always applies. A POI adds no id.
      *
-     * @param array{id:int,type:string}|null $place
+     * @param array{id:int,type:string} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return array{0:string,1:list<int|float|string|null>}
      */
-    public static function where(?array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId): array
+    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId): array
     {
         $where = [self::active('p')];
         $params = [];
-        if ($place !== null) {
-            $column = match ($place['type']) {
-                'neighborhood' => 'p.neighborhood_place_id',
-                'city' => $bbox === null ? 'p.city_place_id' : null,
-                default => null,
-            };
-            if ($column !== null) {
-                $where[] = $column . ' = ?';
-                $params[] = (int) $place['id'];
-            }
+        $column = match ($place['type']) {
+            'neighborhood' => 'p.neighborhood_place_id',
+            'city' => $bbox === null ? 'p.city_place_id' : null,
+            default => null,
+        };
+        if ($column !== null) {
+            $where[] = $column . ' = ?';
+            $params[] = (int) $place['id'];
         }
         if ($groupId !== null) {
             $where[] = 'p.group_id = ?';
@@ -79,11 +74,11 @@ final class SearchSql
     }
 
     /**
-     * @param array{id:int,type:string}|null $place
+     * @param array{id:int,type:string} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return list<array>
      */
-    public static function batch(?array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit): array
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $afterId);
         $stmt = db()->prepare(HouseRepository::SQL_WITH_CITY . " WHERE $where ORDER BY p.id ASC LIMIT $limit");
@@ -94,10 +89,10 @@ final class SearchSql
     /**
      * Capped candidate count (ADR §5b): the number, or "100+" past 100. Not the post-PHP-filter total.
      *
-     * @param array{id:int,type:string}|null $place
+     * @param array{id:int,type:string} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      */
-    public static function totalAprox(?array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout): int|string
+    public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout): int|string
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, null);
         $stmt = db()->prepare("SELECT 1 FROM properties p WHERE $where LIMIT 101");
