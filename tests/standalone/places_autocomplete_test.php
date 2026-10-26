@@ -137,6 +137,15 @@ $built = HouseService::fromInput((int) $owner['user_id'], [
     'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',
 ]);
 t_eq($spId, (int) ($built['city_place_id'] ?? 0), 'HouseService resolve o CEP da cidade homônima');
+db()->prepare('UPDATE properties SET lat = ?, lng = ? WHERE id = ?')->execute([-23.5, -46.5, $spHouse]);
+$edited = HouseService::update((int) $owner['user_id'], $spHouse, [
+    'title' => 'Casa SP', 'description' => 'Descrição de teste do imóvel.', 'cep' => '01001000',
+    'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',
+]);
+t_ok(!isset($edited['error']), 'editar a casa na mesma cidade');
+$kept = HouseRepository::find($spHouse);
+t_eq(-23.5, (float) ($kept['lat'] ?? 0), 'editar a casa na mesma cidade mantém lat');
+t_eq(-46.5, (float) ($kept['lng'] ?? 0), 'editar a casa na mesma cidade mantém lng');
 $rejected = HouseService::fromInput((int) $owner['user_id'], [
     'title' => 'Casa G', 'description' => 'Descrição de teste do imóvel.', 'cep' => '28950000',
     'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',

@@ -85,15 +85,9 @@ final class HouseService
         }
         $lat = (float) $known['lat'];
         $lng = (float) $known['lng'];
-        $city = place_label($known);
         $lat += (float) ($input['lat_offset'] ?? 0);
         $lng += (float) ($input['lng_offset'] ?? 0);
-        $sameCity = $current && (
-            $current['city'] === $city
-            || fold((string) $current['city']) === fold((string) $known['name'])
-            || fold((string) $current['city']) === fold((string) $known['label'])
-            || fold((string) $current['city']) === fold($city)
-        );
+        $sameCity = $current && (int) $current['city_place_id'] === (int) $known['id'];
         if ($sameCity && ($input['lat_offset'] ?? '') === '' && ($input['lng_offset'] ?? '') === '') {
             $lat = (float) $current['lat'];
             $lng = (float) $current['lng'];
