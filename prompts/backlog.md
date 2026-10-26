@@ -217,6 +217,17 @@ Source: spec-03; `docs/produto/planejamento/sprints.md`. The wizard decides its 
 ### ADR 001 PR1 (#218)
 - [ ] Move the `status = 'active'` rule into HouseRepository (for example `HouseRepository::active($alias)`) and use it in `all()`, `listByUser()`, line ~451, SearchSql, `GroupRepository::properties()` and SeedGrupoTeste, instead of `SearchSql::active()` (4+ files). Do this after ADR 001 PR1 merges. Source: Revisor #218. Sprint: ADR 001 (after PR1 merges). Owner: Programador.
 
+### SCHEMA 23 geo index (#220)
+- [ ] `docs/adr/001-busca-sql-paginada.md` (~61 and ~338) still describes the GiST `idx_prop_geo_active` as the geo index. Update both to the partial btree `idx_prop_latlng_active` (#220). Doc fix. Estimate 0.5 h. Source: Revisor #220. Sprint: ADR 001. Owner: Arquitetura/Gerente.
+- [ ] `listen_addresses=''` is set twice (`ops/dev-env/templates/postgresql.conf.in:3` and `ops/dev-env/sv/postgresql/run:26`). Keep one. Estimate 0.5 h. Source: Revisor #220. Sprint: the next sprint that touches `ops/dev-env`. Owner: Programador.
+
+### ADR 001 PR2 places (#221)
+- [ ] `HouseRepository::CITY_LABEL_SQL` (`src/HouseRepository.php:11`) and `cityText()` (`src/HouseRepository.php:68`) build the same "Name, UF" label in SQL that `place_label()` builds in PHP (`src/helpers/geo.php`), and both still use `rtrim(uf)`, a no-op on CHAR(2). `cityText` is also a second place-by-id query next to `CityRepository::byId()` / `option()` (`conta/Geo/CityRepository.php`). Estimate 1 h. Source: Revisor #221. Sprint: ADR 001. Owner: Programador.
+- [ ] Once the old cities cache is removed, `CityRepository::refresh()` (`conta/Geo/CityRepository.php:483`) and its wiring (`scripts/refresh-settings-cache.php`, `README.md`, `prompts/deploy.md:22`) are write-only: remove them. Estimate 1 h. Source: Revisor #221. Sprint: ADR 001 (after the old cities cache is removed). Owner: Programador.
+
+### Listing filter by place type (#223)
+- [ ] The neighborhood listing filter does a sequential scan on properties (14 ms at 61k rows; no index added in #223). BD decides whether a `neighborhood_place_id` index is worth it after the listing-filter PR (#223) merges, under the ADR 001 §12.6 index budget (`docs/adr/001-busca-sql-paginada.md`). Estimate 0.5 h. Source: Programador #223. Sprint: ADR 001 (after #223 merges). Owner: BD.
+
 - [ ] (low, UX only) Reuse the activation/reset token when the mail job is retried, so the first email's link keeps working. Two valid tokens never exist today: the hash column per purpose is overwritten (`AccountFlow::issueLink:192-205`). Source: Segurança #167/#174. Sprint: the next sprint that touches `AccountFlow`. Owner: Programador.
 
 Optional items from PR reviews, moved from the Gerente's notes (16/10). Owner is the bot expected to do the work; Gerente assigns cleanup PRs.
