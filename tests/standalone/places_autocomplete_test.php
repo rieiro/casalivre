@@ -101,6 +101,39 @@ $stay = t_http('GET', $base . '/busca?localidade=' . rawurlencode('São'));
 t_eq(200, $stay['status'], 'texto ambíguo não redireciona');
 $unknown = t_http('GET', $base . '/busca?localidade=' . rawurlencode('Xyzabc'));
 t_eq(200, $unknown['status'], 'texto sem hit não redireciona');
+
+echo "Location segura\n";
+$locationOf = static function (array $r): ?string {
+    return preg_match('/^Location:\s*([^\r\n]*)/mi', $r['headers'], $m) === 1 ? $m[1] : null;
+};
+$assertInternal = static function (array $r, string $label) use ($locationOf): void {
+    $loc = $locationOf($r);
+    t_eq(301, $r['status'], "$label redireciona");
+    t_ok(is_string($loc) && str_starts_with($loc, '/busca?'), "$label Location começa em /busca");
+    t_ok(is_string($loc) && preg_match('#^(?:[a-z][a-z0-9+.-]*:)?//#i', $loc) !== 1, "$label não é URL absoluta nem protocol-relative");
+    t_ok(is_string($loc) && !str_contains($loc, "\r") && !str_contains($loc, "\n"), "$label Location sem CR/LF");
+    $path = is_string($loc) ? (string) (parse_url($loc, PHP_URL_PATH) ?? '') : '';
+    t_eq('/busca', $path, "$label o caminho é /busca");
+    t_eq(1, preg_match_all('/^Location:/mi', $r['headers']), "$label um só Location");
+    t_ok(!preg_match('/^Set-Cookie:/mi', $r['headers']), "$label sem injeção de header");
+};
+$placeQ = rawurlencode('Rio de Jan');
+$payloads = [
+    '//evil.com',
+    "\r\nSet-Cookie: x=1",
+    '\\evil.com',
+    '\\\\evil.com',
+    '/\\evil.com',
+];
+foreach ($payloads as $payload) {
+    $encoded = rawurlencode($payload);
+    $withOther = t_http('GET', $base . '/busca?localidade=' . $placeQ . '&outro=' . $encoded);
+    $assertInternal($withOther, 'outro=' . json_encode($payload));
+    $asLocalidade = t_http('GET', $base . '/busca?localidade=' . $encoded . '&outro=' . $encoded);
+    $loc = $locationOf($asLocalidade);
+    t_ok($loc === null || (str_starts_with($loc, '/busca') && preg_match('#^(?:[a-z][a-z0-9+.-]*:)?//#i', $loc) !== 1), 'localidade=' . json_encode($payload) . ' não abre redirect externo');
+    t_ok(!preg_match('/^Set-Cookie:\s*x=1/mi', $asLocalidade['headers']), 'localidade=' . json_encode($payload) . ' sem header injetado');
+}
 $canon = t_http('GET', $base . '/busca?local_id=' . $id);
 t_eq(200, $canon['status'], 'local_id canônico responde 200');
 t_ok(str_contains($canon['body'], 'name="local_id" value="' . $id . '"'), 'o formulário guarda local_id');
@@ -152,5 +185,24 @@ $rejected = HouseService::fromInput((int) $owner['user_id'], [
 ]);
 t_ok(isset($rejected['error']), 'HouseService não aceita um CEP cujo nome é só bairro');
 t_eq((string) $exact['label'], city_label_for_cep('01001000'), 'rótulo do CEP homônimo é o da cidade');
+
+echo "alias sem cidade\n";
+$aliasPdo = db();
+$aliasPdo->beginTransaction();
+try {
+    $aliasPdo->exec("UPDATE places SET name_fold = name_fold || ' x' WHERE type = 'city' AND name_fold = 'armacao dos buzios' AND uf = 'RJ'");
+    $aliasError = null;
+    try {
+        (new ReflectionMethod(CityRepository::class, 'seedAliases'))->invoke(null, $aliasPdo);
+    } catch (RuntimeException $e) {
+        $aliasError = $e;
+    }
+    t_ok($aliasError instanceof RuntimeException, 'alias sem cidade lança RuntimeException');
+    t_ok($aliasError instanceof RuntimeException && str_contains($aliasError->getMessage(), 'Armação dos Búzios') && str_contains($aliasError->getMessage(), 'RJ'), 'a mensagem traz o nome e a uf do alias');
+} finally {
+    if ($aliasPdo->inTransaction()) {
+        $aliasPdo->rollBack();
+    }
+}
 
 t_done();

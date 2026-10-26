@@ -206,7 +206,12 @@ final class CityRepository
         $rows = self::readJson('database/city_aliases.json');
         $upsert = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'alias\', ?) ON CONFLICT ("key", place_id) DO UPDATE SET kind = \'alias\'');
         foreach ($rows as $row) {
-            $city = self::cityRow($pdo, fold((string) $row['name']), (string) $row['uf']);
+            $name = (string) $row['name'];
+            $uf = (string) $row['uf'];
+            $city = self::cityRow($pdo, fold($name), $uf);
+            if ($city === null) {
+                throw new RuntimeException("Alias sem cidade: $name/$uf");
+            }
             $upsert->execute([$city['id'], fold((string) $row['key']), $city['popularity']]);
         }
     }
@@ -289,13 +294,11 @@ SQL;
     // The exact name, plus any other type that has this search key (Geribá the neighborhood and Praia de Geribá).
     private const EXACT_OR_OTHER_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
-WHERE (? = '' OR uf = ?)
-AND (
-    name_fold = ?
-    OR (
-        type <> ?
-        AND id IN (SELECT place_id FROM place_search_keys WHERE key = ?)
-    )
+WHERE id IN (
+    SELECT id FROM places WHERE name_fold = ? AND (? = '' OR uf = ?)
+    UNION
+    SELECT o.id FROM place_search_keys k JOIN places o ON o.id = k.place_id
+    WHERE k.key = ? AND o.type <> ? AND (? = '' OR o.uf = ?)
 )
 ORDER BY popularity DESC, id
 LIMIT 9
@@ -310,7 +313,6 @@ SQL;
     private const NAME_PREFIX_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE (? = '' OR uf = ?) AND name_fold LIKE ? ESCAPE '\'
-ORDER BY id
 LIMIT 2
 SQL;
 
@@ -365,7 +367,7 @@ SQL;
             if ($exact[0]['type'] === 'city') {
                 return self::found($exact[0]);
             }
-            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$uf, $uf, $text, $exact[0]['type'], $text]);
+            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$text, $uf, $uf, $text, $exact[0]['type'], $uf, $uf]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
         if (count(array_unique(array_column($exact, 'type'))) > 1) {
