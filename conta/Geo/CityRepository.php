@@ -19,8 +19,6 @@ final class CityRepository
     /** OSM POIs in database/places_pois.json.bz2. ensure skips the file once the table has this many. */
     private const POI_COUNT = 8030;
 
-    public const POI_ATTRIBUTION = '© OpenStreetMap contributors';
-
     /** City popularity by "UF|name_fold". Every other city is 70. Neighborhoods stay 0. Produto 2026-10-25. */
     private const CITY_POPULARITY_DEFAULT = 70;
 
@@ -38,8 +36,8 @@ final class CityRepository
     {
         $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
         if ($count >= 5000) {
-            self::ensureNeighborhoods($pdo);
-            self::ensurePois($pdo);
+            self::ensureChildren($pdo, 'neighborhood', self::NEIGHBORHOOD_COUNT, self::seedNeighborhoods(...));
+            self::ensureChildren($pdo, 'poi', self::POI_COUNT, self::seedPois(...));
             return;
         }
         $rows = self::readJson('database/cities.json');
@@ -97,16 +95,15 @@ final class CityRepository
         return ['id' => (int) $row['id'], 'popularity' => (int) $row['popularity']];
     }
 
-    /** Cidades já semeadas: carrega bairros só se a contagem ainda não chegou no artefato. */
-    private static function ensureNeighborhoods(PDO $pdo): void
+    /** Cities already seeded: load this child type only while it is still short of the artifact. */
+    private static function ensureChildren(PDO $pdo, string $type, int $expected, callable $seed): void
     {
-        $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn();
-        if ($count >= self::NEIGHBORHOOD_COUNT) {
+        $count = $pdo->prepare('SELECT COUNT(*) FROM places WHERE type = ?');
+        $count->execute([$type]);
+        if ((int) $count->fetchColumn() >= $expected) {
             return;
         }
-        Db::transactional($pdo, static function (PDO $pdo): void {
-            self::seedNeighborhoods($pdo);
-        });
+        Db::transactional($pdo, $seed);
     }
 
     /**
@@ -129,19 +126,18 @@ final class CityRepository
         }
         $insert->execute([$type, $parentId, $name, fold($name), $label, $uf, $lat, $lng, $popularity, $category, $osmRef, $wikidata]);
         $id = (int) $insert->fetchColumn();
-        $seen = [];
-        foreach (self::searchKeys(self::keyName($name, $category)) as $key) {
-            $seen[$key] = true;
-            $keyIns->execute([$id, $key, 'name', $popularity]);
-        }
+        $kinds = array_fill_keys(self::searchKeys(self::keyName($name, $category)), 'name');
         foreach ($aliases as $alias) {
-            $key = preg_replace('/\s+/', ' ', fold($alias)) ?? '';
-            if ($key === '' || isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $keyIns->execute([$id, $key, 'alias', $popularity]);
+            $kinds[self::foldKey($alias)] = 'alias';
         }
+        foreach ($kinds as $key => $kind) {
+            $keyIns->execute([$id, $key, $kind, $popularity]);
+        }
+    }
+
+    private static function foldKey(string $value): string
+    {
+        return preg_replace('/\s+/', ' ', fold($value)) ?? '';
     }
 
     /** Display name keeps "Name (GRU)". Search keys use the name with that suffix removed. */
@@ -157,7 +153,7 @@ final class CityRepository
      */
     public static function searchKeys(string $name): array
     {
-        $fold = preg_replace('/\s+/', ' ', fold($name)) ?? '';
+        $fold = self::foldKey($name);
         if ($fold === '') {
             return [];
         }
@@ -182,7 +178,7 @@ final class CityRepository
      */
     private static function seedNeighborhoods(PDO $pdo): void
     {
-        self::seedUnderCity($pdo, 'neighborhood', self::neighborhoodRows(), static function (int $parentId, array $row) use ($pdo): void {
+        self::seedUnderCity($pdo, 'neighborhood', self::bz2JsonRows('places_neighborhoods.json.bz2', 'bairros'), static function (int $parentId, array $row) use ($pdo): void {
             $name = (string) $row['name'];
             self::insertPlace(
                 $pdo,
@@ -201,7 +197,7 @@ final class CityRepository
     /** POIs OSM (database/places_pois.json.bz2). Same parent lookup and places_child_uk skip as the neighborhoods. */
     private static function seedPois(PDO $pdo): void
     {
-        self::seedUnderCity($pdo, 'poi', self::poiRows(), static function (int $parentId, array $row) use ($pdo): void {
+        self::seedUnderCity($pdo, 'poi', self::bz2JsonRows('places_pois.json.bz2', 'POIs'), static function (int $parentId, array $row) use ($pdo): void {
             $name = (string) $row['name'];
             $aliases = $row['aliases'] ?? [];
             if (isset($row['iata'])) {
@@ -225,18 +221,6 @@ final class CityRepository
         });
     }
 
-    /** Cidades já semeadas: carrega POIs só se a contagem ainda não chegou no artefato. */
-    private static function ensurePois(PDO $pdo): void
-    {
-        $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn();
-        if ($count >= self::POI_COUNT) {
-            return;
-        }
-        Db::transactional($pdo, static function (PDO $pdo): void {
-            self::seedPois($pdo);
-        });
-    }
-
     /**
      * Children of a city (neighborhood or POI). Parent is the city with this uf + name_fold.
      * A row with no city, an empty name, or a (parent, folded name) already stored is skipped.
@@ -254,14 +238,8 @@ final class CityRepository
             $taken[(int) $row['parent_id'] . "\0" . $row['name_fold']] = true;
         }
         foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $parentUf = (string) ($row['parent_uf'] ?? '');
-            $parentFold = (string) ($row['parent_name_fold'] ?? '');
-            if ($parentUf === '' || $parentFold === '') {
-                continue;
-            }
+            $parentUf = (string) $row['parent_uf'];
+            $parentFold = (string) $row['parent_name_fold'];
             $pkey = $parentUf . "\0" . $parentFold;
             if (!array_key_exists($pkey, $parents)) {
                 $city = self::cityRow($pdo, $parentFold, $parentUf);
@@ -301,18 +279,6 @@ final class CityRepository
             }
             $upsert->execute([$city['id'], fold((string) $row['key']), $city['popularity']]);
         }
-    }
-
-    /** @return list<array<string, mixed>> */
-    private static function neighborhoodRows(): array
-    {
-        return self::bz2JsonRows('places_neighborhoods.json.bz2', 'bairros');
-    }
-
-    /** @return list<array<string, mixed>> */
-    private static function poiRows(): array
-    {
-        return self::bz2JsonRows('places_pois.json.bz2', 'POIs');
     }
 
     /** @return list<array<string, mixed>> */
@@ -551,7 +517,6 @@ SQL;
     {
         $prefix = self::likePrefix($text);
         $join = $uf === '' ? '' : 'JOIN places p ON p.id = k.place_id AND p.uf = ?';
-        // $text is the folded query (alias equality). $prefix is the escaped LIKE. UF sits between them, before ESCAPE.
         return self::placeRows(sprintf(self::PREFIX_SQL, $join), $uf === '' ? [$text, $prefix] : [$text, $uf, $prefix]);
     }
 

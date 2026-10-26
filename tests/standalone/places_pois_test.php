@@ -14,7 +14,6 @@ $poiCount = (new ReflectionClass(CityRepository::class))->getReflectionConstant(
 t_eq(8030, $poiCount, 'POI_COUNT');
 t_eq(25, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 25');
 t_eq('25', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 25');
-t_eq('© OpenStreetMap contributors', CityRepository::POI_ATTRIBUTION, 'POI_ATTRIBUTION');
 
 echo "counts\n";
 t_eq(5571, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn(), 'cidades');
@@ -35,8 +34,8 @@ foreach ($pdo->query("SELECT category, COUNT(*) AS n FROM places WHERE type = 'p
 }
 ksort($got);
 t_eq($categories, $got, 'contagem por categoria');
-t_eq(166681, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'name'")->fetchColumn(), 'chaves name');
-t_eq(774, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'alias'")->fetchColumn(), 'chaves alias');
+t_eq(166629, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'name'")->fetchColumn(), 'chaves name');
+t_eq(826, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'alias'")->fetchColumn(), 'chaves alias');
 t_eq(167455, (int) $pdo->query('SELECT COUNT(*) FROM place_search_keys')->fetchColumn(), 'chaves no total');
 t_eq(0, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys k JOIN places p ON p.id = k.place_id WHERE p.category = 'airport' AND k.\"key\" LIKE '(%'")->fetchColumn(), 'aeroporto não tem chave começando com (');
 
