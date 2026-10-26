@@ -63,7 +63,7 @@ t_ok(!preg_match('/^Location:/mi', $r['headers']), 'login web não redireciona p
 echo "local_id só entra no log como inteiro positivo\n";
 require_once CL_ROOT . '/src/RequestLog.php';
 t_eq(['local_id' => 42], RequestLog::queryForLog('/api/busca', ['local_id' => '42']), 'local_id válido vira inteiro');
-t_eq(['local_id' => 42], RequestLog::queryForLog('/api/busca', ['local_id' => 42]), 'local_id int permanece');
+t_eq([], RequestLog::queryForLog('/api/busca', ['local_id' => 42]), 'local_id int não é string de query: omitido');
 t_eq(['local_id' => 2147483647], RequestLog::queryForLog('/api/busca', ['local_id' => '2147483647']), 'int4 máximo');
 foreach (['//evil.com', "%0d%0a", "\r\nSet-Cookie: x=1", '\\evil', '0', '-1', '01', '2147483648', '12abc', '1e2', ''] as $bad) {
     $logged = RequestLog::queryForLog('/api/busca', ['local_id' => $bad, 'hospedes' => '2']);

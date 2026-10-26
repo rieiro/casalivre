@@ -58,6 +58,14 @@ final class SearchQuery
         return $this->localId !== null || $this->localidade !== '' || $this->checkin !== '' || $this->checkout !== '';
     }
 
+    /** A positive PostgreSQL int4 parsed from a digit string, or null. */
+    public static function positiveInt4(mixed $raw): ?int
+    {
+        return is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1 && (int) $raw <= self::LAST_ID_MAX
+            ? (int) $raw
+            : null;
+    }
+
     /** Absent → null. Present and a positive int4 → that id. Present but unusable → 0. */
     private static function readLocalId(array $request): ?int
     {
@@ -65,10 +73,7 @@ final class SearchQuery
             return null;
         }
         $raw = $request['local_id'];
-        if (is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1 && (int) $raw <= self::LAST_ID_MAX) {
-            return (int) $raw;
-        }
-        return 0;
+        return self::positiveInt4($raw) ?? 0;
     }
 
     /** Same keys the current search page and /api/busca clients already read. */

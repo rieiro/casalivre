@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Redact.php';
 require_once __DIR__ . '/LogPrivacy.php';
+require_once __DIR__ . '/SearchQuery.php';
 
 /**
  * Log estruturado por requisição da API (JSON por linha), gravado localmente.
@@ -200,33 +201,16 @@ final class RequestLog
             if (preg_match('/^[A-Za-z0-9_.\-\[\]]{1,40}$/', $key) !== 1) {
                 continue;
             }
-            if ($key === 'local_id' && in_array($key, $allow, true)) {
-                $id = self::localIdForLog($value);
-                if ($id === null) {
-                    continue;
+            if ($key === 'local_id' && $allow !== []) {
+                $id = SearchQuery::positiveInt4($value);
+                if ($id !== null) {
+                    $out[$key] = $id;
                 }
-                $out[$key] = $id;
                 continue;
             }
             $out[$key] = in_array($key, $allow, true) ? self::mask($value) : null;
         }
         return $out;
-    }
-
-    /**
-     * Positive int4, same shape as SearchQuery::readLocalId. Anything else is not logged:
-     * the raw query string must not reach the log.
-     */
-    private static function localIdForLog(mixed $value): ?int
-    {
-        if (is_int($value)) {
-            return $value > 0 && $value <= 2147483647 ? $value : null;
-        }
-        if (!is_string($value) || preg_match('/^[1-9]\d*$/', $value) !== 1) {
-            return null;
-        }
-        $n = (int) $value;
-        return $n > 0 && $n <= 2147483647 && (string) $n === $value ? $n : null;
     }
 
     /** Substitui segmentos de 32 hex (ical_hash) por {hash}. Alinhado com Redact::path. */

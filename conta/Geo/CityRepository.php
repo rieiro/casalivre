@@ -291,11 +291,12 @@ ORDER BY popularity DESC, id
 LIMIT 9
 SQL;
 
-    // The exact name, plus any other type that has this search key (Geribá the neighborhood and Praia de Geribá).
+    // The known exact id (places.id is INTEGER; the caller already has that one row), plus any other
+    // type with this search key (Geribá the neighborhood and Praia de Geribá).
     private const EXACT_OR_OTHER_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE id IN (
-    SELECT id FROM places WHERE name_fold = ? AND (? = '' OR uf = ?)
+    SELECT CAST(? AS integer)
     UNION
     SELECT o.id FROM place_search_keys k JOIN places o ON o.id = k.place_id
     WHERE k.key = ? AND o.type <> ? AND (? = '' OR o.uf = ?)
@@ -367,7 +368,7 @@ SQL;
             if ($exact[0]['type'] === 'city') {
                 return self::found($exact[0]);
             }
-            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$text, $uf, $uf, $text, $exact[0]['type'], $uf, $uf]);
+            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$exact[0]['id'], $text, $exact[0]['type'], $uf, $uf]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
         if (count(array_unique(array_column($exact, 'type'))) > 1) {
