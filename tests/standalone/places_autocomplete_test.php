@@ -14,7 +14,7 @@ t_temp_db();
 
 echo "suggest SQL\n";
 $sql = (new ReflectionClass(CityRepository::class))->getReflectionConstant('PREFIX_SQL')->getValue();
-t_ok(is_string($sql) && str_contains($sql, 'MAX(popularity)') && str_contains($sql, 'GROUP BY place_id') && str_contains($sql, 'LIMIT 9'), 'suggest SQL is the §11.2 prefix scan');
+t_ok(is_string($sql) && str_contains($sql, 'MAX(k.popularity)') && str_contains($sql, 'GROUP BY k.place_id') && str_contains($sql, 'LIMIT 9'), 'suggest SQL is the §11.2 prefix scan');
 t_ok(str_contains($sql, "key LIKE ? ESCAPE '\\'"), 'prefix LIKE is escaped');
 t_ok(!str_contains($sql, 'kind'), 'suggest SQL does not read kind');
 
@@ -78,6 +78,14 @@ t_eq(null, $centro['place'], 'Centro não escolhe um lugar');
 t_eq('ambiguous', $centro['resolution'], 'Centro tem 9+ hits');
 t_eq(8, count($centro['options']), 'Centro mostra 8 opções');
 t_ok(in_array('Centro', array_column($centro['options'], 'name'), true), 'Centro lista o bairro');
+
+$centroRj = CityRepository::resolve('Centro, RJ');
+$centroRjRows = $centroRj['place'] !== null ? [$centroRj['place']] : $centroRj['options'];
+t_ok($centroRjRows !== [], 'Centro, RJ returns places');
+foreach ($centroRjRows as $option) {
+    t_eq('RJ', $option['uf'], 'typed UF prefix does not offer another state');
+}
+t_ok(!str_contains($sql, 'p.uf ='), 'suggest SQL does not filter uf inside the scan');
 
 $miss = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Xyzabc']), null);
 t_eq(true, $miss['unresolved'], 'Xyzabc é unresolved');

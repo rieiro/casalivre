@@ -85,6 +85,7 @@ for ($i = 1; $i <= 5; $i++) {
             'description' => $description,
             'summary' => summary_from($description, 45),
             'city_place_id' => (int) $known['id'],
+            'neighborhood_place_id' => CityRepository::neighborhoodId((int) $known['id'], (string) $place['neighborhood']),
             'address' => compose_address((string) $place['street'], $number, ''),
             'cep' => $place['cep'],
             'street' => $place['street'],

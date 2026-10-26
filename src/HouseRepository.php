@@ -111,6 +111,7 @@ final class HouseRepository
             'description' => $house['description'],
             'summary' => $house['summary'],
             'city_place_id' => self::cityPlaceId($house),
+            'neighborhood_place_id' => self::optionalPlaceId($house, 'neighborhood_place_id'),
             'address' => $house['address'],
             'cep' => $house['cep'] ?? '',
             'street' => $house['street'] ?? '',

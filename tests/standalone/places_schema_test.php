@@ -3,6 +3,7 @@
 // city_place_id, and CityRepository resolve/suggest still resolve a city name.
 // SCHEMA 22: bairros OpenCEP (database/places_neighborhoods.json.bz2) e places_city_uf_uk.
 // SCHEMA 23: idx_prop_latlng_active (lat, lng) WHERE status = 'active' replaces unused gist idx_prop_geo_active.
+// SCHEMA 24: idx_prop_nb_active; idx_properties_status removed.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
@@ -12,7 +13,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(23, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 23');
+t_eq(24, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 24');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -28,21 +29,26 @@ t_ok($pdo->query("SELECT to_regclass('public.place_search_keys')")->fetchColumn(
 t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'idx_properties_city'")->fetchColumn(), 'sem idx_properties_city');
 t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'places_root_uk'")->fetchColumn(), 'sem places_root_uk (homônimos do cities.json)');
 t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'idx_prop_geo_active'")->fetchColumn(), 'sem idx_prop_geo_active');
+t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'idx_properties_status'")->fetchColumn(), 'sem idx_properties_status');
 $defs = [];
-foreach ($pdo->query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_places_name_fold', 'idx_prop_place_active', 'idx_prop_latlng_active', 'place_search_keys_pkey', 'places_child_uk', 'places_city_uf_uk', 'idx_properties_status')") as $row) {
+foreach ($pdo->query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_places_name_fold', 'idx_prop_place_active', 'idx_prop_latlng_active', 'idx_prop_nb_active', 'place_search_keys_pkey', 'places_child_uk', 'places_city_uf_uk')") as $row) {
     $defs[$row['indexname']] = $row['indexdef'];
 }
 t_ok(isset($defs['idx_places_name_fold']) && str_contains($defs['idx_places_name_fold'], 'name_fold'), 'idx_places_name_fold');
 t_ok(isset($defs['idx_prop_place_active']) && str_contains($defs['idx_prop_place_active'], 'INCLUDE (max_guests)') && str_contains($defs['idx_prop_place_active'], "status = 'active'"), 'idx_prop_place_active parcial com INCLUDE');
 t_ok(isset($defs['idx_prop_latlng_active']) && str_contains($defs['idx_prop_latlng_active'], 'btree') && str_contains($defs['idx_prop_latlng_active'], '(lat, lng)') && str_contains($defs['idx_prop_latlng_active'], "status = 'active'"), 'idx_prop_latlng_active btree (lat, lng) parcial');
+t_eq(
+    "CREATE INDEX idx_prop_nb_active ON public.properties USING btree (neighborhood_place_id, id) INCLUDE (max_guests) WHERE ((status = 'active'::text) AND (neighborhood_place_id IS NOT NULL))",
+    (string) $pdo->query("SELECT pg_get_indexdef('idx_prop_nb_active'::regclass)")->fetchColumn(),
+    'idx_prop_nb_active'
+);
 t_ok(isset($defs['place_search_keys_pkey']) && str_contains($defs['place_search_keys_pkey'], 'INCLUDE (popularity)'), 'PK de place_search_keys com INCLUDE (popularity)');
 t_ok(isset($defs['places_child_uk']), 'places_child_uk');
 t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'], 'UNIQUE') && str_contains($defs['places_city_uf_uk'], 'uf') && str_contains($defs['places_city_uf_uk'], 'name_fold') && str_contains($defs['places_city_uf_uk'], "type = 'city'"), 'places_city_uf_uk');
-t_ok(isset($defs['idx_properties_status']), 'idx_properties_status permanece (fora deste PR)');
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('23', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 23');
+t_eq('24', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 24');
 
 echo "seed\n";
 $cityUk = [];
@@ -105,7 +111,7 @@ $house = HouseRepository::find((int) $owner['house_id']);
 t_eq('Florianópolis, SC', (string) ($house['city'] ?? ''), 'find devolve a cidade em texto');
 t_eq((int) $floripa['id'], (int) ($house['city_place_id'] ?? 0), 'city_place_id aponta para a place');
 t_eq(null, $house['neighborhood_place_id'], 'neighborhood_place_id nulo');
-t_eq(1, count(SearchSql::batch((int) $floripa['id'], null, 0, null, null, null, null, 60)), 'builder acha a casa pelo city_place_id');
+t_eq(1, count(SearchSql::batch($floripa, null, 0, null, null, null, null, 60)), 'builder acha a casa pelo city_place_id');
 $byId = HouseRepository::insert([
     'user_id' => $owner['user_id'], 'title' => 'Casa Place', 'description' => 'Descrição de teste do imóvel.',
     'summary' => 'Resumo', 'city_place_id' => (int) $floripa['id'], 'address' => 'Rua B, 2', 'cep' => '88000000',

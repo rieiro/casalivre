@@ -61,6 +61,7 @@ function address_from_input(array $input): ?array
         'address' => compose_address($street, $number, $complement),
         'cep_city' => (string) $row['city'],
         'cep_uf' => (string) $row['uf'],
+        'cep_neighborhood' => (string) $row['neighborhood'],
     ];
 }
 

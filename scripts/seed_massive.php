@@ -49,7 +49,7 @@ for ($day = $today; $day <= $last; $day = $day->modify('+1 day')) {
 }
 
 $cover = massive_cover($root);
-$places = db()->prepare("SELECT cep, street FROM ceps WHERE city = ? AND uf = ? AND street != '' LIMIT " . MASSIVE_HOUSES);
+$places = db()->prepare("SELECT cep, street, neighborhood FROM ceps WHERE city = ? AND uf = ? AND street != '' LIMIT " . MASSIVE_HOUSES);
 $block = db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin) VALUES (?, ?, 1, NULL, NULL, '')");
 $review = db()->prepare('INSERT INTO reviews (property_id, author, score, comment, created_at) VALUES (?, ?, ?, ?, ?)');
 $ddds = ['11', '21', '31', '41', '48', '51', '61', '71', '81', '85'];
@@ -101,6 +101,7 @@ foreach ($cities as $index => $city) {
             'description' => $description,
             'summary' => summary_from($description, 45),
             'city_place_id' => (int) $city['id'],
+            'neighborhood_place_id' => CityRepository::neighborhoodId((int) $city['id'], (string) $place['neighborhood']),
             'address' => compose_address((string) $place['street'], $houseNumber, ''),
             'cep' => $place['cep'],
             'street' => $place['street'],

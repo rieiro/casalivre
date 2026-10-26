@@ -19,7 +19,7 @@ t_ok(!method_exists(HouseRepository::class, 'byCity'), 'HouseRepository::byCity 
 t_ok(!method_exists(GroupRepository::class, 'activePropertyStrict'), 'activePropertyStrict removed');
 t_ok(!array_key_exists('Búzios', cities()), 'cities() has no stale Búzios point');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchService.php'), '$_GET'), 'SearchService does not read $_GET');
-$where = SearchSql::where(1, null, 0, null, '2026-11-01', '2026-11-03', 9);
+$where = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, '2026-11-01', '2026-11-03', 9);
 t_ok(str_contains($where[0], "p.status = 'active'"), 'one active rule');
 t_ok(str_contains($where[0], 'NOT EXISTS') && str_contains($where[0], 'c.blocked = 1'), 'blocked night is NOT EXISTS');
 t_ok(str_contains($where[0], 'p.id > ?'), 'keyset id > last_id');
