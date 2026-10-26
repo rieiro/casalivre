@@ -55,7 +55,9 @@ final class HouseRepository
         if ($id > 0) {
             return $id;
         }
-        $place = CityRepository::match((string) ($house['city'] ?? ''));
+        $text = (string) ($house['city'] ?? '');
+        $comma = strrpos($text, ',');
+        $place = $comma === false ? null : CityRepository::exactCity(substr($text, 0, $comma), trim(substr($text, $comma + 1)));
         if (!$place || !isset($place['id'])) {
             throw new RuntimeException('Cidade não encontrada.');
         }

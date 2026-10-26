@@ -61,7 +61,7 @@ final class HouseService
             ? (int) $input['calendar_months']
             : 6;
         $cleaningFee = array_key_exists('cleaning_fee', $input) ? parse_money((string) $input['cleaning_fee']) : 0;
-        $known = $place ? CityRepository::match($place['cep_city'] . ', ' . $place['cep_uf']) : null;
+        $known = $place ? CityRepository::exactCity($place['cep_city'], $place['cep_uf']) : null;
         if (!$place) {
             return ['error' => t('err.cep')];
         }

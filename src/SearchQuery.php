@@ -61,11 +61,11 @@ final class SearchQuery
     /** Absent → null. Present and a positive int4 → that id. Present but unusable → 0. */
     private static function readLocalId(array $request): ?int
     {
-        if (!array_key_exists('local_id', $request) || $request['local_id'] === '' || $request['local_id'] === null) {
+        if (!array_key_exists('local_id', $request) || $request['local_id'] === '') {
             return null;
         }
         $raw = $request['local_id'];
-        if ((is_int($raw) || (is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1)) && (int) $raw <= self::LAST_ID_MAX) {
+        if (is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1 && (int) $raw <= self::LAST_ID_MAX) {
             return (int) $raw;
         }
         return 0;
@@ -85,7 +85,7 @@ final class SearchQuery
             'score_min' => $this->scoreMin,
             'amenidades' => $this->amenidades,
         ];
-        if ($this->localId !== null && $this->localId > 0) {
+        if ($this->localId > 0) {
             unset($filters['localidade']);
             $filters['local_id'] = $this->localId;
         }

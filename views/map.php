@@ -5,13 +5,8 @@ $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' 
 // busca no servidor (a API registra a busca uma vez). Sem JS/WebGL/arquivo de tiles: aviso + lista.
 // Centro inicial = centro da cidade com 2 casas (~1 km): só enquadra o mapa, não é coordenada de imóvel.
 $query = search_query($filters);
-$place = null;
-if (!empty($filters['local_id'])) {
-    $place = CityRepository::byId((int) $filters['local_id']);
-} elseif (($filters['localidade'] ?? '') !== '') {
-    $place = CityRepository::match((string) $filters['localidade']);
-}
-$placeLabel = $place !== null ? $place['name'] . ', ' . $place['uf'] : (string) ($filters['localidade'] ?? '');
+$place = !empty($filters['local_id']) ? CityRepository::byId((int) $filters['local_id']) : null;
+$placeLabel = place_label($place, (string) ($filters['localidade'] ?? ''));
 $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) . ',' . round((float) $place['lng'], 2) : '';
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">

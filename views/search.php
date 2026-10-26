@@ -1,11 +1,8 @@
 <?php
 $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma
 $query = search_query($filters);
-$shown = null;
-if (($filters['localidade'] ?? '') === '' && !empty($filters['local_id'])) {
-    $shown = CityRepository::byId((int) $filters['local_id']);
-}
-$placeLabel = $shown !== null ? $shown['name'] . ', ' . $shown['uf'] : (string) ($filters['localidade'] ?? '');
+$shown = !empty($filters['local_id']) ? CityRepository::byId((int) $filters['local_id']) : null;
+$placeLabel = place_label($shown, (string) ($filters['localidade'] ?? ''));
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';

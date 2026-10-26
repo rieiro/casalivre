@@ -30,11 +30,7 @@ final class Redirect
         if (array_key_exists('local_id', $_GET) || !is_string($_GET['localidade'] ?? null)) {
             return;
         }
-        $text = trim($_GET['localidade']);
-        if ($text === '') {
-            return;
-        }
-        $place = CityRepository::resolve($text)['place'];
+        $place = CityRepository::resolve($_GET['localidade'])['place'];
         if ($place === null) {
             return;
         }
@@ -42,7 +38,6 @@ final class Redirect
         unset($params['localidade']);
         $params = ['local_id' => $place['id']] + $params;
         http_response_code(301);
-        header('Location: ' . $path . '?' . http_build_query($params));
-        exit;
+        redirect($path . '?' . http_build_query($params));
     }
 }

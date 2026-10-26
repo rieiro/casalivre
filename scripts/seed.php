@@ -65,7 +65,7 @@ for ($i = 1; $i <= 5; $i++) {
         if (!$place) {
             break;
         }
-        $known = CityRepository::match($place['city'] . ', ' . $place['uf']);
+        $known = CityRepository::exactCity((string) $place['city'], (string) $place['uf']);
         if (!$known) {
             if (++$tries > 30) {
                 break;
