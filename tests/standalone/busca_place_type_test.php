@@ -132,13 +132,9 @@ $attr = static function (string $body, string $name): ?string {
 $centerOf = static function (float $lat, float $lng): string {
     return round($lat, 2) . ',' . round($lng, 2);
 };
-$parent = db()->prepare('SELECT lat, lng FROM places WHERE id = (SELECT parent_id FROM places WHERE id = ?)');
-$parent->execute([$firstNb]);
-$parentRow = $parent->fetch();
-db()->prepare('UPDATE places SET lat = 0, lng = 0 WHERE id = ?')->execute([$firstNb]);
 $nbPage = t_http('GET', $base . '/busca/mapa?local_id=' . $firstNb);
 t_eq(200, $nbPage['status'], 'neighborhood map responds');
-t_eq($centerOf((float) $parentRow['lat'], (float) $parentRow['lng']), (string) $attr($nbPage['body'], 'data-center'), 'neighborhood map centers on the parent city');
+t_eq($centerOf($rioLat, $rioLng), (string) $attr($nbPage['body'], 'data-center'), 'neighborhood map centers on the stored place point');
 $hash = static fn (int $id): string => HouseRepository::ensurePublicHash(HouseRepository::find($id));
 $nbApi = json_decode(t_http('GET', $base . '/api/busca?local_id=' . $firstNb)['body'], true);
 t_eq([$hash($inFirst), $hash($farFirst)], array_column($nbApi['items'], 'id'), 'neighborhood API lists those houses');

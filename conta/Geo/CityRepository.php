@@ -292,11 +292,6 @@ JOIN places ON places.id = k.place_id
 ORDER BY k.pop DESC, id
 SQL;
 
-    private const PARENT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
- FROM places
-WHERE id = (SELECT parent_id FROM places WHERE id = ?)
-SQL;
-
     private const ALIAS_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM place_search_keys k
 JOIN places ON places.id = k.place_id
@@ -374,21 +369,6 @@ SQL;
         $stmt->execute([$cityId, $fold]);
         $id = $stmt->fetchColumn();
         return $id === false ? null : (int) $id;
-    }
-
-    /**
-     * Map frame. A neighborhood's own lat/lng is the parent city's placeholder, so the frame
-     * uses the parent city. A city or a POI uses its own point.
-     *
-     * @param array{id:int,type:string,lat:float,lng:float} $place
-     * @return array{lat:float,lng:float}
-     */
-    public static function mapCenter(array $place): array
-    {
-        if ($place['type'] === 'neighborhood') {
-            $place = self::placeRows(self::PARENT_SQL, [(int) $place['id']])[0];
-        }
-        return ['lat' => (float) $place['lat'], 'lng' => (float) $place['lng']];
     }
 
     /**
