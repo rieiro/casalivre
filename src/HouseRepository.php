@@ -235,19 +235,6 @@ final class HouseRepository
         return db()->query(self::SQL_WITH_CITY . " WHERE p.status = 'active' ORDER BY p.id ASC")->fetchAll();
     }
 
-    public static function byCity(string $city): array
-    {
-        $place = CityRepository::match($city);
-        if ($place && isset($place['id'])) {
-            $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.city_place_id = ? AND p.status = 'active' ORDER BY p.id ASC");
-            $stmt->execute([(int) $place['id']]);
-            return $stmt->fetchAll();
-        }
-        $stmt = db()->prepare(self::SQL_WITH_CITY . ' WHERE ' . self::CITY_LABEL_SQL . " = ? AND p.status = 'active' ORDER BY p.id ASC");
-        $stmt->execute([$city]);
-        return $stmt->fetchAll();
-    }
-
     public static function inactivate(int $id, int $userId, string $at): array
     {
         $changed = ReturningWrite::update(

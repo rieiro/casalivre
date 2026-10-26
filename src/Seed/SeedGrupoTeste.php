@@ -57,13 +57,13 @@ final class SeedGrupoTeste
             }
         }
 
-        $st = $pdo->prepare('SELECT COUNT(*) FROM properties WHERE group_id = ? AND ' . GroupRepository::activePropertyStrict());
+        $st = $pdo->prepare('SELECT COUNT(*) FROM properties WHERE group_id = ? AND ' . SearchSql::active(''));
         $st->execute([$gid]);
         $tem = (int) $st->fetchColumn();
         $falta = max(0, self::IMOVEIS - $tem);
         if ($falta > 0) {
             $st = $pdo->prepare('SELECT p.id FROM properties p JOIN users u ON u.id = p.user_id WHERE p.group_id IS NULL AND '
-                . GroupRepository::activePropertyStrict('p') . ' AND ' . GroupRepository::activeUser('u')
+                . SearchSql::active('p') . ' AND ' . GroupRepository::activeUser('u')
                 . " AND lower(u.email) LIKE '%@casalivre.test' ORDER BY p.id LIMIT " . $falta);
             $st->execute();
             $upd = $pdo->prepare('UPDATE properties SET group_id = ? WHERE id = ? AND group_id IS NULL');

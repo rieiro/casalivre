@@ -1,19 +1,10 @@
 <?php
 $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma
-$facets = $facets ?? [];
 $query = search_query($filters);
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
-$popular = [];
-foreach (Amenities::keys() as $key) {
-    $count = (int) ($facets[$key] ?? 0);
-    if ($count > 0 || in_array($key, $filters['amenidades'], true)) {
-        $popular[] = [$key, $count];
-    }
-}
-usort($popular, static fn (array $a, array $b): int => $b[1] <=> $a[1]);
-$popular = array_slice($popular, 0, 10);
+$popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades']));
 ?>
 <section class="wrap search-page">
     <form class="search search-query" method="get" action="<?= e($base) ?>/busca">
@@ -77,11 +68,10 @@ $popular = array_slice($popular, 0, 10);
                     <fieldset class="amenity-set">
                         <legend><?= e(t('home.popular')) ?></legend>
                         <div class="filter-list">
-                            <?php foreach ($popular as [$key, $count]): ?>
+                            <?php foreach ($popular as $key): ?>
                                 <label>
                                     <input type="checkbox" name="amenidade[]" value="<?= e($key) ?>" <?= in_array($key, $filters['amenidades'], true) ? 'checked' : '' ?>>
                                     <span><?= e(t('amenity.' . $key)) ?></span>
-                                    <b><?= (int) $count ?></b>
                                 </label>
                             <?php endforeach; ?>
                         </div>

@@ -104,7 +104,7 @@ $house = HouseRepository::find((int) $owner['house_id']);
 t_eq('Florianópolis, SC', (string) ($house['city'] ?? ''), 'find devolve a cidade em texto');
 t_eq((int) $floripa['id'], (int) ($house['city_place_id'] ?? 0), 'city_place_id aponta para a place');
 t_eq(null, $house['neighborhood_place_id'], 'neighborhood_place_id nulo');
-t_eq(1, count(HouseRepository::byCity('Florianópolis, SC')), 'byCity ainda acha pelo texto');
+t_eq(1, count(SearchSql::batch((int) $floripa['id'], null, 0, null, null, null, null, 60)), 'builder acha a casa pelo city_place_id');
 $byId = HouseRepository::insert([
     'user_id' => $owner['user_id'], 'title' => 'Casa Place', 'description' => 'Descrição de teste do imóvel.',
     'summary' => 'Resumo', 'city_place_id' => (int) $floripa['id'], 'address' => 'Rua B, 2', 'cep' => '88000000',
@@ -113,11 +113,9 @@ $byId = HouseRepository::insert([
     'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0,
 ]);
 t_eq('Florianópolis, SC', HouseRepository::find($byId)['city'] ?? null, 'insert por city_place_id devolve o texto');
-$facets = [];
-$found = SearchService::search([
-    'localidade' => 'Florianópolis, SC', 'checkin' => '', 'checkout' => '', 'hospedes' => 0,
-    'raio' => 0, 'preco_min' => 0, 'preco_max' => 0, 'score_min' => 0, 'amenidades' => [],
-], null, $facets);
-t_eq(2, count($found), 'busca atual ainda filtra pela cidade em texto');
+$found = SearchService::search(SearchQuery::fromRequest([
+    'localidade' => 'Florianópolis, SC',
+]), null);
+t_eq(2, count($found['items']), 'busca por cidade resolvida');
 
 t_done();

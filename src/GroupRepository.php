@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Acoes/GrupoValidacao.php';
 require_once __DIR__ . '/HouseRepository.php';
+require_once __DIR__ . '/SearchSql.php';
 
 /**
  * Leituras do modelo de grupos (Sprint 3, PR 6): groups, group_members, group_domains, group_property_invites e
@@ -17,16 +18,6 @@ final class GroupRepository
     {
         $col = $alias === '' ? 'status' : $alias . '.status';
         return "COALESCE(NULLIF($col, ''), 'active') = 'active'";
-    }
-
-    /**
-     * Imóvel ativo estrito: status = 'active' (mesma regra de HouseRepository::all() e de activePropertyByRef).
-     * Diferente de activeProperty(), status vazio ('') NÃO conta como ativo. Usado na busca/mapa da vitrine, para
-     * concordar com a página do imóvel. Alias opcional da tabela.
-     */
-    public static function activePropertyStrict(string $alias = ''): string
-    {
-        return ($alias === '' ? 'status' : $alias . '.status') . " = 'active'";
     }
 
     /** Conta ativa, com alias da tabela users. */
@@ -189,21 +180,10 @@ final class GroupRepository
         return $row ?: null;
     }
 
-    /**
-     * Fonte da busca e do mapa na vitrine: imóveis do grupo com activePropertyStrict() (status = 'active'), as mesmas
-     * linhas e ordem de HouseRepository::all() (ORDER BY id), filtrado no SQL (idx_properties_group).
-     */
-    public static function searchSource(int $groupId): array
-    {
-        $st = db()->prepare(HouseRepository::SQL_WITH_CITY . ' WHERE p.group_id = ? AND ' . self::activePropertyStrict('p') . ' ORDER BY p.id ASC');
-        $st->execute([$groupId]);
-        return $st->fetchAll();
-    }
-
-    /** Imóveis ativos do grupo (só dados públicos). @return list<array> */
+    /** Imóveis do grupo na home da vitrine (só dados públicos). status vazio não entra. @return list<array> */
     public static function properties(int $groupId): array
     {
-        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM properties p ' . HouseRepository::JOIN_CITY_SQL . ' WHERE p.group_id = ? AND ' . self::activeProperty('p') . ' ORDER BY p.title, p.id');
+        $st = db()->prepare('SELECT p.id, p.public_hash, p.title, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM properties p ' . HouseRepository::JOIN_CITY_SQL . ' WHERE p.group_id = ? AND ' . SearchSql::active('p') . ' ORDER BY p.title, p.id');
         $st->execute([$groupId]);
         return $st->fetchAll();
     }

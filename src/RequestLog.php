@@ -37,12 +37,22 @@ final class RequestLog
     private static bool $started = false;
     public static ?string $dir = null;
 
+    /** @var array{iteracoes:int,linhas_lidas:int}|null One field for a /api/busca: integers only, no filter values. */
+    private static ?array $busca = null;
+
+    /** @param int $iteracoes listing queries (0–4) @param int $linhasLidas candidate rows examined */
+    public static function setBusca(int $iteracoes, int $linhasLidas): void
+    {
+        self::$busca = ['iteracoes' => $iteracoes, 'linhas_lidas' => $linhasLidas];
+    }
+
     public static function start(string $path, string $method, array $body): string
     {
         if (self::$started) {
             return (string) self::$requestId;
         }
         self::$started = true;
+        self::$busca = null;
         self::$start = microtime(true);
         require_once __DIR__ . '/ActivityLog.php';
         self::$requestId = ActivityLog::accessEventId();
@@ -52,7 +62,7 @@ final class RequestLog
         $query = $_GET;
         register_shutdown_function(static function () use ($path, $method, $body, $query): void {
             try {
-                self::write([
+                $entry = [
                     'ts' => date('c'),
                     'request_id' => self::$requestId,
                     'method' => $method,
@@ -64,7 +74,11 @@ final class RequestLog
                     'user_agent' => LogPrivacy::userAgent((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
                     'query' => self::queryForLog($path, $query),
                     'body' => self::bodyForLog($body),
-                ]);
+                ];
+                if (self::$busca !== null) {
+                    $entry['busca'] = self::$busca;
+                }
+                self::write($entry);
             } catch (Throwable) {
                 // Log nunca pode derrubar a requisição; sinaliza sem dados.
                 self::$writeFailures++;

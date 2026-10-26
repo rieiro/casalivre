@@ -74,7 +74,13 @@ $antes = [
     'csp_header',
 ];
 t_eq(67, count($antes), 'lista do develop tem 67 funções');
+// search_filters_from_query: pages use SearchQuery::fromRequest()/filters()/searched().
+$removidas = ['search_filters_from_query'];
 foreach ($antes as $fn) {
+    if (in_array($fn, $removidas, true)) {
+        t_ok(!function_exists($fn), $fn . ' foi removida');
+        continue;
+    }
     t_ok(function_exists($fn), $fn . ' continua definida');
 }
 $definidas = [];
@@ -95,7 +101,7 @@ sort($definidas);
 // safe_local_return: redirect seguro do /idioma (#72).
 // oversize_upload_message: frase do 413 de upload, compartilhada com o char_snapshot_test (#111).
 $adicionadas = ['asset_url', 'oversize_upload_message', 'require_admin', 'safe_local_return'];
-$esperadas = array_merge($antes, $adicionadas);
+$esperadas = array_values(array_diff(array_merge($antes, $adicionadas), $removidas));
 sort($esperadas);
 t_eq($esperadas, $definidas, 'mesmo conjunto de funções, sem duplicatas nem extras');
 t_done();
