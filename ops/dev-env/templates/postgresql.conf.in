@@ -2,3 +2,5 @@
 # Só socket Unix (sem TCP); o diretório é 0700.
 listen_addresses = ''
 unix_socket_directories = '${CL_HOME}/run'
+# SSD / cached, so the planner picks idx_prop_place_active over a primary-key walk for dense places; evidence PR #218 plans.
+random_page_cost = 1.1

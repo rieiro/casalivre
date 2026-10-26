@@ -2,6 +2,7 @@
 // ADR 001 first slice (SCHEMA 21): places + place_search_keys replace cities, properties.city becomes
 // city_place_id, and CityRepository match/suggest still resolve a city name.
 // SCHEMA 22: bairros OpenCEP (database/places_neighborhoods.json.bz2) e places_city_uf_uk.
+// SCHEMA 23: idx_prop_latlng_active (lat, lng) WHERE status = 'active' replaces unused gist idx_prop_geo_active.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
@@ -11,7 +12,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(22, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 22');
+t_eq(23, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 23');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -26,13 +27,14 @@ t_ok($pdo->query("SELECT to_regclass('public.places')")->fetchColumn() === 'plac
 t_ok($pdo->query("SELECT to_regclass('public.place_search_keys')")->fetchColumn() === 'place_search_keys', 'tabela place_search_keys');
 t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'idx_properties_city'")->fetchColumn(), 'sem idx_properties_city');
 t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'places_root_uk'")->fetchColumn(), 'sem places_root_uk (homônimos do cities.json)');
+t_eq(false, $pdo->query("SELECT 1 FROM pg_indexes WHERE indexname = 'idx_prop_geo_active'")->fetchColumn(), 'sem idx_prop_geo_active');
 $defs = [];
-foreach ($pdo->query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_places_name_fold', 'idx_prop_place_active', 'idx_prop_geo_active', 'place_search_keys_pkey', 'places_child_uk', 'places_city_uf_uk', 'idx_properties_status')") as $row) {
+foreach ($pdo->query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_places_name_fold', 'idx_prop_place_active', 'idx_prop_latlng_active', 'place_search_keys_pkey', 'places_child_uk', 'places_city_uf_uk', 'idx_properties_status')") as $row) {
     $defs[$row['indexname']] = $row['indexdef'];
 }
 t_ok(isset($defs['idx_places_name_fold']) && str_contains($defs['idx_places_name_fold'], 'name_fold'), 'idx_places_name_fold');
 t_ok(isset($defs['idx_prop_place_active']) && str_contains($defs['idx_prop_place_active'], 'INCLUDE (max_guests)') && str_contains($defs['idx_prop_place_active'], "status = 'active'"), 'idx_prop_place_active parcial com INCLUDE');
-t_ok(isset($defs['idx_prop_geo_active']) && str_contains($defs['idx_prop_geo_active'], 'gist') && str_contains($defs['idx_prop_geo_active'], 'point(lng, lat)'), 'idx_prop_geo_active');
+t_ok(isset($defs['idx_prop_latlng_active']) && str_contains($defs['idx_prop_latlng_active'], 'btree') && str_contains($defs['idx_prop_latlng_active'], '(lat, lng)') && str_contains($defs['idx_prop_latlng_active'], "status = 'active'"), 'idx_prop_latlng_active btree (lat, lng) parcial');
 t_ok(isset($defs['place_search_keys_pkey']) && str_contains($defs['place_search_keys_pkey'], 'INCLUDE (popularity)'), 'PK de place_search_keys com INCLUDE (popularity)');
 t_ok(isset($defs['places_child_uk']), 'places_child_uk');
 t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'], 'UNIQUE') && str_contains($defs['places_city_uf_uk'], 'uf') && str_contains($defs['places_city_uf_uk'], 'name_fold') && str_contains($defs['places_city_uf_uk'], "type = 'city'"), 'places_city_uf_uk');
@@ -40,7 +42,7 @@ t_ok(isset($defs['idx_properties_status']), 'idx_properties_status permanece (fo
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('22', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 22');
+t_eq('23', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 23');
 
 echo "seed\n";
 $cityUk = [];
