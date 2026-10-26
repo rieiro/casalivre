@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/GrupoResolvedor.php';
 require_once __DIR__ . '/SearchQuery.php';
 require_once __DIR__ . '/SearchSql.php';
+require_once __DIR__ . '/CityRepository.php';
 require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/helpers.php';
@@ -17,7 +18,7 @@ final class SearchService
     public const MAX_QUERIES = 4;
 
     /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int}
+     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
      */
     public static function search(SearchQuery $query, mixed $host, bool $log = false, ?int $afterId = null): array
     {
@@ -34,7 +35,7 @@ final class SearchService
     }
 
     /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,iteracoes:int,linhas_lidas:int,place_id:?int}
+     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int,place_id:?int}
      */
     private static function find(SearchQuery $query, mixed $host, ?int $afterId): array
     {
@@ -46,6 +47,8 @@ final class SearchService
             'next_cursor' => null,
             'total_aprox' => null,
             'unresolved' => false,
+            'resolution' => null,
+            'options' => [],
             'iteracoes' => 0,
             'linhas_lidas' => 0,
             'place_id' => null,
@@ -53,11 +56,7 @@ final class SearchService
         if (!$query->searched()) {
             return $out;
         }
-        $place = $query->localidade !== '' ? CityRepository::match($query->localidade) : null;
-        if ($query->localidade !== '' && $place === null) {
-            $out['unresolved'] = true;
-            return $out;
-        }
+        $place = self::place($query, $out);
         if ($place === null) {
             return $out;
         }
@@ -124,6 +123,35 @@ final class SearchService
             $out['next_cursor'] = SearchQuery::cursor($after, $query->filtersHash());
         }
         return $out;
+    }
+
+    /**
+     * The one place to search, or null when there is nothing to list.
+     * Text with 0, 2–8 or 9+ hits sets unresolved and does not run a listing query.
+     *
+     * @param array{unresolved:bool,resolution:?string,options:list<array>} $out
+     */
+    private static function place(SearchQuery $query, array &$out): ?array
+    {
+        if ($query->localId !== null) {
+            $place = $query->localId > 0 ? CityRepository::byId($query->localId) : null;
+            if ($place === null) {
+                $out['unresolved'] = true;
+                $out['resolution'] = 'not_found';
+            }
+            return $place;
+        }
+        if ($query->localidade === '') {
+            return null;
+        }
+        $resolved = CityRepository::resolve($query->localidade);
+        if ($resolved['place'] === null) {
+            $out['unresolved'] = true;
+            $out['resolution'] = $resolved['resolution'];
+            $out['options'] = $resolved['options'];
+            return null;
+        }
+        return $resolved['place'];
     }
 
     /** @return int|null|false null = no group filter; false = the requested group does not resolve */

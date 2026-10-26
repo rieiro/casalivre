@@ -5,6 +5,7 @@ declare(strict_types=1);
 if (!class_exists('JsonCache', false)) {
     require_once __DIR__ . '/JsonCache.php';
 }
+require_once dirname(__DIR__, 2) . '/src/helpers/geo.php';
 
 final class CityRepository
 {
@@ -15,18 +16,6 @@ final class CityRepository
      */
     private const NEIGHBORHOOD_COUNT = 61543;
 
-    /**
-     * Nomes alternativos (dobrados) que match() resolve para "name_fold, uf" da cidade oficial. O alias
-     * nunca é exibido nem vira linha em places; não há busca por sufixo, para "Cabo" não achar Arraial do Cabo.
-     */
-    private const ALIASES = [
-        'buzios' => 'armacao dos buzios, rj',
-        'buzios, rj' => 'armacao dos buzios, rj',
-    ];
-
-    /** Cópia em processo de storage/cache/cities.json. Some depois de recriar as cidades, para um id de outro banco não ficar. */
-    private static ?array $citiesCache = null;
-
     public static function ensure(PDO $pdo): void
     {
         $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
@@ -34,8 +23,7 @@ final class CityRepository
             self::ensureNeighborhoods($pdo);
             return;
         }
-        $path = dirname(__DIR__, 2) . '/database/cities.json';
-        $rows = json_decode((string) file_get_contents($path), true);
+        $rows = self::readJson('database/cities.json');
         if (!is_array($rows)) {
             return;
         }
@@ -49,10 +37,33 @@ final class CityRepository
             }
             self::seedPilot($pdo);
             self::seedNeighborhoods($pdo);
+            self::seedAliases($pdo);
         });
         // O reseed troca os ids. O cache cities.json de outro banco não pode sobreviver.
-        self::$citiesCache = null;
         JsonCache::delete('cities.json');
+    }
+
+    private static function readJson(string $relativePath): mixed
+    {
+        $path = dirname(__DIR__, 2) . '/' . $relativePath;
+        return json_decode((string) file_get_contents($path), true);
+    }
+
+    /** @return array{id:int,popularity:int}|null */
+    private static function cityRow(PDO $pdo, string $nameFold, string $uf): ?array
+    {
+        static $bound = null;
+        static $stmt = null;
+        if ($bound !== $pdo) {
+            $bound = $pdo;
+            $stmt = $pdo->prepare(self::CITY_SQL);
+        }
+        $stmt->execute([$nameFold, $uf]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+        return ['id' => (int) $row['id'], 'popularity' => (int) $row['popularity']];
     }
 
     /** Cidades já semeadas: carrega bairros só se a contagem ainda não chegou no artefato. */
@@ -122,14 +133,12 @@ final class CityRepository
             ['name' => 'Praia da Ferradura', 'parent' => 'Armação dos Búzios', 'uf' => 'RJ', 'lat' => -22.7712, 'lng' => -41.8848],
             ['name' => 'Praia do Forte', 'parent' => 'Mata de São João', 'uf' => 'BA', 'lat' => -12.5766, 'lng' => -38.0002],
         ];
-        $parent = $pdo->prepare("SELECT id FROM places WHERE type = 'city' AND name_fold = ? AND uf = ? ORDER BY id LIMIT 1");
         foreach ($pilots as $poi) {
-            $parent->execute([fold($poi['parent']), $poi['uf']]);
-            $parentId = $parent->fetchColumn();
-            if ($parentId === false) {
+            $parent = self::cityRow($pdo, fold($poi['parent']), $poi['uf']);
+            if ($parent === null) {
                 continue;
             }
-            self::insertPlace($pdo, 'poi', (int) $parentId, $poi['name'], $poi['name'], $poi['uf'], $poi['lat'], $poi['lng'], 100);
+            self::insertPlace($pdo, 'poi', $parent['id'], $poi['name'], $poi['name'], $poi['uf'], $poi['lat'], $poi['lng'], 100);
         }
     }
 
@@ -142,7 +151,6 @@ final class CityRepository
     private static function seedNeighborhoods(PDO $pdo): void
     {
         $rows = self::neighborhoodRows();
-        $parent = $pdo->prepare("SELECT id FROM places WHERE type = 'city' AND uf = ? AND name_fold = ?");
         $parents = [];
         $taken = [];
         foreach ($pdo->query("SELECT parent_id, name_fold FROM places WHERE type = 'neighborhood' AND parent_id IS NOT NULL") as $existing) {
@@ -159,9 +167,8 @@ final class CityRepository
             }
             $pkey = $parentUf . "\0" . $parentFold;
             if (!array_key_exists($pkey, $parents)) {
-                $parent->execute([$parentUf, $parentFold]);
-                $id = $parent->fetchColumn();
-                $parents[$pkey] = $id === false ? null : (int) $id;
+                $city = self::cityRow($pdo, $parentFold, $parentUf);
+                $parents[$pkey] = $city === null ? null : $city['id'];
             }
             $parentId = $parents[$pkey];
             if ($parentId === null) {
@@ -187,6 +194,25 @@ final class CityRepository
                 $row['lng'] ?? 0,
                 (int) ($row['popularity'] ?? 0)
             );
+        }
+    }
+
+    /**
+     * Alias rows from database/city_aliases.json. Upsert on the name-suffix key: the same (key, place_id)
+     * stays one row and becomes kind alias. Name-suffix keys stay autocomplete-only.
+     */
+    private static function seedAliases(PDO $pdo): void
+    {
+        $rows = self::readJson('database/city_aliases.json');
+        $upsert = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'alias\', ?) ON CONFLICT ("key", place_id) DO UPDATE SET kind = \'alias\'');
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $uf = (string) $row['uf'];
+            $city = self::cityRow($pdo, fold($name), $uf);
+            if ($city === null) {
+                throw new RuntimeException("Alias sem cidade: $name/$uf");
+            }
+            $upsert->execute([$city['id'], fold((string) $row['key']), $city['popularity']]);
         }
     }
 
@@ -231,73 +257,227 @@ final class CityRepository
         return $rows;
     }
 
-    public static function suggest(string $query, int $limit = 8): array
+    /** Shared select list for place rows. uf is CHAR(2) and always two letters. */
+    private const PLACE_COLUMNS = 'id, name, label, type, uf, lat, lng';
+
+    /**
+     * ADR 001 §11.2 autocomplete. Inner scan reads only key, place_id and popularity
+     * (index-only on the PK). It does not read kind and does not order aliases first.
+     */
+    private const PREFIX_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM (
+    SELECT place_id, MAX(popularity) AS pop
+    FROM place_search_keys
+    WHERE key LIKE ? ESCAPE '\'
+    GROUP BY place_id
+    ORDER BY pop DESC, place_id
+    LIMIT 9
+) k
+JOIN places ON places.id = k.place_id
+ORDER BY k.pop DESC, id
+SQL;
+
+    private const ALIAS_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM place_search_keys k
+JOIN places ON places.id = k.place_id
+WHERE k.key = ? AND k.kind = 'alias' AND (? = '' OR uf = ?)
+LIMIT 2
+SQL;
+
+    // City first so LIMIT 9 cannot drop the only city behind same-name neighborhoods.
+    private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM places
+WHERE name_fold = ? AND (? = '' OR uf = ?)
+ORDER BY (type = 'city') DESC, popularity DESC, id
+LIMIT 9
+SQL;
+
+    // The known exact id (places.id is INTEGER; the caller already has that one row), plus any other
+    // type with this search key (Geribá the neighborhood and Praia de Geribá).
+    private const EXACT_OR_OTHER_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM places
+WHERE id IN (
+    SELECT CAST(? AS integer)
+    UNION
+    SELECT o.id FROM place_search_keys k JOIN places o ON o.id = k.place_id
+    WHERE k.key = ? AND o.type <> ? AND (? = '' OR o.uf = ?)
+)
+ORDER BY popularity DESC, id
+LIMIT 9
+SQL;
+
+    private const CITY_SQL = 'SELECT ' . self::PLACE_COLUMNS . ', popularity' . <<<'SQL'
+ FROM places
+WHERE type = 'city' AND name_fold = ? AND uf = ?
+SQL;
+
+    // UF binds come before ESCAPE '\': PDO drops placeholders that follow that quote.
+    private const NAME_PREFIX_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM places
+WHERE (? = '' OR uf = ?) AND name_fold LIKE ? ESCAPE '\'
+LIMIT 2
+SQL;
+
+    private const BY_ID_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+ FROM places
+WHERE id = ?
+SQL;
+
+    public static function suggest(string $query): array
     {
-        $fold = fold($query);
-        if (mb_strlen($fold) < 3) {
+        [$text] = self::splitPlaceQuery($query);
+        if (mb_strlen($text) < 2) {
             return [];
         }
-        $seen = [];
+        return self::options(self::prefixPlaces($text));
+    }
+
+    /** City by folded name and UF. */
+    public static function exactCity(string $name, string $uf): ?array
+    {
+        return self::placeRows(self::CITY_SQL, [fold($name), $uf])[0] ?? null;
+    }
+
+    public static function byId(int $id): ?array
+    {
+        return self::placeRows(self::BY_ID_SQL, [$id])[0] ?? null;
+    }
+
+    /**
+     * Submitted text, via the autocomplete query (fetch 9).
+     * 1 hit → place. 2–8 → did_you_mean. 9 → ambiguous (show 8). 0 → not_found.
+     * A unique alias resolves. Exactly one city with that exact name resolves, even
+     * when neighborhoods share it. Two cities with that name stay a list. A neighborhood
+     * or POI does not, when another type matches the same name or search key.
+     * A unique full-name prefix wins before the key list: word-suffix keys also match
+     * neighborhoods that merely contain the city name ("Rio de Jan" is one city).
+     *
+     * @return array{place:?array,resolution:?string,options:list<array>}
+     */
+    public static function resolve(string $query): array
+    {
+        $none = ['place' => null, 'resolution' => 'not_found', 'options' => []];
+        [$text, $uf] = self::splitPlaceQuery($query);
+        if ($text === '') {
+            return $none;
+        }
+        $alias = self::placeRows(self::ALIAS_SQL, [$text, $uf, $uf]);
+        if (count($alias) === 1) {
+            return self::found($alias[0]);
+        }
+        $exact = self::placeRows(self::NAME_EXACT_SQL, [$text, $uf, $uf]);
+        $cities = [];
+        $types = [];
+        foreach ($exact as $row) {
+            $types[$row['type']] = true;
+            if ($row['type'] === 'city') {
+                $cities[] = $row;
+            }
+        }
+        if (count($cities) === 1) {
+            return self::found($cities[0]);
+        }
+        if (count($exact) === 1) {
+            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$exact[0]['id'], $text, $exact[0]['type'], $uf, $uf]);
+            return count($group) === 1 ? self::found($group[0]) : self::choices($group);
+        }
+        if (count($cities) > 1 || count($types) > 1) {
+            return self::choices($exact);
+        }
+        if (mb_strlen($text) < 2) {
+            return $none;
+        }
+        if ($exact === []) {
+            $prefixed = self::placeRows(self::NAME_PREFIX_SQL, [$uf, $uf, self::likePrefix($text)]);
+            if (count($prefixed) === 1) {
+                return self::found($prefixed[0]);
+            }
+        }
+        $hits = self::prefixPlaces($text);
+        if (count($hits) === 1) {
+            return self::found($hits[0]);
+        }
+        if ($hits === []) {
+            return $none;
+        }
+        return self::choices($hits);
+    }
+
+    /** @param array{id:int,name:string,label:string,type:string,uf:string,lat:float,lng:float} $place */
+    private static function found(array $place): array
+    {
+        return ['place' => $place, 'resolution' => null, 'options' => []];
+    }
+
+    /** @param list<array> $hits @return array{place:null,resolution:string,options:list<array>} */
+    private static function choices(array $hits): array
+    {
+        return [
+            'place' => null,
+            'resolution' => count($hits) >= 9 ? 'ambiguous' : 'did_you_mean',
+            'options' => self::options($hits),
+        ];
+    }
+
+    /** @return array{0:string,1:string} folded name and optional UF */
+    private static function splitPlaceQuery(string $query): array
+    {
+        $fold = preg_replace('/\s+/', ' ', fold($query)) ?? '';
+        $fold = preg_replace('/\s*,\s*/', ', ', $fold) ?? $fold;
+        if (preg_match('/^(.+), ([a-z]{2})$/', $fold, $parts) === 1) {
+            return [$parts[1], strtoupper($parts[2])];
+        }
+        return [$fold, ''];
+    }
+
+    private static function likePrefix(string $text): string
+    {
+        return strtr($text, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']) . '%';
+    }
+
+    /** @return list<array> */
+    private static function prefixPlaces(string $text): array
+    {
+        return self::placeRows(self::PREFIX_SQL, [self::likePrefix($text)]);
+    }
+
+    /** @param list<int|string> $params @return list<array> */
+    private static function placeRows(string $sql, array $params): array
+    {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
         $rows = [];
-        foreach (self::list() as $row) {
-            if (!str_starts_with((string) $row['name_fold'], $fold)) {
-                continue;
-            }
-            $key = $row['name'] . '|' . $row['uf'];
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
+        foreach ($stmt->fetchAll() as $row) {
             $rows[] = [
-                'text' => $row['name'] . ', ' . $row['uf'],
-                'name' => $row['name'],
-                'uf' => $row['uf'],
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'label' => (string) $row['label'],
+                'type' => (string) $row['type'],
+                'uf' => (string) $row['uf'],
+                'lat' => (float) $row['lat'],
+                'lng' => (float) $row['lng'],
             ];
-            if (count($rows) >= $limit) {
-                break;
-            }
         }
         return $rows;
     }
 
-    public static function match(string $query): ?array
+    /** @param list<array> $hits @return list<array> */
+    private static function options(array $hits): array
     {
-        $fold = fold($query);
-        if ($fold === '') {
-            return null;
-        }
-        $fold = self::ALIASES[preg_replace('/\s*,\s*/', ', ', $fold)] ?? $fold;
-        if (preg_match('/^(.+),\s*([a-z]{2})$/', $fold, $parts)) {
-            foreach (self::list() as $row) {
-                if ($row['name_fold'] === $parts[1] && strtolower((string) $row['uf']) === $parts[2]) {
-                    return $row;
-                }
-            }
-        }
-        $hits = [];
-        foreach (self::list() as $row) {
-            if ($row['label_fold'] === $fold || $row['name_fold'] === $fold) {
-                $hits[] = $row;
-            }
-        }
-        if (count($hits) === 1) {
-            return $hits[0];
-        }
-        foreach ($hits as $row) {
-            if ($row['label_fold'] === $fold) {
-                return $row;
-            }
-        }
-        return null;
+        return array_map(self::option(...), array_slice($hits, 0, 8));
     }
 
-    public static function random(): array
+    /** @param array{id:int,name:string,label:string,type:string,uf:string} $place */
+    private static function option(array $place): array
     {
-        $cities = self::list();
-        if (!$cities) {
-            throw new RuntimeException('Nenhuma cidade no banco.');
-        }
-        return $cities[random_int(0, count($cities) - 1)];
+        return [
+            'id' => $place['id'],
+            'text' => place_label($place),
+            'name' => $place['name'],
+            'label' => $place['label'],
+            'type' => $place['type'],
+            'uf' => $place['uf'],
+        ];
     }
 
     public static function refresh(): array
@@ -306,8 +486,7 @@ final class CityRepository
         $cities = [];
         $seenStates = [];
         foreach (db()->query("SELECT id, name, uf, label, lat, lng, name_fold FROM places WHERE type = 'city' ORDER BY name, uf, id") as $row) {
-            $row['uf'] = rtrim((string) $row['uf']);
-            $row['label_fold'] = fold((string) $row['label']);
+            $row['uf'] = (string) $row['uf'];
             $cities[] = $row;
             $seenStates[$row['uf']] = self::STATES[$row['uf']] ?? $row['uf'];
         }
@@ -319,28 +498,6 @@ final class CityRepository
         $payload = ['states' => $states, 'cities' => $cities];
         JsonCache::write('cities.json', $payload, false);
         return $payload;
-    }
-
-    private static function list(): array
-    {
-        $data = self::cached();
-        return $data['cities'] ?? [];
-    }
-
-    private static function cached(): array
-    {
-        if (is_array(self::$citiesCache)) {
-            return self::$citiesCache;
-        }
-        $decoded = JsonCache::read('cities.json');
-        $first = is_array($decoded) ? ($decoded['cities'][0] ?? null) : null;
-        if (is_array($decoded) && isset($decoded['cities'], $decoded['states'])
-            && is_array($first) && isset($first['id'], $first['name_fold'], $first['label_fold'])) {
-            self::$citiesCache = $decoded;
-            return self::$citiesCache;
-        }
-        self::$citiesCache = self::refresh();
-        return self::$citiesCache;
     }
 
     private const STATES = [

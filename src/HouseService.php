@@ -6,6 +6,7 @@ require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/Rooms.php';
 require_once __DIR__ . '/PhotoStorage.php';
 require_once __DIR__ . '/PhotoRepository.php';
+require_once __DIR__ . '/CityRepository.php';
 
 final class HouseService
 {
@@ -61,7 +62,7 @@ final class HouseService
             ? (int) $input['calendar_months']
             : 6;
         $cleaningFee = array_key_exists('cleaning_fee', $input) ? parse_money((string) $input['cleaning_fee']) : 0;
-        $known = $place ? CityRepository::match($place['cep_city'] . ', ' . $place['cep_uf']) : null;
+        $known = $place ? CityRepository::exactCity($place['cep_city'], $place['cep_uf']) : null;
         if (!$place) {
             return ['error' => t('err.cep')];
         }
@@ -84,15 +85,9 @@ final class HouseService
         }
         $lat = (float) $known['lat'];
         $lng = (float) $known['lng'];
-        $city = $known['name'] . ', ' . $known['uf'];
         $lat += (float) ($input['lat_offset'] ?? 0);
         $lng += (float) ($input['lng_offset'] ?? 0);
-        $sameCity = $current && (
-            $current['city'] === $city
-            || fold((string) $current['city']) === fold((string) $known['name'])
-            || fold((string) $current['city']) === fold((string) $known['label'])
-            || fold((string) $current['city']) === fold($city)
-        );
+        $sameCity = $current && (int) $current['city_place_id'] === (int) $known['id'];
         if ($sameCity && ($input['lat_offset'] ?? '') === '' && ($input['lng_offset'] ?? '') === '') {
             $lat = (float) $current['lat'];
             $lng = (float) $current['lng'];
@@ -112,7 +107,7 @@ final class HouseService
             'title' => $title,
             'description' => $description,
             'summary' => summary_from($description, 45),
-            'city' => $city,
+            'city_place_id' => (int) $known['id'],
             'address' => $address,
             'cep' => $place['cep'],
             'street' => $place['street'],

@@ -19,6 +19,8 @@ function snap_norm(string $s, array $fixos = []): string
         $s = str_replace($de, $para, $s);
     }
     $s = preg_replace('#https?://127\.0\.0\.1:\d+#', 'http://APP', $s);
+    $s = preg_replace('/local_id=\d+/', 'local_id=<ID>', $s);
+    $s = preg_replace('/(name="local_id" value=")\d+"/', '$1<ID>"', $s);
     $s = preg_replace('/(name="_csrf" value=")[0-9a-f]+/', '$1<CSRF>', $s);
     $s = preg_replace('/("csrf":")[0-9a-f]+/', '$1<CSRF>', $s);
     $s = preg_replace('/(nonce=["\']?|\'nonce-)[A-Za-z0-9+\/=_-]{8,}/', '$1<NONCE>', $s);
@@ -91,7 +93,7 @@ $userId = UserRepository::insert([
 ]);
 $houseId = HouseRepository::insert([
     'user_id' => $userId, 'title' => 'Casa Snapshot na Lagoa', 'description' => 'Casa ampla para caracterização do tema, com varanda e vista para a lagoa. Texto fixo do snapshot.',
-    'summary' => 'Casa ampla para caracterização do tema', 'city' => 'Florianópolis, SC', 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',
+    'summary' => 'Casa ampla para caracterização do tema', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',
     'street' => 'Rua Bocaiúva', 'address_number' => '1', 'address_complement' => '', 'lat' => -27.5960, 'lng' => -48.5480,
     'bedrooms' => 2, 'beds' => 3, 'max_guests' => 4, 'nightly_price' => 250, 'checkin_time' => '15:00',
     'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 1, 'bbq' => 0, 'garage' => 1,
@@ -116,7 +118,7 @@ $paginas = [
 $assets = [];
 $csp = [];
 foreach ($paginas as $nome => $path) {
-    $r = t_http('GET', $base . $path, null, [], $jar);
+    $r = t_http('GET', $base . $path, null, [], $jar, str_contains($path, 'localidade='));
     echo "$nome\n";
     snap("html-$nome", snap_headers($r) . "\n" . snap_norm($r['body'], $fixos));
     preg_match_all('#(?:src|href)="(/assets/[^"]+)"#', $r['body'], $m);

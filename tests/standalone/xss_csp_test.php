@@ -38,7 +38,7 @@ t_ok(Db::SCHEMA_VERSION >= 4, 'SCHEMA_VERSION >= 4 (err.field_type/js.* semeados
 
 echo "header CSP\n";
 foreach (['/', '/entrar', '/busca?localidade=Florian%C3%B3polis', '/imoveis/' . $owner['hash'], '/api/busca?localidade=x'] as $path) {
-    $r = t_http('GET', $base . $path);
+    $r = t_http('GET', $base . $path, null, [], null, str_contains($path, 'localidade='));
     t_ok(stripos($r['headers'], $csp) !== false, "CSP presente em $path");
 }
 
@@ -47,7 +47,7 @@ $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $pages = ['/', '/entrar', '/cadastro', '/busca?localidade=Florian%C3%B3polis', '/imoveis/' . $owner['hash'], '/painel',
     '/imoveis/novo', '/imoveis/' . $owner['hash'] . '/editar', '/imoveis/' . $owner['hash'] . '/calendario', '/conta'];
 foreach ($pages as $path) {
-    $r = t_http('GET', $base . $path, null, [], $jar);
+    $r = t_http('GET', $base . $path, null, [], $jar, str_contains($path, 'localidade='));
     $body = $r['body'];
     preg_match_all('/<script\b([^>]*)>/i', $body, $m);
     $inline = array_filter($m[1], static fn (string $a) => !str_contains($a, 'src=') && !str_contains($a, 'application/json'));
@@ -84,7 +84,7 @@ t_eq('Casa Teste', HouseRepository::find($owner['house_id'])['title'], 'imóvel 
 echo "sem caminho Google (mesmo com GOOGLE_MAPS_API_KEY no ambiente)\n";
 putenv('GOOGLE_MAPS_API_KEY=chave-que-nao-deve-ser-usada');
 $baseEnv = t_server();
-$r = t_http('GET', $baseEnv . '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'));
+$r = t_http('GET', $baseEnv . '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'), null, [], null, true);
 t_ok(stripos($r['headers'], $csp) !== false, 'CSP continua estrita com a variável no ambiente');
 t_ok(!str_contains($r['body'], 'chave-que-nao-deve-ser-usada') && !str_contains($r['body'], 'data-key'), 'página do mapa sem chave/data-key');
 putenv('GOOGLE_MAPS_API_KEY');

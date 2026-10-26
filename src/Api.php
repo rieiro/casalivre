@@ -182,7 +182,7 @@ function handle_api(string $path, string $method): void
         if (!$row || trim((string) $row['street']) === '') {
             api_error(404, 'CEP não encontrado ou sem rua cadastrada.');
         }
-        $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
+        $known = CityRepository::exactCity((string) $row['city'], (string) $row['uf']);
         json_out(200, [
             'cep' => $row['cep'],
             'street' => $row['street'],
@@ -329,6 +329,8 @@ function handle_api(string $path, string $method): void
         ];
         if ($result['unresolved']) {
             $payload['unresolved'] = true;
+            $payload['resolution'] = $result['resolution'];
+            $payload['options'] = $result['options'];
         }
         json_out(200, $payload);
     }

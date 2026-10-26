@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Redact.php';
 require_once __DIR__ . '/LogPrivacy.php';
+require_once __DIR__ . '/SearchQuery.php';
 
 /**
  * Log estruturado por requisição da API (JSON por linha), gravado localmente.
@@ -175,9 +176,10 @@ final class RequestLog
         return $out;
     }
 
-    /** Query keys whose value may be stored. Free-text `q` and `localidade` are name-only (value null). */
+    /** Query keys whose value may be stored. Free-text `q` and `localidade` are name-only (value null).
+     *  `local_id` is stored only as a positive int4; any other value is omitted (queryForLog). */
     public const QUERY_VALUE_ALLOWLIST = [
-        'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
+        'local_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
         'score_min', 'amenidade', 'pagina', 'ordem', 'locale', 'cal_view',
     ];
 
@@ -197,6 +199,13 @@ final class RequestLog
         foreach ($query as $key => $value) {
             $key = (string) $key;
             if (preg_match('/^[A-Za-z0-9_.\-\[\]]{1,40}$/', $key) !== 1) {
+                continue;
+            }
+            if ($key === 'local_id' && $allow !== []) {
+                $id = SearchQuery::positiveInt4($value);
+                if ($id !== null) {
+                    $out[$key] = $id;
+                }
                 continue;
             }
             $out[$key] = in_array($key, $allow, true) ? self::mask($value) : null;

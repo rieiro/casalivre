@@ -100,7 +100,7 @@ sort($definidas);
 // asset_url saiu de src/AssetManifest.php para src/helpers/url.php (Sprint 3, Etapa 1; Revisor do #54).
 // safe_local_return: redirect seguro do /idioma (#72).
 // oversize_upload_message: frase do 413 de upload, compartilhada com o char_snapshot_test (#111).
-$adicionadas = ['asset_url', 'oversize_upload_message', 'require_admin', 'safe_local_return'];
+$adicionadas = ['asset_url', 'oversize_upload_message', 'place_label', 'require_admin', 'safe_local_return'];
 $esperadas = array_values(array_diff(array_merge($antes, $adicionadas), $removidas));
 sort($esperadas);
 t_eq($esperadas, $definidas, 'mesmo conjunto de funções, sem duplicatas nem extras');

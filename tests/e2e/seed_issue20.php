@@ -19,6 +19,7 @@ require_once $root . '/src/UserRepository.php';
 require_once $root . '/src/HouseRepository.php';
 require_once $root . '/src/helpers.php';
 require_once $root . '/src/Rooms.php';
+require_once $root . '/tests/standalone/lib.php';
 db()->exec("INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES ('88015200', 'Rua Bocaiúva', 'Centro', 'Florianópolis', 'SC') ON CONFLICT DO NOTHING");
 $email = 'dono.issue20@casalivre.test';
 $password = 'Casa#Issue20';
@@ -28,9 +29,10 @@ $userId = UserRepository::insert([
     'email' => $email, 'password_hash' => password_make($password), 'status' => 'active', 'activated_at' => date('Y-m-d H:i:s'),
 ]);
 $rooms = [['beds' => [['type' => 'double', 'variant' => 'queen'], ['type' => 'single', 'variant' => 'common']]], ['beds' => [['type' => 'bunk', 'variant' => '']]]];
+$cityId = t_city_place_id('Florianópolis, SC');
 $houseId = HouseRepository::insert([
     'user_id' => $userId, 'title' => 'Casa da Lagoa', 'description' => 'Casa ampla perto da Lagoa da Conceição.',
-    'summary' => 'Casa ampla', 'city' => 'Florianópolis, SC', 'address' => 'Rua Bocaiúva, 10', 'cep' => '88015200',
+    'summary' => 'Casa ampla', 'city_place_id' => $cityId, 'address' => 'Rua Bocaiúva, 10', 'cep' => '88015200',
     'street' => 'Rua Bocaiúva', 'address_number' => '10', 'address_complement' => '', 'lat' => -27.59, 'lng' => -48.54,
     'bedrooms' => 2, 'beds' => 3, 'max_guests' => 5, 'nightly_price' => 350, 'checkin_time' => '15:00',
     'checkout_time' => '11:00', 'min_nights' => 2, 'pool' => 1, 'bbq' => 1, 'garage' => 0,

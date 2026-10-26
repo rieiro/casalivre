@@ -14,6 +14,15 @@ function compose_address(string $street, string $number, string $complement): st
     return implode(', ', $parts);
 }
 
+/** Display label shared by autocomplete options and the search/map field. */
+function place_label(?array $place, string $fallback = ''): string
+{
+    if ($place === null) {
+        return $fallback;
+    }
+    return $place['name'] . ', ' . $place['uf'];
+}
+
 function city_label_for_cep(string $cep): string
 {
     $digits = str_pad(preg_replace('/\D/', '', $cep) ?? '', 8, '0', STR_PAD_LEFT);
@@ -24,7 +33,7 @@ function city_label_for_cep(string $cep): string
     if (!$row || trim((string) $row['city']) === '') {
         return '';
     }
-    $known = CityRepository::match($row['city'] . ', ' . $row['uf']);
+    $known = CityRepository::exactCity((string) $row['city'], (string) $row['uf']);
     return (string) ($known['label'] ?? ($row['city'] . ', ' . $row['uf']));
 }
 

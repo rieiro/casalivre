@@ -1,6 +1,6 @@
 <?php
 // ADR 001 first slice (SCHEMA 21): places + place_search_keys replace cities, properties.city becomes
-// city_place_id, and CityRepository match/suggest still resolve a city name.
+// city_place_id, and CityRepository resolve/suggest still resolve a city name.
 // SCHEMA 22: bairros OpenCEP (database/places_neighborhoods.json.bz2) e places_city_uf_uk.
 // SCHEMA 23: idx_prop_latlng_active (lat, lng) WHERE status = 'active' replaces unused gist idx_prop_geo_active.
 require __DIR__ . '/lib.php';
@@ -52,13 +52,14 @@ foreach ($cities as $city) {
 t_eq(count($cityUk), (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn(), 'uma place city por (uf, name_fold)');
 t_eq(count($cities), count($cityUk), 'cities.json não repete (uf, name_fold)');
 t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city' AND rtrim(uf) = 'RJ' AND name_fold = 'armacao dos buzios'")->fetchColumn(), 'um só Armação dos Búzios/RJ');
-$buzios = CityRepository::match('Armação dos Búzios, RJ');
-t_eq('Armação dos Búzios', (string) ($buzios['name'] ?? ''), 'match do nome oficial de Armação dos Búzios');
+$buzios = CityRepository::resolve('Armação dos Búzios, RJ')['place'];
+t_eq('Armação dos Búzios', (string) ($buzios['name'] ?? ''), 'resolve do nome oficial de Armação dos Búzios');
 foreach (['Búzios', 'buzios', 'Búzios, RJ', 'BUZIOS,rj'] as $alias) {
-    t_eq((int) $buzios['id'], (int) (CityRepository::match($alias)['id'] ?? 0), "alias \"$alias\" resolve o mesmo place id de Armação dos Búzios");
+    t_eq((int) $buzios['id'], (int) (CityRepository::resolve($alias)['place']['id'] ?? 0), "alias \"$alias\" resolve o mesmo place id de Armação dos Búzios");
 }
-t_eq('Armação dos Búzios', (string) CityRepository::match('Búzios')['label'], 'rótulo exibido segue o oficial');
-t_eq(null, CityRepository::match('Búzios, SP'), 'alias só vale para RJ');
+t_eq('Armação dos Búzios', (string) CityRepository::resolve('Búzios')['place']['label'], 'rótulo exibido segue o oficial');
+t_eq(null, CityRepository::resolve('Búzios, SP')['place'], 'alias só vale para RJ');
+t_eq('alias', (string) $pdo->query("SELECT kind FROM place_search_keys WHERE \"key\" = 'buzios' AND place_id = " . (int) $buzios['id'])->fetchColumn(), 'chave buzios da cidade oficial é alias');
 t_eq(2, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi' AND parent_id = " . (int) $buzios['id'])->fetchColumn(), 'Geribá e Ferradura ficam sob a mesma cidade do alias');
 t_eq(3, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), '3 POIs piloto (Geribá, Ferradura, Praia do Forte)');
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), '61543 bairros OpenCEP');
@@ -89,14 +90,14 @@ t_eq(count($cityUk), (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type =
 t_eq(3, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), 'completar bairros mantém os 3 POIs');
 
 echo "CityRepository\n";
-$floripa = CityRepository::match('Florianópolis, SC');
-t_ok(is_array($floripa) && (int) ($floripa['id'] ?? 0) > 0, 'match Florianópolis, SC');
-t_eq('Florianópolis', (string) ($floripa['name'] ?? ''), 'match devolve o nome');
-t_eq('SC', (string) ($floripa['uf'] ?? ''), 'match devolve a UF');
-t_eq(null, CityRepository::match('Xyzabc'), 'match sem hit');
+$floripa = CityRepository::resolve('Florianópolis, SC')['place'];
+t_ok(is_array($floripa) && (int) ($floripa['id'] ?? 0) > 0, 'resolve Florianópolis, SC');
+t_eq('Florianópolis', (string) ($floripa['name'] ?? ''), 'resolve devolve o nome');
+t_eq('SC', (string) ($floripa['uf'] ?? ''), 'resolve devolve a UF');
+t_eq(null, CityRepository::resolve('Xyzabc')['place'], 'resolve sem hit');
 $sug = CityRepository::suggest('florianop');
 t_ok($sug !== [] && in_array('Florianópolis', array_column($sug, 'name'), true), 'suggest "florianop" inclui Florianópolis');
-t_eq([], CityRepository::suggest('fo'), 'suggest com menos de 3 letras continua vazio');
+t_eq([], CityRepository::suggest('f'), 'suggest com menos de 2 letras continua vazio');
 
 echo "imóvel\n";
 $owner = t_seed_owner();

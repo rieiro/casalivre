@@ -32,7 +32,7 @@ t_temp_db();
 $base = t_server();
 $urls = [];
 foreach (['/', '/busca', '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'), '/entrar'] as $page) {
-    $r = t_http('GET', $base . $page);
+    $r = t_http('GET', $base . $page, null, [], null, str_contains($page, 'localidade='));
     t_eq(csp_header(), (function () use ($r) {
         preg_match('/^Content-Security-Policy: (.+)$/mi', $r['headers'], $m);
         return trim($m[1] ?? '');

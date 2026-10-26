@@ -60,5 +60,32 @@ $r = t_http('POST', $base . '/entrar', http_build_query(['_csrf' => $csrf, 'emai
 t_eq(429, $r['status'], 'login web com IP bloqueado -> 429');
 t_ok(!preg_match('/^Location:/mi', $r['headers']), 'login web não redireciona para /painel');
 
+echo "local_id só entra no log como inteiro positivo\n";
+require_once CL_ROOT . '/src/RequestLog.php';
+t_eq(['local_id' => 42], RequestLog::queryForLog('/api/busca', ['local_id' => '42']), 'local_id válido vira inteiro');
+t_eq([], RequestLog::queryForLog('/api/busca', ['local_id' => 42]), 'local_id int não é string de query: omitido');
+t_eq(['local_id' => 2147483647], RequestLog::queryForLog('/api/busca', ['local_id' => '2147483647']), 'int4 máximo');
+foreach (['//evil.com', "%0d%0a", "\r\nSet-Cookie: x=1", '\\evil', '0', '-1', '01', '2147483648', '12abc', '1e2', ''] as $bad) {
+    $logged = RequestLog::queryForLog('/api/busca', ['local_id' => $bad, 'hospedes' => '2']);
+    t_eq(['hospedes' => '2'], $logged, 'local_id inválido omitido: ' . json_encode($bad));
+    if ($bad !== '') {
+        t_ok(!str_contains((string) json_encode($logged), $bad), 'string crua fora do log: ' . json_encode($bad));
+    }
+}
+t_eq(['hospedes' => '2'], RequestLog::queryForLog('/api/busca', ['local_id' => ['//evil.com'], 'hospedes' => '2']), 'local_id array é omitido');
+t_eq(['local_id' => null], RequestLog::queryForLog('/api/ceps', ['local_id' => '//evil.com']), '/api/ceps continua só com o nome da chave');
+
+$placeId = (int) db()->query("SELECT id FROM places WHERE type = 'city' AND name_fold = 'rio de janeiro' AND uf = 'RJ'")->fetchColumn();
+t_ok($placeId > 0, 'Rio de Janeiro existe');
+$r = t_http('GET', $base . '/api/busca?local_id=' . $placeId);
+$e = log_entry($logDir, $r['headers']);
+t_eq($placeId, $e['query']['local_id'] ?? null, 'HTTP: local_id válido gravado como inteiro');
+$evil = '//evil.com';
+$r = t_http('GET', $base . '/api/busca?local_id=' . rawurlencode($evil) . '&hospedes=2');
+$e = log_entry($logDir, $r['headers']);
+t_ok(is_array($e) && is_array($e['query'] ?? null) && !array_key_exists('local_id', $e['query']), 'HTTP: local_id inválido omitido');
+t_eq('2', $e['query']['hospedes'] ?? null, 'HTTP: hospedes permanece');
+t_ok(is_array($e) && !str_contains((string) json_encode($e), 'evil.com'), 'HTTP: a string crua não entra no log');
+
 @unlink($jar);
 t_done();

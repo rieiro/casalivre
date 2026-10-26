@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
-require_once __DIR__ . '/CityRepository.php';
 
 final class HouseRepository
 {
@@ -48,18 +47,14 @@ final class HouseRepository
         return $row;
     }
 
-    /** Resolves the city string still passed by forms and tests, or uses city_place_id when the caller already has it. */
+    /** city_place_id already resolved by the caller. */
     private static function cityPlaceId(array $house): int
     {
         $id = (int) ($house['city_place_id'] ?? 0);
         if ($id > 0) {
             return $id;
         }
-        $place = CityRepository::match((string) ($house['city'] ?? ''));
-        if (!$place || !isset($place['id'])) {
-            throw new RuntimeException('Cidade não encontrada.');
-        }
-        return (int) $place['id'];
+        throw new RuntimeException('Cidade não encontrada.');
     }
 
     private static function optionalPlaceId(array $house, string $key): ?int

@@ -1,6 +1,8 @@
 <?php
 $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' na plataforma
 $query = search_query($filters);
+$shown = !empty($filters['local_id']) ? CityRepository::byId((int) $filters['local_id']) : null;
+$placeLabel = place_label($shown, (string) ($filters['localidade'] ?? ''));
 $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
@@ -9,7 +11,7 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
 <section class="wrap search-page">
     <form class="search search-query" method="get" action="<?= e($base) ?>/busca">
         <label class="field"><?= e(t('home.place')) ?>
-            <input name="localidade" data-city-hints value="<?= e($filters['localidade']) ?>" required autocomplete="off">
+            <input name="localidade" data-city-hints value="<?= e($placeLabel) ?>" required autocomplete="off">
         </label>
         <label class="field"><?= e(t('home.checkin')) ?>
             <input name="checkin" data-stay-date="checkin" data-date-order="<?= e($dateOrder) ?>" value="<?= e($checkinValue) ?>" autocomplete="off">
@@ -38,7 +40,11 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
             </a>
             <form class="filters-panel" method="get" action="<?= e($base) ?>/busca">
                 <h2><?= e(t('home.filter_by')) ?></h2>
-                <input type="hidden" name="localidade" value="<?= e($filters['localidade']) ?>">
+<?php if (!empty($filters['local_id'])): ?>
+                <input type="hidden" name="local_id" value="<?= (int) $filters['local_id'] ?>">
+<?php else: ?>
+                <input type="hidden" name="localidade" value="<?= e((string) ($filters['localidade'] ?? '')) ?>">
+<?php endif; ?>
                 <input type="hidden" name="checkin" value="<?= e($filters['checkin']) ?>">
                 <input type="hidden" name="checkout" value="<?= e($filters['checkout']) ?>">
                 <input type="hidden" name="hospedes" value="<?= (int) $filters['hospedes'] ?: '' ?>">
@@ -93,7 +99,7 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
                 $page = min($pageCount, max(1, (int) ($_GET['pagina'] ?? 1)));
                 $results = array_slice($results, ($page - 1) * $perPage, $perPage);
                 ?>
-                <h1><?= e($filters['localidade'] !== '' ? $filters['localidade'] . ': ' : '') ?><?= $resultTotal ?> <?= e(t('home.found')) ?></h1>
+                <h1><?= e($placeLabel !== '' ? $placeLabel . ': ' : '') ?><?= $resultTotal ?> <?= e(t('home.found')) ?></h1>
                 <?php include __DIR__ . '/result_cards.php'; ?>
                 <?php if ($pageCount > 1): ?>
                     <nav class="pager" aria-label="<?= e(t('home.pages')) ?>">

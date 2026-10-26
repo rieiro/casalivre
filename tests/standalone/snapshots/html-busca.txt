@@ -56,14 +56,14 @@ X-Frame-Options: DENY
     </form>
     <div class="search-layout">
         <div class="search-side">
-            <a class="map-teaser" href="/busca/mapa?localidade=Florian%C3%B3polis%2C+SC&amp;checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0">
+            <a class="map-teaser" href="/busca/mapa?checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0&amp;local_id=<ID>">
                 <span class="map-tiles is-empty"></span>
                 <span class="map-pin" aria-hidden="true"></span>
                 <span class="map-open">Ver no mapa</span>
             </a>
             <form class="filters-panel" method="get" action="/busca">
                 <h2>Filtrar por</h2>
-                <input type="hidden" name="localidade" value="Florianópolis, SC">
+                <input type="hidden" name="local_id" value="<ID>">
                 <input type="hidden" name="checkin" value="">
                 <input type="hidden" name="checkout" value="">
                 <input type="hidden" name="hospedes" value="">

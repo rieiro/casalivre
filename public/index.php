@@ -360,6 +360,7 @@ if ($path === '/' && $method === 'GET') {
 if ($path === '/busca/mapa' && $method === 'GET') {
     // Página do mapa (MapLibre + PMTiles): só o esqueleto; os pins vêm de /api/busca no navegador (GeoJSON com
     // clusters). A busca é registrada uma vez, pela API; a página não roda a busca no servidor.
+    Redirect::toResolvedPlace('/busca/mapa');
     $search = SearchQuery::fromRequest($_GET);
     view('map', [
         'filters' => $search->pageFilters(),
@@ -370,6 +371,7 @@ if ($path === '/busca/mapa' && $method === 'GET') {
 
 if ($path === '/busca' && $method === 'GET') {
     // Resultados vêm da API (/api/busca). A view só monta o formulário e carrega via JS.
+    Redirect::toResolvedPlace('/busca');
     $search = SearchQuery::fromRequest($_GET);
     view('search', [
         'filters' => $search->pageFilters(),
@@ -413,6 +415,7 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
         return null;
     }
     if ($vSuffix === '/busca' || $vSuffix === '/busca/mapa') {
+        Redirect::toResolvedPlace($vBase . $vSuffix);
         $search = SearchQuery::fromRequest($_GET);
         view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
             'filters' => $search->pageFilters(), 'searched' => $search->searched(), 'use_api' => true, 'vitrine_api' => $vApi,

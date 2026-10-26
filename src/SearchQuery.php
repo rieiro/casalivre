@@ -15,6 +15,7 @@ final class SearchQuery
      */
     public function __construct(
         public readonly string $localidade,
+        public readonly ?int $localId,
         public readonly string $checkin,
         public readonly string $checkout,
         public readonly int $hospedes,
@@ -39,6 +40,7 @@ final class SearchQuery
             : null;
         return new self(
             trim((string) ($request['localidade'] ?? '')),
+            self::readLocalId($request),
             (string) ($request['checkin'] ?? ''),
             (string) ($request['checkout'] ?? ''),
             (int) ($request['hospedes'] ?? 0),
@@ -53,7 +55,25 @@ final class SearchQuery
 
     public function searched(): bool
     {
-        return $this->localidade !== '' || $this->checkin !== '' || $this->checkout !== '';
+        return $this->localId !== null || $this->localidade !== '' || $this->checkin !== '' || $this->checkout !== '';
+    }
+
+    /** A positive PostgreSQL int4 parsed from a digit string, or null. */
+    public static function positiveInt4(mixed $raw): ?int
+    {
+        return is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1 && (int) $raw <= self::LAST_ID_MAX
+            ? (int) $raw
+            : null;
+    }
+
+    /** Absent → null. Present and a positive int4 → that id. Present but unusable → 0. */
+    private static function readLocalId(array $request): ?int
+    {
+        if (!array_key_exists('local_id', $request) || $request['local_id'] === '') {
+            return null;
+        }
+        $raw = $request['local_id'];
+        return self::positiveInt4($raw) ?? 0;
     }
 
     /** Same keys the current search page and /api/busca clients already read. */
@@ -70,6 +90,10 @@ final class SearchQuery
             'score_min' => $this->scoreMin,
             'amenidades' => $this->amenidades,
         ];
+        if ($this->localId > 0) {
+            unset($filters['localidade']);
+            $filters['local_id'] = $this->localId;
+        }
         if ($this->grupo !== null) {
             $filters['grupo'] = $this->grupo;
         }
@@ -90,6 +114,7 @@ final class SearchQuery
         sort($amenidades);
         return hash('sha256', (string) json_encode([
             $this->localidade,
+            $this->localId,
             $this->checkin,
             $this->checkout,
             $this->hospedes,

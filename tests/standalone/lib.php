@@ -305,7 +305,7 @@ function t_server(): string
 }
 
 /** @return array{status: int, body: string, headers: string} */
-function t_http(string $method, string $url, ?string $body = null, array $headers = [], ?string $jar = null): array
+function t_http(string $method, string $url, ?string $body = null, array $headers = [], ?string $jar = null, bool $follow = false): array
 {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -315,6 +315,8 @@ function t_http(string $method, string $url, ?string $body = null, array $header
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_NOPROXY => '*',
+        CURLOPT_FOLLOWLOCATION => $follow,
+        CURLOPT_MAXREDIRS => 5,
     ]);
     if ($body !== null) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
@@ -326,7 +328,16 @@ function t_http(string $method, string $url, ?string $body = null, array $header
     $raw = (string) curl_exec($ch);
     $size = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    return ['status' => $status, 'headers' => substr($raw, 0, $size), 'body' => substr($raw, $size)];
+    $headers = substr($raw, 0, $size);
+    // FOLLOWLOCATION concatenates every hop. Callers that follow want the page they landed on.
+    if ($follow && $headers !== '') {
+        $blocks = preg_split("/\r\n\r\n/", rtrim($headers, "\r\n")) ?: [];
+        $headers = (string) end($blocks);
+        if ($headers !== '' && !str_ends_with($headers, "\n")) {
+            $headers .= "\r\n";
+        }
+    }
+    return ['status' => $status, 'headers' => $headers, 'body' => substr($raw, $size)];
 }
 
 /** API request-log row for the X-Request-Id in $headers, or null when the header or the line is missing. */
@@ -347,6 +358,18 @@ function log_entry(string $dir, string $headers): ?array
     return null;
 }
 
+/** Place id for a "Name, UF" fixture. Null when that city is not in places. */
+function t_city_place_id(string $label): ?int
+{
+    $comma = strrpos($label, ',');
+    if ($comma === false) {
+        return null;
+    }
+    require_once CL_ROOT . '/src/CityRepository.php';
+    $place = CityRepository::exactCity(substr($label, 0, $comma), trim(substr($label, $comma + 1)));
+    return $place === null ? null : (int) $place['id'];
+}
+
 /** Cria usuário ativo + imóvel no banco temporário (in-process). */
 function t_seed_owner(): array
 {
@@ -364,7 +387,7 @@ function t_seed_owner(): array
     ]);
     $houseId = HouseRepository::insert([
         'user_id' => $userId, 'title' => 'Casa Teste', 'description' => 'Descrição de teste do imóvel.',
-        'summary' => 'Resumo', 'city' => 'Florianópolis, SC', 'address' => 'Rua A, 1', 'cep' => '88000000',
+        'summary' => 'Resumo', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua A, 1', 'cep' => '88000000',
         'street' => 'Rua A', 'address_number' => '1', 'address_complement' => '', 'lat' => -27.59, 'lng' => -48.54,
         'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 200, 'checkin_time' => '15:00',
         'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0,
