@@ -16,11 +16,30 @@ final class CityRepository
      */
     private const NEIGHBORHOOD_COUNT = 61543;
 
+    /** OSM POIs in database/places_pois.json.bz2. ensure skips the file once the table has this many. */
+    private const POI_COUNT = 8030;
+
+    public const POI_ATTRIBUTION = '© OpenStreetMap contributors';
+
+    /** City popularity by "UF|name_fold". Every other city is 70. Neighborhoods stay 0. Produto 2026-10-25. */
+    private const CITY_POPULARITY_DEFAULT = 70;
+
+    private const CITY_POPULARITY = [
+        'AC|rio branco' => 80, 'AL|maceio' => 80, 'AP|macapa' => 80, 'AM|manaus' => 80, 'BA|salvador' => 80,
+        'CE|fortaleza' => 80, 'DF|brasilia' => 80, 'ES|vitoria' => 80, 'GO|goiania' => 80, 'MA|sao luis' => 80,
+        'MT|cuiaba' => 80, 'MS|campo grande' => 80, 'MG|belo horizonte' => 80, 'PA|belem' => 80, 'PB|joao pessoa' => 80,
+        'PR|curitiba' => 80, 'PE|recife' => 80, 'PI|teresina' => 80, 'RJ|rio de janeiro' => 80, 'RN|natal' => 80,
+        'RS|porto alegre' => 80, 'RO|porto velho' => 80, 'RR|boa vista' => 80, 'SC|florianopolis' => 80, 'SP|sao paulo' => 80,
+        'SE|aracaju' => 80, 'TO|palmas' => 80,
+        'RJ|cabo frio' => 81, 'RJ|armacao dos buzios' => 80, 'RJ|arraial do cabo' => 80, // Cabo Frio 81: 'cabo' ranks it first
+    ];
+
     public static function ensure(PDO $pdo): void
     {
         $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn();
         if ($count >= 5000) {
             self::ensureNeighborhoods($pdo);
+            self::ensurePois($pdo);
             return;
         }
         $rows = self::readJson('database/cities.json');
@@ -33,10 +52,22 @@ final class CityRepository
             $pdo->exec('DELETE FROM places WHERE parent_id IS NOT NULL');
             $pdo->exec('DELETE FROM places');
             foreach ($rows as $row) {
-                self::insertPlace($pdo, 'city', null, (string) $row['name'], (string) $row['label'], (string) $row['uf'], $row['lat'], $row['lng'], 0);
+                $uf = (string) $row['uf'];
+                $name = (string) $row['name'];
+                self::insertPlace(
+                    $pdo,
+                    'city',
+                    null,
+                    $name,
+                    (string) $row['label'],
+                    $uf,
+                    $row['lat'],
+                    $row['lng'],
+                    self::CITY_POPULARITY[$uf . '|' . fold($name)] ?? self::CITY_POPULARITY_DEFAULT
+                );
             }
-            self::seedPilot($pdo);
             self::seedNeighborhoods($pdo);
+            self::seedPois($pdo);
             self::seedAliases($pdo);
         });
         // O reseed troca os ids. O cache cities.json de outro banco não pode sobreviver.
@@ -79,26 +110,44 @@ final class CityRepository
     }
 
     /**
-     * Inserts one place and its name keys. Statements stay prepared for the PDO that first called this.
+     * Inserts one place, its name keys, and any alias keys. Airports key the name without the trailing
+     * IATA code; the stored name keeps it. Statements stay prepared for the PDO that first called this.
      *
      * @param int|float|string $lat
      * @param int|float|string $lng
+     * @param list<string> $aliases
      */
-    private static function insertPlace(PDO $pdo, string $type, ?int $parentId, string $name, string $label, string $uf, int|float|string $lat, int|float|string $lng, int $popularity): void
+    private static function insertPlace(PDO $pdo, string $type, ?int $parentId, string $name, string $label, string $uf, int|float|string $lat, int|float|string $lng, int $popularity, ?string $category = null, ?string $osmRef = null, ?string $wikidata = null, array $aliases = []): void
     {
         static $bound = null;
         static $insert = null;
         static $keyIns = null;
         if ($bound !== $pdo) {
             $bound = $pdo;
-            $insert = $pdo->prepare('INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id');
-            $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, \'name\', ?)');
+            $insert = $pdo->prepare('INSERT INTO places (type, parent_id, name, name_fold, label, uf, lat, lng, popularity, category, osm_ref, wikidata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id');
+            $keyIns = $pdo->prepare('INSERT INTO place_search_keys (place_id, "key", kind, popularity) VALUES (?, ?, ?, ?)');
         }
-        $insert->execute([$type, $parentId, $name, fold($name), $label, $uf, $lat, $lng, $popularity]);
+        $insert->execute([$type, $parentId, $name, fold($name), $label, $uf, $lat, $lng, $popularity, $category, $osmRef, $wikidata]);
         $id = (int) $insert->fetchColumn();
-        foreach (self::searchKeys($name) as $key) {
-            $keyIns->execute([$id, $key, $popularity]);
+        $seen = [];
+        foreach (self::searchKeys(self::keyName($name, $category)) as $key) {
+            $seen[$key] = true;
+            $keyIns->execute([$id, $key, 'name', $popularity]);
         }
+        foreach ($aliases as $alias) {
+            $key = preg_replace('/\s+/', ' ', fold($alias)) ?? '';
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $keyIns->execute([$id, $key, 'alias', $popularity]);
+        }
+    }
+
+    /** Display name keeps "Name (GRU)". Search keys use the name with that suffix removed. */
+    private static function keyName(string $name, ?string $category): string
+    {
+        return $category === 'airport' ? (preg_replace('/\s*\([A-Z]{3}\)$/', '', $name) ?? $name) : $name;
     }
 
     /**
@@ -125,23 +174,6 @@ final class CityRepository
         return array_values(array_unique($keys));
     }
 
-    /** Beaches named in the place spec (Geribá, Ferradura, Praia do Forte). Parents are cities from cities.json. */
-    private static function seedPilot(PDO $pdo): void
-    {
-        $pilots = [
-            ['name' => 'Praia de Geribá', 'parent' => 'Armação dos Búzios', 'uf' => 'RJ', 'lat' => -22.7783, 'lng' => -41.9164],
-            ['name' => 'Praia da Ferradura', 'parent' => 'Armação dos Búzios', 'uf' => 'RJ', 'lat' => -22.7712, 'lng' => -41.8848],
-            ['name' => 'Praia do Forte', 'parent' => 'Mata de São João', 'uf' => 'BA', 'lat' => -12.5766, 'lng' => -38.0002],
-        ];
-        foreach ($pilots as $poi) {
-            $parent = self::cityRow($pdo, fold($poi['parent']), $poi['uf']);
-            if ($parent === null) {
-                continue;
-            }
-            self::insertPlace($pdo, 'poi', $parent['id'], $poi['name'], $poi['name'], $poi['uf'], $poi['lat'], $poi['lng'], 100);
-        }
-    }
-
     /**
      * Bairros do artefato OpenCEP. parent_id vem de
      * SELECT id FROM places WHERE type='city' AND uf=? AND name_fold=?
@@ -150,11 +182,76 @@ final class CityRepository
      */
     private static function seedNeighborhoods(PDO $pdo): void
     {
-        $rows = self::neighborhoodRows();
+        self::seedUnderCity($pdo, 'neighborhood', self::neighborhoodRows(), static function (int $parentId, array $row) use ($pdo): void {
+            $name = (string) $row['name'];
+            self::insertPlace(
+                $pdo,
+                'neighborhood',
+                $parentId,
+                $name,
+                (string) ($row['label'] ?? $name),
+                (string) ($row['uf'] ?? $row['parent_uf']),
+                $row['lat'] ?? 0,
+                $row['lng'] ?? 0,
+                (int) ($row['popularity'] ?? 0)
+            );
+        });
+    }
+
+    /** POIs OSM (database/places_pois.json.bz2). Same parent lookup and places_child_uk skip as the neighborhoods. */
+    private static function seedPois(PDO $pdo): void
+    {
+        self::seedUnderCity($pdo, 'poi', self::poiRows(), static function (int $parentId, array $row) use ($pdo): void {
+            $name = (string) $row['name'];
+            $aliases = $row['aliases'] ?? [];
+            if (isset($row['iata'])) {
+                $aliases[] = $row['iata'];
+            }
+            self::insertPlace(
+                $pdo,
+                'poi',
+                $parentId,
+                $name,
+                (string) $row['label'],
+                (string) $row['uf'],
+                $row['lat'],
+                $row['lng'],
+                (int) $row['popularity'],
+                (string) $row['category'],
+                (string) $row['osm_ref'],
+                isset($row['wikidata']) ? (string) $row['wikidata'] : null,
+                $aliases
+            );
+        });
+    }
+
+    /** Cidades já semeadas: carrega POIs só se a contagem ainda não chegou no artefato. */
+    private static function ensurePois(PDO $pdo): void
+    {
+        $count = (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn();
+        if ($count >= self::POI_COUNT) {
+            return;
+        }
+        Db::transactional($pdo, static function (PDO $pdo): void {
+            self::seedPois($pdo);
+        });
+    }
+
+    /**
+     * Children of a city (neighborhood or POI). Parent is the city with this uf + name_fold.
+     * A row with no city, an empty name, or a (parent, folded name) already stored is skipped.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @param callable(int, array<string, mixed>): void $insert
+     */
+    private static function seedUnderCity(PDO $pdo, string $type, array $rows, callable $insert): void
+    {
         $parents = [];
         $taken = [];
-        foreach ($pdo->query("SELECT parent_id, name_fold FROM places WHERE type = 'neighborhood' AND parent_id IS NOT NULL") as $existing) {
-            $taken[(int) $existing['parent_id'] . "\0" . $existing['name_fold']] = true;
+        $existing = $pdo->prepare("SELECT parent_id, name_fold FROM places WHERE type = ? AND parent_id IS NOT NULL");
+        $existing->execute([$type]);
+        foreach ($existing as $row) {
+            $taken[(int) $row['parent_id'] . "\0" . $row['name_fold']] = true;
         }
         foreach ($rows as $row) {
             if (!is_array($row)) {
@@ -183,17 +280,7 @@ final class CityRepository
                 continue;
             }
             $taken[$uk] = true;
-            self::insertPlace(
-                $pdo,
-                'neighborhood',
-                $parentId,
-                $name,
-                (string) ($row['label'] ?? $name),
-                (string) ($row['uf'] ?? $parentUf),
-                $row['lat'] ?? 0,
-                $row['lng'] ?? 0,
-                (int) ($row['popularity'] ?? 0)
-            );
+            $insert($parentId, $row);
         }
     }
 
@@ -219,9 +306,21 @@ final class CityRepository
     /** @return list<array<string, mixed>> */
     private static function neighborhoodRows(): array
     {
-        $path = dirname(__DIR__, 2) . '/database/places_neighborhoods.json.bz2';
+        return self::bz2JsonRows('places_neighborhoods.json.bz2', 'bairros');
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function poiRows(): array
+    {
+        return self::bz2JsonRows('places_pois.json.bz2', 'POIs');
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function bz2JsonRows(string $file, string $what): array
+    {
+        $path = dirname(__DIR__, 2) . '/database/' . $file;
         if (!is_file($path)) {
-            throw new RuntimeException("Arquivo de bairros ausente: $path");
+            throw new RuntimeException("Arquivo de $what ausente: $path");
         }
         if (!function_exists('bzopen')) {
             throw new RuntimeException(
@@ -248,11 +347,11 @@ final class CityRepository
         try {
             $rows = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
-            throw new RuntimeException("Arquivo de bairros inválido: $path", 0, $e);
+            throw new RuntimeException("Arquivo de $what inválido: $path", 0, $e);
         }
         unset($json);
         if (!is_array($rows)) {
-            throw new RuntimeException("Arquivo de bairros inválido: $path");
+            throw new RuntimeException("Arquivo de $what inválido: $path");
         }
         return $rows;
     }
@@ -261,22 +360,23 @@ final class CityRepository
     private const PLACE_COLUMNS = 'id, name, label, type, uf, lat, lng';
 
     /**
-     * ADR 001 §11.2 autocomplete. Inner scan reads only key, place_id and popularity
-     * (index-only on the PK). It does not read kind and does not order aliases first.
-     * %s is an optional UF join, filled in prefixPlaces(). The placeholder sits before ESCAPE.
+     * ADR 001 §11.2 autocomplete. The inner scan reads key, place_id, popularity and kind
+     * (index-only on the PK, which INCLUDE popularity and kind). An exact alias ranks
+     * before popularity. %s is an optional UF join, filled in prefixPlaces().
+     * Placeholders stay before ESCAPE: folded query, then the UF bind, then the LIKE.
      */
     private const PREFIX_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM (
-    SELECT k.place_id, MAX(k.popularity) AS pop
+    SELECT k.place_id, bool_or(k.kind = 'alias' AND k.key = ?) AS exact, MAX(k.popularity) AS pop
     FROM place_search_keys k
     %s
     WHERE k.key LIKE ? ESCAPE '\'
     GROUP BY k.place_id
-    ORDER BY pop DESC, k.place_id
+    ORDER BY exact DESC, pop DESC, k.place_id
     LIMIT 9
 ) k
 JOIN places ON places.id = k.place_id
-ORDER BY k.pop DESC, id
+ORDER BY k.exact DESC, k.pop DESC, id
 SQL;
 
     private const ALIAS_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
@@ -451,7 +551,8 @@ SQL;
     {
         $prefix = self::likePrefix($text);
         $join = $uf === '' ? '' : 'JOIN places p ON p.id = k.place_id AND p.uf = ?';
-        return self::placeRows(sprintf(self::PREFIX_SQL, $join), $uf === '' ? [$prefix] : [$uf, $prefix]);
+        // $text is the folded query (alias equality). $prefix is the escaped LIKE. UF sits between them, before ESCAPE.
+        return self::placeRows(sprintf(self::PREFIX_SQL, $join), $uf === '' ? [$text, $prefix] : [$text, $uf, $prefix]);
     }
 
     /** @param list<int|string> $params @return list<array> */

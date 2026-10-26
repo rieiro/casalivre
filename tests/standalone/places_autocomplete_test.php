@@ -16,7 +16,8 @@ echo "suggest SQL\n";
 $sql = (new ReflectionClass(CityRepository::class))->getReflectionConstant('PREFIX_SQL')->getValue();
 t_ok(is_string($sql) && str_contains($sql, 'MAX(k.popularity)') && str_contains($sql, 'GROUP BY k.place_id') && str_contains($sql, 'LIMIT 9'), 'suggest SQL is the §11.2 prefix scan');
 t_ok(str_contains($sql, "key LIKE ? ESCAPE '\\'"), 'prefix LIKE is escaped');
-t_ok(!str_contains($sql, 'kind'), 'suggest SQL does not read kind');
+t_ok(str_contains($sql, '%s'), 'one prefix SQL keeps the UF slot');
+t_ok(str_contains($sql, "bool_or(k.kind = 'alias' AND k.key = ?)") && str_contains($sql, 'ORDER BY exact DESC, pop DESC'), 'exact alias ranks before popularity');
 
 echo "aliases\n";
 $official = CityRepository::resolve('Armação dos Búzios, RJ')['place'];
@@ -54,9 +55,11 @@ t_eq([], $sao['items'], 'São não devolve imóveis');
 
 $mean = SearchService::search(SearchQuery::fromRequest(['localidade' => 'praia do f']), null);
 t_eq(true, $mean['unresolved'], 'praia do f não escolhe sozinho');
-t_eq('did_you_mean', $mean['resolution'], 'praia do f tem 2 a 8 hits');
-t_ok(in_array('Praia do Forte', array_column($mean['options'], 'name'), true), 'did you mean inclui Praia do Forte');
-t_eq(0, $mean['iteracoes'], 'did you mean não lista imóveis');
+t_eq('ambiguous', $mean['resolution'], 'praia do f tem 9 hits');
+t_eq(8, count($mean['options']), 'praia do f mostra 8 opções');
+t_eq('Praia do Forte', $mean['options'][0]['name'] ?? null, 'praia do f lista Praia do Forte primeiro');
+t_eq('BA', $mean['options'][0]['uf'] ?? null, 'a primeira Praia do Forte é a da Bahia');
+t_eq(0, $mean['iteracoes'], 'texto ambíguo não lista imóveis');
 
 $geriba = CityRepository::resolve('geriba');
 t_eq(null, $geriba['place'], 'geriba não escolhe um lugar');
@@ -69,15 +72,16 @@ t_eq(['neighborhood', 'poi'], $geribaTypes, 'geriba mistura bairro e poi');
 
 $forteRes = CityRepository::resolve('forte');
 t_eq(null, $forteRes['place'], 'forte não escolhe um lugar');
-t_eq('did_you_mean', $forteRes['resolution'], 'forte é did_you_mean');
-$forteNames = array_column($forteRes['options'], 'name');
-t_ok(in_array('Forte', $forteNames, true) && in_array('Praia do Forte', $forteNames, true), 'forte lista o bairro e a praia');
+t_eq('ambiguous', $forteRes['resolution'], 'forte tem 9 hits');
+t_eq('Praia do Forte', $forteRes['options'][0]['name'] ?? null, 'forte lista Praia do Forte primeiro');
+t_eq('BA', $forteRes['options'][0]['uf'] ?? null, 'a primeira Praia do Forte é a da Bahia');
 
 $centro = CityRepository::resolve('Centro');
 t_eq(null, $centro['place'], 'Centro não escolhe um lugar');
 t_eq('ambiguous', $centro['resolution'], 'Centro tem 9+ hits');
 t_eq(8, count($centro['options']), 'Centro mostra 8 opções');
-t_ok(in_array('Centro', array_column($centro['options'], 'name'), true), 'Centro lista o bairro');
+t_eq('Centro do Guilherme', $centro['options'][0]['name'] ?? null, 'Centro começa pela cidade Centro do Guilherme');
+t_eq('MA', $centro['options'][0]['uf'] ?? null, 'Centro do Guilherme é MA');
 
 $centroRj = CityRepository::resolve('Centro, RJ');
 $centroRjRows = $centroRj['place'] !== null ? [$centroRj['place']] : $centroRj['options'];

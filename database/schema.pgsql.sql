@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS places (
     bbox_n DOUBLE PRECISION,
     bbox_e DOUBLE PRECISION,
     popularity INTEGER NOT NULL DEFAULT 0,
+    category TEXT NULL CHECK (category IN (
+        'beach', 'waterfall', 'airport', 'national_park', 'protected_area', 'nature_reserve',
+        'park', 'lake', 'lagoon', 'bay', 'peak', 'theme_park', 'zoo', 'aquarium', 'viewpoint', 'monument', 'fort'
+    )),
+    osm_ref TEXT NULL,
+    wikidata TEXT NULL,
+    CHECK (type = 'poi' OR (category IS NULL AND osm_ref IS NULL AND wikidata IS NULL)),
     CHECK (lat BETWEEN -90 AND 90 AND lng BETWEEN -180 AND 180),
     CHECK (
         (bbox_s IS NULL AND bbox_w IS NULL AND bbox_n IS NULL AND bbox_e IS NULL)
@@ -86,7 +93,7 @@ CREATE TABLE IF NOT EXISTS place_search_keys (
     key TEXT COLLATE "C" NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('name', 'alias')),
     popularity INTEGER NOT NULL,
-    PRIMARY KEY (key, place_id) INCLUDE (popularity)
+    PRIMARY KEY (key, place_id) INCLUDE (popularity, kind)
 );
 
 CREATE TABLE IF NOT EXISTS properties (
