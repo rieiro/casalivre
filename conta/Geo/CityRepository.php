@@ -499,7 +499,7 @@ SQL;
     /** @return array{0:string,1:string} folded name and optional UF */
     private static function splitPlaceQuery(string $query): array
     {
-        $fold = preg_replace('/\s+/', ' ', fold($query)) ?? '';
+        $fold = self::foldKey($query);
         $fold = preg_replace('/\s*,\s*/', ', ', $fold) ?? $fold;
         if (preg_match('/^(.+), ([a-z]{2})$/', $fold, $parts) === 1) {
             return [$parts[1], strtoupper($parts[2])];
