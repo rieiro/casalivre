@@ -284,10 +284,11 @@ WHERE k.key = ? AND k.kind = 'alias' AND (? = '' OR uf = ?)
 LIMIT 2
 SQL;
 
+    // City first so LIMIT 9 cannot drop the only city behind same-name neighborhoods.
     private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE name_fold = ? AND (? = '' OR uf = ?)
-ORDER BY popularity DESC, id
+ORDER BY (type = 'city') DESC, popularity DESC, id
 LIMIT 9
 SQL;
 
@@ -345,7 +346,8 @@ SQL;
     /**
      * Submitted text, via the autocomplete query (fetch 9).
      * 1 hit → place. 2–8 → did_you_mean. 9 → ambiguous (show 8). 0 → not_found.
-     * A unique alias resolves. One city with that exact name resolves. A neighborhood
+     * A unique alias resolves. Exactly one city with that exact name resolves, even
+     * when neighborhoods share it. Two cities with that name stay a list. A neighborhood
      * or POI does not, when another type matches the same name or search key.
      * A unique full-name prefix wins before the key list: word-suffix keys also match
      * neighborhoods that merely contain the city name ("Rio de Jan" is one city).
@@ -364,14 +366,22 @@ SQL;
             return self::found($alias[0]);
         }
         $exact = self::placeRows(self::NAME_EXACT_SQL, [$text, $uf, $uf]);
-        if (count($exact) === 1) {
-            if ($exact[0]['type'] === 'city') {
-                return self::found($exact[0]);
+        $cities = [];
+        $types = [];
+        foreach ($exact as $row) {
+            $types[$row['type']] = true;
+            if ($row['type'] === 'city') {
+                $cities[] = $row;
             }
+        }
+        if (count($cities) === 1) {
+            return self::found($cities[0]);
+        }
+        if (count($exact) === 1) {
             $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$exact[0]['id'], $text, $exact[0]['type'], $uf, $uf]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
-        if (count(array_unique(array_column($exact, 'type'))) > 1) {
+        if (count($cities) > 1 || count($types) > 1) {
             return self::choices($exact);
         }
         if (mb_strlen($text) < 2) {

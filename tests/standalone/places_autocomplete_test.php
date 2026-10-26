@@ -147,7 +147,10 @@ echo "cidade exata\n";
 $owner = t_seed_owner();
 $spId = (int) db()->query("SELECT id FROM places WHERE type = 'city' AND uf = 'SP' AND name_fold = 'sao paulo'")->fetchColumn();
 t_ok($spId > 0, 'São Paulo/SP existe como cidade');
-t_eq(null, CityRepository::resolve('São Paulo, SP')['place'], 'resolve não escolhe São Paulo quando há um bairro homônimo');
+$spResolved = CityRepository::resolve('São Paulo, SP');
+t_eq($spId, (int) ($spResolved['place']['id'] ?? 0), 'São Paulo, SP resolve a cidade mesmo com bairro homônimo');
+t_eq('city', (string) ($spResolved['place']['type'] ?? ''), 'São Paulo, SP é a cidade');
+t_eq(null, $spResolved['resolution'], 'São Paulo, SP não lista opções');
 $exact = CityRepository::exactCity('São Paulo', 'SP');
 t_eq($spId, (int) ($exact['id'] ?? 0), 'exactCity acha a cidade');
 t_eq('city', (string) ($exact['type'] ?? ''), 'exactCity devolve type city');
@@ -185,6 +188,54 @@ $rejected = HouseService::fromInput((int) $owner['user_id'], [
 ]);
 t_ok(isset($rejected['error']), 'HouseService não aceita um CEP cujo nome é só bairro');
 t_eq((string) $exact['label'], city_label_for_cep('01001000'), 'rótulo do CEP homônimo é o da cidade');
+
+echo "homônimo cidade, UF\n";
+foreach ([
+    'São Paulo, SP' => ['sao paulo', 'SP'],
+    'Recife, PE' => ['recife', 'PE'],
+    'Rio de Janeiro, RJ' => ['rio de janeiro', 'RJ'],
+] as $query => [$nameFold, $uf]) {
+    $cityId = (int) db()->query("SELECT id FROM places WHERE type = 'city' AND uf = '$uf' AND name_fold = '$nameFold'")->fetchColumn();
+    t_ok($cityId > 0, "$query existe como cidade");
+    $got = CityRepository::resolve($query);
+    t_eq($cityId, (int) ($got['place']['id'] ?? 0), "$query resolve a cidade");
+    t_eq(null, $got['resolution'], "$query sem lista");
+}
+$saoPauloRows = (int) db()->query("SELECT COUNT(*) FROM places WHERE name_fold = 'sao paulo'")->fetchColumn();
+t_ok($saoPauloRows > 9, 'São Paulo tem mais de 9 linhas com o nome exato');
+$saoBare = CityRepository::resolve('São Paulo');
+t_eq($spId, (int) ($saoBare['place']['id'] ?? 0), 'São Paulo sem UF resolve a única cidade');
+t_eq(null, $saoBare['resolution'], 'São Paulo sem UF sem lista');
+$heavy = db()->query("SELECT id, name, rtrim(uf) AS uf, name_fold FROM places WHERE type = 'city' AND uf = 'MG' AND name_fold = 'sao geraldo'")->fetch();
+$heavyRows = (int) db()->query("SELECT COUNT(*) FROM places WHERE uf = 'MG' AND name_fold = 'sao geraldo'")->fetchColumn();
+t_ok(is_array($heavy) && $heavyRows > 9, 'São Geraldo/MG tem cidade e mais de 9 homônimos na mesma UF');
+$heavyGot = CityRepository::resolve('São Geraldo, MG');
+t_eq((int) $heavy['id'], (int) ($heavyGot['place']['id'] ?? 0), 'cidade com mais de 9 homônimos na UF ainda resolve');
+t_eq(null, $heavyGot['resolution'], 'São Geraldo, MG sem lista');
+$popPdo = db();
+$popPdo->beginTransaction();
+try {
+    $popPdo->exec("UPDATE places SET popularity = 100 WHERE name_fold = 'sao geraldo' AND uf = 'MG' AND type <> 'city'");
+    $bumped = CityRepository::resolve('São Geraldo, MG');
+    t_eq((int) $heavy['id'], (int) ($bumped['place']['id'] ?? 0), 'bairros mais populares não escondem a cidade no LIMIT 9');
+    t_eq(null, $bumped['resolution'], 'São Geraldo, MG com bairros populares sem lista');
+} finally {
+    if ($popPdo->inTransaction()) {
+        $popPdo->rollBack();
+    }
+}
+$pair = CityRepository::resolve('Antônio Carlos');
+t_eq(null, $pair['place'], 'duas cidades homônimas sem UF não escolhem');
+t_eq('did_you_mean', $pair['resolution'], 'duas cidades homônimas sem UF são did_you_mean');
+$pairUfs = array_column($pair['options'], 'uf');
+sort($pairUfs);
+t_eq(['MG', 'SC'], $pairUfs, 'Antônio Carlos lista as duas UFs');
+foreach (['MG', 'SC'] as $uf) {
+    $cityId = (int) db()->query("SELECT id FROM places WHERE type = 'city' AND uf = '$uf' AND name_fold = 'antonio carlos'")->fetchColumn();
+    $got = CityRepository::resolve("Antônio Carlos, $uf");
+    t_eq($cityId, (int) ($got['place']['id'] ?? 0), "Antônio Carlos, $uf resolve a cidade");
+    t_eq(null, $got['resolution'], "Antônio Carlos, $uf sem lista");
+}
 
 echo "alias sem cidade\n";
 $aliasPdo = db();
