@@ -93,7 +93,7 @@ $userId = UserRepository::insert([
 ]);
 $houseId = HouseRepository::insert([
     'user_id' => $userId, 'title' => 'Casa Snapshot na Lagoa', 'description' => 'Casa ampla para caracterização do tema, com varanda e vista para a lagoa. Texto fixo do snapshot.',
-    'summary' => 'Casa ampla para caracterização do tema', 'city' => 'Florianópolis, SC', 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',
+    'summary' => 'Casa ampla para caracterização do tema', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua Bocaiúva, 1', 'cep' => '88015200',
     'street' => 'Rua Bocaiúva', 'address_number' => '1', 'address_complement' => '', 'lat' => -27.5960, 'lng' => -48.5480,
     'bedrooms' => 2, 'beds' => 3, 'max_guests' => 4, 'nightly_price' => 250, 'checkin_time' => '15:00',
     'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 1, 'bbq' => 0, 'garage' => 1,

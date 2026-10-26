@@ -28,10 +28,10 @@ t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/views/search.php'), '<
 t_temp_db();
 $owner = t_seed_owner();
 $userId = (int) $owner['user_id'];
-$floripa = CityRepository::match('Florianópolis, SC');
-$rio = CityRepository::match('Rio de Janeiro, RJ');
-$buzios = CityRepository::match('Búzios');
-$gramado = CityRepository::match('Gramado, RS');
+$floripa = CityRepository::resolve('Florianópolis, SC')['place'];
+$rio = CityRepository::resolve('Rio de Janeiro, RJ')['place'];
+$buzios = CityRepository::resolve('Búzios')['place'];
+$gramado = CityRepository::resolve('Gramado, RS')['place'];
 t_ok(is_array($floripa) && is_array($rio) && is_array($buzios) && is_array($gramado), 'Florianópolis, Rio, Búzios and Gramado resolve');
 $floripaId = (int) $floripa['id'];
 $rioId = (int) $rio['id'];
@@ -143,7 +143,7 @@ function legacy_ids(array $request, mixed $host): array
         $source = HouseRepository::all();
     }
     $localidade = $filters['localidade'];
-    $center = $localidade !== '' ? CityRepository::match($localidade) : null;
+    $center = $localidade !== '' ? CityRepository::resolve($localidade)['place'] : null;
     $nights = nights_between($filters['checkin'], $filters['checkout']);
     $centerFold = $center ? fold((string) $center['name']) : '';
     $labelFold = $center ? fold((string) $center['label']) : '';

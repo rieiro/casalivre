@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/GrupoResolvedor.php';
 require_once __DIR__ . '/SearchQuery.php';
 require_once __DIR__ . '/SearchSql.php';
+require_once __DIR__ . '/CityRepository.php';
 require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/helpers.php';

@@ -19,12 +19,12 @@ t_ok(str_contains($sql, "key LIKE ? ESCAPE '\\'"), 'prefix LIKE is escaped');
 t_ok(!str_contains($sql, 'kind'), 'suggest SQL does not read kind');
 
 echo "aliases\n";
-$official = CityRepository::match('Armação dos Búzios, RJ');
+$official = CityRepository::resolve('Armação dos Búzios, RJ')['place'];
 t_ok(is_array($official), 'nome oficial resolve');
 foreach (['buzios', 'Búzios', 'buzios, rj', 'Búzios, RJ', 'BUZIOS,rj'] as $alias) {
-    t_eq((int) $official['id'], (int) (CityRepository::match($alias)['id'] ?? 0), "alias \"$alias\"");
+    t_eq((int) $official['id'], (int) (CityRepository::resolve($alias)['place']['id'] ?? 0), "alias \"$alias\"");
 }
-t_eq(null, CityRepository::match('Búzios, SP'), 'Búzios, SP continua null');
+t_eq(null, CityRepository::resolve('Búzios, SP')['place'], 'Búzios, SP continua null');
 t_eq('alias', (string) db()->query("SELECT kind FROM place_search_keys WHERE \"key\" = 'buzios' AND place_id = " . (int) $official['id'])->fetchColumn(), 'seed grava kind alias');
 
 echo "autocomplete\n";
@@ -38,8 +38,8 @@ t_ok(count($forte) <= 8 && in_array('Praia do Forte', $forte, true), 'forte traz
 t_ok(count($geriba) <= 8 && in_array('Praia de Geribá', $geriba, true), 'geriba traz Praia de Geribá no top 8');
 
 echo "resolução\n";
-$rio = CityRepository::match('Rio de Janeiro, RJ');
-t_eq((int) $rio['id'], (int) CityRepository::match('Rio de Jan')['id'], 'Rio de Jan é um match');
+$rio = CityRepository::resolve('Rio de Janeiro, RJ')['place'];
+t_eq((int) $rio['id'], (int) CityRepository::resolve('Rio de Jan')['place']['id'], 'Rio de Jan é um match');
 $one = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Rio de Jan']), null);
 t_eq(false, $one['unresolved'], 'Rio de Jan não fica unresolved');
 t_eq(null, $one['resolution'], 'um hit não tem lista');
@@ -114,7 +114,7 @@ echo "cidade exata\n";
 $owner = t_seed_owner();
 $spId = (int) db()->query("SELECT id FROM places WHERE type = 'city' AND uf = 'SP' AND name_fold = 'sao paulo'")->fetchColumn();
 t_ok($spId > 0, 'São Paulo/SP existe como cidade');
-t_eq(null, CityRepository::match('São Paulo, SP'), 'match não escolhe São Paulo quando há um bairro homônimo');
+t_eq(null, CityRepository::resolve('São Paulo, SP')['place'], 'resolve não escolhe São Paulo quando há um bairro homônimo');
 $exact = CityRepository::exactCity('São Paulo', 'SP');
 t_eq($spId, (int) ($exact['id'] ?? 0), 'exactCity acha a cidade');
 t_eq('city', (string) ($exact['type'] ?? ''), 'exactCity devolve type city');
@@ -125,16 +125,10 @@ $house = [
     'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 200, 'checkin_time' => '15:00',
     'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0,
 ];
-$spHouse = HouseRepository::insert($house + ['city' => 'São Paulo, SP']);
+$spHouse = HouseRepository::insert($house + ['city_place_id' => t_city_place_id('São Paulo, SP')]);
 t_eq($spId, (int) HouseRepository::find($spHouse)['city_place_id'], 'insert com homônimo grava a cidade');
 t_eq('city', (string) db()->query('SELECT type FROM places WHERE id = ' . (int) HouseRepository::find($spHouse)['city_place_id'])->fetchColumn(), 'o id gravado é cidade');
-$threw = false;
-try {
-    HouseRepository::insert($house + ['city' => 'Geribá, RJ']);
-} catch (RuntimeException) {
-    $threw = true;
-}
-t_ok($threw, 'Geribá, RJ não vira city_place_id');
+t_eq(null, t_city_place_id('Geribá, RJ'), 'Geribá, RJ não vira city_place_id');
 t_eq(null, CityRepository::exactCity('Geribá', 'RJ'), 'exactCity não devolve o bairro Geribá');
 db()->prepare('INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES (?, ?, ?, ?, ?)')->execute(['01001000', 'Praca da Se', 'Se', 'São Paulo', 'SP']);
 db()->prepare('INSERT INTO ceps (cep, street, neighborhood, city, uf) VALUES (?, ?, ?, ?, ?)')->execute(['28950000', 'Rua da Praia', 'Geriba', 'Geribá', 'RJ']);
@@ -142,7 +136,7 @@ $built = HouseService::fromInput((int) $owner['user_id'], [
     'title' => 'Casa SP', 'description' => 'Descrição de teste do imóvel.', 'cep' => '01001000',
     'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',
 ]);
-t_eq('São Paulo, SP', $built['city'] ?? null, 'HouseService resolve o CEP da cidade homônima');
+t_eq($spId, (int) ($built['city_place_id'] ?? 0), 'HouseService resolve o CEP da cidade homônima');
 $rejected = HouseService::fromInput((int) $owner['user_id'], [
     'title' => 'Casa G', 'description' => 'Descrição de teste do imóvel.', 'cep' => '28950000',
     'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',

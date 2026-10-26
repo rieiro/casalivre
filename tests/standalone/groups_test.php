@@ -30,7 +30,7 @@ $q = static fn (string $sql, array $p = []): mixed => (static function () use ($
 $house = static function (int $userId, string $title): array {
     $id = HouseRepository::insert([
         'user_id' => $userId, 'title' => $title, 'description' => 'Descrição de teste do imóvel.',
-        'summary' => 'Resumo', 'city' => 'Florianópolis, SC', 'address' => 'Rua A, 1', 'cep' => '88000000',
+        'summary' => 'Resumo', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua A, 1', 'cep' => '88000000',
         'street' => 'Rua A', 'address_number' => '1', 'address_complement' => '', 'lat' => -27.59, 'lng' => -48.54,
         'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 200, 'checkin_time' => '15:00',
         'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0,

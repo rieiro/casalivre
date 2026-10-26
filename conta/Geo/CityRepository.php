@@ -56,7 +56,7 @@ final class CityRepository
         static $stmt = null;
         if ($bound !== $pdo) {
             $bound = $pdo;
-            $stmt = $pdo->prepare("SELECT id, popularity FROM places WHERE type = 'city' AND name_fold = ? AND uf = ? ORDER BY id LIMIT 1");
+            $stmt = $pdo->prepare(self::CITY_SQL);
         }
         $stmt->execute([$nameFold, $uf]);
         $row = $stmt->fetch();
@@ -301,7 +301,7 @@ ORDER BY popularity DESC, id
 LIMIT 9
 SQL;
 
-    private const CITY_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+    private const CITY_SQL = 'SELECT ' . self::PLACE_COLUMNS . ', popularity' . <<<'SQL'
  FROM places
 WHERE type = 'city' AND name_fold = ? AND uf = ?
 SQL;
@@ -328,16 +328,7 @@ SQL;
         return self::options(self::prefixPlaces($text));
     }
 
-    /**
-     * One place, or null when the text is empty, unknown, or matches more than one place.
-     * Alias spellings resolve here; a name-suffix key alone does not.
-     */
-    public static function match(string $query): ?array
-    {
-        return self::resolve($query)['place'];
-    }
-
-    /** City by folded name and UF. Callers that already know the city must not use match(). */
+    /** City by folded name and UF. */
     public static function exactCity(string $name, string $uf): ?array
     {
         return self::placeRows(self::CITY_SQL, [fold($name), $uf])[0] ?? null;
@@ -370,14 +361,14 @@ SQL;
             return self::found($alias[0]);
         }
         $exact = self::placeRows(self::NAME_EXACT_SQL, [$text, $uf, $uf]);
-        if (count($exact) === 1 && $exact[0]['type'] === 'city') {
-            return self::found($exact[0]);
-        }
         if (count($exact) === 1) {
+            if ($exact[0]['type'] === 'city') {
+                return self::found($exact[0]);
+            }
             $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$uf, $uf, $text, $exact[0]['type'], $text]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
-        if (self::mixedTypes($exact)) {
+        if (count(array_unique(array_column($exact, 'type'))) > 1) {
             return self::choices($exact);
         }
         if (mb_strlen($text) < 2) {
@@ -413,20 +404,6 @@ SQL;
             'resolution' => count($hits) >= 9 ? 'ambiguous' : 'did_you_mean',
             'options' => self::options($hits),
         ];
-    }
-
-    /** @param list<array{type:string}> $places */
-    private static function mixedTypes(array $places): bool
-    {
-        $type = null;
-        foreach ($places as $place) {
-            if ($type === null) {
-                $type = $place['type'];
-            } elseif ($place['type'] !== $type) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** @return array{0:string,1:string} folded name and optional UF */

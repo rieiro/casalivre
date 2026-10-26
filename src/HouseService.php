@@ -6,6 +6,7 @@ require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/Rooms.php';
 require_once __DIR__ . '/PhotoStorage.php';
 require_once __DIR__ . '/PhotoRepository.php';
+require_once __DIR__ . '/CityRepository.php';
 
 final class HouseService
 {
@@ -84,7 +85,7 @@ final class HouseService
         }
         $lat = (float) $known['lat'];
         $lng = (float) $known['lng'];
-        $city = $known['name'] . ', ' . $known['uf'];
+        $city = place_label($known);
         $lat += (float) ($input['lat_offset'] ?? 0);
         $lng += (float) ($input['lng_offset'] ?? 0);
         $sameCity = $current && (
@@ -112,7 +113,7 @@ final class HouseService
             'title' => $title,
             'description' => $description,
             'summary' => summary_from($description, 45),
-            'city' => $city,
+            'city_place_id' => (int) $known['id'],
             'address' => $address,
             'cep' => $place['cep'],
             'street' => $place['street'],

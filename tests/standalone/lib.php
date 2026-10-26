@@ -358,6 +358,18 @@ function log_entry(string $dir, string $headers): ?array
     return null;
 }
 
+/** Place id for a "Name, UF" fixture. Null when that city is not in places. */
+function t_city_place_id(string $label): ?int
+{
+    $comma = strrpos($label, ',');
+    if ($comma === false) {
+        return null;
+    }
+    require_once CL_ROOT . '/src/CityRepository.php';
+    $place = CityRepository::exactCity(substr($label, 0, $comma), trim(substr($label, $comma + 1)));
+    return $place === null ? null : (int) $place['id'];
+}
+
 /** Cria usuário ativo + imóvel no banco temporário (in-process). */
 function t_seed_owner(): array
 {
@@ -375,7 +387,7 @@ function t_seed_owner(): array
     ]);
     $houseId = HouseRepository::insert([
         'user_id' => $userId, 'title' => 'Casa Teste', 'description' => 'Descrição de teste do imóvel.',
-        'summary' => 'Resumo', 'city' => 'Florianópolis, SC', 'address' => 'Rua A, 1', 'cep' => '88000000',
+        'summary' => 'Resumo', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua A, 1', 'cep' => '88000000',
         'street' => 'Rua A', 'address_number' => '1', 'address_complement' => '', 'lat' => -27.59, 'lng' => -48.54,
         'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 200, 'checkin_time' => '15:00',
         'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0,
