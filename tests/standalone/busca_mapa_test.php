@@ -16,10 +16,10 @@ $attr = static function (string $body, string $name): ?string {
 $loc = urlencode('Florianópolis, SC');
 
 echo "mapa com busca\n";
-$r = t_http('GET', $base . '/busca/mapa?localidade=' . $loc . '&checkin=2030-01-10&checkout=2030-01-12');
+$r = t_http('GET', $base . '/busca/mapa?localidade=' . $loc . '&checkin=2030-01-10&checkout=2030-01-12', null, [], null, true);
 t_eq(200, $r['status'], 'GET /busca/mapa responde 200');
 $api = (string) $attr($r['body'], 'data-api');
-t_ok(str_starts_with($api, '/api/busca?') && str_contains($api, 'localidade=Florian') && str_contains($api, 'checkin=2030-01-10'), 'data-api aponta para /api/busca com os mesmos filtros');
+t_ok(str_starts_with($api, '/api/busca?') && str_contains($api, 'local_id=') && !str_contains($api, 'localidade=') && str_contains($api, 'checkin=2030-01-10'), 'data-api aponta para /api/busca com local_id e as mesmas datas');
 t_eq('/tiles/brasil.pmtiles', $attr($r['body'], 'data-tiles'), 'data-tiles = caminho fixo do PMTiles');
 t_ok(preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', (string) $attr($r['body'], 'data-center')) === 1, 'data-center = centro da cidade');
 t_ok(!str_contains($r['body'], 'data-points') && !str_contains($r['body'], 'Casa Teste'), 'página não traz os imóveis (vêm da API)');
@@ -48,7 +48,7 @@ t_eq(0, count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . $loc)
 echo "log: cada visita ao mapa grava exatamente uma busca\n";
 $count = static fn (): int => t_log_count(ActivityLog::SEARCH);
 $before = $count();
-$page = t_http('GET', $base . '/busca/mapa?localidade=' . $loc);
+$page = t_http('GET', $base . '/busca/mapa?localidade=' . $loc, null, [], null, true);
 t_eq($before, $count(), 'a página /busca/mapa não grava SEARCH');
 t_http('GET', $base . (string) $attr($page['body'], 'data-api'));
 t_eq($before + 1, $count(), 'a chamada à API do mapa grava 1 SEARCH (total 1 por visita)');

@@ -305,7 +305,7 @@ function t_server(): string
 }
 
 /** @return array{status: int, body: string, headers: string} */
-function t_http(string $method, string $url, ?string $body = null, array $headers = [], ?string $jar = null): array
+function t_http(string $method, string $url, ?string $body = null, array $headers = [], ?string $jar = null, bool $follow = false): array
 {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -315,6 +315,8 @@ function t_http(string $method, string $url, ?string $body = null, array $header
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_NOPROXY => '*',
+        CURLOPT_FOLLOWLOCATION => $follow,
+        CURLOPT_MAXREDIRS => 5,
     ]);
     if ($body !== null) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
@@ -326,7 +328,16 @@ function t_http(string $method, string $url, ?string $body = null, array $header
     $raw = (string) curl_exec($ch);
     $size = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    return ['status' => $status, 'headers' => substr($raw, 0, $size), 'body' => substr($raw, $size)];
+    $headers = substr($raw, 0, $size);
+    // FOLLOWLOCATION concatenates every hop. Callers that follow want the page they landed on.
+    if ($follow && $headers !== '') {
+        $blocks = preg_split("/\r\n\r\n/", rtrim($headers, "\r\n")) ?: [];
+        $headers = (string) end($blocks);
+        if ($headers !== '' && !str_ends_with($headers, "\n")) {
+            $headers .= "\r\n";
+        }
+    }
+    return ['status' => $status, 'headers' => $headers, 'body' => substr($raw, $size)];
 }
 
 /** API request-log row for the X-Request-Id in $headers, or null when the header or the line is missing. */

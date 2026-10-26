@@ -177,7 +177,7 @@ final class RequestLog
 
     /** Query keys whose value may be stored. Free-text `q` and `localidade` are name-only (value null). */
     public const QUERY_VALUE_ALLOWLIST = [
-        'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
+        'local_id', 'checkin', 'checkout', 'hospedes', 'raio', 'preco_min', 'preco_max',
         'score_min', 'amenidade', 'pagina', 'ordem', 'locale', 'cal_view',
     ];
 

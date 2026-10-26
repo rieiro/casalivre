@@ -85,7 +85,7 @@ t_eq(AssetManifest::hashFile(AssetManifest::publicDir() . MapStyle::themePath('c
 t_eq(MapStyle::themePath('contraste') . '?v=' . $manifest[MapStyle::themePath('contraste')], asset_url(Theme::mapStylePath('contraste')), 'asset_url do estilo do tema com ?v=');
 $base_url = t_server();
 $style = static function () use ($base_url): string {
-    $html = t_http('GET', $base_url . '/busca/mapa?localidade=Florian%C3%B3polis%2C%20SC')['body'];
+    $html = t_http('GET', $base_url . '/busca/mapa?localidade=Florian%C3%B3polis%2C%20SC', null, [], null, true)['body'];
     return preg_match('/data-style="([^"]+)"/', $html, $m) === 1 ? html_entity_decode($m[1]) : '';
 };
 $setTheme(Theme::DEFAULT);

@@ -59,6 +59,7 @@ foreach (['Búzios', 'buzios', 'Búzios, RJ', 'BUZIOS,rj'] as $alias) {
 }
 t_eq('Armação dos Búzios', (string) CityRepository::match('Búzios')['label'], 'rótulo exibido segue o oficial');
 t_eq(null, CityRepository::match('Búzios, SP'), 'alias só vale para RJ');
+t_eq('alias', (string) $pdo->query("SELECT kind FROM place_search_keys WHERE \"key\" = 'buzios' AND place_id = " . (int) $buzios['id'])->fetchColumn(), 'chave buzios da cidade oficial é alias');
 t_eq(2, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi' AND parent_id = " . (int) $buzios['id'])->fetchColumn(), 'Geribá e Ferradura ficam sob a mesma cidade do alias');
 t_eq(3, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), '3 POIs piloto (Geribá, Ferradura, Praia do Forte)');
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), '61543 bairros OpenCEP');
@@ -96,7 +97,7 @@ t_eq('SC', (string) ($floripa['uf'] ?? ''), 'match devolve a UF');
 t_eq(null, CityRepository::match('Xyzabc'), 'match sem hit');
 $sug = CityRepository::suggest('florianop');
 t_ok($sug !== [] && in_array('Florianópolis', array_column($sug, 'name'), true), 'suggest "florianop" inclui Florianópolis');
-t_eq([], CityRepository::suggest('fo'), 'suggest com menos de 3 letras continua vazio');
+t_eq([], CityRepository::suggest('f'), 'suggest com menos de 2 letras continua vazio');
 
 echo "imóvel\n";
 $owner = t_seed_owner();

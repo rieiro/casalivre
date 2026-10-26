@@ -9,7 +9,7 @@ $base = t_server();
 $read = static fn (string $f): string => (string) file_get_contents(CL_ROOT . '/' . $f);
 
 echo "CSP da página do mapa\n";
-$r = t_http('GET', $base . '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'));
+$r = t_http('GET', $base . '/busca/mapa?localidade=' . urlencode('Florianópolis, SC'), null, [], null, true);
 preg_match('/^Content-Security-Policy:\s*(.*?)\r?$/mi', $r['headers'], $m);
 $policy = $m[1] ?? '';
 t_eq(csp_header(), $policy, 'mapa usa a CSP única do site');

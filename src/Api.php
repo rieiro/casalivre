@@ -329,6 +329,8 @@ function handle_api(string $path, string $method): void
         ];
         if ($result['unresolved']) {
             $payload['unresolved'] = true;
+            $payload['resolution'] = $result['resolution'];
+            $payload['options'] = $result['options'];
         }
         json_out(200, $payload);
     }

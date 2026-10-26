@@ -62,10 +62,11 @@ $r = t_http('GET', $base . '/api/busca?localidade=' . $loc);
 $p = json_decode($r['body'], true)['items'] ?? [];
 t_eq([$expected['lat'], $expected['lng']], [$p[0]['lat'] ?? null, $p[0]['lng'] ?? null], 'mapa (API) usa a coordenada pública');
 t_ok($noExact($r['body']), 'API do mapa sem a coordenada exata');
-$r = t_http('GET', $base . '/busca/mapa?localidade=' . $loc);
+$r = t_http('GET', $base . '/busca/mapa?localidade=' . $loc, null, [], null, true);
 t_ok($r['status'] === 200 && $noExact($r['body']), 'página do mapa sem a coordenada exata');
 foreach (['/busca?localidade=' . $loc, '/busca?localidade=' . $loc . '&raio=50', '/api/busca?localidade=' . $loc . '&raio=50', '/api/imoveis/' . $owner['hash'], '/imoveis/' . $owner['hash']] as $u) {
-    $r = t_http('GET', $base . $u);
+    $follow = str_starts_with($u, '/busca?');
+    $r = t_http('GET', $base . $u, null, [], null, $follow);
     t_ok($r['status'] === 200 && $noExact($r['body']), "$u sem coordenada exata");
 }
 $j = json_decode(t_http('GET', $base . '/api/busca?localidade=' . $loc . '&raio=50')['body'], true) ?: [];

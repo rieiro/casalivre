@@ -89,14 +89,14 @@ t_eq(404, $get('/g/imob-sul/imoveis/0000000000000000')['status'], 'imóvel inexi
 t_eq(200, $get('/g/outro/imoveis/' . $hB['hash'])['status'], 'cada vitrine abre o próprio imóvel');
 
 echo "busca e mapa\n";
-$r = $get('/g/imob-sul/busca?localidade=Florian%C3%B3polis');
+$r = t_http('GET', $base . '/g/imob-sul/busca?localidade=Florian%C3%B3polis', null, [], null, true);
 t_eq([200, 'contraste'], [$r['status'], $css($r['body'])], 'busca 200 com o tema do grupo');
 t_ok(preg_match('#id="search-results" data-base="/g/imob-sul" data-api="/api/busca\?[^"]*grupo=imob-sul"#', $r['body']) === 1, 'resultados com base da vitrine e API filtrada pelo grupo');
 t_ok(str_contains($r['body'], 'href="/g/imob-sul/busca/mapa?') && str_contains($r['body'], 'action="/g/imob-sul/busca"'), 'mapa e filtros ficam na vitrine');
 $strict($r, 'busca');
-$r = $get('/g/imob-sul/busca?localidade=Florian%C3%B3polis&grupo=outro');
+$r = t_http('GET', $base . '/g/imob-sul/busca?localidade=Florian%C3%B3polis&grupo=outro', null, [], null, true);
 t_ok(str_contains($r['body'], 'grupo=imob-sul') && !str_contains($r['body'], 'grupo=outro"'), '?grupo= na URL não troca o grupo da vitrine');
-$r = $get('/g/imob-sul/busca/mapa?localidade=Florian%C3%B3polis');
+$r = t_http('GET', $base . '/g/imob-sul/busca/mapa?localidade=Florian%C3%B3polis', null, [], null, true);
 t_eq([200, 'contraste'], [$r['status'], $css($r['body'])], 'mapa 200 com o tema do grupo');
 t_ok(preg_match('#data-api="/api/busca\?[^"]*grupo=imob-sul"#', $r['body']) === 1 && str_contains($r['body'], 'data-base="/g/imob-sul"'), 'mapa com API filtrada e base da vitrine');
 t_ok(str_contains($r['body'], 'href="/g/imob-sul/busca?'), 'voltar à lista fica na vitrine');
@@ -122,14 +122,14 @@ t_ok(t_http('POST', $base . '/g/imob-sul/', '', ['Content-Type: application/x-ww
 
 echo "A1: domínio verificado de um grupo só serve a vitrine dele\n";
 db()->exec("INSERT INTO group_domains (group_id, domain, verify_token, verified_at) VALUES ({$gA['id']}, 'imob.example.com', 't1', CURRENT_TIMESTAMP), ({$gB['id']}, 'pendente.example.com', 't2', NULL)");
-$onHost = static fn (string $p, string $h): array => t_http('GET', $base . $p, null, ['Host: ' . $h]);
+$onHost = static fn (string $p, string $h, bool $follow = false): array => t_http('GET', $base . $p, null, ['Host: ' . $h], null, $follow);
 foreach (['/g/outro/', '/g/outro/busca?localidade=Florian%C3%B3polis', '/g/outro/busca/mapa?localidade=Florian%C3%B3polis', '/g/outro/imoveis/' . $hB['hash'], '/g/outro'] as $p) {
     $r = $onHost($p, 'imob.example.com');
     t_eq(404, $r['status'], "domínio de A, $p: 404");
     t_ok(!str_contains($r['body'], $hB['hash']) && !str_contains($r['body'], 'Outro Grupo'), "domínio de A, $p: nada de B");
 }
 foreach (['/g/imob-sul/', '/g/imob-sul/busca?localidade=Florian%C3%B3polis', '/g/imob-sul/busca/mapa?localidade=Florian%C3%B3polis', '/g/imob-sul/imoveis/' . $hA['hash']] as $p) {
-    t_eq(200, $onHost($p, 'IMOB.example.com:8080')['status'], "domínio de A, $p: 200");
+    t_eq(200, $onHost($p, 'IMOB.example.com:8080', true)['status'], "domínio de A, $p: 200");
 }
 t_eq(404, $onHost('/g/nao-existe/', 'imob.example.com')['status'], 'domínio de A, slug inexistente: 404');
 foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
@@ -199,7 +199,7 @@ foreach (['desconhecido.example.com', 'pendente.example.com'] as $h) {
 }
 [$st, $ids] = $api($q);
 t_ok($st === 200 && in_array($hB['hash'], $ids, true) && in_array($hNone['hash'], $ids, true), 'plataforma, sem grupo: catálogo inteiro (inalterado)');
-$r = $onHost('/busca?' . $q, 'imob.example.com');
+$r = $onHost('/busca?' . $q, 'imob.example.com', true);
 t_eq(200, $r['status'], 'domínio de A: /busca 200');
 t_ok(str_contains($r['body'], 'id="search-results"') && !str_contains($r['body'], 'data-api="/api/busca?') , '/busca no domínio usa a mesma /api/busca (filtrada pelo Host)');
 t_done();

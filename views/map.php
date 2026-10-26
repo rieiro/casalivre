@@ -5,13 +5,19 @@ $base = (string) ($vitrine_base ?? ''); // prefixo da vitrine (/g/<slug>) ou '' 
 // busca no servidor (a API registra a busca uma vez). Sem JS/WebGL/arquivo de tiles: aviso + lista.
 // Centro inicial = centro da cidade com 2 casas (~1 km): só enquadra o mapa, não é coordenada de imóvel.
 $query = search_query($filters);
-$place = $filters['localidade'] !== '' ? CityRepository::match($filters['localidade']) : null;
+$place = null;
+if (!empty($filters['local_id'])) {
+    $place = CityRepository::byId((int) $filters['local_id']);
+} elseif (($filters['localidade'] ?? '') !== '') {
+    $place = CityRepository::match((string) $filters['localidade']);
+}
+$placeLabel = $place !== null ? $place['name'] . ', ' . $place['uf'] : (string) ($filters['localidade'] ?? '');
 $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) . ',' . round((float) $place['lng'], 2) : '';
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">
 <section class="wrap map-page">
     <p><a href="<?= e($base) ?>/busca?<?= e($query) ?>"><?= e(t('home.back_results')) ?></a></p>
-    <h1><?= e(t('home.map_title')) ?><?= $filters['localidade'] !== '' ? ' · ' . e($filters['localidade']) : '' ?></h1>
+    <h1><?= e(t('home.map_title')) ?><?= $placeLabel !== '' ? ' · ' . e($placeLabel) : '' ?></h1>
     <p class="muted" id="map-status" role="status" aria-live="polite" data-map-count><?= $searched ? 'Carregando mapa…' : e(t('home.empty')) ?></p>
     <p class="map-notice" id="map-notice" role="alert" hidden></p>
     <div id="result-map" class="result-map"
