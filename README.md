@@ -61,6 +61,7 @@ Abra http://127.0.0.1:8080 neste computador. O `start.sh` escuta em todas as int
 - O cadastro pede a senha duas vezes, grava um link de verificação com prazo e não remove o registro: a conta fica com estado `apagado`, com data e IP.
 - Parâmetros, traduções, cidades/estados e CEPs ficam no banco e em cache JSON (`storage/cache/settings.json`, `translations.json`, `cities.json`, `cep.json`). O máximo de fotos por imóvel é o parâmetro `max_photos_per_property`. Depois de alterar o banco: `php scripts/refresh-settings-cache.php`.
 - Os CEPs vêm da base aberta OpenCEP 2.0.1 (julho de 2024, cerca de 1,2 milhão de códigos, licença MIT), no arquivo `database/cep.csv.bz2`. Na próxima subida, se a versão mudou, `scripts/start.sh` recarrega a tabela e regrava `storage/cache/cep.json`.
+- POIs (praias, cachoeiras, aeroportos, parques…): database/places_pois.json.bz2, derivado do OpenStreetMap, © OpenStreetMap contributors, licença ODbL 1.0 (database/places_pois.LICENSE).
 - Contas bloqueadas ou inativas: `php scripts/support-conta.php --email=... --ativar --desbloquear`.
 - O catálogo das ações do log fica na tabela `activity_actions`.
 - A busca pública continua sem login.
