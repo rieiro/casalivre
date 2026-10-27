@@ -34,9 +34,11 @@ foreach ($pdo->query("SELECT category, COUNT(*) AS n FROM places WHERE type = 'p
 }
 ksort($got);
 t_eq($categories, $got, 'contagem por categoria');
-t_eq(166629, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'name'")->fetchColumn(), 'chaves name');
-t_eq(826, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'alias'")->fetchColumn(), 'chaves alias');
+t_eq(166681, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'name'")->fetchColumn(), 'chaves name');
+t_eq(774, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys WHERE kind = 'alias'")->fetchColumn(), 'chaves alias');
 t_eq(167455, (int) $pdo->query('SELECT COUNT(*) FROM place_search_keys')->fetchColumn(), 'chaves no total');
+$pouso = $pdo->query("SELECT k.kind FROM place_search_keys k JOIN places p ON p.id = k.place_id JOIN places c ON c.id = p.parent_id WHERE p.name = 'Praia do Pouso' AND c.name_fold = 'angra dos reis' AND rtrim(c.uf) = 'RJ' AND k.\"key\" = 'pouso'");
+t_eq('name', (string) $pouso->fetchColumn(), 'alias Pouso não troca a chave name de Praia do Pouso');
 t_eq(0, (int) $pdo->query("SELECT COUNT(*) FROM place_search_keys k JOIN places p ON p.id = k.place_id WHERE p.category = 'airport' AND k.\"key\" LIKE '(%'")->fetchColumn(), 'aeroporto não tem chave começando com (');
 
 echo "popularidade das cidades\n";

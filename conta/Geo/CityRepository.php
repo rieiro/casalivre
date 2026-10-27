@@ -128,7 +128,7 @@ final class CityRepository
         $id = (int) $insert->fetchColumn();
         $kinds = array_fill_keys(self::searchKeys(self::keyName($name, $category)), 'name');
         foreach ($aliases as $alias) {
-            $kinds[self::foldKey($alias)] = 'alias';
+            $kinds[self::foldKey($alias)] ??= 'alias';
         }
         foreach ($kinds as $key => $kind) {
             $keyIns->execute([$id, $key, $kind, $popularity]);
