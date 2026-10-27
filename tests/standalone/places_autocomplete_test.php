@@ -99,14 +99,11 @@ t_eq(null, $centroRj['place'], 'Centro, RJ não escolhe um lugar');
 t_eq('ambiguous', $centroRj['resolution'], 'Centro, RJ tem 9+ hits');
 $centroRjRows = $centroRj['options'];
 t_eq(8, count($centroRjRows), 'Centro, RJ mostra 8 opções');
-$centroRjNeighborhood = false;
+$any = fn(array $opts, callable $p): bool => array_filter($opts, $p) !== [];
 foreach ($centroRjRows as $option) {
     t_eq('RJ', $option['uf'], 'typed UF prefix does not offer another state');
-    if ($option['name'] === 'Centro' && $option['type'] === 'neighborhood') {
-        $centroRjNeighborhood = true;
-    }
 }
-t_ok($centroRjNeighborhood, 'Centro, RJ ainda lista um bairro Centro');
+t_ok($any($centroRjRows, fn($option) => $option['name'] === 'Centro' && $option['type'] === 'neighborhood'), 'Centro, RJ ainda lista um bairro Centro');
 
 $iguacu = CityRepository::resolve('iguacu');
 t_eq(null, $iguacu['place'], 'iguacu não escolhe um lugar');
@@ -116,22 +113,10 @@ t_ok(in_array('city', array_column($iguacu['options'], 'type'), true), 'iguacu l
 $cataratas = CityRepository::resolve('cataratas');
 $cataratasNames = array_column($cataratas['options'], 'name');
 t_ok(in_array('Cataratas do Iguaçu', $cataratasNames, true), 'cataratas lista Cataratas do Iguaçu');
-$iguAirport = false;
-foreach ($cataratas['options'] as $option) {
-    if ($option['type'] === 'poi' && str_contains($option['name'], 'Aeroporto') && str_contains($option['name'], 'Cataratas')) {
-        $iguAirport = true;
-    }
-}
-t_ok($iguAirport, 'cataratas lista o aeroporto IGU');
+t_ok($any($cataratas['options'], fn($option) => $option['type'] === 'poi' && str_contains($option['name'], 'Aeroporto') && str_contains($option['name'], 'Cataratas')), 'cataratas lista o aeroporto IGU');
 
 $cristo = CityRepository::resolve('Cristo Redentor');
-$cristoRj = false;
-foreach ($cristo['options'] as $option) {
-    if ($option['name'] === 'Cristo Redentor' && $option['type'] === 'poi' && $option['uf'] === 'RJ') {
-        $cristoRj = true;
-    }
-}
-t_ok($cristoRj, 'Cristo Redentor lista o POI do Rio');
+t_ok($any($cristo['options'], fn($option) => $option['name'] === 'Cristo Redentor' && $option['type'] === 'poi' && $option['uf'] === 'RJ'), 'Cristo Redentor lista o POI do Rio');
 
 $aeroporto = CityRepository::resolve('aeroporto');
 t_ok(in_array('poi', array_column($aeroporto['options'], 'type'), true), 'aeroporto lista um POI');
@@ -140,13 +125,7 @@ $copacabana = CityRepository::resolve('Copacabana');
 t_ok(in_array('Praia de Copacabana', array_column($copacabana['options'], 'name'), true), 'Copacabana lista a praia');
 
 $galeao = CityRepository::resolve('galeao');
-$galeaoPoi = false;
-foreach ($galeao['options'] as $option) {
-    if ($option['type'] === 'poi' && str_contains($option['name'], 'Galeão')) {
-        $galeaoPoi = true;
-    }
-}
-t_ok($galeaoPoi, 'galeao lista um POI');
+t_ok($any($galeao['options'], fn($option) => $option['type'] === 'poi' && str_contains($option['name'], 'Galeão')), 'galeao lista um POI');
 
 t_eq('São Paulo', CityRepository::resolve('Sao Paulo, SP')['place']['name'] ?? null, 'Sao Paulo, SP ainda resolve');
 t_eq('Rio de Janeiro', CityRepository::resolve('rio de janeiro')['place']['name'] ?? null, 'rio de janeiro ainda resolve');

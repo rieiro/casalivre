@@ -356,7 +356,7 @@ SQL;
     // priority: "praia do forte" is that single row plus 9 POIs, and popularity
     // alone drops it past LIMIT 9. Many neighborhoods (Cristo Redentor) do not
     // jump ahead of a more popular POI.
-    private const NAME_EXACT_SQL = 'SELECT id, name, label, type, uf, lat, lng FROM (SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+    private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . ' FROM (SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
 , popularity, COUNT(*) FILTER (WHERE type = 'neighborhood') OVER () AS nb
 FROM places
 WHERE name_fold = ? AND (? = '' OR uf = ?)
@@ -465,16 +465,13 @@ SQL;
             $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$id, $text, $exact[0]['type'], $uf, $uf, $id]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
-        // Same-type non-city (only neighborhoods, or only POIs) falls through.
-        // Returning those rows here hid Foz do Iguaçu and Cataratas do Iguaçu.
+        // Same-type non-city falls through to the prefix list.
         if (count($cities) > 1 || count($types) > 1) {
             return self::choices($exact);
         }
         if (mb_strlen($text) < 2) {
             return $none;
         }
-        // Live again: a non-empty same-type exact group reaches this point, and a
-        // unique longer name must not replace it. Only a total miss uses the prefix.
         if ($exact === []) {
             $prefixed = self::placeRows(self::NAME_PREFIX_SQL, [$uf, $uf, self::likePrefix($text)]);
             if (count($prefixed) === 1) {
@@ -482,21 +479,11 @@ SQL;
             }
         }
         $hits = self::prefixPlaces($text, $uf);
-        if (count($exact) >= 9 && $hits !== []) {
-            $exactIds = array_flip(array_column($exact, 'id'));
-            $seen = false;
-            foreach ($hits as $hit) {
-                if (isset($exactIds[$hit['id']])) {
-                    $seen = true;
-                    break;
-                }
-            }
-            // Centro: every exact row is a pop-0 neighborhood, so the popularity
-            // prefix is Centro do Guilherme and the typed name disappears.
-            if (!$seen) {
-                array_unshift($hits, $exact[0]);
-                $hits = array_slice($hits, 0, 9);
-            }
+        // Centro: every exact row is a pop-0 neighborhood, so the popularity
+        // prefix is Centro do Guilherme and the typed name disappears.
+        if (count($exact) >= 9 && $hits !== [] && array_intersect(array_column($exact, 'id'), array_column($hits, 'id')) === []) {
+            array_unshift($hits, $exact[0]);
+            $hits = array_slice($hits, 0, 9);
         }
         if (count($hits) === 1) {
             return self::found($hits[0]);
