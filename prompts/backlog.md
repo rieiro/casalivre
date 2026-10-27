@@ -15,7 +15,7 @@ Rastreamento das pendências durante o desenvolvimento. **Só o Bot Gerente Gera
 After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP items that touch the code it changes, plus a fixed slice of the remaining backlog of about 20% of the sprint's effort. A new item must name its sprint or it is dropped; Gerente reviews this list once per sprint.
 
 ## Priority now (right after the cleanup sprint)
-- [ ] `.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Source: meeting 15/10. Owner: Teste.
+- [ ] ~~`.ics` import tests for huge files and malicious parser input (plus SSRF, already in `ssrf_test`), due now because the import exists (`src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`).~~ Kept in Calendar-sync below (Rafael 2026-10-26). Source: meeting 15/10. Sprint: Calendar-sync. Owner: Teste.
 - [x] (done in #167) Queue worker never reconnects to the DB (`Db::$conn`, measured on PG): after a PG restart every mail job fails until it is given up, so activation and reset emails are lost. `tick()` pings the DB once per tick and exits non-zero on failure so runit restarts the worker; connection errors don't count as job failures. Source: Arquitetura #142. Owner: Programador.
 - [x] (done in #168) `mail_queue` cooldown race (`src/MailQueue.php:83-97`, SELECT then INSERT), which also happens on PG: add a UNIQUE constraint on the cooldown window or a conditional insert. Source: Segurança #88. Owner: Programador.
 - [x] (done in #170) `FileStamp` misses a change when two same-size writes land in the same second and ext4 reuses the inode (measured by Arquitetura), so the worker keeps a stale Settings/I18n/manifest cache. Add a stamp field that changes on every write (for example, nanosecond mtime or a content hash). Source: Arquitetura #149. Owner: Programador.
@@ -31,6 +31,35 @@ After the cleanup sprint the standard plan resumes. Each sprint clears the KEEP 
 - [x] (done in #178) Limiter hardening, one PR: (a) HMAC with a derived subkey `HMAC(LOG_SALT, 'cl-ratelimit-v1')` instead of `LOG_SALT` itself; (b) move the outage-log throttle stamp from `/tmp` to a private `0700` dir (`IpRateLimiter.php:224`); (c) fold the refund `INCR` into the `MULTI` (`:171`); (d) log a dedicated `VALKEY_UNAVAILABLE` code instead of `INTERNAL_ERROR` so alerts and BI can tell it apart; (e) a Teste case that `SIGSTOP`s Valkey and proves the fail-closed buckets return 429 within about 100 ms. Source: Segurança #160. Sprint: Priority now. Owner: Programador; Teste; Segurança.
 - [ ] Partial index `CREATE INDEX idx_prop_latlng_active ON properties (lat, lng) WHERE status = 'active';`, replacing the unused gist `idx_prop_geo_active` (index count flat, counts toward ADR 001 §12.6). SCHEMA bump, recreate-only, plus `random_page_cost = 1.1` in `ops/dev-env`. Small PR; BD reviews. Rafael approved 2026-10-25. Source: BD #218. Sprint: Priority now. Owner: BD/Programador.
 - [ ] `queue_worker_valkey_outage_test` collides with the dev env's live queue-worker (#201): use its own queue, or skip while the worker runs. Still open after #174. Source: Teste #217. Sprint: Priority now. Owner: Programador; Teste.
+
+## Queue, photos and calendar sync hardening (Rafael 2026-10-26)
+
+Decisions from Rafael 2026-10-26 via Cori (code read of develop @6e87dcb). No data migration code; schema changes only update the schema and the seeds; handle only realistic cases. Revisor reviews each Programador PR first (#200). Each item names its sprint. Order: after ADR 001 PR3 (UI) and before ADR 001 PR4, unless Rafael reprioritizes.
+
+### Queue-A (photos)
+
+One PR. Needs Revisor, Teste, Segurança and Arquitetura. BD reviews the photos sweep `UPDATE` and any new column.
+
+- [ ] **1.** Stuck photos (status `processing` for too long, for example 30 minutes) are discarded: mark the row failed, delete the original, and log the event. The sweep runs in the worker loop as one `UPDATE ... RETURNING`. The `photos` table in `database/schema.pgsql.sql` has no creation or updated time column; add one to the schema and the seeds. Estimate 2 h. Source: Rafael 2026-10-26. Sprint: Queue-A (photos). Owner: Programador.
+- [ ] **2.** Bad images are tried once. `PermanentJobFailure` covers an invalid type, too many pixels, a corrupt file, or a missing original. `QueueWorker` fails that job immediately in both `SqlJobQueue` and `ValkeyJobQueue`. Transient errors keep the 5-attempt backoff. Log a short reason code as well as the exception class. Estimate 3 h. Source: Rafael 2026-10-26. Sprint: Queue-A (photos). Owner: Programador.
+- [ ] **7.** Delete the unused `PhotoStorage` methods `directory()`, `publicPath()`, `writeGenerated()`, `deleteHouse()`, `deleteUser()` and `deleteTree()`, and the assertion at `tests/standalone/photo_async_test.php:190`. Estimate 1 h. Source: Rafael 2026-10-26. Sprint: Queue-A (photos). Owner: Programador.
+- [ ] **8.** Rejected uploads reach the user. `PhotoStorage::storeUploads()` returns a reason per rejected file (wrong type, too large, over the limit), shown on both upload routes, including API JSON. Async failures (too many pixels, invalid image) show in the photo list as failed, with a reason code and a remove action. Use translated text and mention HEIC. Needs UI review (`needs:ui`). Estimate 4 h. Source: Rafael 2026-10-26. Sprint: Queue-A (photos). Owner: Programador.
+
+### Queue-B (workers)
+
+One PR. Needs Revisor, Teste, Segurança and Arquitetura.
+
+- [ ] **3.** Incus PHP will have GD WebP. Remove the skip-image-queue branch in `scripts/queue-worker.php`. Exit non-zero with an ALERT line when WebP is missing. Estimate 1 h. Source: Rafael 2026-10-26. Sprint: Queue-B (workers). Owner: Programador.
+- [ ] **4.** Workers run under runit. Remove the cron entries in `prompts/deploy.md` (~123, 163-164, 242). Delete `scripts/mail-worker.php` and `scripts/image-worker.php`, and move the `APP_URL` check into the mail worker. Clean the tests and comments that still name those cron scripts. Estimate 2 h. Source: Rafael 2026-10-26. Sprint: Queue-B (workers). Owner: Programador.
+- [ ] **5.** The runit worker sets `php -d memory_limit=256M` on the deploy runit run script (`deploy/runit/casalivre-queue-worker/run` today; both worker run scripts after the split in this PR) and on the dev run script that `ops/dev-env/services.sh` installs (`ops/dev-env/sv/queue-worker/run`). Estimate 0.5 h. Source: Rafael 2026-10-26. Sprint: Queue-B (workers). Owner: Programador.
+- [ ] **6.** Separate the mail and image workers into two runit services, `casalivre-mail-worker` and `casalivre-image-worker`. Replace `QueueWorkerLoop::tick` (`src/QueueWorkerLoop.php`) with a single-queue loop and reuse the existing helpers. Update `ops/dev-env/services.sh`, `prompts/deploy.md` and the Valkey ACL. Estimate 4 h. Source: Rafael 2026-10-26. Sprint: Queue-B (workers). Owner: Programador.
+
+### Calendar-sync
+
+Separate PR(s). Needs Revisor, Teste, Segurança, Arquitetura and BD (`next_sync_at`, `last_error`, `fail_count`, `feed_id` in the schema). Produto/UI review the text in `views/calendar.php`. Today an hourly cron, `scripts/sync-calendars.php` (`prompts/deploy.md` lines 165 and 282), runs the sync: there is no queue and no runit service, and the download runs inside web requests (`src/Acoes/ICalImport.php`, `CalendarSync::resyncProperty`). Programador estimate for this sprint: 12 h.
+
+- [ ] Own queue, plus a runit service `casalivre-calendar-worker` with `php -d memory_limit=256M`. Add `next_sync_at` and drop the cron. Web requests only enqueue, and the page says the import is in progress ("importing..."). `CalendarSync::fetch()` returns a reason: a permanent failure (`bad_url`, `private_ip`, `http_4xx`, `not_ics`, `too_big`) fails once and is logged; a temporary failure (`timeout`, `dns`, `http_5xx`) retries with backoff. Store `last_error` and `fail_count`. Stop scheduling a feed after several days of failures until the owner re-saves it. Show the reason and a retry button in `views/calendar.php`. Tag imported nights with `feed_id` and replace that feed's nights in one transaction, skipping `STATUS:CANCELLED` (a cancellation frees those nights, and removing one feed frees only that feed's nights). Delete the dead `HouseRepository::tagOriginIfEmpty` and `HouseRepository::findFeed`. Enforce the 5-feed limit in the database. Create `calendar-sync.log` with a 0700 directory and a 0600 file. Estimate 12 h. Source: Rafael 2026-10-26. Sprint: Calendar-sync. Owner: Programador.
+- [ ] `.ics` import tests for huge files and malicious parser input (SSRF is already covered by `ssrf_test`; the import is `src/Acoes/ICalImport.php`, `CalendarSync::MAX_BYTES`). Kept in this sprint. Source: meeting 15/10. Sprint: Calendar-sync. Owner: Teste.
 
 ## Em andamento
 
