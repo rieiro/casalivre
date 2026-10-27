@@ -352,16 +352,16 @@ WHERE k.key = ? AND k.kind = 'alias' AND (? = '' OR uf = ?)
 LIMIT 2
 SQL;
 
-    // City first so LIMIT 9 cannot drop the only city behind same-name neighborhoods.
+    // City, then neighborhood, then poi, then popularity. LIMIT 9 must not hide a neighborhood behind POIs.
     private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE name_fold = ? AND (? = '' OR uf = ?)
-ORDER BY (type = 'city') DESC, popularity DESC, id
+ORDER BY (type = 'city') DESC, (type = 'neighborhood') DESC, popularity DESC, id
 LIMIT 9
 SQL;
 
-    // The known exact id (places.id is INTEGER; the caller already has that one row), plus any other
-    // type with this search key (Geribá the neighborhood and Praia de Geribá).
+    // Known exact id (places.id is INTEGER) plus any other type with this search key.
+    // The known id sorts first so LIMIT 9 cannot drop it behind a more popular place.
     private const EXACT_OR_OTHER_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE id IN (
@@ -370,7 +370,7 @@ WHERE id IN (
     SELECT o.id FROM place_search_keys k JOIN places o ON o.id = k.place_id
     WHERE k.key = ? AND o.type <> ? AND (? = '' OR o.uf = ?)
 )
-ORDER BY popularity DESC, id
+ORDER BY (id = CAST(? AS integer)) DESC, popularity DESC, id
 LIMIT 9
 SQL;
 
@@ -421,13 +421,12 @@ SQL;
     }
 
     /**
-     * Submitted text, via the autocomplete query (fetch 9).
-     * 1 hit → place. 2–8 → did_you_mean. 9 → ambiguous (show 8). 0 → not_found.
-     * A unique alias resolves. Exactly one city with that exact name resolves, even
-     * when neighborhoods share it. Two cities with that name stay a list. A neighborhood
-     * or POI does not, when another type matches the same name or search key.
-     * A unique full-name prefix wins before the key list: word-suffix keys also match
-     * neighborhoods that merely contain the city name ("Rio de Jan" is one city).
+     * Submitted text. Fetch 9 and show at most 8. 2–8 → did_you_mean. 9 → ambiguous. 0 → not_found.
+     * A unique alias resolves. Exactly one city with that exact name resolves, even when
+     * neighborhoods share it. Two or more exact names are that list, not the prefix list.
+     * One exact non-city also lists other types with the same search key, exact row first.
+     * A unique full-name prefix wins before the key list ("Rio de Jan" is one city).
+     * suggest() stays on the popularity prefix and is not this path.
      *
      * @return array{place:?array,resolution:?string,options:list<array>}
      */
@@ -444,9 +443,7 @@ SQL;
         }
         $exact = self::placeRows(self::NAME_EXACT_SQL, [$text, $uf, $uf]);
         $cities = [];
-        $types = [];
         foreach ($exact as $row) {
-            $types[$row['type']] = true;
             if ($row['type'] === 'city') {
                 $cities[] = $row;
             }
@@ -455,10 +452,11 @@ SQL;
             return self::found($cities[0]);
         }
         if (count($exact) === 1) {
-            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$exact[0]['id'], $text, $exact[0]['type'], $uf, $uf]);
+            $id = $exact[0]['id'];
+            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$id, $text, $exact[0]['type'], $uf, $uf, $id]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
-        if (count($cities) > 1 || count($types) > 1) {
+        if (count($exact) > 1) {
             return self::choices($exact);
         }
         if (mb_strlen($text) < 2) {
