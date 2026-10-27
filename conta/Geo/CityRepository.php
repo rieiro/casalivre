@@ -462,11 +462,9 @@ SQL;
         if (mb_strlen($text) < 2) {
             return $none;
         }
-        if ($exact === []) {
-            $prefixed = self::placeRows(self::NAME_PREFIX_SQL, [$uf, $uf, self::likePrefix($text)]);
-            if (count($prefixed) === 1) {
-                return self::found($prefixed[0]);
-            }
+        $prefixed = self::placeRows(self::NAME_PREFIX_SQL, [$uf, $uf, self::likePrefix($text)]);
+        if (count($prefixed) === 1) {
+            return self::found($prefixed[0]);
         }
         $hits = self::prefixPlaces($text, $uf);
         if (count($hits) === 1) {
