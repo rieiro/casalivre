@@ -35,6 +35,9 @@ $render = static function (string $resolution, array $options, array $filters): 
 $poi = ['id' => 12, 'name' => 'Praia de Geribá', 'type' => 'poi', 'uf' => 'RJ', 'parent' => 'Armação dos Búzios'];
 $nbhd = ['id' => 9, 'name' => 'Geribá', 'type' => 'neighborhood', 'uf' => 'RJ', 'parent' => 'Armação dos Búzios'];
 $city = ['id' => 3, 'name' => 'São Paulo', 'type' => 'city', 'uf' => 'SP'];
+$poi['line'] = place_option_text($poi);
+$nbhd['line'] = place_option_text($nbhd);
+$city['line'] = place_option_text($city);
 
 echo "did_you_mean\n";
 $mean = $render('did_you_mean', [$nbhd, $poi], $filters);
@@ -54,7 +57,9 @@ t_ok(str_contains($mean, 'value="Xyzabc"'), 'o texto digitado continua no campo'
 echo "ambiguous\n";
 $many = [];
 for ($i = 1; $i <= 8; $i++) {
-    $many[] = ['id' => $i, 'name' => 'Centro', 'type' => 'neighborhood', 'uf' => 'RJ', 'parent' => 'Cidade ' . $i];
+    $row = ['id' => $i, 'name' => 'Centro', 'type' => 'neighborhood', 'uf' => 'RJ', 'parent' => 'Cidade ' . $i];
+    $row['line'] = place_option_text($row);
+    $many[] = $row;
 }
 $ambiguous = $render('ambiguous', $many, $filters);
 t_eq(8, preg_match_all('/local_id=\d+/', $ambiguous), 'ambiguous mostra 8 opções');

@@ -591,7 +591,7 @@ SQL;
     /** @param array{id:int,name:string,label:string,type:string,uf:string,parent?:string} $place */
     private static function option(array $place): array
     {
-        $row = [
+        return [
             'id' => $place['id'],
             'text' => place_label($place),
             'name' => $place['name'],
@@ -600,10 +600,6 @@ SQL;
             'uf' => $place['uf'],
             'line' => place_option_text($place),
         ];
-        if (($place['parent'] ?? '') !== '') {
-            $row['parent'] = $place['parent'];
-        }
-        return $row;
     }
 
     public static function refresh(): array

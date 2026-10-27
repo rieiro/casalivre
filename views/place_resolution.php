@@ -20,7 +20,7 @@ unset($keep['localidade']);
     <h1 id="place-resolution-title" tabindex="-1" data-focus="1"><?= e(t('place.did_you_mean')) ?></h1>
     <ul>
         <?php foreach ($options as $option): ?>
-            <li><a href="<?= e($base . '/busca?' . search_query(['local_id' => (int) $option['id']] + $keep)) ?>"><?= e(place_option_text($option)) ?></a></li>
+            <li><a href="<?= e($base . '/busca?' . search_query(['local_id' => (int) $option['id']] + $keep)) ?>"><?= e((string) $option['line']) ?></a></li>
         <?php endforeach; ?>
         <?php if ($resolution === 'ambiguous'): ?>
             <li class="place-resolution-hint"><?= e(t('place.keep_typing')) ?></li>
