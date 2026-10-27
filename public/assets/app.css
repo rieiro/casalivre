@@ -132,9 +132,12 @@ a.primary { display: inline-block; padding: var(--space-10) var(--space-14); bor
 .lang label { display: flex; align-items: center; gap: var(--space-6); font-size: .85rem; }
 .lang select { background: transparent; color: var(--surface); border: 1px solid var(--on-brand-line); border-radius: var(--radius-6); padding: var(--space-6); }
 .city-field { position: relative; }
-.hints { list-style: none; margin: 0; padding: var(--space-4) 0; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-8); max-height: 280px; overflow: auto; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; box-shadow: 0 8px 24px var(--shadow-hint); }
+.hints { margin: 0; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-8); max-height: 280px; overflow: hidden; display: flex; flex-direction: column; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; box-shadow: 0 8px 24px var(--shadow-hint); }
+.hints[hidden] { display: none; }
+.hints ul { list-style: none; margin: 0; padding: var(--space-4) 0; overflow: auto; min-height: 0; }
 .hints button { display: block; width: 100%; text-align: left; background: var(--surface); border: 0; border-radius: 0; padding: var(--space-10) var(--space-14); min-height: 44px; cursor: pointer; font: inherit; }
 .osm-attribution { margin: var(--space-8) 0 0; font-size: .85rem; }
+.hints .osm-attribution { margin: 0; padding: var(--space-8) var(--space-14); }
 .place-resolution ul { list-style: none; margin: 0; padding: 0; }
 .place-resolution a, .place-resolution-hint { display: flex; align-items: center; min-height: 44px; min-width: 24px; }
 .hints button[aria-selected="true"], .hints button:hover { background: var(--hover); }

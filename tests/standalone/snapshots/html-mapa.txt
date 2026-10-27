@@ -13,7 +13,7 @@ X-Frame-Options: DENY
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CasaLivre</title>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
-    <link rel="stylesheet" href="/assets/app.css?v=661f0173f4c2">
+    <link rel="stylesheet" href="/assets/app.css?v=8a72ef0f18fc">
     <link rel="stylesheet" href="/assets/themes/padrao.css?v=e297e5b2640d">
     <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=5531df8bf399"></script>
 </head>
@@ -60,6 +60,6 @@ X-Frame-Options: DENY
 <script src="/assets/pages/map.js?v=f260e4c825ce"></script>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=ff762e8d87de"></script>
+<script src="/assets/app.js?v=b45cb0501d9a"></script>
 </body>
 </html>

@@ -1,13 +1,16 @@
 document.querySelectorAll('[data-city-hints]').forEach((input) => {
+    const field = input.closest('label') || input.parentNode;
     const wrap = document.createElement('div');
     wrap.className = 'city-field';
-    input.parentNode.insertBefore(wrap, input);
-    wrap.appendChild(input);
+    field.parentNode.insertBefore(wrap, field);
+    wrap.appendChild(field);
+    const popup = document.createElement('div');
+    popup.className = 'hints';
+    popup.hidden = true;
     const list = document.createElement('ul');
-    list.className = 'hints';
     list.setAttribute('role', 'listbox');
-    list.hidden = true;
-    wrap.appendChild(list);
+    popup.appendChild(list);
+    wrap.appendChild(popup);
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-expanded', 'false');
@@ -17,7 +20,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     let rows = [];
 
     function close() {
-        list.hidden = true;
+        popup.hidden = true;
         list.replaceChildren();
         input.setAttribute('aria-expanded', 'false');
         active = -1;
@@ -32,6 +35,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             item.setAttribute('role', 'presentation');
             const button = document.createElement('button');
             button.type = 'button';
+            button.tabIndex = -1;
             button.setAttribute('role', 'option');
             button.id = list.id + '-' + index;
             button.textContent = row.line;
@@ -41,15 +45,15 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             item.appendChild(button);
             list.appendChild(item);
         });
-        list.hidden = rows.length === 0;
+        popup.hidden = rows.length === 0;
         input.setAttribute('aria-expanded', rows.length ? 'true' : 'false');
         input.setAttribute('aria-activedescendant', active >= 0 ? list.id + '-' + active : '');
         syncCredit();
     }
 
     function syncCredit() {
-        const existing = wrap.querySelector('.osm-attribution');
-        const hasPoi = !list.hidden && rows.some((row) => row.type === 'poi');
+        const existing = popup.querySelector('.osm-attribution');
+        const hasPoi = !popup.hidden && rows.some((row) => row.type === 'poi');
         if (!hasPoi) {
             if (existing) {
                 existing.remove();
@@ -59,7 +63,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
         if (existing) {
             return;
         }
-        wrap.appendChild(document.getElementById('osm-attribution').content.firstElementChild.cloneNode(true));
+        popup.appendChild(document.getElementById('osm-attribution').content.firstElementChild.cloneNode(true));
     }
 
     function choose(index) {
@@ -94,7 +98,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     });
 
     input.addEventListener('keydown', (event) => {
-        if (list.hidden) {
+        if (popup.hidden) {
             return;
         }
         if (event.key === 'ArrowDown') {
@@ -113,7 +117,12 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
         }
     });
 
-    input.addEventListener('blur', () => window.setTimeout(close, 120));
+    wrap.addEventListener('focusout', (event) => {
+        if (wrap.contains(event.relatedTarget)) {
+            return;
+        }
+        close();
+    });
 });
 
 (function stayCalendar() {
