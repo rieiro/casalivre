@@ -53,10 +53,10 @@ X-Frame-Options: DENY
             </label>
             <button type="submit">Buscar</button>
         </form>
-        <template id="osm-attribution" data-type-city="Cidade" data-type-neighborhood="Bairro" data-type-poi="Ponto de interesse" data-type-region="Região"><p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p></template>    </div>
+        <template id="osm-attribution"><p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p></template>    </div>
 </section>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=b75d9db45940"></script>
+<script src="/assets/app.js?v=ff762e8d87de"></script>
 </body>
 </html>

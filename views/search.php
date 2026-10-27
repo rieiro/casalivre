@@ -7,8 +7,8 @@ $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
 $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades']));
-$resolution = $resolution ?? null;
-$options = is_array($options ?? null) ? $options : [];
+$resolution ??= null;
+$options ??= [];
 ?>
 <section class="wrap search-page">
     <form class="search search-query" method="get" action="<?= e($base) ?>/busca">
@@ -90,7 +90,7 @@ $options = is_array($options ?? null) ? $options : [];
             </form>
         </div>
         <div id="search-results"<?= $base !== '' ? ' data-base="' . e($base) . '"' : '' ?><?= isset($vitrine_api) ? ' data-api="' . e($vitrine_api) . '"' : '' ?>>
-            <?php if (is_string($resolution) && $resolution !== ''): ?>
+            <?php if ($resolution !== null): ?>
                 <?php include __DIR__ . '/place_resolution.php'; ?>
             <?php elseif (!$searched): ?>
                 <p class="muted"><?= e(t('home.empty')) ?></p>
@@ -123,6 +123,6 @@ $options = is_array($options ?? null) ? $options : [];
         </div>
     </div>
 </section>
-<?php if (!empty($use_api) && $searched && !is_string($resolution)): ?>
+<?php if (!empty($use_api) && $searched && $resolution === null): ?>
 <script src="<?= e(asset_url('/assets/pages/search.js')) ?>"></script>
 <?php endif; ?>

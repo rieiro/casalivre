@@ -54,7 +54,7 @@ X-Frame-Options: DENY
         <input type="hidden" name="score_min" value="">
                 <button type="submit">Buscar</button>
     </form>
-    <template id="osm-attribution" data-type-city="Cidade" data-type-neighborhood="Bairro" data-type-poi="Ponto de interesse" data-type-region="Região"><p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p></template>    <div class="search-layout">
+    <template id="osm-attribution"><p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p></template>    <div class="search-layout">
         <div class="search-side">
             <a class="map-teaser" href="/busca/mapa?checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0&amp;local_id=<ID>">
                 <span class="map-tiles is-empty"></span>
@@ -97,6 +97,6 @@ X-Frame-Options: DENY
 <script src="/assets/pages/search.js?v=d69f114903a5"></script>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=b75d9db45940"></script>
+<script src="/assets/app.js?v=ff762e8d87de"></script>
 </body>
 </html>

@@ -540,23 +540,70 @@ SQL;
         return $rows;
     }
 
-    /** @param list<array> $hits @return list<array> */
+    /**
+     * At most 8 choices. Parent names come from one PK join (places.parent_id = parent.id).
+     * The prefix scan itself is unchanged.
+     *
+     * @param list<array> $hits
+     * @return list<array>
+     */
     private static function options(array $hits): array
     {
-        return array_map(self::option(...), array_slice($hits, 0, 8));
+        $hits = array_slice($hits, 0, 8);
+        $parents = self::parentNames(array_map(static fn (array $hit): int => (int) $hit['id'], $hits));
+        $rows = [];
+        foreach ($hits as $hit) {
+            $parent = $parents[(int) $hit['id']] ?? '';
+            if ($parent !== '') {
+                $hit['parent'] = $parent;
+            }
+            $rows[] = self::option($hit);
+        }
+        return $rows;
     }
 
-    /** @param array{id:int,name:string,label:string,type:string,uf:string} $place */
+    /**
+     * @param list<int> $ids
+     * @return array<int, string>
+     */
+    private static function parentNames(array $ids): array
+    {
+        $clean = [];
+        foreach ($ids as $id) {
+            if ($id > 0) {
+                $clean[$id] = $id;
+            }
+        }
+        if ($clean === []) {
+            return [];
+        }
+        $sql = 'SELECT p.id, c.name AS parent_name FROM places p LEFT JOIN places c ON c.id = p.parent_id WHERE p.id IN (' . implode(',', $clean) . ')';
+        $parents = [];
+        foreach (db()->query($sql) as $row) {
+            $name = trim((string) ($row['parent_name'] ?? ''));
+            if ($name !== '') {
+                $parents[(int) $row['id']] = $name;
+            }
+        }
+        return $parents;
+    }
+
+    /** @param array{id:int,name:string,label:string,type:string,uf:string,parent?:string} $place */
     private static function option(array $place): array
     {
-        return [
+        $row = [
             'id' => $place['id'],
             'text' => place_label($place),
             'name' => $place['name'],
             'label' => $place['label'],
             'type' => $place['type'],
             'uf' => $place['uf'],
+            'line' => place_option_text($place),
         ];
+        if (($place['parent'] ?? '') !== '') {
+            $row['parent'] = $place['parent'];
+        }
+        return $row;
     }
 
     public static function refresh(): array

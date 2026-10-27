@@ -47,6 +47,6 @@ X-Frame-Options: DENY
 </section>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=b75d9db45940"></script>
+<script src="/assets/app.js?v=ff762e8d87de"></script>
 </body>
 </html>

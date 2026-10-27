@@ -19,13 +19,10 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     function close() {
         list.hidden = true;
         list.replaceChildren();
-        const credit = wrap.querySelector('.osm-attribution');
-        if (credit) {
-            credit.remove();
-        }
         input.setAttribute('aria-expanded', 'false');
         active = -1;
         rows = [];
+        syncCredit();
     }
 
     function paint() {
@@ -37,7 +34,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             button.type = 'button';
             button.setAttribute('role', 'option');
             button.id = list.id + '-' + index;
-            button.textContent = placeLine(row);
+            button.textContent = row.line;
             button.setAttribute('aria-selected', index === active ? 'true' : 'false');
             button.addEventListener('mousedown', (event) => event.preventDefault());
             button.addEventListener('click', () => choose(index));
@@ -48,18 +45,6 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
         input.setAttribute('aria-expanded', rows.length ? 'true' : 'false');
         input.setAttribute('aria-activedescendant', active >= 0 ? list.id + '-' + active : '');
         syncCredit();
-    }
-
-    function placeLine(row) {
-        const tpl = document.getElementById('osm-attribution');
-        if (!tpl || !row.name) {
-            return row.text || '';
-        }
-        const typeName = String(row.type || '');
-        const key = 'type' + typeName.charAt(0).toUpperCase() + typeName.slice(1);
-        const uf = String(row.uf || '').trim();
-        const where = row.parent ? row.parent + (uf ? ', ' + uf : '') : uf;
-        return [row.name, tpl.dataset[key] || typeName, where].filter(Boolean).join(' · ');
     }
 
     function syncCredit() {
@@ -74,11 +59,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
         if (existing) {
             return;
         }
-        const tpl = document.getElementById('osm-attribution');
-        const node = tpl && tpl.content && tpl.content.firstElementChild ? tpl.content.firstElementChild.cloneNode(true) : null;
-        if (node) {
-            wrap.appendChild(node);
-        }
+        wrap.appendChild(document.getElementById('osm-attribution').content.firstElementChild.cloneNode(true));
     }
 
     function choose(index) {
