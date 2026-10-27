@@ -11,7 +11,9 @@
     const D = window.CLMapData;
     const el = window.CL.el;
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const ATTRIBUTION = '<a href="https://www.openstreetmap.org/copyright" rel="noopener">© OpenStreetMap contributors</a> · <a href="https://protomaps.com" rel="noopener">Protomaps</a>';
+    const credit = document.querySelector('.map-page .osm-attribution');
+    const osm = credit ? credit.innerHTML.trim() : '';
+    const ATTRIBUTION = osm + (osm ? ' · ' : '') + '<a href="https://protomaps.com" rel="noopener noreferrer" target="_blank">Protomaps</a>';
     const BRASIL = [[-74.0, -33.8], [-28.6, 5.3]];
 
     function setStatus(text) {
@@ -120,6 +122,9 @@
             return;
         }
         map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: ATTRIBUTION }), 'bottom-right');
+        if (credit) {
+            credit.remove();
+        }
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
         map.on('error', function (ev) {
             // Glifos de escritas não incluídas (ex.: CJK) dão 404: sem impacto, não poluem o console.

@@ -14,6 +14,109 @@ function compose_address(string $street, string $number, string $complement): st
     return implode(', ', $parts);
 }
 
+/** Static ODbL credit. The same anchor is cloned into the autocomplete and the map control. */
+function osm_attribution_anchor(): string
+{
+    return '<a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a>';
+}
+
+function osm_attribution(): void
+{
+    echo '<p class="osm-attribution">' . osm_attribution_anchor() . '</p>';
+}
+
+/** Hidden source for the place field. Not shown until a suggestion list contains a POI. */
+function osm_attribution_template(): void
+{
+    echo '<template id="osm-attribution"'
+        . ' data-type-city="' . e(t('place.type_city')) . '"'
+        . ' data-type-neighborhood="' . e(t('place.type_neighborhood')) . '"'
+        . ' data-type-poi="' . e(t('place.type_poi')) . '"'
+        . ' data-type-region="' . e(t('place.type_region')) . '">';
+    osm_attribution();
+    echo '</template>';
+}
+
+/**
+ * Parent city name for each place id. Cities have none.
+ *
+ * @param list<int> $ids
+ * @return array<int, string>
+ */
+function place_parents(array $ids): array
+{
+    $clean = [];
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $clean[$id] = $id;
+        }
+    }
+    if ($clean === []) {
+        return [];
+    }
+    $parents = [];
+    $sql = 'SELECT p.id, c.name AS parent_name FROM places p LEFT JOIN places c ON c.id = p.parent_id WHERE p.id IN (' . implode(',', $clean) . ')';
+    foreach (db()->query($sql) as $row) {
+        $name = trim((string) ($row['parent_name'] ?? ''));
+        if ($name !== '') {
+            $parents[(int) $row['id']] = $name;
+        }
+    }
+    return $parents;
+}
+
+/** @param list<array<string, mixed>> $rows @return list<array<string, mixed>> */
+function place_with_parents(array $rows): array
+{
+    $parents = place_parents(array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $rows));
+    foreach ($rows as $i => $row) {
+        $parent = $parents[(int) ($row['id'] ?? 0)] ?? '';
+        if ($parent !== '') {
+            $rows[$i]['parent'] = $parent;
+        }
+    }
+    return $rows;
+}
+
+/** Name, type and parent (or UF when the place has no parent). */
+function place_option_text(array $option): string
+{
+    $type = (string) ($option['type'] ?? '');
+    $typeLabel = t(match ($type) {
+        'city' => 'place.type_city',
+        'neighborhood' => 'place.type_neighborhood',
+        'poi' => 'place.type_poi',
+        'region' => 'place.type_region',
+        default => 'place.type_poi',
+    });
+    $uf = rtrim((string) ($option['uf'] ?? ''));
+    $parent = trim((string) ($option['parent'] ?? ''));
+    $where = $parent !== '' ? ($uf !== '' ? $parent . ', ' . $uf : $parent) : $uf;
+    return (string) ($option['name'] ?? '') . ' · ' . $typeLabel . ($where !== '' ? ' · ' . $where : '');
+}
+
+/**
+ * Submitted text that did not resolve to one place. No listing query.
+ *
+ * @return array{resolution:?string,options:list<array<string, mixed>>}
+ */
+function unresolved_place(SearchQuery $query): array
+{
+    if ($query->localId !== null || $query->localidade === '') {
+        return ['resolution' => null, 'options' => []];
+    }
+    require_once __DIR__ . '/../CityRepository.php';
+    $resolved = CityRepository::resolve($query->localidade);
+    if ($resolved['place'] !== null) {
+        return ['resolution' => null, 'options' => []];
+    }
+    return [
+        'resolution' => $resolved['resolution'],
+        'options' => place_with_parents($resolved['options']),
+    ];
+}
+
 /** Display label shared by autocomplete options and the search/map field. */
 function place_label(?array $place, string $fallback = ''): string
 {

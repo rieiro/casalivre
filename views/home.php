@@ -18,6 +18,7 @@
             </label>
             <button type="submit"><?= e(t('home.search')) ?></button>
         </form>
+        <?php osm_attribution_template(); ?>
     </div>
 </section>
 <?php if (isset($vitrine_grupo)): ?>

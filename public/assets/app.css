@@ -134,6 +134,9 @@ a.primary { display: inline-block; padding: var(--space-10) var(--space-14); bor
 .city-field { position: relative; }
 .hints { list-style: none; margin: 0; padding: var(--space-4) 0; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-8); max-height: 280px; overflow: auto; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; box-shadow: 0 8px 24px var(--shadow-hint); }
 .hints button { display: block; width: 100%; text-align: left; background: var(--surface); border: 0; border-radius: 0; padding: var(--space-10) var(--space-14); min-height: 44px; cursor: pointer; font: inherit; }
+.osm-attribution { margin: var(--space-8) 0 0; font-size: .85rem; }
+.place-resolution ul { list-style: none; margin: 0; padding: 0; }
+.place-resolution a, .place-resolution-hint { display: flex; align-items: center; min-height: 44px; min-width: 24px; }
 .hints button[aria-selected="true"], .hints button:hover { background: var(--hover); }
 .stay-cal { position: fixed; z-index: 80; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-12); box-shadow: 0 16px 40px var(--shadow-pop); padding: var(--space-12) var(--space-16) var(--space-16); }
 .stay-cal[hidden] { display: none !important; }

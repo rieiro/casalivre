@@ -170,7 +170,7 @@ function handle_api(string $path, string $method): void
 
     if ($path === '/api/cidades' && $method === 'GET') {
         $q = mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 80);
-        json_out(200, CityRepository::suggest($q));
+        json_out(200, place_with_parents(CityRepository::suggest($q)));
     }
 
     if ($path === '/api/ceps' && $method === 'GET') {
