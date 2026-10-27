@@ -106,7 +106,6 @@ function unresolved_place(SearchQuery $query): array
     if ($query->localId !== null || $query->localidade === '') {
         return ['resolution' => null, 'options' => []];
     }
-    require_once __DIR__ . '/../CityRepository.php';
     $resolved = CityRepository::resolve($query->localidade);
     if ($resolved['place'] !== null) {
         return ['resolution' => null, 'options' => []];
