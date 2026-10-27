@@ -233,7 +233,7 @@ Histórias P6.1–P6.7 em `pagamentos.md`, seção 9. Depende das decisões D1�
   Os campos do ledger entram na S6. O relatório anual e o aviso municipal entram na S8. A reverificação do regulamento da CBS é em 15/12/2026.
 
 ## Competitor gaps (reviewed 2026-10-21 to 2026-10-23)
-Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 25/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026; G21 a G23 e G27 aprovados com mudança). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). O Rafael decidiu em 2026-10-22, depois dessa revisão: G10 (penalidade do anfitrião por solicitação expirada) e G20 (reserva dupla pelo iCal) não entram no backlog; a G19 não avisa ninguém e não relaxa o mínimo, só pinta a noite vazia no calendário do anfitrião. RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
+Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competitors.md`, 17 a 27/10/2026, fontes públicas com link) e revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, 21/10/2026; G18 a G20 na seção "Day 6", 22/10/2026; G21 a G23, G27, G33 e G34 aprovados com mudança). G6 com a orientação do Jurídico (`/workspace/juridico/g6-cameras.md`, 21/10/2026). O Rafael decidiu em 2026-10-22, depois dessa revisão: G10 (penalidade do anfitrião por solicitação expirada) e G20 (reserva dupla pelo iCal) não entram no backlog; a G19 não avisa ninguém e não relaxa o mínimo, só pinta a noite vazia no calendário do anfitrião. RICE = R × I × C ÷ E, **todos [E]** (sem dado de uso), com os valores finais do Negócios. Cada comportamento é um parâmetro de nó, canal ou imóvel com padrão da plataforma; os modelos (direto, franquia, parceiro) mudam só por configuração.
 
 | # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -250,11 +250,13 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
 | G23 | Conversa aberta depois do cancelamento ou do check-out | — | — | — | — | 6,4 | Should | antes da S9 | aprovado com mudança (14 dias, não 30) |
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
+| G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G27 | Respostas do anfitrião publicadas como FAQ do anúncio | — | — | — | — | 3,6 | Should | depois da S7, antes da P8 | aprovado com mudança (2,4 → 3,6) |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
+| G34 | Buscas salvas com resumo opcional | — | — | — | — | 1,5 | Could | depois do piloto | aprovado com mudança (1 → 1,5) |
 | G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | calendário do anfitrião (só a cor) | decidido pelo Rafael (2026-10-22): só a cor |
@@ -455,6 +457,29 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   6. Cada entrada guarda pergunta, resposta e idioma em texto estruturado, de modo que a P8 leia só entradas publicadas.
   7. Mostrar o FAQ não acrescenta consulta à busca nem muda as metas de velocidade do ADR 001 (só a página do anúncio lê as entradas).
 - **Prioridade:** Should, depois da S7 e antes da P8. RICE 3,6 (o Negócios subiu de 2,4). Depende da G21. Fonte: competitors.md G27 (`/workspace/produto/competitors.md`, 25/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`). Referência: respostas públicas do anfitrião no Booking.com.
+
+### G33 — Favorito indisponível nas datas escolhidas (Should, S9)
+- **Problema:** com as datas definidas, o favorito que foi reservado por outro hóspede continua aparecendo como se estivesse livre. Só o Comparar (spec-08) mostra "Indisponível nestas datas". O Vrbo faz isso nos Trip Boards.
+- **Solução (aprovada pelo Negócios com mudança):** com as datas definidas, o favorito indisponível mostra "Indisponível nestas datas", com "Ver parecidos" e "Mudar datas", no lugar do total. Edição pequena da spec-08, dentro da S9. **A mais, pelo Negócios:** (1) "Ver parecidos" lista primeiro os imóveis da mesma rede (parâmetro do canal); (2) cada visualização de favorito indisponível entra como sinal de demanda, só como contagem agregada, sem usuário, sessão nem IP (Segurança e Jurídico confirmam antes de construir, nas mesmas regras do registro de demanda do ADR 001 §11.3).
+- **Critérios de aceite:**
+  1. Com as datas definidas e o favorito sem as noites livres, o card mostra "Indisponível nestas datas", "Ver parecidos" e "Mudar datas", e não mostra o total.
+  2. Sem datas definidas, o favorito aparece como hoje, sem esse aviso.
+  3. "Ver parecidos" abre a busca com a mesma cidade, as mesmas datas e hóspedes; os imóveis da mesma rede vêm primeiro quando o parâmetro do canal estiver ligado.
+  4. "Mudar datas" abre o seletor de datas e reavalia o favorito com as novas datas.
+  5. Cada visualização de favorito indisponível soma 1 numa contagem diária agregada, sem dado pessoal; a resposta do favorito não espera essa gravação.
+  6. A avaliação da disponibilidade do favorito usa a mesma regra do Comparar e das noites reserváveis, num lugar só.
+- **Prioridade:** Should, na S9. RICE 4,8 (mantido). Fonte: competitors.md G33 (`/workspace/produto/competitors.md`, 27/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referência: [Vrbo Trip Boards](https://help.vrbo.com/articles/How-do-I-manage-my-Trip-Boards).
+
+### G34 — Buscas salvas com resumo opcional (Could, depois do piloto)
+- **Problema:** quem busca uma região precisa refazer a busca a cada visita, e não é avisado de imóveis novos ou de queda de preço. A OLX tem buscas salvas e alertas.
+- **Solução (aprovada pelo Negócios com mudança):** o hóspede salva uma busca (lugar resolvido mais filtros). Primeiro vem a lista dentro do app; o resumo diário opcional vem depois da decisão do provedor de mensagens (WhatsApp, SMS ou e-mail). Um trabalho em segundo plano faz a conferência, para não pesar na busca. **A mais, pelo Negócios:** o resumo tem descadastro em um clique, e uma vitrine regional só envia imóveis da própria região.
+- **Critérios de aceite:**
+  1. O hóspede salva a busca atual (lugar resolvido e filtros) e vê a lista de buscas salvas no app; pode abrir ou apagar cada uma.
+  2. O resumo por mensagem só existe depois da decisão do provedor e só para quem aceitou; o padrão é desligado.
+  3. Toda mensagem de resumo traz o descadastro em um clique; depois dele, a pessoa não recebe mais resumos.
+  4. A vitrine regional envia só imóveis da própria região.
+  5. A conferência roda num trabalho em segundo plano e não acrescenta consulta nem tempo à busca (metas de velocidade do ADR 001).
+- **Prioridade:** Could, depois do piloto. RICE 1,5 (o Negócios subiu de 1). Depende da decisão do provedor de mensagens para o resumo. Fonte: competitors.md G34 (`/workspace/produto/competitors.md`, 27/10), revisão do Negócios. Referência: [OLX buscas salvas e alertas](https://ajuda.olx.com.br/s/article/favoritos-buscas-anuncios).
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
