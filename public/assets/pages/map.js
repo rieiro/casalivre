@@ -12,7 +12,7 @@
     const el = window.CL.el;
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const credit = document.querySelector('.map-page .osm-attribution');
-    const ATTRIBUTION = credit.innerHTML.trim() + ' · ' + '<a href="https://protomaps.com" rel="noopener noreferrer" target="_blank">Protomaps</a>';
+    const ATTRIBUTION = credit.innerHTML.trim() + ' · <a href="https://protomaps.com" rel="noopener noreferrer" target="_blank">Protomaps</a>';
     const BRASIL = [[-74.0, -33.8], [-28.6, 5.3]];
 
     function setStatus(text) {

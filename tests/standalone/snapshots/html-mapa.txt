@@ -57,7 +57,7 @@ X-Frame-Options: DENY
 <script src="/assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=16786767beab"></script>
 <script src="/assets/vendor/pmtiles/pmtiles.js?v=ca16879182f1"></script>
 <script src="/assets/pages/map-data.js?v=5a1582c13c9c"></script>
-<script src="/assets/pages/map.js?v=27d5f595c9d9"></script>
+<script src="/assets/pages/map.js?v=f260e4c825ce"></script>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
 <script src="/assets/app.js?v=ff762e8d87de"></script>

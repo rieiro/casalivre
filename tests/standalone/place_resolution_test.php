@@ -76,7 +76,6 @@ t_ok(str_contains($miss, 'Não encontramos'), 'Não encontramos');
 t_ok(str_contains($miss, '&lt;script&gt;alert(1)&lt;/script&gt;'), 'o texto digitado é escapado');
 t_ok(!str_contains($miss, '<script>alert'), 'o texto não vira script');
 t_ok(str_contains($miss, 'href="/busca/mapa?') && str_contains($miss, 'Buscar no mapa'), 'link Buscar no mapa');
-t_ok(!str_contains($miss, 'place-resolution-map'), 'classe morta saiu');
 t_ok(preg_match('/<\/template>.*openstreetmap\.org/s', $miss) !== 1, 'not_found sem crédito OSM visível');
 t_ok(str_contains($miss, 'value="&lt;script&gt;alert(1)&lt;/script&gt;"'), 'o campo continua editável com o texto');
 

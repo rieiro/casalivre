@@ -550,12 +550,14 @@ SQL;
     private static function options(array $hits): array
     {
         $hits = array_slice($hits, 0, 8);
-        $parents = self::parentNames(array_map(static fn (array $hit): int => (int) $hit['id'], $hits));
+        if ($hits === []) {
+            return [];
+        }
+        $parents = self::parentNames(array_column($hits, 'id'));
         $rows = [];
         foreach ($hits as $hit) {
-            $parent = $parents[(int) $hit['id']] ?? '';
-            if ($parent !== '') {
-                $hit['parent'] = $parent;
+            if (isset($parents[$hit['id']])) {
+                $hit['parent'] = $parents[$hit['id']];
             }
             $rows[] = self::option($hit);
         }
@@ -563,27 +565,17 @@ SQL;
     }
 
     /**
+     * Cities have no parent row, so the inner join drops them.
+     *
      * @param list<int> $ids
      * @return array<int, string>
      */
     private static function parentNames(array $ids): array
     {
-        $clean = [];
-        foreach ($ids as $id) {
-            if ($id > 0) {
-                $clean[$id] = $id;
-            }
-        }
-        if ($clean === []) {
-            return [];
-        }
-        $sql = 'SELECT p.id, c.name AS parent_name FROM places p LEFT JOIN places c ON c.id = p.parent_id WHERE p.id IN (' . implode(',', $clean) . ')';
+        $sql = 'SELECT p.id, c.name AS parent_name FROM places p JOIN places c ON c.id = p.parent_id WHERE p.id IN (' . implode(',', $ids) . ')';
         $parents = [];
         foreach (db()->query($sql) as $row) {
-            $name = trim((string) ($row['parent_name'] ?? ''));
-            if ($name !== '') {
-                $parents[(int) $row['id']] = $name;
-            }
+            $parents[$row['id']] = $row['parent_name'];
         }
         return $parents;
     }

@@ -31,12 +31,8 @@ function osm_attribution_template(): void
 /** Name, type and parent (or UF when the place has no parent). */
 function place_option_text(array $option): string
 {
-    $type = (string) ($option['type'] ?? '');
-    $typeLabel = t('place.type_' . $type);
-    $uf = rtrim((string) ($option['uf'] ?? ''));
-    $parent = trim((string) ($option['parent'] ?? ''));
-    $where = $parent !== '' ? ($uf !== '' ? $parent . ', ' . $uf : $parent) : $uf;
-    return (string) ($option['name'] ?? '') . ' · ' . $typeLabel . ($where !== '' ? ' · ' . $where : '');
+    $where = isset($option['parent']) ? $option['parent'] . ', ' . $option['uf'] : $option['uf'];
+    return $option['name'] . ' · ' . t('place.type_' . $option['type']) . ' · ' . $where;
 }
 
 /**
