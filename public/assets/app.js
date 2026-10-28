@@ -1,5 +1,5 @@
 document.querySelectorAll('[data-city-hints]').forEach((input) => {
-    const field = input.closest('label') || input.parentNode;
+    const field = input.closest('label');
     const wrap = document.createElement('div');
     wrap.className = 'city-field';
     field.parentNode.insertBefore(wrap, field);
