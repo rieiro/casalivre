@@ -352,16 +352,21 @@ WHERE k.key = ? AND k.kind = 'alias' AND (? = '' OR uf = ?)
 LIMIT 2
 SQL;
 
-    // City first so LIMIT 9 cannot drop the only city behind same-name neighborhoods.
-    private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
- FROM places
+    // City first, then popularity. One exact neighborhood is the only extra
+    // priority: "praia do forte" is that single row plus 9 POIs, and popularity
+    // alone drops it past LIMIT 9. Many neighborhoods (Cristo Redentor) do not
+    // jump ahead of a more popular POI.
+    private const NAME_EXACT_SQL = 'SELECT ' . self::PLACE_COLUMNS . ' FROM (SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
+, popularity, COUNT(*) FILTER (WHERE type = 'neighborhood') OVER () AS nb
+FROM places
 WHERE name_fold = ? AND (? = '' OR uf = ?)
-ORDER BY (type = 'city') DESC, popularity DESC, id
+) p
+ORDER BY (type = 'city') DESC, (type = 'neighborhood' AND nb = 1) DESC, popularity DESC, id
 LIMIT 9
 SQL;
 
-    // The known exact id (places.id is INTEGER; the caller already has that one row), plus any other
-    // type with this search key (Geribá the neighborhood and Praia de Geribá).
+    // Known exact id (places.id is INTEGER) plus any other type with this search key.
+    // The known id sorts first so LIMIT 9 cannot drop it behind a more popular place.
     private const EXACT_OR_OTHER_SQL = 'SELECT ' . self::PLACE_COLUMNS . <<<'SQL'
  FROM places
 WHERE id IN (
@@ -370,7 +375,7 @@ WHERE id IN (
     SELECT o.id FROM place_search_keys k JOIN places o ON o.id = k.place_id
     WHERE k.key = ? AND o.type <> ? AND (? = '' OR o.uf = ?)
 )
-ORDER BY popularity DESC, id
+ORDER BY (id = CAST(? AS integer)) DESC, popularity DESC, id
 LIMIT 9
 SQL;
 
@@ -421,13 +426,14 @@ SQL;
     }
 
     /**
-     * Submitted text, via the autocomplete query (fetch 9).
-     * 1 hit → place. 2–8 → did_you_mean. 9 → ambiguous (show 8). 0 → not_found.
-     * A unique alias resolves. Exactly one city with that exact name resolves, even
-     * when neighborhoods share it. Two cities with that name stay a list. A neighborhood
-     * or POI does not, when another type matches the same name or search key.
-     * A unique full-name prefix wins before the key list: word-suffix keys also match
-     * neighborhoods that merely contain the city name ("Rio de Jan" is one city).
+     * Submitted text. Fetch 9 and show at most 8. 2–8 → did_you_mean. 9 → ambiguous. 0 → not_found.
+     * A unique alias resolves. Exactly one city with that exact name resolves, even when
+     * neighborhoods share it. Several cities, or exact rows of more than one type, are
+     * that list. Several exact rows of one non-city type continue to the prefix list
+     * (Foz do Iguaçu, Cataratas do Iguaçu). One exact non-city also lists other types
+     * with the same search key, exact row first. A unique full-name prefix wins only
+     * when the exact name missed ("Rio de Jan" is one city).
+     * suggest() stays on the popularity prefix and is not this path.
      *
      * @return array{place:?array,resolution:?string,options:list<array>}
      */
@@ -455,9 +461,11 @@ SQL;
             return self::found($cities[0]);
         }
         if (count($exact) === 1) {
-            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$exact[0]['id'], $text, $exact[0]['type'], $uf, $uf]);
+            $id = $exact[0]['id'];
+            $group = self::placeRows(self::EXACT_OR_OTHER_SQL, [$id, $text, $exact[0]['type'], $uf, $uf, $id]);
             return count($group) === 1 ? self::found($group[0]) : self::choices($group);
         }
+        // Same-type non-city falls through to the prefix list.
         if (count($cities) > 1 || count($types) > 1) {
             return self::choices($exact);
         }
@@ -471,6 +479,12 @@ SQL;
             }
         }
         $hits = self::prefixPlaces($text, $uf);
+        // Centro: every exact row is a pop-0 neighborhood, so the popularity
+        // prefix is Centro do Guilherme and the typed name disappears.
+        if (count($exact) >= 9 && $hits !== [] && array_intersect(array_column($exact, 'id'), array_column($hits, 'id')) === []) {
+            array_unshift($hits, $exact[0]);
+            $hits = array_slice($hits, 0, 9);
+        }
         if (count($hits) === 1) {
             return self::found($hits[0]);
         }
