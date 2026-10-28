@@ -38,7 +38,13 @@ t_ok(($items[0]['lat'] !== -27.59 || $items[0]['lng'] !== -48.54), 'lat/lng dife
 echo "sem busca / sem resultado\n";
 $r = t_http('GET', $base . '/busca/mapa');
 t_ok($r['status'] === 200 && $attr($r['body'], 'data-api') === '', 'sem filtros -> sem data-api (nada a buscar)');
-$r = t_http('GET', $base . '/busca/mapa?localidade=' . urlencode('Cidade Inexistente XYZ'));
+$typed = 'Cidade Inexistente XYZ';
+$r = t_http('GET', $base . '/busca/mapa?localidade=' . urlencode($typed));
+t_eq(200, $r['status'], 'localidade sem lugar fica no mapa');
+t_ok(!preg_match('/^Location:/mi', $r['headers']), 'localidade sem lugar não redireciona');
+t_ok(!str_contains($r['body'], 'Não encontramos'), 'o mapa não repete a tela de não encontrado');
+t_ok(str_contains($r['body'], 'Mapa dos imóveis · ' . $typed), 'o texto digitado fica só no rótulo');
+t_eq('', (string) $attr($r['body'], 'data-center'), 'sem centro de cidade: o mapa abre no Brasil');
 t_eq([], json_decode(t_http('GET', $base . (string) $attr($r['body'], 'data-api'))['body'], true)['items'] ?? null, 'localidade sem imóveis -> API vazia');
 
 echo "imóvel inativo fica fora\n";

@@ -7,6 +7,8 @@ $dateOrder = current_locale() === 'en' ? 'mdy' : 'dmy';
 $checkinValue = $filters['checkin'] !== '' ? (format_date(parse_date($filters['checkin']) ?? '') ?: $filters['checkin']) : '';
 $checkoutValue = $filters['checkout'] !== '' ? (format_date(parse_date($filters['checkout']) ?? '') ?: $filters['checkout']) : '';
 $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades']));
+$resolution ??= null;
+$options ??= [];
 ?>
 <section class="wrap search-page">
     <form class="search search-query" method="get" action="<?= e($base) ?>/busca">
@@ -31,6 +33,7 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
         <?php endforeach; ?>
         <button type="submit"><?= e(t('home.search')) ?></button>
     </form>
+    <?php osm_attribution_template(); ?>
     <div class="search-layout">
         <div class="search-side">
             <a class="map-teaser" href="<?= e($base) ?>/busca/mapa?<?= e($query) ?>">
@@ -87,7 +90,9 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
             </form>
         </div>
         <div id="search-results"<?= $base !== '' ? ' data-base="' . e($base) . '"' : '' ?><?= isset($vitrine_api) ? ' data-api="' . e($vitrine_api) . '"' : '' ?>>
-            <?php if (!$searched): ?>
+            <?php if ($resolution !== null): ?>
+                <?php include __DIR__ . '/place_resolution.php'; ?>
+            <?php elseif (!$searched): ?>
                 <p class="muted"><?= e(t('home.empty')) ?></p>
             <?php elseif (!empty($use_api)): ?>
                 <p class="muted" id="search-loading">Carregando resultados…</p>
@@ -118,6 +123,6 @@ $popular = array_values(array_intersect(Amenities::keys(), $filters['amenidades'
         </div>
     </div>
 </section>
-<?php if (!empty($use_api) && $searched): ?>
+<?php if (!empty($use_api) && $searched && $resolution === null): ?>
 <script src="<?= e(asset_url('/assets/pages/search.js')) ?>"></script>
 <?php endif; ?>

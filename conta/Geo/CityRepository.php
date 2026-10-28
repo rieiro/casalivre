@@ -554,13 +554,47 @@ SQL;
         return $rows;
     }
 
-    /** @param list<array> $hits @return list<array> */
+    /**
+     * At most 8 choices. Parent names come from one PK join (places.parent_id = parent.id).
+     * The prefix scan itself is unchanged.
+     *
+     * @param list<array> $hits
+     * @return list<array>
+     */
     private static function options(array $hits): array
     {
-        return array_map(self::option(...), array_slice($hits, 0, 8));
+        $hits = array_slice($hits, 0, 8);
+        if ($hits === []) {
+            return [];
+        }
+        $parents = self::parentNames(array_column($hits, 'id'));
+        $rows = [];
+        foreach ($hits as $hit) {
+            if (isset($parents[$hit['id']])) {
+                $hit['parent'] = $parents[$hit['id']];
+            }
+            $rows[] = self::option($hit);
+        }
+        return $rows;
     }
 
-    /** @param array{id:int,name:string,label:string,type:string,uf:string} $place */
+    /**
+     * Cities have no parent row, so the inner join drops them.
+     *
+     * @param list<int> $ids
+     * @return array<int, string>
+     */
+    private static function parentNames(array $ids): array
+    {
+        $sql = 'SELECT p.id, c.name AS parent_name FROM places p JOIN places c ON c.id = p.parent_id WHERE p.id IN (' . implode(',', $ids) . ')';
+        $parents = [];
+        foreach (db()->query($sql) as $row) {
+            $parents[$row['id']] = $row['parent_name'];
+        }
+        return $parents;
+    }
+
+    /** @param array{id:int,name:string,label:string,type:string,uf:string,parent?:string} $place */
     private static function option(array $place): array
     {
         return [
@@ -570,6 +604,7 @@ SQL;
             'label' => $place['label'],
             'type' => $place['type'],
             'uf' => $place['uf'],
+            'line' => place_option_text($place),
         ];
     }
 

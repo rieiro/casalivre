@@ -15,6 +15,7 @@ $center = isset($place['lat'], $place['lng']) ? round((float) $place['lat'], 2) 
     <h1><?= e(t('home.map_title')) ?><?= $placeLabel !== '' ? ' · ' . e($placeLabel) : '' ?></h1>
     <p class="muted" id="map-status" role="status" aria-live="polite" data-map-count><?= $searched ? 'Carregando mapa…' : e(t('home.empty')) ?></p>
     <p class="map-notice" id="map-notice" role="alert" hidden></p>
+    <?php osm_attribution(); ?>
     <div id="result-map" class="result-map"
          data-api="<?= $searched ? e($vitrine_api ?? '/api/busca?' . $query) : '' ?>"
          data-query="<?= e($query) ?>"

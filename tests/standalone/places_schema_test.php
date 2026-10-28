@@ -14,7 +14,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(25, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 25');
+t_eq(26, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 26');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -49,7 +49,7 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('25', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 25');
+t_eq('26', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 26');
 $poiCols = $pdo->query("SELECT attname FROM pg_attribute WHERE attrelid = 'places'::regclass AND attname IN ('category', 'osm_ref', 'wikidata') AND NOT attisdropped")->fetchAll(PDO::FETCH_COLUMN);
 sort($poiCols);
 t_eq(['category', 'osm_ref', 'wikidata'], $poiCols, 'places tem category, osm_ref e wikidata');

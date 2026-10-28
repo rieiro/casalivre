@@ -13,7 +13,7 @@ X-Frame-Options: DENY
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CasaLivre</title>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
-    <link rel="stylesheet" href="/assets/app.css?v=5dd440d3e88d">
+    <link rel="stylesheet" href="/assets/app.css?v=8a72ef0f18fc">
     <link rel="stylesheet" href="/assets/themes/padrao.css?v=e297e5b2640d">
     <script type="application/json" id="page-data">{"csrf":"<CSRF>","i18n":{"netError":"Falha de conexão. Tente novamente.","requestFailed":"Não foi possível concluir a operação."}}</script>    <script src="/assets/safe-dom.js?v=5531df8bf399"></script>
 </head>
@@ -44,7 +44,7 @@ X-Frame-Options: DENY
     <h1>Mapa dos imóveis · Florianópolis, SC</h1>
     <p class="muted" id="map-status" role="status" aria-live="polite" data-map-count>Carregando mapa…</p>
     <p class="map-notice" id="map-notice" role="alert" hidden></p>
-    <div id="result-map" class="result-map"
+    <p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p>    <div id="result-map" class="result-map"
          data-api="/api/busca?checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0&amp;local_id=<ID>"
          data-query="checkin=&amp;checkout=&amp;hospedes=0&amp;raio=0&amp;preco_min=0&amp;preco_max=0&amp;score_min=0&amp;local_id=<ID>"
          data-center="-27.59,-48.55"
@@ -57,9 +57,9 @@ X-Frame-Options: DENY
 <script src="/assets/vendor/maplibre-gl/maplibre-gl-csp.js?v=16786767beab"></script>
 <script src="/assets/vendor/pmtiles/pmtiles.js?v=ca16879182f1"></script>
 <script src="/assets/pages/map-data.js?v=5a1582c13c9c"></script>
-<script src="/assets/pages/map.js?v=06a1b8a036ef"></script>
+<script src="/assets/pages/map.js?v=f260e4c825ce"></script>
 </main>
 <footer>Aluguel por temporada. Sincronização por link iCal, compatível com Booking e Airbnb.</footer>
-<script src="/assets/app.js?v=d5f6a95346f6"></script>
+<script src="/assets/app.js?v=55adfc32b4c6"></script>
 </body>
 </html>

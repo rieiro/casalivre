@@ -378,7 +378,7 @@ if ($path === '/busca' && $method === 'GET') {
         'results' => [],
         'searched' => $search->searched(),
         'use_api' => true,
-    ]);
+    ] + unresolved_place($search));
     return null;
 }
 
@@ -419,7 +419,7 @@ if (preg_match('#^/g/([^/]+)(/|/busca|/busca/mapa|/imoveis/([a-f0-9]{16}))?$#', 
         $search = SearchQuery::fromRequest($_GET);
         view($vSuffix === '/busca' ? 'search' : 'map', $vData + [
             'filters' => $search->pageFilters(), 'searched' => $search->searched(), 'use_api' => true, 'vitrine_api' => $vApi,
-        ]);
+        ] + ($vSuffix === '/busca' ? unresolved_place($search) : []));
         return null;
     }
     $vHouse = GroupRepository::activePropertyInGroup((int) $vGroup['id'], (string) $m[3]);

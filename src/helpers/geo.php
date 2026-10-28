@@ -14,6 +14,47 @@ function compose_address(string $street, string $number, string $complement): st
     return implode(', ', $parts);
 }
 
+/** Static ODbL credit. Autocomplete and the map control clone this node. */
+function osm_attribution(): void
+{
+    echo '<p class="osm-attribution"><a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">© OpenStreetMap contributors</a></p>';
+}
+
+/** Hidden source for the place field. Not shown until a suggestion list contains a POI. */
+function osm_attribution_template(): void
+{
+    echo '<template id="osm-attribution">';
+    osm_attribution();
+    echo '</template>';
+}
+
+/** Name, type and parent (or UF when the place has no parent). */
+function place_option_text(array $option): string
+{
+    $where = isset($option['parent']) ? $option['parent'] . ', ' . $option['uf'] : $option['uf'];
+    return $option['name'] . ' · ' . t('place.type_' . $option['type']) . ' · ' . $where;
+}
+
+/**
+ * Submitted text that did not resolve to one place. No listing query.
+ *
+ * @return array{resolution:?string,options:list<array<string, mixed>>}
+ */
+function unresolved_place(SearchQuery $query): array
+{
+    if ($query->localId !== null || $query->localidade === '') {
+        return ['resolution' => null, 'options' => []];
+    }
+    $resolved = CityRepository::resolve($query->localidade);
+    if ($resolved['place'] !== null) {
+        return ['resolution' => null, 'options' => []];
+    }
+    return [
+        'resolution' => $resolved['resolution'],
+        'options' => $resolved['options'],
+    ];
+}
+
 /** Display label shared by autocomplete options and the search/map field. */
 function place_label(?array $place, string $fallback = ''): string
 {

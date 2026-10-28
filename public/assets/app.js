@@ -1,13 +1,18 @@
 document.querySelectorAll('[data-city-hints]').forEach((input) => {
+    const field = input.closest('label');
     const wrap = document.createElement('div');
     wrap.className = 'city-field';
-    input.parentNode.insertBefore(wrap, input);
-    wrap.appendChild(input);
+    field.parentNode.insertBefore(wrap, field);
+    wrap.appendChild(field);
+    const popup = document.createElement('div');
+    popup.className = 'hints';
+    popup.hidden = true;
     const list = document.createElement('ul');
-    list.className = 'hints';
     list.setAttribute('role', 'listbox');
-    list.hidden = true;
-    wrap.appendChild(list);
+    list.tabIndex = -1;
+    list.setAttribute('aria-label', field.textContent.trim());
+    popup.appendChild(list);
+    wrap.appendChild(popup);
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-expanded', 'false');
@@ -17,11 +22,12 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     let rows = [];
 
     function close() {
-        list.hidden = true;
+        popup.hidden = true;
         list.replaceChildren();
         input.setAttribute('aria-expanded', 'false');
         active = -1;
         rows = [];
+        syncCredit();
     }
 
     function paint() {
@@ -31,18 +37,35 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
             item.setAttribute('role', 'presentation');
             const button = document.createElement('button');
             button.type = 'button';
+            button.tabIndex = -1;
             button.setAttribute('role', 'option');
             button.id = list.id + '-' + index;
-            button.textContent = row.text;
+            button.textContent = row.line;
             button.setAttribute('aria-selected', index === active ? 'true' : 'false');
             button.addEventListener('mousedown', (event) => event.preventDefault());
             button.addEventListener('click', () => choose(index));
             item.appendChild(button);
             list.appendChild(item);
         });
-        list.hidden = rows.length === 0;
+        popup.hidden = rows.length === 0;
         input.setAttribute('aria-expanded', rows.length ? 'true' : 'false');
         input.setAttribute('aria-activedescendant', active >= 0 ? list.id + '-' + active : '');
+        syncCredit();
+    }
+
+    function syncCredit() {
+        const existing = popup.querySelector('.osm-attribution');
+        const hasPoi = !popup.hidden && rows.some((row) => row.type === 'poi');
+        if (!hasPoi) {
+            if (existing) {
+                existing.remove();
+            }
+            return;
+        }
+        if (existing) {
+            return;
+        }
+        popup.appendChild(document.getElementById('osm-attribution').content.firstElementChild.cloneNode(true));
     }
 
     function choose(index) {
@@ -56,7 +79,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     input.addEventListener('input', () => {
         window.clearTimeout(timer);
         const query = input.value.trim();
-        if (query.length < 3) {
+        if (query.length < 2) {
             close();
             return;
         }
@@ -77,7 +100,7 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     });
 
     input.addEventListener('keydown', (event) => {
-        if (list.hidden) {
+        if (popup.hidden) {
             return;
         }
         if (event.key === 'ArrowDown') {
@@ -96,7 +119,12 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
         }
     });
 
-    input.addEventListener('blur', () => window.setTimeout(close, 120));
+    wrap.addEventListener('focusout', (event) => {
+        if (wrap.contains(event.relatedTarget)) {
+            return;
+        }
+        close();
+    });
 });
 
 (function stayCalendar() {
@@ -687,6 +715,15 @@ document.querySelectorAll('[data-noise]').forEach((box) => {
     box.addEventListener('change', sync);
     sync();
 });
+
+const resolutionTitle = document.getElementById('place-resolution-title');
+if (resolutionTitle && resolutionTitle.dataset.focus === '1') {
+    resolutionTitle.focus();
+}
+const resolutionLive = document.getElementById('place-resolution-live');
+if (resolutionLive) {
+    resolutionLive.textContent = resolutionLive.dataset.announce || '';
+}
 
 document.querySelectorAll('[data-money]').forEach((input) => {
     const format = () => {
