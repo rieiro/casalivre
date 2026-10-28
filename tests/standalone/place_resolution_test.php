@@ -94,6 +94,7 @@ t_ok(str_contains($js, '.osm-attribution') && str_contains($js, 'credit.remove()
 t_ok(str_contains($app, 'query.length < 2'), 'autocomplete pede a partir de 2 caracteres');
 t_ok(!str_contains($app, 'query.length < 3'), 'o mínimo antigo de 3 saiu');
 t_ok(str_contains($app, 'button.tabIndex = -1'), 'opções ficam fora da ordem de tab');
+t_ok(str_contains($app, 'list.tabIndex = -1') && str_contains($app, "setAttribute('aria-label', field.textContent.trim())"), 'a lista rolável não entra na ordem de tab e usa o rótulo do campo');
 t_ok(str_contains($app, "wrap.addEventListener('focusout'") && !str_contains($app, 'setTimeout(close, 120)'), 'a lista fecha só quando o foco sai do campo');
 t_ok(str_contains($app, "closest('label')") && str_contains($app, 'popup.appendChild'), 'o crédito é o rodapé do popup, fora do label');
 ob_start();

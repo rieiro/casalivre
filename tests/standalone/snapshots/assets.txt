@@ -1,5 +1,5 @@
 /assets/app.css?v=8a72ef0f18fc  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
-/assets/app.js?v=04b255cd1aea  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
+/assets/app.js?v=55adfc32b4c6  <- home,busca,mapa,imovel,entrar,erro-404-rota,erro-404-ical
 /assets/pages/login.js?v=5c871f8bce94  <- entrar
 /assets/pages/map-data.js?v=5a1582c13c9c  <- mapa
 /assets/pages/map.js?v=f260e4c825ce  <- mapa

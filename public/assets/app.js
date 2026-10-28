@@ -9,6 +9,8 @@ document.querySelectorAll('[data-city-hints]').forEach((input) => {
     popup.hidden = true;
     const list = document.createElement('ul');
     list.setAttribute('role', 'listbox');
+    list.tabIndex = -1;
+    list.setAttribute('aria-label', field.textContent.trim());
     popup.appendChild(list);
     wrap.appendChild(popup);
     input.setAttribute('role', 'combobox');
