@@ -111,7 +111,11 @@ t_ok(!str_contains($s, 'openstreetmap.org/') || !str_contains($s, '.png'), 'busc
 
 echo "atribuição\n";
 $js = $read('public/assets/pages/map.js');
-t_ok(str_contains($js, '© OpenStreetMap contributors</a> · <a href="https://protomaps.com"') && str_contains($js, 'https://www.openstreetmap.org/copyright'), "atribuição '© OpenStreetMap contributors · Protomaps' com links");
+ob_start();
+osm_attribution();
+$osm = (string) ob_get_clean();
+$protomaps = ' · <a href="https://protomaps.com" rel="noopener noreferrer" target="_blank">Protomaps</a>';
+t_ok(str_contains($r['body'], $osm) && str_contains($osm, '© OpenStreetMap contributors') && str_contains($osm, 'https://www.openstreetmap.org/copyright') && str_contains($js, "credit.innerHTML.trim() + '" . $protomaps . "'"), "atribuição '© OpenStreetMap contributors · Protomaps' com links");
 t_ok(str_contains($js, 'compact: false'), 'atribuição sempre visível (não compacta)');
 
 echo "favicon (sem 404 no console)\n";
