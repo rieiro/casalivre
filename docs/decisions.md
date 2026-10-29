@@ -21,6 +21,7 @@ One line per decision in force, newest first within each area. A superseded deci
 - 2026-10-21: Revisor findings are blockers or not written: duplicate or copy-pasted functions, unused or dead code, leftovers and unnecessary complexity are always blockers (`changes:review`); Revisor verdicts have no Followups line. The Revisor decides blocker-or-not when writing; a disputed blocker is decided by Gerente; anything larger than the PR goes to the backlog with a sprint. Supersedes the #195 follow-up wording (Rafael, 2026-10-21).
 
 ## Infrastructure and database
+- 2026-10-29: Calendar sync is Postgres-only (lease claim with `FOR UPDATE SKIP LOCKED`, `next_sync_at`, backoff, runit `casalivre-calendar-worker`, no Valkey queue, no scheduler) (Rafael, 2026-10-29).
 - 2026-10-25: Partial index `idx_prop_latlng_active` on `(lat, lng) WHERE status = 'active'` replaces the unused gist `idx_prop_geo_active` (index count stays flat; ADR 001 §12.6, `docs/adr/001-busca-sql-paginada.md`). `random_page_cost = 1.1` is a deploy setting, not a schema change (Rafael, 2026-10-25; merged in #220/#219).
 - 2026-10-23: Places beyond cities load as versioned JSON seeds on DB recreate (`places` + `place_search_keys`); no migration (see Product, 2026-10-23).
 - 2026-10-21: No data migration. All data is created from scratch (DB recreated, seeds). No migration code, legacy-data conversion, backfills or migration deploy steps; schema changes update the schema and seeds only (`Db::SCHEMA_VERSION` still bumps). Data migration comes only later, by explicit Rafael decision.
