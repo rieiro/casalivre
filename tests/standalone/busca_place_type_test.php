@@ -10,15 +10,15 @@ require_once CL_ROOT . '/src/CepRepository.php';
 
 putenv('GEO_SALT=' . str_repeat('t', 64));
 
-$cityWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null);
+$cityWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 0.0);
 t_ok(str_contains($cityWhere[0], 'p.city_place_id = ?') && str_contains($cityWhere[0], 'p.id > ?') === false, 'city predicate is city_place_id');
-$cityKey = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, 9);
+$cityKey = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, 9, 0.0);
 t_ok(str_contains($cityKey[0], 'ORDER BY') === false && str_contains($cityKey[0], 'p.id > ?'), 'keyset stays id > last_id');
-$nbWhere = SearchSql::where(['id' => 2, 'type' => 'neighborhood'], null, 0, null, null, null, null);
+$nbWhere = SearchSql::where(['id' => 2, 'type' => 'neighborhood'], null, 0, null, null, null, null, 0.0);
 t_ok(str_contains($nbWhere[0], 'p.neighborhood_place_id = ?') && !str_contains($nbWhere[0], 'city_place_id'), 'neighborhood predicate is the exact id');
-$poiWhere = SearchSql::where(['id' => 3, 'type' => 'poi'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null);
+$poiWhere = SearchSql::where(['id' => 3, 'type' => 'poi'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null, 0.0);
 t_ok(!str_contains($poiWhere[0], 'place_id') && str_contains($poiWhere[0], 'p.lat BETWEEN'), 'POI predicate is the bbox only');
-$cityRadius = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null);
+$cityRadius = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null, 0.0);
 t_ok(!str_contains($cityRadius[0], 'city_place_id') && str_contains($cityRadius[0], 'p.lat BETWEEN'), 'city radius still drops the city id');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/src/SearchSql.php'), 'ORDER BY p.id ASC'), 'interim order stays id ASC');
 

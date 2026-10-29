@@ -75,7 +75,8 @@ $antes = [
 ];
 t_eq(67, count($antes), 'lista do develop tem 67 funções');
 // search_filters_from_query: pages use SearchQuery::fromRequest()/filters()/searched().
-$removidas = ['search_filters_from_query'];
+// review_score: HouseRepository::score reads the stored totals.
+$removidas = ['review_score', 'search_filters_from_query'];
 foreach ($antes as $fn) {
     if (in_array($fn, $removidas, true)) {
         t_ok(!function_exists($fn), $fn . ' foi removida');

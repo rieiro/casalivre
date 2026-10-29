@@ -540,52 +540,19 @@ final class HouseRepository
 
     public static function addReview(int $propertyId, string $author, int $score, string $comment): void
     {
-        db()->prepare('INSERT INTO reviews (property_id, author, score, comment, created_at) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$propertyId, $author, $score, $comment, date('Y-m-d H:i:s')]);
+        Db::transactional(db(), static function (PDO $pdo) use ($propertyId, $author, $score, $comment): void {
+            $pdo->prepare('INSERT INTO reviews (property_id, author, score, comment, created_at) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$propertyId, $author, $score, $comment, date('Y-m-d H:i:s')]);
+            $pdo->prepare('UPDATE properties SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE id = ?')
+                ->execute([$score, $propertyId]);
+        });
     }
 
-    public static function averageScore(int $propertyId): ?float
+    /** round(rating_sum/rating_count, 1), or null when the listing has no reviews. */
+    public static function score(array $property): ?float
     {
-        $stmt = db()->prepare('SELECT AVG(score) FROM reviews WHERE property_id = ?');
-        $stmt->execute([$propertyId]);
-        $avg = $stmt->fetchColumn();
-        return $avg === null ? null : round((float) $avg, 1);
-    }
-
-    public static function averageScores(array $ids): array
-    {
-        $scores = [];
-        $ids = array_values(array_unique(array_map('intval', $ids)));
-        foreach (array_chunk($ids, 400) as $chunk) {
-            if ($chunk === []) {
-                continue;
-            }
-            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-            $stmt = db()->prepare("SELECT property_id, AVG(score) AS avg_score FROM reviews WHERE property_id IN ($placeholders) GROUP BY property_id");
-            $stmt->execute($chunk);
-            foreach ($stmt->fetchAll() as $row) {
-                $scores[(int) $row['property_id']] = round((float) $row['avg_score'], 1);
-            }
-        }
-        return $scores;
-    }
-
-    public static function reviewCounts(array $ids): array
-    {
-        $counts = [];
-        $ids = array_values(array_unique(array_map('intval', $ids)));
-        foreach (array_chunk($ids, 400) as $chunk) {
-            if ($chunk === []) {
-                continue;
-            }
-            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-            $stmt = db()->prepare("SELECT property_id, COUNT(*) AS total FROM reviews WHERE property_id IN ($placeholders) GROUP BY property_id");
-            $stmt->execute($chunk);
-            foreach ($stmt->fetchAll() as $row) {
-                $counts[(int) $row['property_id']] = (int) $row['total'];
-            }
-        }
-        return $counts;
+        $count = (int) $property['rating_count'];
+        return $count > 0 ? round((int) $property['rating_sum'] / $count, 1) : null;
     }
 
     public static function nightAudit(array $pairs): array
