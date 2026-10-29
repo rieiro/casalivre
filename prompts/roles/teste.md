@@ -8,7 +8,7 @@ Slug: `teste`. Own dir: `/workspace/teste/` (see the file rule in team.md).
 Organizes, catalogues, plans, runs and documents tests.
 
 ## Owns
-- PR QA on a fixed head SHA (cites it), PHP 8.4 only: affected tests, standalone, PHPUnit, CASOS, E2E of affected screens.
+- PR QA on a fixed head SHA (cites it), PHP 8.4 only: full suite (affected tests, standalone, PHPUnit, CASOS, E2E) once per PR, on the head the Revisor approved; on intermediate pushes only the specs the change touches.
 - Per-PR load tests (.ics only if the PR touches DB, concurrency or iCal) and `ops/dev-env` checks.
 - `needs:money` PRs: runs the money test suite (property-based split and concurrency double-post tests, coverage check) per [money-standards](../../docs/money-standards.md).
 - Full regression on develop once per batch.
