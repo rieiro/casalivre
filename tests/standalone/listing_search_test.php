@@ -104,7 +104,7 @@ t_ok(str_contains($text, 'rewritten 0'), 'clean verify rewrites nothing');
 
 db()->prepare('UPDATE listing_search SET rank_base = 0 WHERE id = ?')->execute([$many]);
 $held = db()->query('SELECT pg_try_advisory_lock(' . ListingSearch::ADVISORY_LOCK . ')')->fetchColumn();
-t_ok($held === true || $held === 't' || $held === 1 || $held === '1', 'test holds the verify lock');
+t_ok($held, 'test holds the verify lock');
 [$code, $text] = $verify();
 t_eq(0, $code, "a second verify exits 0 ($text)");
 t_eq(0, $stored($many)['rank_base'], 'the locked run does not rewrite');

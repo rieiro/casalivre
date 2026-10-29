@@ -46,7 +46,7 @@ SQL;
     }
 
     /** @return int rows inserted or changed */
-    public static function apply(string $where, array $params): int
+    private static function apply(string $where, array $params): int
     {
         $c = Settings::int('rank_c');
         $m = Settings::int('rank_m');

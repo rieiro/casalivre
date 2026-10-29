@@ -15,8 +15,7 @@ if (!getenv('DB_DSN')) {
 
 $recompute = in_array('--recompute', $argv, true);
 $pdo = db();
-$locked = $pdo->query('SELECT pg_try_advisory_lock(' . ListingSearch::ADVISORY_LOCK . ')')->fetchColumn();
-if ($locked === false || $locked === 'f' || $locked === 0 || $locked === '0') {
+if (!$pdo->query('SELECT pg_try_advisory_lock(' . ListingSearch::ADVISORY_LOCK . ')')->fetchColumn()) {
     exit(0);
 }
 
