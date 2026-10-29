@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS properties (
     external_ical_url TEXT,
     ical_hash TEXT,
     status TEXT NOT NULL DEFAULT 'active',
+    rating_sum INTEGER NOT NULL DEFAULT 0 CHECK (rating_sum >= 0),
+    rating_count INTEGER NOT NULL DEFAULT 0 CHECK (rating_count >= 0),
     inactivated_at TIMESTAMP,
     audit_hold TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

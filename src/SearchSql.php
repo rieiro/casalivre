@@ -37,7 +37,7 @@ final class SearchSql
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return array{0:string,1:list<int|float|string|null>}
      */
-    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId): array
+    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, float $scoreMin = 0.0): array
     {
         $where = [self::active('p')];
         $params = [];
@@ -70,6 +70,12 @@ final class SearchSql
             $where[] = 'p.id > ?';
             $params[] = $afterId;
         }
+        if ($scoreMin > 0) {
+            // t = ceil(round(10*score_min, 6)). 20*sum + count >= 2*t*count is round(sum/count, 1) >= score_min.
+            $t = (int) ceil(round(10 * $scoreMin, 6));
+            $where[] = 'p.rating_count > 0 AND 20 * p.rating_sum + p.rating_count >= ? * p.rating_count';
+            $params[] = 2 * $t;
+        }
         return [implode(' AND ', $where), $params];
     }
 
@@ -78,9 +84,9 @@ final class SearchSql
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return list<array>
      */
-    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit, float $scoreMin = 0.0): array
     {
-        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $afterId);
+        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $afterId, $scoreMin);
         $stmt = db()->prepare(HouseRepository::SQL_WITH_CITY . " WHERE $where ORDER BY p.id ASC LIMIT $limit");
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -92,9 +98,9 @@ final class SearchSql
      * @param array{id:int,type:string} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      */
-    public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout): int|string
+    public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin = 0.0): int|string
     {
-        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, null);
+        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, null, $scoreMin);
         $stmt = db()->prepare("SELECT 1 FROM properties p WHERE $where LIMIT 101");
         $stmt->execute($params);
         $n = count($stmt->fetchAll());

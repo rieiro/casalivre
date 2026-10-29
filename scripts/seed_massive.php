@@ -138,6 +138,8 @@ foreach ($cities as $index => $city) {
     echo $n . '/' . MASSIVE_CITIES . ' ' . $city['label'] . "\n";
 }
 
+db()->exec('UPDATE properties SET rating_sum = COALESCE((SELECT SUM(score) FROM reviews r WHERE r.property_id = properties.id), 0), rating_count = (SELECT COUNT(*) FROM reviews r WHERE r.property_id = properties.id)');
+
 $report = implode("\n", $lines);
 file_put_contents($root . '/storage/seed-massive.txt', $report);
 echo "Salvo em storage/seed-massive.txt\n";

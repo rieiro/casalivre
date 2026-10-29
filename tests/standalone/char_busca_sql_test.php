@@ -20,6 +20,9 @@ t_ok(!method_exists(GroupRepository::class, 'activePropertyStrict'), 'activeProp
 t_ok(!array_key_exists('Búzios', cities()), 'cities() has no stale Búzios point');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchService.php'), '$_GET'), 'SearchService does not read $_GET');
 $where = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, '2026-11-01', '2026-11-03', 9);
+$scoreWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 4.5);
+t_ok(str_contains($scoreWhere[0], 'p.rating_count > 0 AND 20 * p.rating_sum + p.rating_count >= ? * p.rating_count'), 'score_min is a plain filter on the rating columns');
+t_eq(90, $scoreWhere[1][array_key_last($scoreWhere[1])], '4.5 binds 2*ceil(round(45, 6))');
 t_ok(str_contains($where[0], "p.status = 'active'"), 'one active rule');
 t_ok(str_contains($where[0], 'NOT EXISTS') && str_contains($where[0], 'c.blocked = 1'), 'blocked night is NOT EXISTS');
 t_ok(str_contains($where[0], 'p.id > ?'), 'keyset id > last_id');
@@ -66,8 +69,8 @@ $guests1 = $house($floripaId, ['title' => 'Poucos', 'max_guests' => 1]);
 $pricey = $house($floripaId, ['title' => 'Caro', 'nightly_price' => 5000]);
 $cheapEdge = $house($floripaId, ['title' => 'Barato', 'nightly_price' => 50]);
 $scored = $house($floripaId, ['title' => 'Nota']);
-db()->prepare('INSERT INTO reviews (property_id, author, score) VALUES (?, ?, ?)')->execute([$scored, 'Ana', 4]);
-db()->prepare('INSERT INTO reviews (property_id, author, score) VALUES (?, ?, ?)')->execute([$scored, 'Bia', 5]);
+HouseRepository::addReview($scored, 'Ana', 4, '');
+HouseRepository::addReview($scored, 'Bia', 5, '');
 $pool = $house($floripaId, ['title' => 'Piscina', 'pool' => 1]);
 $blocked = $house($floripaId, ['title' => 'Bloqueado']);
 $day($blocked, $in, 1);
@@ -184,7 +187,16 @@ function legacy_ids(array $request, mixed $host): array
         }
         $quoted[] = $property;
     }
-    $scores = HouseRepository::averageScores(array_map(static fn (array $property): int => (int) $property['id'], $quoted));
+    $scores = [];
+    $scoreIds = array_map(static fn (array $property): int => (int) $property['id'], $quoted);
+    if ($scoreIds !== []) {
+        $marks = implode(',', array_fill(0, count($scoreIds), '?'));
+        $scoreStmt = db()->prepare("SELECT property_id, AVG(score) AS avg_score FROM reviews WHERE property_id IN ($marks) GROUP BY property_id");
+        $scoreStmt->execute($scoreIds);
+        foreach ($scoreStmt as $row) {
+            $scores[(int) $row['property_id']] = round((float) $row['avg_score'], 1);
+        }
+    }
     $wanted = array_values(array_filter($filters['amenidades'], static fn (string $key): bool => in_array($key, Amenities::keys(), true)));
     $rows = [];
     foreach ($quoted as $property) {
@@ -280,6 +292,33 @@ $scoreKeep = same($city + ['score_min' => '4.5'], null, 'score 4.5 keeps the x.5
 t_eq([$scored], $scoreKeep['ids'], 'only the reviewed house at 4.5');
 $scoreDrop = same($city + ['score_min' => '4.6'], null, 'score 4.6 drops the x.5 average');
 t_eq([], $scoreDrop['ids'], '4.6 drops the house and houses with no reviews');
+$petropolis = CityRepository::resolve('Petrópolis, RJ')['place'];
+t_ok(is_array($petropolis), 'Petrópolis resolves');
+$petropolisId = (int) $petropolis['id'];
+$half = $house($petropolisId, ['title' => 'Meio']);
+HouseRepository::addReview($half, 'Ana', 4, '');
+HouseRepository::addReview($half, 'Bia', 5, '');
+$edge = $house($petropolisId, ['title' => 'Limite']);
+for ($i = 0; $i < 19; $i++) {
+    HouseRepository::addReview($edge, 'N' . $i, 8, '');
+}
+HouseRepository::addReview($edge, 'Baixa', 7, '');
+$bare = $house($petropolisId, ['title' => 'Sem nota']);
+$scoreCity = ['localidade' => 'Petrópolis, RJ'];
+$keep80 = same($scoreCity + ['score_min' => '8'], null, 'score 8.0 keeps the 7.95 average');
+t_eq([$edge], $keep80['ids'], '7.95 rounds to 8.0 and an empty rating stays out');
+$drop81 = same($scoreCity + ['score_min' => '8.1'], null, 'score 8.1 drops the 7.95 average');
+t_eq([], $drop81['ids'], '8.1 drops 7.95');
+$keep45g = same($scoreCity + ['score_min' => '4.5'], null, 'score 4.5 keeps 4.5 and 7.95');
+t_eq([$half, $edge], $keep45g['ids'], '4.5 keeps both rounded averages');
+t_ok(!in_array($bare, $keep45g['ids'], true), 'a house with no reviews stays out');
+$card = SearchService::search(SearchQuery::fromRequest($scoreCity + ['score_min' => '8']), null)['items'][0] ?? [];
+t_eq(8.0, $card['score'] ?? null, 'card score is round(rating_sum/rating_count, 1)');
+$stored = db()->query('SELECT rating_sum, rating_count FROM properties WHERE id = ' . $edge)->fetch();
+t_eq(159, (int) $stored['rating_sum'], 'rating_sum matches SUM after 20 reviews');
+t_eq(20, (int) $stored['rating_count'], 'rating_count matches COUNT after 20 reviews');
+t_eq(9, (int) db()->query('SELECT rating_sum FROM properties WHERE id = ' . $scored)->fetchColumn(), 'seed-style addReview keeps rating_sum');
+t_eq(2, (int) db()->query('SELECT rating_count FROM properties WHERE id = ' . $scored)->fetchColumn(), 'seed-style addReview keeps rating_count');
 $amenity = same($city + ['amenidade' => ['pool']], null, 'amenity');
 t_eq([$pool], $amenity['ids'], 'only the pool house');
 

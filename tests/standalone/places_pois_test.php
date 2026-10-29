@@ -12,8 +12,8 @@ $pdo = db();
 
 $poiCount = (new ReflectionClass(CityRepository::class))->getReflectionConstant('POI_COUNT')->getValue();
 t_eq(8030, $poiCount, 'POI_COUNT');
-t_eq(26, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 26');
-t_eq('26', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 26');
+t_eq(27, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 27');
+t_eq('27', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 27');
 
 echo "counts\n";
 t_eq(5571, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn(), 'cidades');

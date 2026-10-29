@@ -73,7 +73,7 @@ final class SearchService
             : (new DateTimeImmutable($nights[array_key_last($nights)]))->modify('+1 day')->format('Y-m-d');
         $radiusKm = self::radiusKm($place, $query->raio);
         $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
-        $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout);
+        $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin);
 
         $known = Amenities::keys();
         $wanted = array_values(array_filter(
@@ -87,7 +87,7 @@ final class SearchService
         $queries = 0;
         while (count($page) < self::PAGE_SIZE && $queries < self::MAX_QUERIES && $hasMore) {
             $queries++;
-            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1);
+            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1, $query->scoreMin);
             $hasMore = count($fetched) > self::BATCH_SIZE;
             if ($hasMore) {
                 array_pop($fetched);
@@ -97,13 +97,12 @@ final class SearchService
             }
             $ids = array_map(static fn (array $row): int => (int) $row['id'], $fetched);
             $calendars = $nights !== [] ? HouseRepository::calendarForProperties($ids, $nights) : [];
-            $scores = HouseRepository::averageScores($ids);
             $photos = PhotoRepository::primaryPaths($ids);
             foreach ($fetched as $property) {
                 $read++;
                 $id = (int) $property['id'];
                 $after = $id;
-                $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $scores[$id] ?? null, $wanted, $radiusKm);
+                $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $wanted, $radiusKm);
                 if ($kept === null) {
                     continue;
                 }
@@ -179,13 +178,14 @@ final class SearchService
     }
 
     /**
-     * Price, score and amenities stay in PHP. Radius haversine too, after the SQL bbox.
+     * Price and amenities stay in PHP. Radius haversine too, after the SQL bbox.
+     * The card score is round(rating_sum/rating_count, 1). score_min is already in the SQL.
      *
      * @param list<string> $nights
      * @param array<string, array> $calendar
      * @param list<string> $wanted
      */
-    private static function keep(array $property, SearchQuery $query, array $nights, array $place, array $calendar, ?float $score, array $wanted, int $radiusKm): ?array
+    private static function keep(array $property, SearchQuery $query, array $nights, array $place, array $calendar, array $wanted, int $radiusKm): ?array
     {
         if ($radiusKm > 0) {
             $distance = public_distance_km($place, $property);
@@ -209,9 +209,8 @@ final class SearchService
         if ($query->precoMax > 0 && $quote['nightly'] > $query->precoMax) {
             return null;
         }
-        if ($query->scoreMin > 0 && ($score === null || $score < $query->scoreMin)) {
-            return null;
-        }
+        $count = (int) $property['rating_count'];
+        $score = $count > 0 ? round((int) $property['rating_sum'] / $count, 1) : null;
         if ($wanted !== []) {
             $selected = Amenities::selected($property);
             foreach ($wanted as $key) {

@@ -5,6 +5,7 @@
 // SCHEMA 23: idx_prop_latlng_active (lat, lng) WHERE status = 'active' replaces unused gist idx_prop_geo_active.
 // SCHEMA 24: idx_prop_nb_active; idx_properties_status removed.
 // SCHEMA 25: POIs OSM (category/osm_ref/wikidata), PK INCLUDE (popularity, kind), city popularity.
+// SCHEMA 27: properties.rating_sum and rating_count.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
@@ -14,7 +15,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(26, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 26');
+t_eq(27, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 27');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -49,7 +50,18 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('26', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 26');
+t_eq('27', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 27');
+$rating = [];
+foreach ($pdo->query("SELECT a.attname, a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE a.attrelid = 'properties'::regclass AND a.attname IN ('rating_sum', 'rating_count') AND NOT a.attisdropped") as $row) {
+    $rating[$row['attname']] = $row;
+}
+t_eq('0', $rating['rating_sum']['def'] ?? null, 'rating_sum defaults to 0');
+t_eq('0', $rating['rating_count']['def'] ?? null, 'rating_count defaults to 0');
+t_eq(true, (bool) $rating['rating_sum']['attnotnull'], 'rating_sum is NOT NULL');
+t_eq(true, (bool) $rating['rating_count']['attnotnull'], 'rating_count is NOT NULL');
+$checks = $pdo->query("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'properties'::regclass AND contype = 'c'")->fetchAll(PDO::FETCH_COLUMN);
+t_ok(in_array('CHECK ((rating_sum >= 0))', $checks, true), 'rating_sum >= 0');
+t_ok(in_array('CHECK ((rating_count >= 0))', $checks, true), 'rating_count >= 0');
 $poiCols = $pdo->query("SELECT attname FROM pg_attribute WHERE attrelid = 'places'::regclass AND attname IN ('category', 'osm_ref', 'wikidata') AND NOT attisdropped")->fetchAll(PDO::FETCH_COLUMN);
 sort($poiCols);
 t_eq(['category', 'osm_ref', 'wikidata'], $poiCols, 'places tem category, osm_ref e wikidata');
