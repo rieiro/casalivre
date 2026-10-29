@@ -253,6 +253,7 @@ Origem: análise do Bot Segurança e Arquitetura (develop e425cbd).
       sudo install -d -m 0755 /usr/local/sbin
       sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
         deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish \
+        deploy/runit/casalivre-daily \
         /usr/local/sbin/
       # keep an existing conf if you already have one
       sudo cp -a /etc/sv/casalivre-log-retention/conf /tmp/casalivre-log-retention.conf 2>/dev/null || true

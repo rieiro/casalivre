@@ -1,0 +1,25 @@
+#!/bin/sh
+# Daily CasaLivre job. Usage: casalivre-daily SCRIPT [ARGS]
+# Looked up by casalivre-resolve (same order as the other helpers). cwd stays
+# the service directory, so ./conf is the service conf. A non-zero PHP status
+# is the service status; success sleeps 24h and runit starts the next day.
+# Install (Void), with the other helpers:
+#   sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
+#     deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish \
+#     deploy/runit/casalivre-daily /usr/local/sbin/
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+PHP_BIN="${PHP_BIN:-php}"
+script=${1:?}
+shift
+
+cd "$APP_DIR" || exit 1
+chpst -u "$APP_USER" "$PHP_BIN" "$script" "$@"
+status=$?
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+exec chpst -u "$APP_USER" sleep 86400
+exit 1

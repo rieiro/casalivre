@@ -42,11 +42,9 @@ final class HouseRepository
                 max(0, (int) ($house['cleaning_fee'] ?? 0)),
                 $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, date('Y-m-d H:i:s'),
             ]);
-            $row = $stmt->fetch() ?: [];
-            if ($row !== []) {
-                $row['city'] = self::cityText($placeId);
-                ListingSearch::sync((int) $row['id']);
-            }
+            $row = $stmt->fetch();
+            $row['city'] = self::cityText($placeId);
+            ListingSearch::sync((int) $row['id']);
             return $row;
         });
     }
@@ -106,12 +104,22 @@ final class HouseRepository
         return min($own, $cap);
     }
 
+    /** Property write and its listing_search refresh, in one transaction. */
+    private static function synced(int $id, Closure $write): mixed
+    {
+        return Db::transactional(db(), static function () use ($id, $write): mixed {
+            $result = $write();
+            ListingSearch::sync($id);
+            return $result;
+        });
+    }
+
     public static function update(int $id, int $userId, array $house): array
     {
-        return Db::transactional(db(), static function () use ($id, $userId, $house): array {
+        return self::synced($id, static function () use ($id, $userId, $house): array {
             $months = self::calendarMonths($house);
             $fee = max(0, (int) ($house['cleaning_fee'] ?? 0));
-            $changed = self::exposeCity(ReturningWrite::update('properties', [
+            return self::exposeCity(ReturningWrite::update('properties', [
                 'title' => $house['title'],
                 'description' => $house['description'],
                 'summary' => $house['summary'],
@@ -143,8 +151,6 @@ final class HouseRepository
                 'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
                 'pool', 'bbq', 'garage', 'amenities', 'status',
             ]));
-            ListingSearch::sync($id);
-            return $changed;
         });
     }
 
@@ -235,27 +241,28 @@ final class HouseRepository
 
     public static function inactivate(int $id, int $userId, string $at): array
     {
-        return Db::transactional(db(), static function () use ($id, $userId, $at): array {
-            $changed = ReturningWrite::update(
+        return self::synced($id, static function () use ($id, $userId, $at): array {
+            return self::exposeCity(ReturningWrite::update(
                 'properties',
                 ['status' => 'inactive', 'inactivated_at' => $at],
                 "id = ? AND user_id = ? AND status = 'active'",
                 [$id, $userId],
                 ['id'],
                 ['title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
-            );
-            ListingSearch::sync($id);
-            return self::exposeCity($changed);
+            ));
         });
     }
 
     public static function updateMinNights(int $id, int $minNights): array
     {
-        return Db::transactional(db(), static function () use ($id, $minNights): array {
-            $changed = ReturningWrite::update('properties', ['min_nights' => $minNights], 'id = ?', [$id], ['id'], ['min_nights']);
-            ListingSearch::sync($id);
-            return $changed;
-        });
+        return self::synced($id, static fn (): array => ReturningWrite::update(
+            'properties',
+            ['min_nights' => $minNights],
+            'id = ?',
+            [$id],
+            ['id'],
+            ['min_nights']
+        ));
     }
 
     public static function calendarDays(int $propertyId): array

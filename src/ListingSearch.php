@@ -11,14 +11,14 @@ final class ListingSearch
     /** Session lock so a second rank-verify exits without touching rows. */
     public const ADVISORY_LOCK = 48001402;
 
-    public const BATCH = 1000;
+    private const BATCH = 1000;
 
     /**
      * One projection. %s is the properties filter. Binds: weight, C, m, C, then the filter.
      * rating_rank = round(1000 * (C*m + rating_sum) / (C + n)); n = 0 yields round(1000*m).
      * rank_base = round((rating_rank / 10) * weight / 100).
      */
-    public const UPSERT_SQL = <<<'SQL'
+    private const UPSERT_SQL = <<<'SQL'
 INSERT INTO listing_search (id, status, city_place_id, lat, lng, max_guests, rating_rank, rank_base)
 SELECT s.id, s.status, s.city_place_id, s.lat, s.lng, s.max_guests, s.rating_rank,
        round(s.rating_rank / 10.0 * ?::numeric / 100.0)::integer
@@ -69,8 +69,7 @@ SQL;
                 return $total;
             }
             $through = (int) $ids[array_key_last($ids)];
-            $from = $after;
-            $total += Db::transactional(db(), static fn (): int => self::apply('p.id > ? AND p.id <= ?', [$from, $through]));
+            $total += Db::transactional(db(), static fn (): int => self::apply('p.id > ? AND p.id <= ?', [$after, $through]));
             $after = $through;
         }
     }

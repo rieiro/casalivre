@@ -12,6 +12,7 @@ $scripts = [
     "$root/casalivre-resolve",
     "$root/casalivre-finish",
     "$root/casalivre-svlogd",
+    "$root/casalivre-daily",
     "$root/casalivre-queue-worker/run",
     "$root/casalivre-queue-worker/finish",
     "$root/casalivre-queue-worker/log/run",
@@ -34,12 +35,15 @@ $workerRun = (string) file_get_contents("$root/casalivre-queue-worker/run");
 t_ok(str_contains($workerRun, 'exec 2>&1') && str_contains($workerRun, 'exec chpst -u') && str_contains($workerRun, 'scripts/queue-worker.php'), 'queue worker: chpst, stderr merged, queue-worker.php');
 t_ok(str_contains($workerRun, '-d zend.exception_ignore_args=1'), 'queue worker php does not keep exception arguments');
 t_ok(!str_contains($workerRun, '|| echo'), 'queue worker run does not swallow the exit code');
+$daily = (string) file_get_contents("$root/casalivre-daily");
+t_ok(!preg_match('/\|\|\s*echo/', $daily) && str_contains($daily, 'exit "$status"') && str_contains($daily, 'sleep 86400'), 'daily helper: failure exits, success sleeps 24h');
 $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
-t_ok(!preg_match('/\|\|\s*echo/', $retentionRun) && str_contains($retentionRun, 'exit "$status"') && str_contains($retentionRun, 'sleep 86400'), 'log-retention: failure exits, success still sleeps 24h');
+t_ok(str_contains($retentionRun, 'casalivre-resolve') && str_contains($retentionRun, 'casalivre-daily') && str_contains($retentionRun, 'scripts/log-retention.php'), 'log-retention runs through the daily helper');
+t_ok(!preg_match('/\|\|\s*echo/', $retentionRun), 'log-retention run does not swallow the exit code');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-queue-worker/finish"), 'casalivre-queue-worker 0'), 'queue worker finish does not delay the restart');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-log-retention/finish"), 'casalivre-log-retention 86400'), 'log-retention finish waits a day after a failure');
 $rankRun = (string) file_get_contents("$root/casalivre-rank-verify/run");
-t_ok(str_contains($rankRun, 'scripts/rank-verify.php') && str_contains($rankRun, 'exit "$status"') && str_contains($rankRun, 'sleep 86400'), 'rank-verify: failure exits, success sleeps 24h');
+t_ok(str_contains($rankRun, 'casalivre-resolve') && str_contains($rankRun, 'casalivre-daily') && str_contains($rankRun, 'scripts/rank-verify.php'), 'rank-verify runs through the daily helper');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-rank-verify/finish"), 'casalivre-rank-verify 86400'), 'rank-verify finish waits a day after a failure');
 $wrappers = [
     "$root/casalivre-queue-worker/finish",

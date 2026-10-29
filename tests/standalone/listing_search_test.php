@@ -20,10 +20,7 @@ $rankOf = static function (int $sum, int $count): array {
     return [$rating, (int) round($rating / 10 * $weight / 100)];
 };
 
-$stored = static function (int $propertyId): array {
-    $stmt = db()->prepare('SELECT status, city_place_id, lat, lng, max_guests, rating_rank, rank_base FROM listing_search WHERE id = ?');
-    $stmt->execute([$propertyId]);
-    $row = $stmt->fetch();
+$project = static function (array $row): array {
     return [
         'status' => (string) $row['status'],
         'city_place_id' => (int) $row['city_place_id'],
@@ -35,20 +32,18 @@ $stored = static function (int $propertyId): array {
     ];
 };
 
-$fresh = static function (int $propertyId) use ($rankOf): array {
+$stored = static function (int $propertyId) use ($project): array {
+    $stmt = db()->prepare('SELECT status, city_place_id, lat, lng, max_guests, rating_rank, rank_base FROM listing_search WHERE id = ?');
+    $stmt->execute([$propertyId]);
+    return $project($stmt->fetch());
+};
+
+$fresh = static function (int $propertyId) use ($rankOf, $project): array {
     $stmt = db()->prepare('SELECT status, city_place_id, lat, lng, max_guests, rating_sum, rating_count FROM properties WHERE id = ?');
     $stmt->execute([$propertyId]);
     $row = $stmt->fetch();
-    [$rating, $base] = $rankOf((int) $row['rating_sum'], (int) $row['rating_count']);
-    return [
-        'status' => (string) $row['status'],
-        'city_place_id' => (int) $row['city_place_id'],
-        'lat' => (float) $row['lat'],
-        'lng' => (float) $row['lng'],
-        'max_guests' => (int) $row['max_guests'],
-        'rating_rank' => $rating,
-        'rank_base' => $base,
-    ];
+    [$row['rating_rank'], $row['rank_base']] = $rankOf((int) $row['rating_sum'], (int) $row['rating_count']);
+    return $project($row);
 };
 
 echo "formula\n";

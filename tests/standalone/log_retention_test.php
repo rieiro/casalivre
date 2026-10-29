@@ -83,9 +83,10 @@ t_ok(is_file($run) && is_executable($run), 'deploy/runit/casalivre-log-retention
 exec('sh -n ' . escapeshellarg($run) . ' 2>&1', $o, $code);
 t_eq(0, $code, 'script runit com sintaxe sh válida');
 $runBody = (string) file_get_contents($run);
-t_ok(str_contains($runBody, 'scripts/log-retention.php'), 'runit chama scripts/log-retention.php');
+t_ok(str_contains($runBody, 'casalivre-daily') && str_contains($runBody, 'scripts/log-retention.php'), 'runit chama scripts/log-retention.php pelo helper diário');
 t_ok(!preg_match('/\|\|\s*echo/', $runBody), 'runit não engole o código de saída (sem || echo)');
-t_ok(str_contains($runBody, 'exit "$status"'), 'saída diferente de zero volta para o runit');
+$daily = (string) file_get_contents(CL_ROOT . '/deploy/runit/casalivre-daily');
+t_ok(str_contains($daily, 'exit "$status"') && !preg_match('/\|\|\s*echo/', $daily), 'saída diferente de zero volta para o runit');
 t_ok(is_executable(CL_ROOT . '/deploy/runit/casalivre-log-retention/finish'), 'finish alerta a saída diferente de zero');
 
 echo "scripts/log-retention.php: LOG_JOB_DB_USER obrigatório fora de dev (Arquitetura #148)\n";
