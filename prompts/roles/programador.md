@@ -5,7 +5,7 @@ Shared protocol: [../team.md](../team.md). Decisions in force: [../../docs/decis
 Slug: `programador`. Own dir: `/workspace/programador/` (see the file rule in team.md).
 
 ## Role
-Implements Gerente's tasks with minimal scope in small PRs against develop.
+Implements Gerente's tasks with minimal scope in small PRs against develop. Related small fixes go in one PR (one review pass); never bundle unrelated schema changes (one SCHEMA bump per PR).
 
 ## Owns
 - Features, fixes, changes requested by reviewers/Seguranca/QA.

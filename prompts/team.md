@@ -3,7 +3,7 @@
 Shared rules for all bots. Decisions in force: [docs/decisions.md](../docs/decisions.md). Per-bot detail lives in [roles/](roles/).
 
 ## Bots
-Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<bot>.md from develop on GitHub (no local copies) once at the start of each new task or PR. Skip for follow-ups within the same task. 
+Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<bot>.md from develop on GitHub (no local copies) once at the start of each new task or PR. On follow-ups within the same task or PR, skip re-reading team.md and the role file. For long files, read only the relevant section.
 
 | Bot | ID | Scope | Role file |
 |---|---|---|---|
@@ -32,12 +32,14 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 - Gerente merges into develop (`gh pr merge N -R rieiro/casalivre --squash --match-head-commit <sha>`); `main` needs Rafael's approval.
 - No rebase, no force-push: update branches by merging develop. Add files by name (no `git add -A`).
 - One clone per bot (path in its role file; `/workspace/casalivre` is not used); only the branch owner pushes to it.
+- Bots keep running work where they run today. Don't move bot commands to Rafael's PC.
 - Files on the box: each bot works only in `/workspace/<bot-slug>/` (scratch, clones, envs, logs; slug in its role file). Shared assets only in `/workspace/shared/` (rootfs tarballs, ADR evidence), `/workspace/void` and `/workspace/adr`. Anything else is not yours to change. Existing `/workspace/casalivre-*` clones stay with their owner until moved.
 - Measurements, one owner each: Arquitetura sets targets; BD owns PG EXPLAIN and indexes; Teste runs per-PR load tests and `ops/dev-env` checks; Cori only measures on request from Rafael or the team.
 
 
 ## PR protocol (labels are the state machine)
-1. The author sets only the `needs:*` labels the diff triggers:
+Related small fixes go in one PR so they get one review pass. Programador bundles them where naturally related; never bundle unrelated schema changes (one SCHEMA bump per PR).
+1. The author sets only the `needs:*` labels the diff triggers. Labels are added only for the areas the diff touches:
    - `needs:review` + `needs:test`: any code change (a small fix may get only `needs:test`).
    - `needs:security`: login/session, upload, public API, personal data, CSP/headers, error snapshots, external calls, secrets.
    - `needs:arch`: queues, cache, resolver, build, map, infra, performance.
@@ -46,8 +48,9 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
    - `needs:legal`: legal basis, retention, payment/contract/billing features.
    - `needs:money`: ledger, split, prices, payments, payouts, Pix keys; follow [money-standards](../docs/money-standards.md). Requires `approved:review` + `approved:db`, plus `approved:security` if payments, webhooks or Pix keys are touched.
    - Docs-only: no labels; `ops/tools/check-doc-links.sh` passes, then Gerente merges.
+1b. Gerente calls Segurança, BD, UI or Arquitetura only when the diff touches their area (auth and input handling; schema and queries; views/UX; hot paths). Docs-only and test-tooling PRs need only Revisor and Teste (docs-only PRs keep no labels).
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
-2b. Programador code PRs (`needs:review` from the Programador): Revisor reviews first. Other reviewers (Teste, Arquitetura, BD, Segurança, UI, etc.) do not start until `approved:review` is on the current head (Revisor `VERDICT review @sha: APPROVED`); on CHANGES / `changes:review` they stay off until Revisor approves a later head. Docs-only PRs (no labels) are unchanged.
+2b. Programador code PRs (`needs:review` from the Programador): Revisor reviews first. Other reviewers do not start until `approved:review` is on the current head (Revisor `VERDICT review @sha: APPROVED`); on CHANGES / `changes:review` they stay off until Revisor approves a later head. Docs-only PRs (no labels) are unchanged.
 3. The author fixes, pushes, and restores `needs:<role>` for each role that requested changes.
 3b. On a new head, the author messages only the reviewers whose label it restored; not Gerente. On a Programador code PR, message Revisor first; other reviewers only after Revisor APPROVED that head.
 4. When all required approvals are present, the last approver adds `ready-to-merge`. Before merging, Gerente checks one verdict comment per `approved:*` label.
@@ -66,7 +69,7 @@ Followups: optional items (or "none")
 One line each for Blockers and Followups for every reviewer role (db and arch included), except the Revisor: its verdicts have only the Blockers line (no follow-ups, revisor.md). Evidence (logs, query plans, benchmarks) goes in a linked file, gist or collapsed `<details>` section, never in the verdict body. Gerente collects `Followups:` items into the backlog once per batch, (the Revisor has none: a finding is a blocker or isn't written; larger-than-PR items go to Gerente for the backlog). No recaps.
 
 ## Scripts and tests
-Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Only Teste runs the full suite (PR QA and once per batch on develop). Authors run only the tests their change touches; Arquitetura measures performance and does not re-run the suite.
+Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Only Teste runs the full suite: once per PR, on the head the Revisor approved, and once per batch on develop. On intermediate pushes Teste runs only the specs the change touches. Authors run only the tests their change touches; Arquitetura measures performance and does not re-run the suite.
 
 ## Docs
 - `prompts/backlog.md`: development tracking. Every new item names its sprint or it is dropped; each sprint clears the items touching its code plus about 20% of its effort on the rest (decisions.md). `prompts/deploy.md`: production go-live items only.
