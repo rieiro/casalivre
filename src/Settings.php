@@ -23,6 +23,9 @@ final class Settings
             'session_minutes' => ['60', 'Minutos até a sessão do proprietário expirar.'],
             'results_per_page' => ['20', 'Número de imóveis mostrados por página nos resultados da busca.'],
             'theme' => ['padrao', 'Tema visual da plataforma (só temas do manifesto de assets; troca pelo admin em /admin/tema).'],
+            'rank_c' => ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
+            'rank_m' => ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
+            'rank_w_rating' => ['35', 'Weight of the rating factor in rank_base, out of 100.'],
         ];
     }
 

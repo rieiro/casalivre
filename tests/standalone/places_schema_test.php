@@ -15,7 +15,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(27, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 27');
+t_eq(28, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 28');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -50,7 +50,7 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('27', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 27');
+t_eq('28', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 28');
 $rating = [];
 foreach ($pdo->query("SELECT a.attname, a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE a.attrelid = 'properties'::regclass AND a.attname IN ('rating_sum', 'rating_count') AND NOT a.attisdropped") as $row) {
     $rating[$row['attname']] = $row;
@@ -62,6 +62,15 @@ t_eq(true, (bool) $rating['rating_count']['attnotnull'], 'rating_count is NOT NU
 $checks = $pdo->query("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'properties'::regclass AND contype = 'c'")->fetchAll(PDO::FETCH_COLUMN);
 t_ok(in_array('CHECK ((rating_sum >= 0))', $checks, true), 'rating_sum >= 0');
 t_ok(in_array('CHECK ((rating_count >= 0))', $checks, true), 'rating_count >= 0');
+$ls = [];
+foreach ($pdo->query("SELECT indexname, pg_get_indexdef(c.oid) AS def FROM pg_indexes i JOIN pg_class c ON c.relname = i.indexname WHERE i.schemaname = 'public' AND i.indexname IN ('idx_ls_place_rank', 'idx_ls_place_rating', 'idx_ls_geo')") as $row) {
+    $ls[$row['indexname']] = $row['def'];
+}
+t_ok(isset($ls['idx_ls_place_rank']) && str_contains($ls['idx_ls_place_rank'], '(city_place_id, rank_base DESC, id DESC)') && str_contains($ls['idx_ls_place_rank'], 'INCLUDE (max_guests)') && str_contains($ls['idx_ls_place_rank'], "status = 'active'"), 'idx_ls_place_rank');
+t_ok(isset($ls['idx_ls_place_rating']) && str_contains($ls['idx_ls_place_rating'], '(city_place_id, rating_rank DESC, id DESC)') && str_contains($ls['idx_ls_place_rating'], 'INCLUDE (max_guests)') && str_contains($ls['idx_ls_place_rating'], "status = 'active'"), 'idx_ls_place_rating');
+t_ok(isset($ls['idx_ls_geo']) && str_contains($ls['idx_ls_geo'], 'USING gist') && str_contains($ls['idx_ls_geo'], 'point(lng, lat)') && str_contains($ls['idx_ls_geo'], 'INCLUDE (id, lat, lng, rank_base, rating_rank, max_guests)') && str_contains($ls['idx_ls_geo'], "status = 'active'"), 'idx_ls_geo');
+$opts = (string) $pdo->query("SELECT reloptions FROM pg_class WHERE relname = 'listing_search'")->fetchColumn();
+t_ok(str_contains($opts, 'autovacuum_vacuum_scale_factor=0.02') && str_contains($opts, 'autovacuum_vacuum_threshold=1000') && str_contains($opts, 'autovacuum_analyze_scale_factor=0.02'), 'listing_search autovacuum');
 $poiCols = $pdo->query("SELECT attname FROM pg_attribute WHERE attrelid = 'places'::regclass AND attname IN ('category', 'osm_ref', 'wikidata') AND NOT attisdropped")->fetchAll(PDO::FETCH_COLUMN);
 sort($poiCols);
 t_eq(['category', 'osm_ref', 'wikidata'], $poiCols, 'places tem category, osm_ref e wikidata');

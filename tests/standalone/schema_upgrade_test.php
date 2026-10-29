@@ -4,7 +4,7 @@
 // banco. Banco novo (schema.pgsql.sql carregado, versão 0) e versão já atual seguem funcionando.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
-t_eq(27, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 27');
+t_eq(28, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 28');
 t_ok(!defined('Db::MIN_UPGRADE_FROM'), 'sem MIN_UPGRADE_FROM (sem caminho incremental: uma checagem de versão só)');
 
 $migrate = static function (array $args = []): array {
@@ -22,17 +22,17 @@ $p->exec("DELETE FROM schema_meta");
 $p->exec("DELETE FROM settings");
 [$code, $text] = $migrate();
 t_eq(0, $code, "versão 0: migrate.php sai com 0 ($text)");
-t_eq('27', $version($p), 'versão 0 -> 27');
+t_eq('28', $version($p), 'versão 0 -> 28');
 t_ok((int) $p->query("SELECT COUNT(*) FROM settings WHERE skey = 'theme'")->fetchColumn() === 1, 'seeds aplicados');
 t_eq(48, (int) $p->query('SELECT COUNT(*) FROM activity_actions')->fetchColumn(), 'activity_actions: 48 códigos com classe');
 
-echo "banco já em 27\n";
+echo "banco já em 28\n";
 [$code] = $migrate();
-t_eq(0, $code, 'v27: migrate.php sai com 0');
+t_eq(0, $code, 'v28: migrate.php sai com 0');
 [$code] = $migrate(['--force']);
-t_eq(0, $code, 'v27: migrate.php --force sai com 0');
+t_eq(0, $code, 'v28: migrate.php --force sai com 0');
 
-foreach ([1, 12, 18, 19, 20, 21, 22, 23, 24, 25, 26] as $from) {
+foreach ([1, 12, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] as $from) {
     echo "banco antigo v$from\n";
     $p->exec("UPDATE schema_meta SET value = '$from' WHERE skey = 'schema_version'");
     $before = $shape($p);
@@ -42,10 +42,10 @@ foreach ([1, 12, 18, 19, 20, 21, 22, 23, 24, 25, 26] as $from) {
         t_eq(2, $code, "$label: migrate.php sai com 2");
         t_ok(str_contains($text, 'Recrie o banco do zero'), "$label: mensagem \"Recrie o banco do zero\"");
     }
-    t_eq((string) $from, $version($p), "v$from: versão intacta (não carimba 27)");
+    t_eq((string) $from, $version($p), "v$from: versão intacta (não carimba 28)");
     t_eq($before, $shape($p), "v$from: schema intacto");
 }
-$p->exec("UPDATE schema_meta SET value = '27' WHERE skey = 'schema_version'");
+$p->exec("UPDATE schema_meta SET value = '28' WHERE skey = 'schema_version'");
 
 echo "migrate() só seeds + versão (sem ALTER, backfill ou conversão)\n";
 $src = (string) file_get_contents(CL_ROOT . '/src/Db.php');

@@ -139,6 +139,8 @@ foreach ($cities as $index => $city) {
 }
 
 db()->exec('UPDATE properties SET rating_sum = COALESCE((SELECT SUM(score) FROM reviews r WHERE r.property_id = properties.id), 0), rating_count = (SELECT COUNT(*) FROM reviews r WHERE r.property_id = properties.id)');
+require_once $root . '/src/ListingSearch.php';
+ListingSearch::rewriteAll();
 
 $report = implode("\n", $lines);
 file_put_contents($root . '/storage/seed-massive.txt', $report);

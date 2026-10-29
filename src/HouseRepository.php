@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
+require_once __DIR__ . '/ListingSearch.php';
 
 final class HouseRepository
 {
@@ -22,6 +23,11 @@ final class HouseRepository
     }
 
     public static function insertRow(array $house): array
+    {
+        return Db::transactional(db(), static fn (): array => self::insertRowNow($house));
+    }
+
+    private static function insertRowNow(array $house): array
     {
         $hash = bin2hex(random_bytes(8));
         $placeId = self::cityPlaceId($house);
@@ -43,6 +49,7 @@ final class HouseRepository
         $row = $stmt->fetch() ?: [];
         if ($row !== []) {
             $row['city'] = self::cityText($placeId);
+            ListingSearch::sync((int) $row['id']);
         }
         return $row;
     }
@@ -104,6 +111,15 @@ final class HouseRepository
 
     public static function update(int $id, int $userId, array $house): array
     {
+        return Db::transactional(db(), static function () use ($id, $userId, $house): array {
+            $changed = self::updateNow($id, $userId, $house);
+            ListingSearch::sync($id);
+            return $changed;
+        });
+    }
+
+    private static function updateNow(int $id, int $userId, array $house): array
+    {
         $months = self::calendarMonths($house);
         $fee = max(0, (int) ($house['cleaning_fee'] ?? 0));
         return self::exposeCity(ReturningWrite::update('properties', [
@@ -148,12 +164,6 @@ final class HouseRepository
             [$propertyId, $day],
             ['day', 'blocked', 'price', 'min_nights', 'origin']
         );
-    }
-
-    public static function updateStayRules(int $id, string $checkin, string $checkout, int $minNights): void
-    {
-        db()->prepare('UPDATE properties SET checkin_time = ?, checkout_time = ?, min_nights = ? WHERE id = ?')
-            ->execute([$checkin, $checkout, $minNights, $id]);
     }
 
     public static function find(int $id): ?array
@@ -233,6 +243,15 @@ final class HouseRepository
 
     public static function inactivate(int $id, int $userId, string $at): array
     {
+        return Db::transactional(db(), static function () use ($id, $userId, $at): array {
+            $changed = self::inactivateNow($id, $userId, $at);
+            ListingSearch::sync($id);
+            return $changed;
+        });
+    }
+
+    private static function inactivateNow(int $id, int $userId, string $at): array
+    {
         $changed = ReturningWrite::update(
             'properties',
             ['status' => 'inactive', 'inactivated_at' => $at],
@@ -246,7 +265,11 @@ final class HouseRepository
 
     public static function updateMinNights(int $id, int $minNights): array
     {
-        return ReturningWrite::update('properties', ['min_nights' => $minNights], 'id = ?', [$id], ['id'], ['min_nights']);
+        return Db::transactional(db(), static function () use ($id, $minNights): array {
+            $changed = ReturningWrite::update('properties', ['min_nights' => $minNights], 'id = ?', [$id], ['id'], ['min_nights']);
+            ListingSearch::sync($id);
+            return $changed;
+        });
     }
 
     public static function calendarDays(int $propertyId): array
@@ -545,6 +568,7 @@ final class HouseRepository
                 ->execute([$propertyId, $author, $score, $comment, date('Y-m-d H:i:s')]);
             $pdo->prepare('UPDATE properties SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE id = ?')
                 ->execute([$score, $propertyId]);
+            ListingSearch::sync($propertyId);
         });
     }
 

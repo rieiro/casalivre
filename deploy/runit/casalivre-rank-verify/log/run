@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-svlogd casalivre-rank-verify /var/log/casalivre/rank-verify

@@ -18,6 +18,9 @@ $scripts = [
     "$root/casalivre-log-retention/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
+    "$root/casalivre-rank-verify/run",
+    "$root/casalivre-rank-verify/finish",
+    "$root/casalivre-rank-verify/log/run",
 ];
 
 echo "runit scripts\n";
@@ -35,11 +38,16 @@ $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
 t_ok(!preg_match('/\|\|\s*echo/', $retentionRun) && str_contains($retentionRun, 'exit "$status"') && str_contains($retentionRun, 'sleep 86400'), 'log-retention: failure exits, success still sleeps 24h');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-queue-worker/finish"), 'casalivre-queue-worker 0'), 'queue worker finish does not delay the restart');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-log-retention/finish"), 'casalivre-log-retention 86400'), 'log-retention finish waits a day after a failure');
+$rankRun = (string) file_get_contents("$root/casalivre-rank-verify/run");
+t_ok(str_contains($rankRun, 'scripts/rank-verify.php') && str_contains($rankRun, 'exit "$status"') && str_contains($rankRun, 'sleep 86400'), 'rank-verify: failure exits, success sleeps 24h');
+t_ok(str_contains((string) file_get_contents("$root/casalivre-rank-verify/finish"), 'casalivre-rank-verify 86400'), 'rank-verify finish waits a day after a failure');
 $wrappers = [
     "$root/casalivre-queue-worker/finish",
     "$root/casalivre-queue-worker/log/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
+    "$root/casalivre-rank-verify/finish",
+    "$root/casalivre-rank-verify/log/run",
 ];
 foreach ($wrappers as $path) {
     $body = (string) file_get_contents($path);

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Nightly listing_search check. A mismatch exits 1 so ./finish pages; then it sleeps 24h.
+# conf (optional, 0640, no secrets): APP_DIR, APP_USER, PHP_BIN, ALERT_CMD.
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+PHP_BIN="${PHP_BIN:-php}"
+
+cd "$APP_DIR" || exit 1
+chpst -u "$APP_USER" "$PHP_BIN" scripts/rank-verify.php
+status=$?
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+exec chpst -u "$APP_USER" sleep 86400
+exit 1
