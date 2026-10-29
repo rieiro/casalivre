@@ -66,14 +66,11 @@ final class SearchQuery
             : null;
     }
 
-    /** NaN and negatives are no filter. +INF cannot be stored in JSON, and it is above 10. */
+    /** +INF cannot be stored in JSON, and it is above 10. */
     private static function readScoreMin(mixed $raw): float
     {
         $score = (float) $raw;
-        if (is_nan($score) || $score < 0) {
-            return 0.0;
-        }
-        return is_infinite($score) ? 11.0 : $score;
+        return $score >= 0 ? min($score, 11.0) : 0.0;
     }
 
     /** Absent → null. Present and a positive int4 → that id. Present but unusable → 0. */
