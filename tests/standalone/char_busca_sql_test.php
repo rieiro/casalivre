@@ -319,6 +319,29 @@ t_eq(159, (int) $stored['rating_sum'], 'rating_sum matches SUM after 20 reviews'
 t_eq(20, (int) $stored['rating_count'], 'rating_count matches COUNT after 20 reviews');
 t_eq(9, (int) db()->query('SELECT rating_sum FROM properties WHERE id = ' . $scored)->fetchColumn(), 'seed-style addReview keeps rating_sum');
 t_eq(2, (int) db()->query('SELECT rating_count FROM properties WHERE id = ' . $scored)->fetchColumn(), 'seed-style addReview keeps rating_count');
+$santos = CityRepository::resolve('Santos, SP')['place'];
+t_ok(is_array($santos), 'Santos resolves');
+$santosId = (int) $santos['id'];
+$perfect = $house($santosId, ['title' => 'Dez']);
+HouseRepository::addReview($perfect, 'Ana', 10, '');
+HouseRepository::addReview($perfect, 'Bia', 10, '');
+$almost = $house($santosId, ['title' => 'Nove e meio']);
+HouseRepository::addReview($almost, 'Ana', 9, '');
+HouseRepository::addReview($almost, 'Bia', 10, '');
+$santosQ = ['localidade' => 'Santos, SP'];
+$score10 = same($santosQ + ['score_min' => '10'], null, 'score 10 keeps only an all-10 average');
+t_eq([$perfect], $score10['ids'], 'score 10 drops the 9.5 average');
+$score101 = SearchService::search(SearchQuery::fromRequest($santosQ + ['score_min' => '10.1']), null);
+t_eq([], $score101['items'], 'score 10.1 matches nothing');
+t_eq(0, $score101['iteracoes'], 'score 10.1 runs no listing query');
+t_eq(0, $score101['linhas_lidas'], 'score 10.1 reads no rows');
+t_eq(0.0, SearchQuery::fromRequest(['score_min' => 'nan'])->scoreMin, 'nan score_min is 0');
+t_eq(0.0, SearchQuery::fromRequest(['score_min' => '-1'])->scoreMin, 'negative score_min is 0');
+t_eq(
+    SearchQuery::fromRequest($santosQ)->filtersHash(),
+    SearchQuery::fromRequest($santosQ + ['score_min' => 'nan'])->filtersHash(),
+    'nan score_min hashes as zero'
+);
 $amenity = same($city + ['amenidade' => ['pool']], null, 'amenity');
 t_eq([$pool], $amenity['ids'], 'only the pool house');
 
@@ -398,6 +421,20 @@ t_eq(200, $next['status'], 'same filters accept the cursor');
 $nextItems = json_decode($next['body'], true)['items'] ?? [];
 t_eq([], array_values(array_intersect(array_column($openBody['items'], 'id'), array_column($nextItems, 'id'))), 'next page does not repeat the first');
 
+foreach (['1e8', '1e18', '1e999'] as $raw) {
+    $blocked = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Gramado, RS', 'score_min' => $raw]), null);
+    t_eq([], $blocked['items'], "score_min $raw returns no items");
+    t_eq(0, $blocked['iteracoes'], "score_min $raw runs no listing query");
+    t_eq(null, $blocked['total_aprox'], "score_min $raw does not run the count query");
+    $huge = t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Gramado, RS') . '&score_min=' . rawurlencode($raw));
+    $hugeBody = json_decode($huge['body'], true);
+    t_eq(200, $huge['status'], "score_min $raw is 200");
+    t_eq([], $hugeBody['items'] ?? null, "score_min $raw API returns no items");
+}
+$nanHttp = t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Gramado, RS') . '&score_min=nan');
+$nanBody = json_decode($nanHttp['body'], true);
+t_eq(200, $nanHttp['status'], 'score_min nan is 200');
+t_eq(count($openBody['items'] ?? []), count($nanBody['items'] ?? []), 'nan score_min does not filter');
 $miss = t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Xyzabc'));
 $missLog = log_entry(CL_ROOT . '/storage/logs/api', $miss['headers']);
 t_eq(['iteracoes' => 0, 'linhas_lidas' => 0], $missLog['busca'] ?? null, 'unresolved logs iteracoes and linhas_lidas');

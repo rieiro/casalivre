@@ -47,7 +47,7 @@ final class SearchQuery
             (int) ($request['raio'] ?? 0),
             (int) ($request['preco_min'] ?? 0),
             (int) ($request['preco_max'] ?? 0),
-            (float) ($request['score_min'] ?? 0),
+            self::readScoreMin($request['score_min'] ?? 0),
             $amenidades,
             $grupo,
         );
@@ -64,6 +64,16 @@ final class SearchQuery
         return is_string($raw) && preg_match('/^[1-9]\d*$/', $raw) === 1 && (int) $raw <= self::LAST_ID_MAX
             ? (int) $raw
             : null;
+    }
+
+    /** NaN and negatives are no filter. +INF cannot be stored in JSON, and it is above 10. */
+    private static function readScoreMin(mixed $raw): float
+    {
+        $score = (float) $raw;
+        if (is_nan($score) || $score < 0) {
+            return 0.0;
+        }
+        return is_infinite($score) ? 11.0 : $score;
     }
 
     /** Absent → null. Present and a positive int4 → that id. Present but unusable → 0. */

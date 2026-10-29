@@ -66,6 +66,10 @@ final class SearchService
         if ($groupId === false) {
             return $out;
         }
+        // Reviews are 1..10, so nothing rounds to more than 10. Skip SQL: 2*t would overflow int4.
+        if ($query->scoreMin > 10) {
+            return $out;
+        }
         $nights = nights_between($query->checkin, $query->checkout);
         $checkin = $nights[0] ?? null;
         $checkout = $checkin === null
