@@ -18,11 +18,6 @@ function word_count(string $text): int
     return count(array_filter($words, static fn ($w) => $w !== ''));
 }
 
-function review_score(int $propertyId): ?float
-{
-    return HouseRepository::averageScore($propertyId);
-}
-
 /**
  * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
  * lido por CL.data() em /assets/safe-dom.js.

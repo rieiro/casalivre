@@ -366,7 +366,7 @@ function handle_api(string $path, string $method): void
             'city' => $house['city'],
             'neighborhood' => house_neighborhood($house),
             'photos' => $photos,
-            'score' => review_score($id),
+            'score' => HouseRepository::score($house),
             'quote' => $quote,
             'amenities' => $amenities,
             'bedrooms' => (int) $house['bedrooms'],

@@ -37,7 +37,7 @@ final class SearchSql
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return array{0:string,1:list<int|float|string|null>}
      */
-    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, float $scoreMin = 0.0): array
+    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, float $scoreMin): array
     {
         $where = [self::active('p')];
         $params = [];
@@ -84,7 +84,7 @@ final class SearchSql
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @return list<array>
      */
-    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit, float $scoreMin = 0.0): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?int $afterId, int $limit, float $scoreMin): array
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $afterId, $scoreMin);
         $stmt = db()->prepare(HouseRepository::SQL_WITH_CITY . " WHERE $where ORDER BY p.id ASC LIMIT $limit");
@@ -98,7 +98,7 @@ final class SearchSql
      * @param array{id:int,type:string} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      */
-    public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin = 0.0): int|string
+    public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): int|string
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, null, $scoreMin);
         $stmt = db()->prepare("SELECT 1 FROM properties p WHERE $where LIMIT 101");

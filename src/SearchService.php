@@ -179,7 +179,7 @@ final class SearchService
 
     /**
      * Price and amenities stay in PHP. Radius haversine too, after the SQL bbox.
-     * The card score is round(rating_sum/rating_count, 1). score_min is already in the SQL.
+     * The card score is HouseRepository::score. score_min is already in the SQL.
      *
      * @param list<string> $nights
      * @param array<string, array> $calendar
@@ -209,8 +209,7 @@ final class SearchService
         if ($query->precoMax > 0 && $quote['nightly'] > $query->precoMax) {
             return null;
         }
-        $count = (int) $property['rating_count'];
-        $score = $count > 0 ? round((int) $property['rating_sum'] / $count, 1) : null;
+        $score = HouseRepository::score($property);
         if ($wanted !== []) {
             $selected = Amenities::selected($property);
             foreach ($wanted as $key) {

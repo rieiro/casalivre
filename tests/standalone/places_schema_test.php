@@ -129,7 +129,7 @@ $house = HouseRepository::find((int) $owner['house_id']);
 t_eq('Florianópolis, SC', (string) ($house['city'] ?? ''), 'find devolve a cidade em texto');
 t_eq((int) $floripa['id'], (int) ($house['city_place_id'] ?? 0), 'city_place_id aponta para a place');
 t_eq(null, $house['neighborhood_place_id'], 'neighborhood_place_id nulo');
-t_eq(1, count(SearchSql::batch($floripa, null, 0, null, null, null, null, 60)), 'builder acha a casa pelo city_place_id');
+t_eq(1, count(SearchSql::batch($floripa, null, 0, null, null, null, null, 60, 0.0)), 'builder acha a casa pelo city_place_id');
 $byId = HouseRepository::insert([
     'user_id' => $owner['user_id'], 'title' => 'Casa Place', 'description' => 'Descrição de teste do imóvel.',
     'summary' => 'Resumo', 'city_place_id' => (int) $floripa['id'], 'address' => 'Rua B, 2', 'cep' => '88000000',
