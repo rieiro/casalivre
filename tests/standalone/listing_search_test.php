@@ -38,6 +38,12 @@ $stored = static function (int $propertyId) use ($project): array {
     return $project($stmt->fetch());
 };
 
+$applied = static function (): string {
+    $stmt = db()->prepare('SELECT value FROM settings WHERE skey = ?');
+    $stmt->execute(['rank_applied']);
+    return (string) $stmt->fetchColumn();
+};
+
 $fresh = static function (int $propertyId) use ($rankOf, $project): array {
     $stmt = db()->prepare('SELECT status, city_place_id, lat, lng, max_guests, rating_sum, rating_count FROM properties WHERE id = ?');
     $stmt->execute([$propertyId]);
@@ -93,7 +99,7 @@ $verify = static function (array $args = []): array {
 };
 
 echo "verify\n";
-t_eq('5|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), 'seed stores the default fingerprint');
+t_eq('5|9|35', $applied(), 'seed stores the default fingerprint');
 [$code, $text] = $verify();
 t_eq(0, $code, "clean verify exits 0 ($text)");
 t_ok(str_contains($text, 'rewritten 0'), 'clean verify rewrites nothing');
@@ -118,7 +124,7 @@ db()->prepare("UPDATE settings SET value = '0|0|0' WHERE skey = 'rank_applied'")
 [$code, $text] = $verify(['--recompute']);
 t_eq(0, $code, "--recompute exits 0 ($text)");
 t_eq($fresh($many), $stored($many), '--recompute restores the row');
-t_eq('5|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), '--recompute stores the fingerprint');
+t_eq('5|9|35', $applied(), '--recompute stores the fingerprint');
 
 echo "rollback\n";
 $before = $stored($many)['max_guests'];
@@ -204,7 +210,7 @@ db()->prepare("UPDATE settings SET value = '6' WHERE skey = 'rank_c'")->execute(
 t_eq(0, $code, "changed rank_c exits 0 ($text)");
 t_ok(str_contains($text, 'params changed'), 'changed rank_c reports params changed');
 t_ok(str_contains($text, "rewritten $houses"), 'changed rank_c rewrites every row');
-t_eq('6|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), 'rank_applied follows rank_c');
+t_eq('6|9|35', $applied(), 'rank_applied follows rank_c');
 t_ok((int) $stored($many)['rating_rank'] !== $cachedRank, 'rows use the database rank_c');
 
 t_done();

@@ -14,8 +14,7 @@ if (!$pdo->query('SELECT pg_try_advisory_lock(' . ListingSearch::ADVISORY_LOCK .
     exit(0);
 }
 
-$applied = Settings::appliedRank();
-Settings::refresh();
+$applied = Settings::refresh()['rank_applied']['value'];
 $current = Settings::rankFingerprint();
 $paramsChanged = $applied !== $current;
 $recompute = $asked || $paramsChanged;

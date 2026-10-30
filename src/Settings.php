@@ -9,9 +9,12 @@ require_once __DIR__ . '/FileStamp.php';
 
 final class Settings
 {
+    /** @var list<string> */
+    private const RANK_KEYS = ['rank_c', 'rank_m', 'rank_w_rating'];
+
     public static function defaults(): array
     {
-        return [
+        $defaults = [
             'login_max_failures' => ['5', 'Número máximo de tentativas de login incorretas antes de bloquear a conta.'],
             'login_ip_max_failures' => ['5', 'Número máximo de tentativas de login incorretas a partir do mesmo endereço antes de bloquear o IP.'],
             'login_ip_lock_minutes' => ['15', 'Minutos de bloqueio do endereço após exceder as tentativas de login.'],
@@ -23,26 +26,27 @@ final class Settings
             'session_minutes' => ['60', 'Minutos até a sessão do proprietário expirar.'],
             'results_per_page' => ['20', 'Número de imóveis mostrados por página nos resultados da busca.'],
             'theme' => ['padrao', 'Tema visual da plataforma (só temas do manifesto de assets; troca pelo admin em /admin/tema).'],
-            'rank_c' => $rankC = ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
-            'rank_m' => $rankM = ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
-            'rank_w_rating' => $rankW = ['35', 'Weight of the rating factor in rank_base, out of 100.'],
-            'rank_applied' => [$rankC[0] . '|' . $rankM[0] . '|' . $rankW[0], 'rank_c|rank_m|rank_w_rating last applied by rank-verify.'],
+            'rank_c' => ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
+            'rank_m' => ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
+            'rank_w_rating' => ['35', 'Weight of the rating factor in rank_base, out of 100.'],
         ];
+        $defaults['rank_applied'] = [
+            self::fingerprint(static fn (string $key): string => $defaults[$key][0]),
+            'rank_c|rank_m|rank_w_rating last applied by rank-verify.',
+        ];
+        return $defaults;
+    }
+
+    /** @param callable(string): string $value */
+    private static function fingerprint(callable $value): string
+    {
+        return implode('|', array_map($value, self::RANK_KEYS));
     }
 
     /** Current rank_c|rank_m|rank_w_rating, the same shape stored in rank_applied. */
     public static function rankFingerprint(): string
     {
-        return self::int('rank_c') . '|' . self::int('rank_m') . '|' . self::int('rank_w_rating');
-    }
-
-    /** Stored fingerprint, or null when the row is absent. */
-    public static function appliedRank(): ?string
-    {
-        $stmt = db()->prepare('SELECT value FROM settings WHERE skey = ?');
-        $stmt->execute(['rank_applied']);
-        $value = $stmt->fetchColumn();
-        return $value === false ? null : (string) $value;
+        return self::fingerprint(static fn (string $key): string => (string) self::int($key));
     }
 
     /** Update one seeded settings row and refresh the cache. */
