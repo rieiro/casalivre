@@ -49,6 +49,7 @@ t_eq([], json_decode(t_http('GET', $base . (string) $attr($r['body'], 'data-api'
 
 echo "imóvel inativo fica fora\n";
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 t_eq(0, count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . $loc)['body'], true)['items'] ?? [1]), 'API (e o mapa) não lista imóvel pausado');
 
 echo "log: cada visita ao mapa grava exatamente uma busca\n";

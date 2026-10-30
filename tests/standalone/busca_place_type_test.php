@@ -11,16 +11,16 @@ require_once CL_ROOT . '/src/CepRepository.php';
 putenv('GEO_SALT=' . str_repeat('t', 64));
 
 $cityWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 0.0);
-t_ok(str_contains($cityWhere[0], 'p.city_place_id = ?') && str_contains($cityWhere[0], 'p.id > ?') === false, 'city predicate is city_place_id');
-$cityKey = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, 9, 0.0);
-t_ok(str_contains($cityKey[0], 'ORDER BY') === false && str_contains($cityKey[0], 'p.id > ?'), 'keyset stays id > last_id');
-$nbWhere = SearchSql::where(['id' => 2, 'type' => 'neighborhood'], null, 0, null, null, null, null, 0.0);
-t_ok(str_contains($nbWhere[0], 'p.neighborhood_place_id = ?') && !str_contains($nbWhere[0], 'city_place_id'), 'neighborhood predicate is the exact id');
+t_ok(str_contains($cityWhere[0], 's.city_place_id = ?') && str_contains($cityWhere[0], '(s.rank_base, s.id) <') === false, 'city predicate is city_place_id');
+$cityKey = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, ['key' => 315, 'id' => 9], 0.0);
+t_ok(str_contains($cityKey[0], 'ORDER BY') === false && str_contains($cityKey[0], '(s.rank_base, s.id) < (?, ?)'), 'keyset is (rank_base, id)');
+$nbWhere = SearchSql::where(['id' => 2, 'type' => 'neighborhood', 'parent_id' => 1], null, 0, null, null, null, null, 0.0);
+t_ok(str_contains($nbWhere[0], 's.city_place_id = ?') && str_contains($nbWhere[0], "p.status = 'active'") && str_contains($nbWhere[0], 'p.neighborhood_place_id = ?'), 'neighborhood predicate is city and the exact id');
 $poiWhere = SearchSql::where(['id' => 3, 'type' => 'poi'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null, 0.0);
-t_ok(!str_contains($poiWhere[0], 'place_id') && str_contains($poiWhere[0], 'p.lat BETWEEN'), 'POI predicate is the bbox only');
+t_ok(!str_contains($poiWhere[0], 'place_id') && str_contains($poiWhere[0], 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))'), 'POI predicate is the geo box');
 $cityRadius = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null, 0.0);
-t_ok(!str_contains($cityRadius[0], 'city_place_id') && str_contains($cityRadius[0], 'p.lat BETWEEN'), 'city radius still drops the city id');
-t_ok(str_contains((string) file_get_contents(CL_ROOT . '/src/SearchSql.php'), 'ORDER BY p.id ASC'), 'interim order stays id ASC');
+t_ok(!str_contains($cityRadius[0], 'city_place_id') && str_contains($cityRadius[0], 's.lat BETWEEN'), 'city radius still drops the city id');
+t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchSql.php'), 'ORDER BY p.id ASC'), 'order is no longer id ASC');
 
 t_temp_db();
 $owner = t_seed_owner();
@@ -62,20 +62,20 @@ $farFirst = $insert($rioId, $firstNb, $rioLat + (40 / 111.32), $rioLng, 'Bairro 
 $ids = static function (array $request): array {
     $result = SearchService::search(SearchQuery::fromRequest($request), null);
     $got = array_map(static fn (array $row): int => (int) $row['id'], $result['items']);
-    $sorted = $got;
-    sort($sorted);
-    t_eq($sorted, $got, 'page stays in id ASC');
+    $newest = $got;
+    rsort($newest);
+    t_eq($newest, $got, 'tied rank breaks by newest id');
     t_eq(null, $result['next_cursor'], 'small page has no cursor');
     return $got;
 };
 
 echo "city\n";
-t_eq([$inFirst, $inSecond, $noNb, $farFirst], $ids(['local_id' => (string) $rioId]), 'city search returns every house in the city');
+t_eq([$farFirst, $noNb, $inSecond, $inFirst], $ids(['local_id' => (string) $rioId]), 'city search returns every house in the city');
 
 echo "neighborhood\n";
-t_eq([$inFirst, $farFirst], $ids(['local_id' => (string) $firstNb]), 'neighborhood search is that id only');
+t_eq([$farFirst, $inFirst], $ids(['local_id' => (string) $firstNb]), 'neighborhood search is that id only');
 t_eq([$inSecond], $ids(['local_id' => (string) $secondNb]), 'the other neighborhood of the same city stays out');
-t_eq([$inFirst, $farFirst], $ids(['local_id' => (string) $firstNb, 'raio' => '5']), 'neighborhood search ignores raio');
+t_eq([$farFirst, $inFirst], $ids(['local_id' => (string) $firstNb, 'raio' => '5']), 'neighborhood search ignores raio');
 
 echo "poi\n";
 $poiStmt = db()->query("SELECT p.id, p.lat, p.lng, c.id AS city_id FROM places p JOIN places c ON c.id = p.parent_id WHERE p.type = 'poi' AND p.name = 'Praia de Geribá'");
@@ -92,6 +92,7 @@ $atPublicKm = static function (float $km, string $title) use ($insert, $poiCity,
     $got = 0.0;
     for ($i = 0; $i < 12 && abs($got - $km) >= 0.05; $i++) {
         db()->prepare('UPDATE properties SET lat = ?, lng = ? WHERE id = ?')->execute([$lat, $poiLng, $id]);
+        ListingSearch::sync($id);
         $public = public_coord($id, $lat, $poiLng);
         $got = haversine_km($poiLat, $poiLng, $public['lat'], $public['lng']);
         $lat += ($km - $got) / 111.32;
@@ -104,10 +105,10 @@ $past = $atPublicKm(3.6, 'house sits at 3.6 km');
 $outside = $insert($poiCity, null, $poiLat + (8 / 111.32), $poiLng, 'Fora');
 $otherCityInside = $insert($rioId, null, $poiLat, $poiLng, 'Outra cidade');
 $defaultIds = $ids(['local_id' => (string) $poiId]);
-t_eq([$inside, $near, $otherCityInside], $defaultIds, '2.9 km stays inside the default radius, with no city filter');
+t_eq([$otherCityInside, $near, $inside], $defaultIds, '2.9 km stays inside the default radius, with no city filter');
 t_ok(!in_array($past, $defaultIds, true), '3.6 km is outside the default radius');
 t_ok(!in_array($outside, $defaultIds, true), 'a house in the POI city but 8 km away is excluded');
-t_eq([$inside, $near, $past, $outside, $otherCityInside], $ids(['local_id' => (string) $poiId, 'raio' => '10']), 'an explicit raio replaces the 3 km default');
+t_eq([$otherCityInside, $outside, $past, $near, $inside], $ids(['local_id' => (string) $poiId, 'raio' => '10']), 'an explicit raio replaces the 3 km default');
 $poiResult = SearchService::search(SearchQuery::fromRequest(['local_id' => (string) $poiId]), null);
 t_ok(isset($poiResult['items'][0]['distance_km']), 'POI rows carry distance_km');
 
@@ -153,7 +154,7 @@ t_eq(200, $nbPage['status'], 'neighborhood map responds');
 t_eq($centerOf($rioLat, $rioLng), (string) $attr($nbPage['body'], 'data-center'), 'neighborhood map centers on the stored place point');
 $hash = static fn (int $id): string => HouseRepository::ensurePublicHash(HouseRepository::find($id));
 $nbApi = json_decode(t_http('GET', $base . '/api/busca?local_id=' . $firstNb)['body'], true);
-t_eq([$hash($inFirst), $hash($farFirst)], array_column($nbApi['items'], 'id'), 'neighborhood API lists those houses');
+t_eq([$hash($farFirst), $hash($inFirst)], array_column($nbApi['items'], 'id'), 'neighborhood API lists those houses');
 t_eq(null, $nbApi['items'][0]['distance_km'], 'neighborhood API has no radius distance');
 t_ok(!str_contains(json_encode($nbApi), 'Rua A'), 'neighborhood API has no address');
 t_eq($firstNb, $nbApi['filters']['local_id'], 'API keeps local_id');
@@ -164,7 +165,7 @@ $poiParent->execute([$poiCity]);
 $poiParentRow = $poiParent->fetch();
 t_ok($centerOf($poiLat, $poiLng) !== $centerOf((float) $poiParentRow['lat'], (float) $poiParentRow['lng']), 'POI center is not the parent city');
 $poiApi = json_decode(t_http('GET', $base . '/api/busca?local_id=' . $poiId)['body'], true);
-t_eq([$hash($inside), $hash($near), $hash($otherCityInside)], array_column($poiApi['items'], 'id'), 'POI API lists houses inside the radius');
+t_eq([$hash($otherCityInside), $hash($near), $hash($inside)], array_column($poiApi['items'], 'id'), 'POI API lists houses inside the radius');
 t_ok(is_int($poiApi['items'][0]['distance_km']) && is_float($poiApi['items'][0]['lat']), 'POI API keeps distance and public coordinates');
 
 t_done();
