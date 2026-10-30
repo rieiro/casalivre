@@ -6,6 +6,7 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $base = t_server();
 $attr = static function (string $body, string $name): ?string {
     if (!preg_match('/<div id="result-map"[^>]*\s' . preg_quote($name, '/') . '="([^"]*)"/s', $body, $m)) {

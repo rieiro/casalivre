@@ -123,8 +123,11 @@ db()->prepare('INSERT INTO groups (slug, name, theme) VALUES (?, ?, ?)')->execut
 $groupId = (int) db()->query("SELECT id FROM groups WHERE slug = 'ga'")->fetchColumn();
 db()->prepare('INSERT INTO group_domains (group_id, domain, verified_at) VALUES (?, ?, CURRENT_TIMESTAMP)')->execute([$groupId, 'ga.example.com']);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $pool]);
+ListingSearch::sync($pool);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $scored]);
+ListingSearch::sync($scored);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $emptyStatus]);
+ListingSearch::sync($emptyStatus);
 GrupoResolvedor::clearCache();
 
 /** Old PHP scan (status active, id ASC). Unresolved text still runs the removed substring branch here. @return list<int> */
@@ -135,7 +138,7 @@ function legacy_ids(array $request, mixed $host): array
         'checkin' => (string) ($request['checkin'] ?? ''),
         'checkout' => (string) ($request['checkout'] ?? ''),
         'hospedes' => (int) ($request['hospedes'] ?? 0),
-        'raio' => (int) ($request['raio'] ?? 0),
+        'raio' => SearchQuery::fromRequest($request)->raio,
         'preco_min' => (int) ($request['preco_min'] ?? 0),
         'preco_max' => (int) ($request['preco_max'] ?? 0),
         'score_min' => (float) ($request['score_min'] ?? 0),
@@ -350,6 +353,15 @@ t_eq(0, $score101['iteracoes'], 'score 10.1 runs no listing query');
 t_eq(0, $score101['linhas_lidas'], 'score 10.1 reads no rows');
 t_eq(0, $score101['total_aprox'], 'score 10.1 total_aprox matches an empty page');
 t_eq(0.0, SearchQuery::fromRequest(['score_min' => 'nan'])->scoreMin, 'nan score_min is 0');
+t_eq(20, SearchQuery::fromRequest(['raio' => '50'])->raio, 'raio above 20 is clamped');
+t_eq(20, SearchQuery::fromRequest(['raio' => '20'])->raio, 'raio 20 stays 20');
+t_eq(3, SearchQuery::fromRequest(['raio' => '3'])->raio, 'raio 3 stays 3');
+t_eq(0, SearchQuery::fromRequest(['raio' => '0'])->raio, 'raio 0 stays 0');
+t_eq(
+    SearchQuery::fromRequest(['localidade' => 'X', 'raio' => '20'])->filtersHash(),
+    SearchQuery::fromRequest(['localidade' => 'X', 'raio' => '80'])->filtersHash(),
+    'filters_hash uses the clamped raio'
+);
 t_eq(0.0, SearchQuery::fromRequest(['score_min' => '-1'])->scoreMin, 'negative score_min is 0');
 t_eq(
     SearchQuery::fromRequest($santosQ)->filtersHash(),
@@ -363,6 +375,26 @@ echo "radius, group, buzios, unresolved\n";
 $radius = $same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
 t_ok(in_array($near, $radius['ids'], true), 'bbox + haversine keeps a house 2 km away in another city');
 t_ok(!in_array($far, $radius['ids'], true), 'a house at the other city center stays out of the radius');
+$radiusBox = 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))';
+$cityBbox = SearchSql::bbox((float) $floripa['lat'], (float) $floripa['lng'], 10);
+t_ok(str_contains(SearchSql::where($floripa, null, 0, $cityBbox, null, null, null, 0.0, SearchQuery::SORT_RELEVANCE)[0], $radiusBox), 'city radius and map bbox use the geo box');
+$radiusQuery = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'raio' => '10']);
+$radiusPage = SearchService::search($radiusQuery, null);
+[$boxWhere, $boxParams] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, null, 0.0, SearchQuery::SORT_RELEVANCE);
+$boxOrder = SearchSql::orderBy(SearchQuery::SORT_RELEVANCE);
+$joinPage = db()->prepare('SELECT p.id, s.rank_base FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $boxWhere . ' ORDER BY ' . $boxOrder . ' LIMIT 20');
+$joinPage->execute($boxParams);
+$joinRows = $joinPage->fetchAll();
+t_eq(array_map(static fn (array $row): int => (int) $row['id'], $joinRows), array_map(static fn (array $item): int => (int) $item['id'], $radiusPage['items']), 'subquery page matches the join');
+$between = db()->prepare("SELECT p.id FROM listing_search s JOIN properties p ON p.id = s.id WHERE s.status = 'active' AND s.lat BETWEEN ? AND ? AND s.lng BETWEEN ? AND ? ORDER BY " . $boxOrder . ' LIMIT 20');
+$between->execute([$cityBbox['s'], $cityBbox['n'], $cityBbox['w'], $cityBbox['e']]);
+t_eq(array_map(static fn (array $row): int => (int) $row['id'], $joinRows), array_map('intval', $between->fetchAll(PDO::FETCH_COLUMN)), 'geo box page matches the old bounds');
+$lastRank = $joinRows[array_key_last($joinRows)];
+[$boxWhere2, $boxParams2] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, ['key' => (int) $lastRank['rank_base'], 'id' => (int) $lastRank['id']], 0.0, SearchQuery::SORT_RELEVANCE);
+$joinNext = db()->prepare('SELECT p.id FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $boxWhere2 . ' ORDER BY ' . $boxOrder . ' LIMIT 20');
+$joinNext->execute($boxParams2);
+$radiusNext = SearchService::search($radiusQuery, null, false, SearchQuery::position((string) $radiusPage['next_cursor'], $radiusQuery->filtersHash(), $radiusQuery->sort));
+t_eq(array_map('intval', $joinNext->fetchAll(PDO::FETCH_COLUMN)), array_map(static fn (array $item): int => (int) $item['id'], $radiusNext['items']), 'keyset second page matches the join');
 $byGroup = $same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
 $withGroup = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga']);
 $withoutGrupo = $withGroup->filters();

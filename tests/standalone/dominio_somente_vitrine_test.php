@@ -15,6 +15,7 @@ $adm = ['id' => 1, 'is_admin' => 1, 'status' => 'active'];
 GrupoAdmin::create($adm, 'imob', 'Imob', 'padrao');
 $g = GroupRepository::findBySlug('imob');
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$g['id'], $owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $ins = db()->prepare('INSERT INTO group_domains (group_id, domain, verify_token, verified_at) VALUES (?, ?, ?, ?)');
 $ins->execute([$g['id'], 'imob.example.com', 'tok1', '2026-10-01 00:00:00']);
 $ins->execute([$g['id'], 'pendente.example.com', 'tok2', null]);

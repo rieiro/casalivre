@@ -22,6 +22,7 @@ $house = static function (string $title, ?array $g) use ($owner): string {
     ]);
     if ($g !== null) {
         db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$g['id'], $id]);
+        ListingSearch::sync($id);
     }
     return HouseRepository::ensurePublicHash(HouseRepository::find($id));
 };

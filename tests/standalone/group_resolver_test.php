@@ -110,6 +110,7 @@ $r = t_http('GET', $base . '/', null, ['Host: desconhecido.example.com', 'X-Forw
 t_eq('padrao', $css($r['body']), 'X-Forwarded-Host/X-Original-Host não sobrepõem o Host');
 t_eq('padrao', $css(t_http('GET', $base . '/imoveis/' . $owner['hash'])['body']), 'imóvel sem grupo: tema da plataforma');
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$g['id'], $owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $r = t_http('GET', $base . '/imoveis/' . $owner['hash']);
 t_eq([200, 'contraste'], [$r['status'], $css($r['body'])], 'imóvel do grupo: tema do grupo');
 t_eq('padrao', $css(t_http('GET', $base . '/imoveis/' . $owner['hash'], null, ['Host: outro.example.com'])['body']), 'domínio verificado de outro grupo vence o imóvel');

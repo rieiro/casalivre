@@ -247,6 +247,7 @@ t_eq(0, $byUrl('Array'), 'DB: nenhum feed com URL "Array"');
 echo "ajustes: excluir feed inexistente não grava em properties (item 11)\n";
 $prop = static fn (): array => db()->query('SELECT external_ical_url, audit_hold FROM properties WHERE id = ' . $hid)->fetch(PDO::FETCH_ASSOC);
 db()->prepare('UPDATE properties SET external_ical_url = NULL, audit_hold = NULL WHERE id = ?')->execute([$hid]);
+ListingSearch::sync((int) $hid);
 $antesProp = $prop();
 c_form($base, '/imoveis/' . $owner['hash'] . '/ical/999999/excluir', ['_csrf' => $csrf], $jar);
 t_eq($antesProp, $prop(), 'web: feed inexistente não muda external_ical_url (NULL fica NULL) nem audit_hold');

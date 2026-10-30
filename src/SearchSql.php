@@ -12,7 +12,8 @@ require_once __DIR__ . '/SearchQuery.php';
  */
 final class SearchSql
 {
-    private const JOIN_LISTING = 'listing_search s JOIN properties p ON p.id = s.id';
+    private const JOIN_PROPERTIES = 'JOIN properties p ON p.id = s.id';
+    private const JOIN_LISTING = 'listing_search s ' . self::JOIN_PROPERTIES;
 
     /** @var array<string, string> */
     private const SORT_COLUMN = [
@@ -54,7 +55,7 @@ final class SearchSql
 
     /**
      * A city id applies only without a bbox. A neighborhood id always applies, with its city.
-     * A POI adds no id; its bbox uses the idx_ls_geo expression.
+     * Every bbox uses the idx_ls_geo expression.
      * $sort is the keyset column when $after is set.
      *
      * @param array{id:int,type:string,parent_id?:int|null} $place
@@ -97,13 +98,8 @@ final class SearchSql
             $params[] = $guests;
         }
         if ($bbox !== null) {
-            if ($place['type'] === 'poi') {
-                $where[] = 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))';
-                array_push($params, $bbox['w'], $bbox['s'], $bbox['e'], $bbox['n']);
-            } else {
-                $where[] = 's.lat BETWEEN ? AND ? AND s.lng BETWEEN ? AND ?';
-                array_push($params, $bbox['s'], $bbox['n'], $bbox['w'], $bbox['e']);
-            }
+            $where[] = 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))';
+            array_push($params, $bbox['w'], $bbox['s'], $bbox['e'], $bbox['n']);
         }
         if ($checkin !== null && $checkout !== null) {
             $where[] = 'NOT EXISTS (SELECT 1 FROM calendar_days c WHERE c.property_id = p.id AND c.day >= ? AND c.day < ? AND c.blocked = 1)';
@@ -127,12 +123,28 @@ final class SearchSql
     public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
+        $limitFirst = $bbox !== null
+            && $place['type'] !== 'neighborhood'
+            && $groupId === null
+            && $checkin === null
+            && $scoreMin <= 0;
         $sql = 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM '
-            . self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
-            . " WHERE $where ORDER BY " . self::orderBy($sort) . " LIMIT $limit";
+            . self::rankedFrom($where, $sort, $limit, $limitFirst);
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
+    }
+
+    /** Bbox page: rank-ordered LIMIT on listing_search, then the property join. Otherwise filter and limit after the join. */
+    private static function rankedFrom(string $where, string $sort, int $limit, bool $limitFirst): string
+    {
+        $order = self::orderBy($sort);
+        if ($limitFirst) {
+            return '(SELECT s.* FROM listing_search s WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit
+                . ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL . ' ORDER BY ' . $order;
+        }
+        return self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
+            . ' WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
     }
 
     /**

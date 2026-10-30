@@ -8,6 +8,7 @@ final class SearchQuery
     public const VERSION = 2;
     public const SORT_RELEVANCE = 'relevance';
     public const SORT_RATING = 'rating';
+    public const RAIO_MAX_KM = 20;
     /** PostgreSQL integer (int4) maximum. A larger id or key overflows the bind. */
     public const LAST_ID_MAX = 2147483647;
 
@@ -46,7 +47,8 @@ final class SearchQuery
             (string) ($request['checkin'] ?? ''),
             (string) ($request['checkout'] ?? ''),
             (int) ($request['hospedes'] ?? 0),
-            (int) ($request['raio'] ?? 0),
+            // Above the cap clamps. Zero and below stay as parsed (a POI with raio 0 still defaults to 3 km).
+            min((int) ($request['raio'] ?? 0), self::RAIO_MAX_KM),
             (int) ($request['preco_min'] ?? 0),
             (int) ($request['preco_max'] ?? 0),
             self::readScoreMin($request['score_min'] ?? 0),
