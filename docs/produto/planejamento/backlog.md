@@ -238,6 +238,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | # | Item | R | I | C | E | RICE | MoSCoW | Alvo | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | G9 | Bloqueio das datas enquanto a solicitação aguarda aprovação | 10 | 2 | 80% | 0,5 | 32 | Should | S7 | aprovado com mudanças |
+| G38 | Regras da casa checadas na reserva instantânea | — | — | — | — | 25,6 | Should | antes da S7 (reserva) | aprovado com mudança |
 | G7 | Forma de check-in | 6 | 1 | 80% | 0,25 | 19,2 | Should | S7 (P10) | aprovado com mudança |
 | G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga e rede decididas pelo Rafael (2026-10-21) |
 | G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
@@ -246,6 +247,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
 | G21 | Tipo de solicitação "pergunta" | — | — | — | — | 9,6 | **Must** | antes da S7 | aprovado com mudança |
 | G22 | Avisos automáticos da estadia | — | — | — | — | 9,6 | Could | depois do piloto (proprietário direto) | aprovado com mudança (9,6 pelo valor para corretores) |
+| G39 | Cão de assistência no contador de hóspedes | — | — | — | — | 8 | Should | com a G38 | aprovado (Jurídico confirma a base legal) |
 | G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
 | G23 | Conversa aberta depois do cancelamento ou do check-out | — | — | — | — | 6,4 | Should | antes da S9 | aprovado com mudança (14 dias, não 30) |
@@ -253,6 +255,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
+| G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
 | G27 | Respostas do anfitrião publicadas como FAQ do anúncio | — | — | — | — | 3,6 | Should | depois da S7, antes da P8 | aprovado com mudança (2,4 → 3,6) |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
@@ -480,6 +483,40 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   4. A vitrine regional envia só imóveis da própria região.
   5. A conferência roda num trabalho em segundo plano e não acrescenta consulta nem tempo à busca (metas de velocidade do ADR 001).
 - **Prioridade:** Could, depois do piloto. RICE 1,5 (o Negócios subiu de 1). Depende da decisão do provedor de mensagens para o resumo. Fonte: competitors.md G34 (`/workspace/produto/competitors.md`, 27/10), revisão do Negócios. Referência: [OLX buscas salvas e alertas](https://ajuda.olx.com.br/s/article/favoritos-buscas-anuncios).
+
+### G38 — Regras da casa checadas na reserva instantânea (Should, antes da S7)
+- **Problema:** a checagem de conflito com as regras da casa só existe na tela de aprovação manual do anfitrião (spec-06 §2). Numa reserva instantânea, o hóspede pode reservar com mais pessoas que a capacidade, com pets numa casa sem pets (ou acima do número ou do porte permitido) ou abaixo da idade mínima de 21+/25+. O anfitrião precisa cancelar e sofre a penalidade da spec-02. O Vrbo faz o hóspede aceitar as regras antes de reservar; o Airbnb confere o número de pets declarado com o limite do anfitrião.
+- **Solução (aprovada pelo Negócios com mudança):** uma função única no servidor, usada pelo detalhe, pelo envio do checkout e pela tela de aprovação (spec-06), para as três nunca discordarem. Conflito duro bloqueia o botão "Reservar" com o motivo em palavras simples ("Este imóvel aceita até 1 pet"). Regra "sob consulta" transforma a reserva em solicitação ("Solicitar reserva"). A checagem nunca roda na busca. **A mais, pelo Negócios:** (1) o rigor da regra (rígida, sob consulta ou só informativa) é uma configuração do imóvel, com padrão por nó, para a rede regional definir um padrão; (2) a mensagem de bloqueio oferece o próximo passo ("Solicitar reserva" ou "Mudar hóspedes"); (3) cada tentativa bloqueada é registrada por regra, como sinal de adequação para o anfitrião, só em contagem agregada, sem usuário, sessão nem IP.
+- **Critérios de aceite:**
+  1. Com conflito duro (hóspedes acima da capacidade, pets acima do permitido ou em casa sem pets, idade abaixo do mínimo), o "Reservar" fica bloqueado e mostra o motivo e o próximo passo.
+  2. Com regra "sob consulta" em conflito, o botão vira "Solicitar reserva" e a reserva segue como solicitação.
+  3. O envio do checkout repete a checagem no servidor; um envio forjado com conflito duro é recusado.
+  4. A mesma função alimenta o detalhe, o checkout e a aprovação manual da spec-06, com o mesmo resultado para o mesmo pedido.
+  5. A checagem não roda em `/api/busca` e não acrescenta consulta nem tempo à busca.
+  6. O rigor de cada regra é uma configuração do imóvel, com padrão herdado do nó.
+  7. Cada bloqueio soma 1 numa contagem diária por regra, sem dado pessoal.
+- **Política (visão de negócio; o Jurídico confirma o lado do reembolso do hóspede antes da S7):** cancelamento do anfitrião causado por violação de regra não gera penalidade ao anfitrião quando o hóspede deu dado falso (idade, pets, hóspedes) ou quebrou uma regra que a checagem mostrou. Se a checagem deixou passar a violação, o anfitrião também não tem penalidade, porque a falha foi da plataforma. O reembolso do hóspede segue a política de cancelamento e o mínimo do consumidor; até a resposta do Jurídico vale a política de cancelamento atual.
+- **Prioridade:** Should, antes da S7 (edição pequena da spec-01 §3/§4). RICE 25,6 (mantido). Fonte: competitors.md G38 (`/workspace/produto/competitors.md`, 30/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Vrbo, regras da casa](https://help.vrbo.com/articles/what-are-house-rules), [Airbnb, taxa de pet](https://www.airbnb.com/help/article/3623).
+
+### G39 — Cão de assistência no contador de hóspedes (Should, com a G38)
+- **Problema:** o contador só tem "pets"; uma regra "sem pets" bloquearia ou sinalizaria um hóspede com cão-guia como se fosse um pet. O Airbnb exige aceitar animais de serviço mesmo com a regra "sem pets" e sem taxa de pet.
+- **Solução (aprovada pelo Negócios):** "Cão de assistência" como item separado no contador, que nunca é conflito de regra nem paga taxa de pet. Nenhuma configuração do anfitrião o bloqueia, e uma nota simples fica no detalhe. A base legal e o texto vêm do Jurídico antes de entrar em produção (não verificados pelo Produto nem pelo Negócios).
+- **Critérios de aceite:**
+  1. O contador de hóspedes tem "Cão de assistência", separado de "Pets".
+  2. O cão de assistência nunca gera conflito na checagem da G38 nem na aprovação da spec-06, mesmo com a regra "sem pets".
+  3. O cão de assistência nunca soma taxa de pet (G40).
+  4. O detalhe mostra a nota com o texto aprovado pelo Jurídico.
+- **Prioridade:** Should, com a G38. RICE 8 (mantido). Depende da confirmação do Jurídico. Fonte: competitors.md G39 (30/10), revisão do Negócios. Referência: [Airbnb, receber pets](https://www.airbnb.com/resources/hosting-homes/a/what-you-need-to-know-about-hosting-pets-463).
+
+### G40 — Taxas estruturadas de pet e de hóspede extra (Could, com a spec-07, S8)
+- **Problema:** o preço tem só a diária e a limpeza fixa; anfitriões que cobram por pet ou por hóspedes acima de um número vão pôr isso no texto livre ou pedir por Pix fora do total mostrado, o que quebra a regra "o total é o que se paga". Airbnb e Vrbo têm essas taxas como campos estruturados, sempre no total mostrado antes.
+- **Solução (aprovada pelo Negócios com mudança):** dois campos opcionais, cada um como linha própria no detalhamento: taxa de pet (por estadia ou por noite, até o valor da diária) e taxa de hóspede extra por noite acima de N hóspedes. **A mais, pelo Negócios:** os campos ficam no imóvel, com modelos padrão por nó, e a taxa passa pelo mesmo motor de divisão da diária, com a regra da comissão sobre a taxa dita de forma explícita (segue a regra do canal). **Já em vigor:** uma linha na spec-03 diz que nenhuma outra cobrança pode ser feita fora do total mostrado.
+- **Critérios de aceite:**
+  1. O anfitrião configura as duas taxas no imóvel, a partir do modelo do nó, e cada uma aparece como linha própria no detalhamento do preço.
+  2. A taxa de pet nunca passa da diária e nunca se aplica ao cão de assistência (G39).
+  3. O total mostrado antes do pagamento inclui as taxas aplicáveis.
+  4. A taxa passa pelo motor de divisão, e a comissão sobre ela segue a regra do canal, escrita na spec-02.
+- **Prioridade:** Could, com a spec-07 (S8). RICE 4 (o Negócios subiu de 2,5). Fonte: competitors.md G40 (30/10), revisão do Negócios. Referências: [Airbnb, taxas adicionais](https://www.airbnb.com/help/article/2385), [Vrbo, gerenciar taxas](https://help.vrbo.com/articles/How-do-I-manage-my-fees).
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.

@@ -12,7 +12,7 @@ Base: `spec-telas-busca-mapa-upload-fotos.md` (v1, upload de fotos), `spec-01` (
 
 ## 1. Etapa 1, O espaço: UC-P01, UC-P04
 **Campos:** tipo (casa, apartamento, chalé…), **nó da árvore** a que o imóvel pertence (o seletor da spec-02, já preenchido com o contexto ativo), capacidade (hóspedes, quartos, camas, banheiros) e **endereço**.
-**Localização:** CEP com autocompletar, seguido do número e do complemento, e de um **mapa para ajustar o pin** ("Arraste o pin ou use as setas para posicionar a entrada"). Ao lado, a prévia **"O hóspede vê: bairro [X] e uma área de ~500 m"**, com o círculo, igual à spec-01.
+**Localização:** CEP com autocompletar, seguido do número e do complemento, e de um **mapa para ajustar o pin** (que **começa no centro do bairro** do CEP, e não no centro da cidade, para o anfitrião só ajustar) ("Arraste o pin ou use as setas para posicionar a entrada"). Ao lado, a prévia **"O hóspede vê: bairro [X] e uma área de ~500 m"**, com o círculo, igual à spec-01.
 **Estados:** CEP não encontrado ("Não achamos este CEP. Preencha o endereço manualmente."); sem WebGL, sem mapa, com o pin ajustável por campos de latitude e longitude ou pela confirmação do endereço.
 **Critérios de aceite**
 1. Dado um CEP válido, então rua, bairro e cidade são preenchidos e ficam editáveis.
@@ -41,6 +41,7 @@ Base: `spec-telas-busca-mapa-upload-fotos.md` (v1, upload de fotos), `spec-01` (
 **Critérios de aceite:** (1) publicar sem inventário é bloqueado, com o link para a etapa; (2) a reserva confirmada mostra o inventário da versão do snapshot, mesmo que o anúncio mude depois; (3) cada linha tem item e quantidade, e a foto é opcional; (4) leitores de tela anunciam "Cozinha, 12 itens".
 
 ## 3. Etapa 3, Preço, regras e publicação: UC-P05 a UC-P07, UC-P12 a UC-P14, UC-P29
+**Cobrança fora do total:** nenhuma cobrança além do total mostrado ao hóspede pode ser feita (nem por Pix nem em dinheiro); taxas de pet ou de hóspede extra só existem como linhas do detalhamento (G40, S8). *(aprovado pelo Negócios em 30/10)*
 **Preço:** diária base (única) e **períodos** opcionais (início, fim, preço por noite e mínimo de noites próprios; versão mínima da S7, com a mesma tela da spec-06; **períodos sobrepostos não podem ser salvos**, e aparece um aviso) *[E]*. O preço por dia da semana e os descontos são extensões da spec-07 (S8). Também mínimo e máximo de noites e antecedência. A **taxa de limpeza** tem valor fixo por estadia e o texto "paga ao prestador".
 **Recebedores (spec-02, seção 4):** o campo **"Recebedor da estadia"** e o campo **"Prestador de limpeza (recebedor)"** só **escolhem** recebedores já cadastrados no nó. Também há "Cadastrar recebedor", que leva ao fluxo da spec-02 com OTP e carência. Um recebedor em "Pendente até [data]" aparece com esse selo.
 **Regras da casa** (por imóvel, campos estruturados e mais um texto livre de até 300 caracteres. Os campos estruturados são usados no motivo de recusa "Não atende às regras da casa" e mostrados ao hóspede antes de reservar; o texto livre não serve como motivo):
