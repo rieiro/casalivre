@@ -1,0 +1,6 @@
+#!/bin/sh
+# Nightly listing_search check. A mismatch exits 1 so ./finish pages; then it sleeps 24h.
+# conf (optional, 0640, no secrets): APP_DIR, APP_USER, PHP_BIN, ALERT_CMD.
+# Install casalivre-daily with the other helpers (see casalivre-log-retention/run).
+exec 2>&1
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-daily scripts/rank-verify.php

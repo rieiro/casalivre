@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-finish casalivre-rank-verify 86400 "$@"

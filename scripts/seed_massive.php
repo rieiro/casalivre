@@ -13,6 +13,7 @@ require_once $root . '/src/PhotoStorage.php';
 require_once $root . '/src/helpers.php';
 require_once $root . '/src/CepRepository.php';
 require_once $root . '/src/CityRepository.php';
+require_once $root . '/src/ListingSearch.php';
 
 const MASSIVE_CITIES = 100;
 const MASSIVE_HOUSES = 100;
@@ -139,6 +140,7 @@ foreach ($cities as $index => $city) {
 }
 
 db()->exec('UPDATE properties SET rating_sum = COALESCE((SELECT SUM(score) FROM reviews r WHERE r.property_id = properties.id), 0), rating_count = (SELECT COUNT(*) FROM reviews r WHERE r.property_id = properties.id)');
+ListingSearch::rewriteAll();
 
 $report = implode("\n", $lines);
 file_put_contents($root . '/storage/seed-massive.txt', $report);

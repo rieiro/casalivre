@@ -119,6 +119,9 @@ php scripts/run-casos-de-teste.php
 - **runit (Void Linux):** o serviço `deploy/runit/casalivre-log-retention/run` roda a retenção e dorme 24h; o runit o reinicia, então ela se repete todo dia.
 
   ```
+  sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
+    deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish \
+    deploy/runit/casalivre-daily /usr/local/sbin/
   sudo cp -r deploy/runit/casalivre-log-retention /etc/sv/
   # opcional: /etc/sv/casalivre-log-retention/conf com APP_DIR, APP_USER, RETENTION_DAYS, PHP_BIN
   sudo ln -s /etc/sv/casalivre-log-retention /var/service/

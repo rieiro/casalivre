@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
+require_once __DIR__ . '/ListingSearch.php';
 
 final class HouseRepository
 {
@@ -23,28 +24,29 @@ final class HouseRepository
 
     public static function insertRow(array $house): array
     {
-        $hash = bin2hex(random_bytes(8));
-        $placeId = self::cityPlaceId($house);
-        $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
-        $stmt = db()->prepare('INSERT INTO properties (
-            user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
-            nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, status');
-        $stmt->execute([
-            $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
-            $house['address'], $house['cep'] ?? '', $house['street'] ?? '', $house['address_number'] ?? '', $house['address_complement'] ?? '',
-            $house['lat'], $house['lng'], $house['bedrooms'], $house['beds'], $house['rooms'] ?? '[]', $house['max_guests'],
-            $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
-            self::calendarMonths($house),
-            max(0, (int) ($house['cleaning_fee'] ?? 0)),
-            $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, date('Y-m-d H:i:s'),
-        ]);
-        $row = $stmt->fetch() ?: [];
-        if ($row !== []) {
+        return Db::transactional(db(), static function () use ($house): array {
+            $hash = bin2hex(random_bytes(8));
+            $placeId = self::cityPlaceId($house);
+            $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
+            $stmt = db()->prepare('INSERT INTO properties (
+                user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
+                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, status');
+            $stmt->execute([
+                $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
+                $house['address'], $house['cep'] ?? '', $house['street'] ?? '', $house['address_number'] ?? '', $house['address_complement'] ?? '',
+                $house['lat'], $house['lng'], $house['bedrooms'], $house['beds'], $house['rooms'] ?? '[]', $house['max_guests'],
+                $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
+                self::calendarMonths($house),
+                max(0, (int) ($house['cleaning_fee'] ?? 0)),
+                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, date('Y-m-d H:i:s'),
+            ]);
+            $row = $stmt->fetch();
             $row['city'] = self::cityText($placeId);
-        }
-        return $row;
+            ListingSearch::sync((int) $row['id']);
+            return $row;
+        });
     }
 
     /** city_place_id already resolved by the caller. */
@@ -102,42 +104,54 @@ final class HouseRepository
         return min($own, $cap);
     }
 
+    /** Property write and its listing_search refresh, in one transaction. */
+    private static function synced(int $id, Closure $write): mixed
+    {
+        return Db::transactional(db(), static function () use ($id, $write): mixed {
+            $result = $write();
+            ListingSearch::sync($id);
+            return $result;
+        });
+    }
+
     public static function update(int $id, int $userId, array $house): array
     {
-        $months = self::calendarMonths($house);
-        $fee = max(0, (int) ($house['cleaning_fee'] ?? 0));
-        return self::exposeCity(ReturningWrite::update('properties', [
-            'title' => $house['title'],
-            'description' => $house['description'],
-            'summary' => $house['summary'],
-            'city_place_id' => self::cityPlaceId($house),
-            'neighborhood_place_id' => self::optionalPlaceId($house, 'neighborhood_place_id'),
-            'address' => $house['address'],
-            'cep' => $house['cep'] ?? '',
-            'street' => $house['street'] ?? '',
-            'address_number' => $house['address_number'] ?? '',
-            'address_complement' => $house['address_complement'] ?? '',
-            'lat' => $house['lat'],
-            'lng' => $house['lng'],
-            'bedrooms' => $house['bedrooms'],
-            'beds' => $house['beds'],
-            'rooms' => $house['rooms'] ?? '[]',
-            'max_guests' => $house['max_guests'],
-            'nightly_price' => $house['nightly_price'],
-            'checkin_time' => $house['checkin_time'],
-            'checkout_time' => $house['checkout_time'],
-            'min_nights' => $house['min_nights'],
-            'calendar_months' => $months,
-            'cleaning_fee' => $fee,
-            'pool' => $house['pool'],
-            'bbq' => $house['bbq'],
-            'garage' => $house['garage'],
-            'amenities' => $house['amenities'] ?? '{}',
-        ], 'id = ? AND user_id = ?', [$id, $userId], ['id'], [
-            'title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee',
-            'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
-            'pool', 'bbq', 'garage', 'amenities', 'status',
-        ]));
+        return self::synced($id, static function () use ($id, $userId, $house): array {
+            $months = self::calendarMonths($house);
+            $fee = max(0, (int) ($house['cleaning_fee'] ?? 0));
+            return self::exposeCity(ReturningWrite::update('properties', [
+                'title' => $house['title'],
+                'description' => $house['description'],
+                'summary' => $house['summary'],
+                'city_place_id' => self::cityPlaceId($house),
+                'neighborhood_place_id' => self::optionalPlaceId($house, 'neighborhood_place_id'),
+                'address' => $house['address'],
+                'cep' => $house['cep'] ?? '',
+                'street' => $house['street'] ?? '',
+                'address_number' => $house['address_number'] ?? '',
+                'address_complement' => $house['address_complement'] ?? '',
+                'lat' => $house['lat'],
+                'lng' => $house['lng'],
+                'bedrooms' => $house['bedrooms'],
+                'beds' => $house['beds'],
+                'rooms' => $house['rooms'] ?? '[]',
+                'max_guests' => $house['max_guests'],
+                'nightly_price' => $house['nightly_price'],
+                'checkin_time' => $house['checkin_time'],
+                'checkout_time' => $house['checkout_time'],
+                'min_nights' => $house['min_nights'],
+                'calendar_months' => $months,
+                'cleaning_fee' => $fee,
+                'pool' => $house['pool'],
+                'bbq' => $house['bbq'],
+                'garage' => $house['garage'],
+                'amenities' => $house['amenities'] ?? '{}',
+            ], 'id = ? AND user_id = ?', [$id, $userId], ['id'], [
+                'title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee',
+                'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
+                'pool', 'bbq', 'garage', 'amenities', 'status',
+            ]));
+        });
     }
 
     public static function clearBlockedAfter(int $propertyId, string $day): array
@@ -148,12 +162,6 @@ final class HouseRepository
             [$propertyId, $day],
             ['day', 'blocked', 'price', 'min_nights', 'origin']
         );
-    }
-
-    public static function updateStayRules(int $id, string $checkin, string $checkout, int $minNights): void
-    {
-        db()->prepare('UPDATE properties SET checkin_time = ?, checkout_time = ?, min_nights = ? WHERE id = ?')
-            ->execute([$checkin, $checkout, $minNights, $id]);
     }
 
     public static function find(int $id): ?array
@@ -233,20 +241,28 @@ final class HouseRepository
 
     public static function inactivate(int $id, int $userId, string $at): array
     {
-        $changed = ReturningWrite::update(
-            'properties',
-            ['status' => 'inactive', 'inactivated_at' => $at],
-            "id = ? AND user_id = ? AND status = 'active'",
-            [$id, $userId],
-            ['id'],
-            ['title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
-        );
-        return self::exposeCity($changed);
+        return self::synced($id, static function () use ($id, $userId, $at): array {
+            return self::exposeCity(ReturningWrite::update(
+                'properties',
+                ['status' => 'inactive', 'inactivated_at' => $at],
+                "id = ? AND user_id = ? AND status = 'active'",
+                [$id, $userId],
+                ['id'],
+                ['title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
+            ));
+        });
     }
 
     public static function updateMinNights(int $id, int $minNights): array
     {
-        return ReturningWrite::update('properties', ['min_nights' => $minNights], 'id = ?', [$id], ['id'], ['min_nights']);
+        return self::synced($id, static fn (): array => ReturningWrite::update(
+            'properties',
+            ['min_nights' => $minNights],
+            'id = ?',
+            [$id],
+            ['id'],
+            ['min_nights']
+        ));
     }
 
     public static function calendarDays(int $propertyId): array
@@ -545,6 +561,7 @@ final class HouseRepository
                 ->execute([$propertyId, $author, $score, $comment, date('Y-m-d H:i:s')]);
             $pdo->prepare('UPDATE properties SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE id = ?')
                 ->execute([$score, $propertyId]);
+            ListingSearch::sync($propertyId);
         });
     }
 
