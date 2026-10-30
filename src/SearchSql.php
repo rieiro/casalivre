@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/HouseRepository.php';
+require_once __DIR__ . '/SearchQuery.php';
 
 /**
  * One listing query for public search and the storefront.
@@ -13,10 +14,10 @@ final class SearchSql
 {
     private const JOIN_LISTING = 'listing_search s JOIN properties p ON p.id = s.id';
 
-    /** sort param => listing_search column. Anything else is relevance. */
+    /** @var array<string, string> */
     private const SORT_COLUMN = [
-        'relevance' => 'rank_base',
-        'rating' => 'rating_rank',
+        SearchQuery::SORT_RELEVANCE => 'rank_base',
+        SearchQuery::SORT_RATING => 'rating_rank',
     ];
 
     /** @param ''|'p'|string $alias */
@@ -25,10 +26,10 @@ final class SearchSql
         return ($alias === '' ? 'status' : $alias . '.status') . " = 'active'";
     }
 
-    /** Whitelisted order column. Unknown sorts use rank_base. */
+    /** Whitelisted order column: rank_base or rating_rank. */
     public static function sortColumn(string $sort): string
     {
-        return self::SORT_COLUMN[$sort] ?? self::SORT_COLUMN['relevance'];
+        return self::SORT_COLUMN[$sort];
     }
 
     /** ORDER BY fragment. Only rank_base, rating_rank, and id. */
@@ -65,9 +66,8 @@ final class SearchSql
     {
         [$where, $params] = self::filters($place, $groupId, $guests, $bbox, $checkin, $checkout, $scoreMin);
         if ($after !== null) {
-            [$clause, $extra] = self::keyset($sort, $after);
-            $where .= ' AND ' . $clause;
-            array_push($params, ...$extra);
+            $where .= ' AND (s.' . self::sortColumn($sort) . ', s.id) < (?, ?)';
+            array_push($params, $after['key'], $after['id']);
         }
         return [$where, $params];
     }
@@ -116,15 +116,6 @@ final class SearchSql
             $params[] = 2 * $t;
         }
         return [implode(' AND ', $where), $params];
-    }
-
-    /**
-     * @param array{key:int,id:int} $after
-     * @return array{0:string,1:list<int>}
-     */
-    private static function keyset(string $sort, array $after): array
-    {
-        return ['(s.' . self::sortColumn($sort) . ', s.id) < (?, ?)', [$after['key'], $after['id']]];
     }
 
     /**

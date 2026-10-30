@@ -26,11 +26,9 @@ t_eq(90, $scoreWhere[1][array_key_last($scoreWhere[1])], '4.5 binds 2*ceil(round
 t_ok(str_contains($where[0], "s.status = 'active'"), 'one active rule');
 t_ok(str_contains($where[0], 'NOT EXISTS') && str_contains($where[0], 'c.blocked = 1'), 'blocked night is NOT EXISTS');
 t_ok(str_contains($where[0], '(s.rank_base, s.id) < (?, ?)'), 'keyset is (rank_base, id)');
-t_eq('s.rank_base DESC, s.id DESC', SearchSql::orderBy('relevance'), 'relevance orders by rank_base, id');
-t_eq('s.rating_rank DESC, s.id DESC', SearchSql::orderBy('rating'), 'rating orders by rating_rank, id');
-t_eq(SearchSql::orderBy('relevance'), SearchSql::orderBy('weekly'), 'unknown sort falls back to relevance');
-t_eq('rank_base', SearchSql::sortColumn('nope'), 'order column whitelist is rank_base');
-t_eq('rating_rank', SearchSql::sortColumn('rating'), 'order column whitelist is rating_rank');
+t_eq('s.rank_base DESC, s.id DESC', SearchSql::orderBy(SearchQuery::SORT_RELEVANCE), 'relevance orders by rank_base, id');
+t_eq('s.rating_rank DESC, s.id DESC', SearchSql::orderBy(SearchQuery::SORT_RATING), 'rating orders by rating_rank, id');
+t_eq(SearchQuery::SORT_RELEVANCE, SearchQuery::fromRequest(['sort' => 'weekly'])->sort, 'unknown sort falls back to relevance');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/views/search.php'), '<b>'), 'search view does not print facet counts');
 
 t_temp_db();
@@ -259,33 +257,30 @@ function walk(array $request, mixed $host = null): array
     return ['ids' => $ids, 'linhas' => $linhas];
 }
 
-function same(array $request, mixed $host, string $msg): array
-{
+$sameIds = static function (array $a, array $b, string $msg): void {
+    sort($a);
+    sort($b);
+    t_eq($a, $b, $msg);
+};
+
+$same = static function (array $request, mixed $host, string $msg) use ($sameIds): array {
     $got = walk($request, $host);
-    $expect = legacy_ids($request, $host);
-    $gotIds = $got['ids'];
-    sort($expect);
-    sort($gotIds);
-    t_eq($expect, $gotIds, $msg);
+    $sameIds(legacy_ids($request, $host), $got['ids'], $msg);
     t_eq(count($got['ids']), count(array_unique($got['ids'])), $msg . ': no repeat');
     return $got;
-}
+};
 
 echo "resolved city and filters\n";
 $city = ['localidade' => 'Florianópolis, SC'];
-$all = same($city, null, 'city walk matches the old scan');
+$all = $same($city, null, 'city walk matches the old scan');
 t_eq('100+', SearchService::search(SearchQuery::fromRequest($city), null)['total_aprox'], 'total_aprox caps at 100+');
 t_eq($activeFloripa(), $all['linhas'], 'city walk reads each SQL candidate once');
 t_ok(!in_array($emptyStatus, $all['ids'], true) && !in_array($inactive, $all['ids'], true), 'empty and inactive status stay out');
 t_ok(in_array($pricey, $all['ids'], true) && in_array($cheapEdge, $all['ids'], true), 'price edges stay in the unfiltered city');
 t_ok(!in_array($near, $all['ids'], true) && !in_array($far, $all['ids'], true), 'other cities stay out of the place filter');
 
-$priced = same(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000], null, 'preco_min walks the whole set');
-$expensiveIds = $expensive;
-$pricedIds = $priced['ids'];
-sort($expensiveIds);
-sort($pricedIds);
-t_eq($expensiveIds, $pricedIds, 'only the three expensive houses');
+$priced = $same(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000], null, 'preco_min walks the whole set');
+$sameIds($expensive, $priced['ids'], 'only the three expensive houses');
 t_eq($activeFloripa(), $priced['linhas'], 'price filter reads each candidate once, no skip');
 $first = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000]), null);
 t_eq(4, $first['iteracoes'], 'first expensive page uses 4 listing queries');
@@ -294,21 +289,21 @@ t_eq(3, count($first['items']), 'newest matches are on the first page');
 t_ok(count($first['items']) < SearchService::PAGE_SIZE, 'first expensive page is not full');
 t_ok(is_string($first['next_cursor']), 'first expensive page has a cursor');
 
-$guests = same(['localidade' => 'Florianópolis, SC', 'hospedes' => 2], null, 'guests');
+$guests = $same(['localidade' => 'Florianópolis, SC', 'hospedes' => 2], null, 'guests');
 t_ok(!in_array($guests1, $guests['ids'], true), 'max_guests 1 drops out');
 $stay = ['localidade' => 'Florianópolis, SC', 'checkin' => $in, 'checkout' => $out];
-$stayed = same($stay, null, 'stay quote, min nights and blocked night');
+$stayed = $same($stay, null, 'stay quote, min nights and blocked night');
 t_ok(!in_array($blocked, $stayed['ids'], true), 'blocked night drops out');
 t_ok(!in_array($minZero, $stayed['ids'], true) && !in_array($minNull, $stayed['ids'], true), 'min_nights 0 and NULL on check-in keep the property minimum');
 t_ok(in_array($custom, $stayed['ids'], true), 'custom min_nights 1 allows the stay');
 t_ok(in_array($horizon, $stayed['ids'], true), 'stay inside the 1-month horizon stays');
-$over = same(['localidade' => 'Florianópolis, SC', 'checkin' => $overIn, 'checkout' => $overOut], null, 'night past the horizon');
+$over = $same(['localidade' => 'Florianópolis, SC', 'checkin' => $overIn, 'checkout' => $overOut], null, 'night past the horizon');
 t_ok(!in_array($horizon, $over['ids'], true), 'calendar_months 1 drops a night after max_calendar_day');
-$pricedNight = same($stay + ['preco_min' => 150, 'preco_max' => 150], null, 'special price on one night');
+$pricedNight = $same($stay + ['preco_min' => 150, 'preco_max' => 150], null, 'special price on one night');
 t_eq([$special], $pricedNight['ids'], 'nightly is round((100+200)/2)');
-$scoreKeep = same($city + ['score_min' => '4.5'], null, 'score 4.5 keeps the x.5 average');
+$scoreKeep = $same($city + ['score_min' => '4.5'], null, 'score 4.5 keeps the x.5 average');
 t_eq([$scored], $scoreKeep['ids'], 'only the reviewed house at 4.5');
-$scoreDrop = same($city + ['score_min' => '4.6'], null, 'score 4.6 drops the x.5 average');
+$scoreDrop = $same($city + ['score_min' => '4.6'], null, 'score 4.6 drops the x.5 average');
 t_eq([], $scoreDrop['ids'], '4.6 drops the house and houses with no reviews');
 $petropolis = CityRepository::resolve('Petrópolis, RJ')['place'];
 t_ok(is_array($petropolis), 'Petrópolis resolves');
@@ -323,11 +318,11 @@ for ($i = 0; $i < 19; $i++) {
 HouseRepository::addReview($edge, 'Baixa', 7, '');
 $bare = $house($petropolisId, ['title' => 'Sem nota']);
 $scoreCity = ['localidade' => 'Petrópolis, RJ'];
-$keep80 = same($scoreCity + ['score_min' => '8'], null, 'score 8.0 keeps the 7.95 average');
+$keep80 = $same($scoreCity + ['score_min' => '8'], null, 'score 8.0 keeps the 7.95 average');
 t_eq([$edge], $keep80['ids'], '7.95 rounds to 8.0 and an empty rating stays out');
-$drop81 = same($scoreCity + ['score_min' => '8.1'], null, 'score 8.1 drops the 7.95 average');
+$drop81 = $same($scoreCity + ['score_min' => '8.1'], null, 'score 8.1 drops the 7.95 average');
 t_eq([], $drop81['ids'], '8.1 drops 7.95');
-$keep45g = same($scoreCity + ['score_min' => '4.5'], null, 'score 4.5 keeps 4.5 and 7.95');
+$keep45g = $same($scoreCity + ['score_min' => '4.5'], null, 'score 4.5 keeps 4.5 and 7.95');
 t_eq([$edge, $half], $keep45g['ids'], '4.5 keeps both rounded averages, newest first');
 t_ok(!in_array($bare, $keep45g['ids'], true), 'a house with no reviews stays out');
 $card = SearchService::search(SearchQuery::fromRequest($scoreCity + ['score_min' => '8']), null)['items'][0] ?? [];
@@ -347,7 +342,7 @@ $almost = $house($santosId, ['title' => 'Nove e meio']);
 HouseRepository::addReview($almost, 'Ana', 9, '');
 HouseRepository::addReview($almost, 'Bia', 10, '');
 $santosQ = ['localidade' => 'Santos, SP'];
-$score10 = same($santosQ + ['score_min' => '10'], null, 'score 10 keeps only an all-10 average');
+$score10 = $same($santosQ + ['score_min' => '10'], null, 'score 10 keeps only an all-10 average');
 t_eq([$perfect], $score10['ids'], 'score 10 drops the 9.5 average');
 $score101 = SearchService::search(SearchQuery::fromRequest($santosQ + ['score_min' => '10.1']), null);
 t_eq([], $score101['items'], 'score 10.1 matches nothing');
@@ -361,19 +356,19 @@ t_eq(
     SearchQuery::fromRequest($santosQ + ['score_min' => 'nan'])->filtersHash(),
     'nan score_min hashes as zero'
 );
-$amenity = same($city + ['amenidade' => ['pool']], null, 'amenity');
+$amenity = $same($city + ['amenidade' => ['pool']], null, 'amenity');
 t_eq([$pool], $amenity['ids'], 'only the pool house');
 
 echo "radius, group, buzios, unresolved\n";
-$radius = same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
+$radius = $same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
 t_ok(in_array($near, $radius['ids'], true), 'bbox + haversine keeps a house 2 km away in another city');
 t_ok(!in_array($far, $radius['ids'], true), 'a house at the other city center stays out of the radius');
-$byGroup = same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
+$byGroup = $same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
 $withGroup = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga']);
 $withoutGrupo = $withGroup->filters();
 unset($withoutGrupo['grupo']);
 t_eq($withoutGrupo, $withGroup->pageFilters(), 'pageFilters drops grupo');
-$byHost = same(['localidade' => 'Florianópolis, SC'], 'ga.example.com', 'verified host matches the old group source');
+$byHost = $same(['localidade' => 'Florianópolis, SC'], 'ga.example.com', 'verified host matches the old group source');
 t_eq($byGroup['ids'], $byHost['ids'], 'storefront and public search return the same rows');
 t_eq([$pool, $scored], $byGroup['ids'], 'group is the two linked houses, newest first');
 $homeIds = array_map('intval', array_column(GroupRepository::properties($groupId), 'id'));
@@ -389,11 +384,7 @@ t_eq($buziosIds['Búzios'], $buziosIds[$officialBuzios], 'Búzios and the offici
 
 $pageCity = ['localidade' => 'Gramado, RS'];
 $pageWalk = walk($pageCity);
-$gramadoExpect = legacy_ids($pageCity, null);
-$gramadoGot = $pageWalk['ids'];
-sort($gramadoExpect);
-sort($gramadoGot);
-t_eq($gramadoExpect, $gramadoGot, 'Gramado walk');
+$sameIds(legacy_ids($pageCity, null), $pageWalk['ids'], 'Gramado walk');
 $tieDesc = $pageWalk['ids'];
 rsort($tieDesc);
 t_eq($tieDesc, $pageWalk['ids'], 'relevance ties break by newest id');
@@ -482,8 +473,6 @@ $sortHttp = t_http('GET', $pageUrl . '&sort=rating&cursor=' . rawurlencode($curs
 t_eq(400, $sortHttp['status'], 'changed sort on the HTTP cursor is 400');
 
 echo "statement timeout\n";
-putenv('SEARCH_STATEMENT_TIMEOUT_MS=200');
-$slowBase = t_server();
 $holder = new PDO((string) getenv('DB_DSN'), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $holder->beginTransaction();
 $holder->exec('LOCK TABLE listing_search IN ACCESS EXCLUSIVE MODE');
@@ -497,12 +486,11 @@ try {
     $timedOut = true;
 }
 ini_set('error_log', (string) $prevLog);
-$slow = t_http('GET', $slowBase . '/api/busca?localidade=' . rawurlencode('Gramado, RS'));
+$slow = t_http('GET', $pageUrl);
 $holder->rollBack();
 t_ok($timedOut, 'statement timeout is thrown');
 t_eq(1, substr_count((string) file_get_contents($logFile), 'search statement timeout'), 'statement timeout logs one line');
 @unlink($logFile);
-putenv('SEARCH_STATEMENT_TIMEOUT_MS');
 $slowBody = json_decode($slow['body'], true);
 t_eq(503, $slow['status'], 'statement timeout is 503');
 t_eq(true, $slowBody['retry'] ?? null, 'statement timeout asks for a retry');

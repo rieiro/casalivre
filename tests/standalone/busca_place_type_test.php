@@ -20,7 +20,6 @@ $poiWhere = SearchSql::where(['id' => 3, 'type' => 'poi'], null, 0, ['s' => 0.0,
 t_ok(!str_contains($poiWhere[0], 'place_id') && str_contains($poiWhere[0], 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))'), 'POI predicate is the geo box');
 $cityRadius = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, ['s' => 0.0, 'n' => 1.0, 'w' => 2.0, 'e' => 3.0], null, null, null, 0.0, 'relevance');
 t_ok(!str_contains($cityRadius[0], 'city_place_id') && str_contains($cityRadius[0], 's.lat BETWEEN'), 'city radius still drops the city id');
-t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchSql.php'), 'ORDER BY p.id ASC'), 'order is no longer id ASC');
 
 t_temp_db();
 $owner = t_seed_owner();

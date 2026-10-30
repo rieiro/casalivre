@@ -24,12 +24,6 @@ final class SearchService
     public const STATEMENT_TIMEOUT_MS = 150;
     private const POI_RADIUS_KM = 3;
 
-    private static function statementTimeoutMs(): int
-    {
-        $override = getenv('SEARCH_STATEMENT_TIMEOUT_MS');
-        return $override === false || $override === '' ? self::STATEMENT_TIMEOUT_MS : (int) $override;
-    }
-
     /**
      * @param SearchCursor|null $after
      * @return SearchPage
@@ -73,7 +67,7 @@ final class SearchService
         }
         try {
             return Db::transactional(db(), static function () use ($query, $host, $after, $out): array {
-                db()->exec("SET LOCAL statement_timeout = '" . self::statementTimeoutMs() . "ms'");
+                db()->exec("SET LOCAL statement_timeout = '" . self::STATEMENT_TIMEOUT_MS . "ms'");
                 return self::listed($query, $host, $after, $out);
             });
         } catch (PDOException $e) {
