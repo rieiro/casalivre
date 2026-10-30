@@ -57,7 +57,7 @@ final class SearchQuery
     }
 
     /** Unknown values are relevance. */
-    public static function sortOf(mixed $raw): string
+    private static function sortOf(mixed $raw): string
     {
         return $raw === self::SORT_RATING ? self::SORT_RATING : self::SORT_RELEVANCE;
     }

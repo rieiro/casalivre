@@ -10,7 +10,12 @@ require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/helpers.php';
 
-/** Public search on a resolved place: keyset pages from the shared SQL builder. */
+/**
+ * Public search on a resolved place: keyset pages from the shared SQL builder.
+ *
+ * @phpstan-type SearchPage array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
+ * @phpstan-type SearchCursor array{key:int,id:int}
+ */
 final class SearchService
 {
     public const PAGE_SIZE = 20;
@@ -26,9 +31,9 @@ final class SearchService
     }
 
     /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
+     * @param SearchCursor|null $after
+     * @return SearchPage
      */
-    /** @param array{key:int,id:int}|null $after */
     public static function search(SearchQuery $query, mixed $host, bool $log = false, ?array $after = null): array
     {
         $result = self::find($query, $host, $after);
@@ -44,8 +49,8 @@ final class SearchService
     }
 
     /**
-     * @param array{key:int,id:int}|null $after
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int,place_id:?int}
+     * @param SearchCursor|null $after
+     * @return SearchPage&array{place_id:?int}
      */
     private static function find(SearchQuery $query, mixed $host, ?array $after): array
     {
@@ -81,9 +86,8 @@ final class SearchService
     }
 
     /**
-     * @param array{key:int,id:int}|null $after
-     * @param array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int,place_id:?int} $out
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int,place_id:?int}
+     * @param SearchCursor|null $after
+     * @param SearchPage&array{place_id:?int} $out
      */
     private static function listed(SearchQuery $query, mixed $host, ?array $after, array $out): array
     {
@@ -154,7 +158,7 @@ final class SearchService
         $out['items'] = $page;
         $out['iteracoes'] = $queries;
         $out['linhas_lidas'] = $read;
-        if ($hasMore && $after !== null) {
+        if ($hasMore) {
             $out['next_cursor'] = SearchQuery::cursor($after['key'], $after['id'], $query->sort, $query->filtersHash());
         }
         return $out;

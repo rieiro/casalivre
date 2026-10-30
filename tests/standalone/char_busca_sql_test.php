@@ -20,7 +20,7 @@ t_ok(!method_exists(GroupRepository::class, 'activePropertyStrict'), 'activeProp
 t_ok(!array_key_exists('Búzios', cities()), 'cities() has no stale Búzios point');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchService.php'), '$_GET'), 'SearchService does not read $_GET');
 $where = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, '2026-11-01', '2026-11-03', ['key' => 315, 'id' => 9], 0.0, 'relevance');
-$scoreWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 4.5);
+$scoreWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 4.5, 'relevance');
 t_ok(str_contains($scoreWhere[0], 'p.rating_count > 0 AND 20 * p.rating_sum + p.rating_count >= ? * p.rating_count'), 'score_min is a plain filter on the rating columns');
 t_eq(90, $scoreWhere[1][array_key_last($scoreWhere[1])], '4.5 binds 2*ceil(round(45, 6))');
 t_ok(str_contains($where[0], "s.status = 'active'"), 'one active rule');

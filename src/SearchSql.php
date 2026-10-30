@@ -54,13 +54,30 @@ final class SearchSql
     /**
      * A city id applies only without a bbox. A neighborhood id always applies, with its city.
      * A POI adds no id; its bbox uses the idx_ls_geo expression.
+     * $sort is the keyset column when $after is set.
      *
      * @param array{id:int,type:string,parent_id?:int|null} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @param array{key:int,id:int}|null $after
      * @return array{0:string,1:list<int|float|string|null>}
      */
-    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, float $scoreMin, string $sort = 'relevance'): array
+    public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, float $scoreMin, string $sort): array
+    {
+        [$where, $params] = self::filters($place, $groupId, $guests, $bbox, $checkin, $checkout, $scoreMin);
+        if ($after !== null) {
+            [$clause, $extra] = self::keyset($sort, $after);
+            $where .= ' AND ' . $clause;
+            array_push($params, ...$extra);
+        }
+        return [$where, $params];
+    }
+
+    /**
+     * @param array{id:int,type:string,parent_id?:int|null} $place
+     * @param array{s:float,n:float,w:float,e:float}|null $bbox
+     * @return array{0:string,1:list<int|float|string|null>}
+     */
+    private static function filters(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): array
     {
         $where = [self::active('s')];
         $params = [];
@@ -92,10 +109,6 @@ final class SearchSql
             $where[] = 'NOT EXISTS (SELECT 1 FROM calendar_days c WHERE c.property_id = p.id AND c.day >= ? AND c.day < ? AND c.blocked = 1)';
             array_push($params, $checkin, $checkout);
         }
-        if ($after !== null) {
-            $where[] = '(s.' . self::sortColumn($sort) . ', s.id) < (?, ?)';
-            array_push($params, $after['key'], $after['id']);
-        }
         if ($scoreMin > 0) {
             // t = ceil(round(10*score_min, 6)). 20*sum + count >= 2*t*count is round(sum/count, 1) >= score_min.
             $t = (int) ceil(round(10 * $scoreMin, 6));
@@ -106,12 +119,21 @@ final class SearchSql
     }
 
     /**
+     * @param array{key:int,id:int} $after
+     * @return array{0:string,1:list<int>}
+     */
+    private static function keyset(string $sort, array $after): array
+    {
+        return ['(s.' . self::sortColumn($sort) . ', s.id) < (?, ?)', [$after['key'], $after['id']]];
+    }
+
+    /**
      * @param array{id:int,type:string,parent_id?:int|null} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      * @param array{key:int,id:int}|null $after
      * @return list<array>
      */
-    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort = 'relevance'): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
     {
         [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
         $sql = 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM '
@@ -130,7 +152,7 @@ final class SearchSql
      */
     public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): int|string
     {
-        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, null, $scoreMin);
+        [$where, $params] = self::filters($place, $groupId, $guests, $bbox, $checkin, $checkout, $scoreMin);
         $stmt = db()->prepare('SELECT 1 FROM ' . self::JOIN_LISTING . " WHERE $where LIMIT 101");
         $stmt->execute($params);
         $n = count($stmt->fetchAll());
