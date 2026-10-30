@@ -4,7 +4,6 @@
 - **Depende de:** PR #99 e PR #100, ambos mesclados (develop d2824fc). Sem bloqueios.
 - **Base analisada:** `develop` @ `a2e0dc8`
 - **Data:** 16/10/2026
-- **Evidence:** paths under `/workspace/...` are on the team box (Arquitetura, BD, Segurança evidence folders) and are not in the repo.
 
 **Escopo da busca (16/10, spec `docs/produto/specs/spec-busca-localidade-resolvida.md`, PR #123):** a busca roda só sobre um local resolvido (tabela de lugares ou área do mapa); o fallback de varredura completa do `SearchService` (`HouseRepository::all()` + substring em PHP) é removido.
 
@@ -160,9 +159,9 @@ O mapa não reaproveita a lista. Ele pede **só a área visível**:
 
 `GET /api/busca?modo=mapa&bbox=lat_min,lng_min,lat_max,lng_max&checkin=&checkout=&hospedes=`
 
-- Resposta: `{ "pins": [ {"id","lat","lng","preco"} ], "limite": 300 }`, mais `clusters` e `pins_truncated` desde §12.7b. A coordenada é a pública (`public_coord`), nunca a exata.
-- **Limite: 300 pins.** Substituído por §12.7b: com 301 a 5.000 candidatos, a resposta traz os 300 primeiros pins na ordenação ativa mais `clusters` de uma grade conforme a viewport (até 32×32) e `pins_truncated: true`; acima de 5.000 vale o G-2 (`zoom_in`, sem pins nem clusters). Texto original: com mais de 300 candidatos, `"pins": []` e a UI mostrava "Aproxime o mapa".
-- Os clusters são montados no navegador (MapLibre, GeoJSON), sobre no máximo 300 pontos. Substituído por §12.7b: acima de 300 candidatos os clusters vêm do SQL (grade conforme a viewport, até 32×32); o MapLibre só desenha os pins e as bolhas de contagem.
+- Resposta: `{ "pins": [ {"id","lat","lng","preco"} ], "limite": 300, "acima_do_limite": false }`. A coordenada é a pública (`public_coord`), nunca a exata.
+- **Limite: 300 pins.** O SQL usa `LIMIT 301`. Se vierem 301, a resposta tem `"pins": []` e `"acima_do_limite": true`, e a UI mostra "Aproxime o mapa".
+- Os clusters são montados no navegador (MapLibre, GeoJSON), sobre no máximo 300 pontos.
 - Tocar no pin abre o card pelo `id`, com `GET /api/imoveis/<h>` (rota que já existe).
 - Usa o mesmo filtro SQL da lista (ativo, hóspedes, `NOT EXISTS` de noite bloqueada) + bbox no índice `(lat, lng)`. Sem facetas e sem cursor.
 
@@ -255,7 +254,7 @@ Se depois de 4 consultas ainda não houver 20, a API devolve **o que encontrou**
 
 1. p95 de `/api/busca` **< 300 ms** no php-fpm da VPS (cidade + datas, catálogo de teste definido pelo Bot Teste, 100 buscas simultâneas sem 500).
 2. Primeira página **< 50 KB com gzip** (≤ 20 itens).
-3. Mapa: nunca mais de 300 pins por resposta. Substituído por §12.7b: com 301 a 5.000 candidatos, os 300 primeiros pins na ordenação ativa mais clusters (grade conforme a viewport, até 32×32; `pins_truncated: true`); acima de 5.000, G-2. Texto original: acima de 300, lista de pins vazia. p95 de `modo=mapa` < 300 ms. Payload do mapa medido com 300 pins; o limite em KB fica para o Teste definir depois da primeira medição.
+3. Mapa: nunca mais de 300 pins por resposta; acima disso, `acima_do_limite: true` e lista vazia. p95 de `modo=mapa` < 300 ms. Payload do mapa medido com 300 pins; o limite em KB fica para o Teste definir depois da primeira medição.
 4. Pior caso da lista: no máximo 4 consultas e 240 linhas lidas por requisição (conferir no log de consultas ou com contador em teste).
 5. Métrica `iteracoes` registrada em toda `/api/busca`; no cenário de carga do Teste, **p95 de `iteracoes` = 1**. Só filtros de preço com datas sobre imóveis com preço especial podem passar de 1.
 6. Filtros exatos: para cada combinação de `score_min`, mínimo de noites, limite de meses e preço do conjunto de caracterização, a busca nova devolve exatamente o mesmo conjunto que a antiga. Incluir casos de borda: média x,x5; `min_nights` 0 ou NULL no check-in; check-in em 31/01 com limite de 1 mês; preço especial só numa noite.
@@ -308,6 +307,7 @@ Se depois de 4 consultas ainda não houver 20, a API devolve **o que encontrou**
 
 ## 10. Decisões do Produto (16/10/2026)
 - **Escala da nota: inteiro de 1 a 5**, para a nota geral e para cada critério. A nota geral fica em `reviews.score`. No **SCHEMA 20**, o CHECK de `reviews.score` passa de `BETWEEN 1 AND 10` para `BETWEEN 1 AND 5` (schema.pgsql.sql:133). Só schema e seed, sem conversão de dados. `rating_sum`/`rating_count` não mudam. A média exibida e o `score_min` usam 1 casa decimal. O seed precisa gerar notas de 1 a 5.
+  - **Update 2026-10-30 (Produto, spec-07; supersedes the timing above): until S8 the review scale stays 1..10.** The SCHEMA 20 change of `reviews.score` to `BETWEEN 1 AND 5` is deferred to S8. Until then: `rating_rank` CHECK `0..10000`, `rank_m = 9` (prior mean on the 1..10 scale), `rank_c = 5`; `rating_rank = round(1000 * (C*m + rating_sum) / (C + n))`, so n = 0 gives 9000. **At S8:** 1..5 per criterion, DB recreated from scratch (no conversion), CHECK back to `0..5000`, `rank_m = 4.5` (stored as `rank_m` in settings; S8 must make the setting accept one decimal or store it x10). The seed generates scores in the current scale.
 - **Aprovados para este PR:** o cursor opaco e versionado e o construtor recebendo a ordenação (§9).
 - **Ordenação por total (futuro):** só fica disponível com a cidade fixada ou com o mapa num zoom suficiente (bbox pequeno). Isso está alinhado com a ressalva de custo do §9.
 
@@ -348,7 +348,7 @@ CREATE INDEX idx_prop_geo_active ON properties USING gist (point(lng, lat)) WHER
 | P4 | City search should use the place id, not a text compare | Plan: Index Only Scan on `idx_prop_place_active`, 61 rows, 0 heap fetches, 0.06 ms (city with 4.5k active) | `properties.city_place_id` FK + partial index above; neighborhood/POI searches use center + radius (geo index) or `neighborhood_place_id` | Medium (seed/forms write the FK) | High |
 | P5 | Map bbox ("Search this area") now applies to every search | GiST partial on `point(lng,lat)`, id-sorted page, p95: 0.5–1.5 ms up to 260 candidates, 4.1 ms at 1.1k, 11–16 ms at 4.3–5.9k | GiST (core PG, no extension). Radius = bbox prefilter + haversine in PHP (unchanged) | Low | High |
 | P6 | Sort by total price is not indexable; cost grows with candidates | see §11.1 | Guard by candidate count (§11.1) | Low | High (UI needs it) |
-| P7 | Demand log (unresolved text, zero-result places, and a daily count per resolved place) adds a write per search | Not measured | See §11.3 (conditions 1–7; kind `search` approved 2026-10-25). The `search` count runs after the response is flushed and must not add measurable time | Low [E] | Medium |
+| P7 | Demand log (unresolved text, zero-result places) adds a write per search | Not measured | See §11.3 (approved by Segurança with 7 conditions and by Jurídico) | Low [E] | Medium |
 | P8 | Old `localidade=` URLs | spec step 5 | URL redirect only: resolve + 301 to the `local_id` URL (no data migration involved); the cursor (§9) carries `local_id` instead of text | Low | Medium |
 
 ### 11.1 Threshold for sorting by total price (performance guard only)
@@ -369,8 +369,8 @@ Total = `nightly_price × nights + Σ(exception price − nightly_price) + clean
 
 Cost is linear in **candidates** (~3.5 µs each), not in area: 443 km² gave 4.3k candidates in the dense city and 32 in the sparse one. So:
 - **Rule:** total-price sort is allowed when the filtered candidate set is **≤ 5,000** (measured p95 ≤ ~22 ms; 13k crosses ~47 ms). Server checks with a capped count (`SELECT 1 … LIMIT 5001`, same WHERE as the page, ~id-sort cost).
-- ~~**UI hint (not the guard):** offer the sort from bbox ≤ 500 km² (zoom ≥ 13 desktop, ≥ 12 mobile).~~ Dropped in §12.7a: the server decides through G-1a.
-- **Above the threshold:** superseded by §12 G-1a (cap 2,000): the server returns the **relevance order** (the default sort since §12.0 rule 4, no longer `id`) with `sort_unavailable: "zoom_in"`, `guard: "price_sort"`, `sort_effective: "relevance"` and `sort_fallback_from: "total_price"` (§12.7a). Original text: the sort is disabled and the server falls back to `id` order.
+- **UI hint (not the guard):** offer the sort from bbox **≤ 500 km²**, ≈ zoom **≥ 13 on desktop** (1280×800 at lat −23 ≈ 315 km²) and **≥ 12 on mobile** (390×800 ≈ 385 km²); a fixed city/neighborhood place also qualifies. Zoom→area is computed, not measured.
+- **Above the threshold:** the sort is disabled (server ignores it and returns the default `id` order with `sort_unavailable: "zoom_in"`); UI shows "Zoom in to sort by total price". No cheaper substitute sort, because id-sort in a bbox costs ~70% of total-sort.
 - Re-measure with the Bot Teste on the real seed and concurrency before raising 5,000.
 
 ### 11.2 Place search keys (Produto requirement on change 1, accepted 2026-10-16)
@@ -382,7 +382,7 @@ CREATE TABLE place_search_keys (
   key text COLLATE "C" NOT NULL,                       -- folded by PHP fold(), lowercase ASCII, single spaces
   kind text NOT NULL CHECK (kind IN ('name','alias')),
   popularity int NOT NULL,                              -- denormalized from places, refreshed with it
-  PRIMARY KEY (key, place_id) INCLUDE (popularity));   -- serves the prefix scan as an index-only scan (§11.4)
+  PRIMARY KEY (key, place_id) INCLUDE (popularity, kind));   -- serves the prefix scan as an index-only scan (§11.4); `kind` is needed by the exact-alias sort key (2026-10-25)
 ```
 - **Keys are word suffixes, not single words:** one key per word start, running to the end of the name: "praia do forte" → `praia do forte`, `forte`. With suffixes, a multi-word prefix like "arraial do c" or "praia do f" still matches; single-word keys can't do that without an AND across rows.
 - **Stopwords** (`de, da, do, das, dos, e`) never **start** a key, but stay **inside** keys. So "do forte" is not a key, and typing "praia do f" still matches the full-name key.
@@ -391,34 +391,34 @@ CREATE TABLE place_search_keys (
 - **Query:** escaped prefix `LIKE` on the `C`-collated key (PHP escapes `\`, `%`, `_` in the input, §11.4):
 ```sql
 SELECT p.id, p.label, p.type FROM (
-  SELECT place_id, MAX(popularity) AS pop FROM place_search_keys
+  SELECT place_id, bool_or(kind = 'alias' AND key = :q) AS exact, MAX(popularity) AS pop FROM place_search_keys
   WHERE key LIKE :q_escaped || '%' ESCAPE '\'
-  GROUP BY place_id ORDER BY pop DESC, place_id LIMIT 9) k
-JOIN places p ON p.id = k.place_id ORDER BY k.pop DESC, p.id;
+  GROUP BY place_id ORDER BY exact DESC, pop DESC, place_id LIMIT 9) k
+JOIN places p ON p.id = k.place_id ORDER BY k.exact DESC, k.pop DESC, p.id;
 ```
-- **Results:** minimum 2 characters. Autocomplete (`suggest`) fetches 9, shows at most 8, and orders by an exact alias and then popularity. Nine or more matches show that top 8 plus "Keep typing to narrow it down". Submitted text (`resolve`) is not that popularity list. One alias, one exact city, or one full-name prefix (only when the exact name missed) is used. Two or more cities, or exact rows of more than one type, are that exact list: 2–8 → "Did you mean", 9 → ambiguous, show 8, and never auto-pick. One exact name that is not that unique city lists the exact row first, then other types that carry the same search key. Several exact rows of one non-city type continue to the prefix list. When that list contains none of nine or more exact rows, the first exact row stays in front (Centro). No match → "We couldn't find that place".
+- **Exact alias first (Produto, 2026-10-25; BD measured, `/workspace/banco-de-dados/pois-seed/PLAN.md` §7):** a place whose `kind='alias'` key equals the typed text exactly ranks above every prefix-only match, then by popularity. `:q` is the folded text without LIKE escaping (used for the equality); `:q_escaped` is for the LIKE. Only `kind='alias'` rows count as exact: an exact match on a full *name* is not promoted (BD tried it and every neighborhood called "Iguaçu" or "Forte" jumped to the top). Extra cost: **+0.0 to 0.4 ms** per query [M, 8,030 POIs, 167k keys]; plan unchanged (Index Only Scan, Heap Fetches 0) only because `kind` is in the PK `INCLUDE`; without it the plan falls back to Index Scan + heap (sa 3.7 → 5.3 ms) [M]. Cost of `kind` in the INCLUDE: about 1.4 MiB; no new index.
+- **Results (UI spec in PR #127 @a5187d6):** minimum 2 chars. Fetch 9 and show at most 8. With 9 or more matches, show the top 8 plus "Keep typing to narrow it down". Server-side free-text resolution: 1 match → use it; 2–8 → "Did you mean"; 9 or more → ambiguous, show the same list, **never auto-pick**; 0 → "We couldn't find that place".
 - **Size (bench):** 213,039 keys for 62,408 places (~3.4 per place, inflated by the synthetic "Bairro N, City" names), 25 MB total, 12 MB PK. `places` is 14 MB.
-- **Acceptance (seeded catalog, probed 2026-10-27):** autocomplete order is popularity. `suggest("forte")` is #1 Praia do Forte (Mata de São João, BA), then Bias Fortes (MG) and Oliveira Fortes (MG). `suggest("geriba")` is #1 Praia de Geribá (Armação dos Búzios, RJ). Submitted `forte` is ambiguous: #1 the neighborhood Forte (São João d'Aliança, GO), then the POIs that carry the key `forte`, starting with Praia do Forte (Mata de São João, BA). Submitted `geriba` is "Did you mean": the neighborhood Geribá, then Praia de Geribá, both in Armação dos Búzios, RJ.
+- **Acceptance (real seed, BD 2026-10-25, supersedes the 2026-10-16 synthetic-popularity numbers):** "forte" → #1 Praia do Forte (Mata de São João, BA); "geriba" → #1 Praia de Geribá (Armação dos Búzios, RJ); "arraial" → #1 Arraial do Cabo, RJ; "cabo" → Arraial do Cabo and Cabo Frio (both popularity 80, tie by `place_id`; either first is accepted), then Cabo de Santo Agostinho; "buzios" → #1 Armação dos Búzios (exact alias); "gru" → the GRU airport #1 (exact alias). All are in the top 8. The `buzios` name key is upgraded to `kind='alias'` by the seed (`ON CONFLICT (key, place_id) DO UPDATE SET kind='alias'`), and aliases that equal a municipality name are dropped from the seed.
 - **p95 (pgbench -c 4, DB only), full-name index before → keys after:** sao 0.39 → 2.96 ms; rio 0.20 → 1.41; geri 0.16 → 0.42; forte 0.16 → 0.41; praia 0.59 → 1.15; worst case "ba" (57.8k matching keys) 12.7 → 27.1; "bair" (55.7k synthetic neighborhoods) 15.1 → 28.6. "b" is 27.4 but is below the 2-char minimum. All under the 50 ms target. The worst cases cost more because `GROUP BY` reads every matching key; real names won't share prefixes like the synthetic "Bairro N" names do [E].
 - Cost: low. Priority: high (acceptance criteria).
 
-### 11.3 Demand log (P7): Segurança conditions 1–7, Jurídico acceptance, and kind `search`
-Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` (approved with conditions), `/workspace/casalivre/juridico/adr001-p7-demand-log-legal.md` (approved, conditional on 1–7). Kind `search` (below): Segurança, Arquitetura, BD and Jurídico approved 2026-10-25.
-1. **Redact before HINCRBY:** fold, trim, cap at 64 chars. Drop the term entirely if it matches an email, URL, phone or CPF/CNPJ, or has ≥ 6 digits in total. Applies to free text, not to kind `search`.
-2. **k-threshold at flush:** persist only terms with a daily count ≥ 5; discard the rest. Kind `search` is a catalog `place_id`, not free text, so this threshold does not apply to it (`hits >= 1`, below).
+### 11.3 Demand log (P7): Segurança conditions 1–7 and Jurídico acceptance
+Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` (approved with conditions), `/workspace/casalivre/juridico/adr001-p7-demand-log-legal.md` (approved, conditional on 1–7).
+1. **Redact before HINCRBY:** fold, trim, cap at 64 chars. Drop the term entirely if it matches an email, URL, phone or CPF/CNPJ, or has ≥ 6 digits in total.
+2. **k-threshold at flush:** persist only terms with a daily count ≥ 5; discard the rest.
 3. **No hashing:** store redacted plaintext plus the threshold (hashing is dictionary-reversible and kills the BI use).
-4. **No user id, IP, session, user location, or time finer than a day.** Zero-result entries store `place_id` only. Kind `search` stores `place_id` only as well.
-5. **Retention:** Valkey key `cl:demand:{YYYY-MM-DD}` with `EXPIRE 172800` (kind `search` has its own key, below). PG rows kept 12 months, then deleted or rolled up to a monthly top-N.
+4. **No user id, IP, session, user location, or time finer than a day.** Zero-result entries store `place_id` only.
+5. **Retention:** Valkey key `cl:demand:{YYYY-MM-DD}` with `EXPIRE 172800`. PG rows kept 12 months, then deleted or rolled up to a monthly top-N.
 6. **Same redaction in `activity_log` search params.** nginx 14-day access-log retention is accepted; never put the query string in any longer-lived log. **Required changes (backlog, PR #139):**
    - `src/SearchService.php:33` writes the raw `$filters` (including `localidade`) to `activity_log` (`activity(ActivityLog::SEARCH, $filters + …)`). Log `local_id` and the other structured filters; `localidade` is either dropped or passed through the same masking as the demand log (condition 1: fold, trim, 64 chars, drop if it looks like email/URL/phone/CPF/CNPJ or has ≥ 6 digits).
    - `src/RequestLog.php:165-166` `QUERY_VALUE_ALLOWLIST` keeps the values of `q` and `localidade`. Remove both from the allowlist (they are then logged as `null`) or route them through the same demand-log masking instead of the generic `mask()`.
    - Test: a search with `localidade=fulano@x.com` or 6+ digits leaves neither value in `activity_log` nor in the request log.
-   - Status: done in #214. `SearchService` drops `localidade` and `q` from the `SEARCH` activity row; `RequestLog::QUERY_VALUE_ALLOWLIST` no longer keeps those values. PR7 does not redo this.
-7. **PG table readable only by the BI/admin role**, not by the app web role. INSERT/UPDATE by the flush worker only. The same roles cover kind `search`.
+7. **PG table readable only by the BI/admin role**, not by the app web role. INSERT/UPDATE by the flush worker only.
 
-**Design rule (Jurídico, art. 12):** `search_demand_daily` (DDL in §11.4) stores `day`, `kind` (`unresolved`, `zero_result`, `search`), `term`, `place_id` and `hits`. It has **no user, session, IP or device columns and no FK to any table that has them**. The only reference allowed is `place_id` → `places`, which has no personal data. Joining it with logs, accounts, bookings or listing views to identify a person is forbidden: art. 12 §2 would make it personal data again. Legal basis for the transient phase (raw text, Valkey ≤ 48 h, activity_log, nginx): legitimate interest, LGPD art. 7 IX and art. 10. **Acceptance:** `docs/lgpd/lia-demand-log.md` (short LIA: purpose, necessity, balancing, safeguards) exists, and Jurídico updates that file separately for kind `search` (this ADR does not edit it); the "Busca" row is in `docs/produto/juridico/textos/politica-de-privacidade.md` with Jurídico's text (don't promise "anonymous" for the transient phase). That row still describes unsuccessful terms only. Wording for the daily per-place count waits for the end-of-project policy rewrite (#155, decisions.md 2026-10-21); no policy edit now. Items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place.
+**Design rule (Jurídico, art. 12):** `search_demand_daily (day date, kind text CHECK IN ('unresolved','zero_result'), term text NULL, place_id int NULL, count int, PRIMARY KEY …)` has **no user, session or IP columns and no FK to any table that has them**. The only reference allowed is `place_id` → `places`, which has no personal data. Joining it with identifying data is forbidden: art. 12 §2 would make it personal data again. Legal basis for the transient phase (raw text, Valkey ≤ 48 h, activity_log, nginx): legitimate interest, LGPD art. 7 IX and art. 10. **Acceptance:** `docs/lgpd/lia-demand-log.md` (short LIA: purpose, necessity, balancing, safeguards) exists; the "Busca" row is added to `politica-de-privacidade.md` with Jurídico's text (don't promise "anonymous" for the transient phase); items 1–7 are implemented; the PG table has no identifier columns and the role restrictions are in place.
 
-**Field cap (ours):** at most **20,000 fields** on the free-text hash `cl:demand:{YYYY-MM-DD}` only. `cl:demand:search:{YYYY-MM-DD}` has no HLEN cap.
+**Field cap (ours):** at most **20,000 fields** per daily hash.
 - Write per event, without Lua, in one `MULTI`: `HLEN`, then branch in PHP. Before the transaction: `$n = HLEN cl:demand:{d}`. If `$n < 20000` or `HEXISTS` is true, `MULTI; HINCRBY cl:demand:{d} {term} 1; EXPIRE cl:demand:{d} 172800; EXEC`. Otherwise, `MULTI; HINCRBY cl:demand:{d} _overflow 1; EXPIRE …; EXEC`.
 - HLEN-then-HINCRBY is not atomic. The overshoot is bounded by concurrent writers (≈ FPM children, tens of fields) and is tolerated; no WATCH loop.
 - **When the cap is reached:** existing terms keep counting, new terms go to `_overflow`, and an `_overflow` > 0 at flush raises a spam alert. Counting into overflow (rather than dropping) keeps the volume signal.
@@ -426,22 +426,7 @@ Sources: `/workspace/casalivre-seguranca-evidence/adr001-demand-log/verdict.md` 
 - Flush: see §11.4 (RENAME → HGETALL → single INSERT … ON CONFLICT DO NOTHING → DEL).
 
 **Valkey ACL change (ours), for the demand-log cap and flush:** `+hlen +hexists` on `ops/dev-env/services.sh:37` and `+rename` on `ops/dev-env/services.sh:36`. Nothing else; keys stay `~cl:*`. Already allowed: `+hincrby +expire +hgetall +del +multi +exec`. Status: merged on develop in #138 (@55bbc43).
-Also add two cases to `ops/dev-env/valkey-acl-check.sh`: `hlen cl:x` → ok, and `hlen x` → NOPERM (key outside `cl:*`). Same change in the prod ACL. Notify Segurança through the Gerente (ACL is their spec, `/workspace/programador-notas/p0-4-valkey-acl.md`). Kind `search` needs no new ACL command: the request path uses `HINCRBY` and `EXPIRE` only, and the flush already has `RENAME` and `HGETALL` (#138).
-
-**Kind `search` (Rafael, 2026-10-25):** a daily count of searches per resolved catalog place, for trends and hints. One number per (day, `place_id`). Approved by Segurança, Arquitetura, BD and Jurídico. Jurídico: it fits the same basis (LGPD art. 7 IX and art. 10) at low risk, because a `place_id` is a catalogue entry, not user-typed text. The stored aggregate (day + `place_id` + count) is most likely anonymized (art. 5 III, art. 12). The k ≥ 5 threshold is not legally required here; Segurança set `hits >= 1`.
-
-1. **Shape.** Same persisted fields as the other place kind: day, `place_id`, count. No user, session, IP, device, guests, dates, price, radius, referrer, or time finer than the day. No re-identifying joins (logs, accounts, bookings, listing views; art. 12 §2). If a later change adds filters (dates, party size) per place, re-check the LIA before storing them: combinations can become identifying.
-2. **Validate before HINCRBY.** `place_id` must be an int that exists in the place catalog. Drop anything else. Do not count free text on this key.
-3. **Own Valkey key** `cl:demand:search:{YYYY-MM-DD}`, field = `place_id`, `EXPIRE 172800`. No HLEN cap and no `_overflow`. The same nightly flush writes `search_demand_daily` (§11.4). No Postgres write on the request path. The count is taken at flush from that 48 h key.
-4. **When to count.** Page 1 of a search on a resolved place only. Not a cursor page, not a map pan, and not a bbox with no resolved place. Count after the response is flushed. A Valkey failure or a slow Valkey must never delay or fail the search.
-5. **Retention and roles.** Same as conditions 5 and 7: PG rows kept 12 months, then deleted or rolled up; the table is readable only by the BI/admin role; INSERT/UPDATE by the flush worker only.
-6. **Schema (PR7).** Create `search_demand_daily` with all three kinds at once (`unresolved`, `zero_result`, `search`). The table is new, so there is no `ALTER` and no data migration: recreate the DB and seeds (decisions.md 2026-10-21). Unique index `sdd_search_uk` on `(day, place_id) WHERE kind = 'search'`. The DDL is BD's, in §11.4. `hits >= 1` when `kind = 'search'`; `hits >= 5` for the other kinds.
-7. **Activity-log redaction** (condition 6) is already done in #214. PR7 does not redo it.
-8. **PR7 review labels:** `needs:db`, `needs:security`, `needs:legal`, and `needs:arch`. Priority: Should. It does not block PR1–PR3.
-
-**Product acceptance:** an admin report lists the top places by searches per day and per week, with the counts, and search responses show no measurable added time.
-
-**LIA and privacy notice:** Jurídico updates `docs/lgpd/lia-demand-log.md` separately (purpose, necessity, the persisted `search` aggregate, and a review trigger when `search` gains fields). Do not edit that file in the ADR or backlog PR. The "Busca" row of `docs/produto/juridico/textos/politica-de-privacidade.md` still says unsuccessful search terms only; the matching sentence (daily counts per `place_id`, no account, IP or session) is an input for the end-of-project policy rewrite (#155). No policy edit now.
+Also add two cases to `ops/dev-env/valkey-acl-check.sh`: `hlen cl:x` → ok, and `hlen x` → NOPERM (key outside `cl:*`). Same change in the prod ACL. Notify Segurança through the Gerente (ACL is their spec, `/workspace/programador-notas/p0-4-valkey-acl.md`).
 
 ### 11.4 Bot Banco de Dados answers folded in, plus the benches it asked for (2026-10-16)
 Source: the BD answers as relayed by the Gerente, then **checked and corrected by the BD (BD-confirmed, 2026-10-16)**. They supersede the open questions in §11 and §11.2; **no BD questions remain open**.
@@ -452,27 +437,21 @@ Source: the BD answers as relayed by the Gerente, then **checked and corrected b
 - **Drop** `properties.city` / `uf` (replaced by `city_place_id` → `places`) and `HouseRepository::byCity`.
 - **`places` constraints:** `CHECK (type IN (...))`, `CHECK (lat BETWEEN -90 AND 90 AND lng BETWEEN -180 AND 180)`, bbox all-null or all-set with `s <= n` and `w <= e`, `CHECK ((type = 'city') = (parent_id IS NULL) OR type = 'region')`, **`CHECK (parent_id IS DISTINCT FROM id)`** (BD-confirmed), and an index on `parent_id`.
 - **`places` dedup (BD-confirmed):** `CREATE UNIQUE INDEX places_root_uk ON places (type, name_fold) WHERE parent_id IS NULL;` and `CREATE UNIQUE INDEX places_child_uk ON places (parent_id, type, name_fold) WHERE parent_id IS NOT NULL;`
-- **`search_demand_daily`, reconciled with Segurança (Segurança wins on privacy).** Kind `search` added 2026-10-25 from BD's DDL (SCHEMA bump with PR7; the table is new, so no ALTER):
+- **`search_demand_daily`, reconciled with Segurança (Segurança wins on privacy):**
 ```sql
--- ADR 001 §11.3/§11.4 + third kind 'search' (SCHEMA bump with PR7; table is new, so no ALTER)
 CREATE TABLE search_demand_daily (
   day date NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('unresolved','zero_result','search')),
+  kind text NOT NULL CHECK (kind IN ('unresolved','zero_result')),
   term text COLLATE "C" CHECK (term IS NULL OR char_length(term) <= 64),
-  place_id int REFERENCES places(id) ON DELETE CASCADE,
-  hits int NOT NULL CHECK (hits >= CASE WHEN kind = 'search' THEN 1 ELSE 5 END),
-  CHECK ((kind = 'unresolved' AND term IS NOT NULL AND place_id IS NULL)
-      OR (kind IN ('zero_result','search') AND place_id IS NOT NULL AND term IS NULL)));
+  place_id int REFERENCES places(id) ON DELETE CASCADE,       -- the only FK; places has no personal data
+  hits int NOT NULL CHECK (hits >= 5),                         -- k-threshold (Segurança 2)
+  CHECK ((kind = 'unresolved' AND term IS NOT NULL AND place_id IS NULL) OR (kind = 'zero_result' AND place_id IS NOT NULL AND term IS NULL)));
 CREATE UNIQUE INDEX sdd_unresolved_uk ON search_demand_daily (day, term) WHERE kind = 'unresolved';
 CREATE UNIQUE INDEX sdd_zero_uk ON search_demand_daily (day, place_id) WHERE kind = 'zero_result';
-CREATE UNIQUE INDEX sdd_search_uk ON search_demand_daily (day, place_id) WHERE kind = 'search';
-CREATE INDEX sdd_day_brin ON search_demand_daily USING brin (day);
+-- no user/session/IP/time columns, no other FK (Jurídico art. 12). SELECT: BI/admin role only; INSERT/UPDATE: flush worker role only (Segurança 7).
+-- retention: DELETE WHERE day < current_date - interval '12 months' (daily job), or a monthly top-N rollup.
 ```
-No user, session, IP or device columns, and no FK other than `place_id` → `places` (Jurídico art. 12). SELECT: BI/admin role only; INSERT/UPDATE: flush worker role only (Segurança 7). Retention: delete rows with `day` older than 12 months (daily job), or a monthly top-N rollup.
-
-**Flush (BD-confirmed; kind `search` uses the same nightly job):** once per closed day, for each live key, hand off with `RENAME` to a `:flush` key, read it with `HGETALL`, aggregate that day once in PHP, insert, then `DEL` the `:flush` key. Never `hits = hits + EXCLUDED.hits`: a rerun after a crash is idempotent.
-- `cl:demand:{d}` → `cl:demand:{d}:flush`. Keep `hits >= 5` and skip `_overflow`. One `INSERT … ON CONFLICT (day, term) WHERE kind='unresolved' DO NOTHING`, and `ON CONFLICT (day, place_id) WHERE kind='zero_result' DO NOTHING`.
-- `cl:demand:search:{d}` → `cl:demand:search:{d}:flush`. Fields are catalog `place_id`s (no cap, no `_overflow`). Keep `hits >= 1`. One `INSERT … ON CONFLICT (day, place_id) WHERE kind='search' DO NOTHING`.
+**Flush (BD-confirmed):** once per closed day, hand off with `RENAME cl:demand:{d} cl:demand:{d}:flush`, read it with `HGETALL`, aggregate the full day once in PHP and keep `hits >= 5` (skip `_overflow`). Then run a single `INSERT … ON CONFLICT (day, term) WHERE kind='unresolved' DO NOTHING` (and `ON CONFLICT (day, place_id) WHERE kind='zero_result' DO NOTHING`), then `DEL` the `:flush` key. Never an incremental `hits = hits + EXCLUDED.hits`: a rerun after a crash is idempotent.
 
 **Bench (a): merged LATERAL vs `total.sql`** (dense area, p95 in ms, pgbench -c 4, DB only; `results-lateral.txt`)
 | Candidates | total.sql (LEFT JOIN + GROUP BY + NOT EXISTS) | LATERAL (sum and blocked in one probe) |
@@ -492,7 +471,7 @@ Dense-case EXPLAIN (ANALYZE, BUFFERS) at 4,331 candidates: `explain-total-4331.t
 | 5,870 (over cap) | 18.57* | **5.20** (returns n = 5001, no page) |
 | 13,411 (over cap) | 39.77* | **6.41** |
 
-\* The bench ran the page unconditionally; in the app the second query would be skipped, so over the cap it would cost about the count alone. **Keep the CTE:** one round trip, the filter is evaluated once, and over the cap it just returns a count of cap + 1 (the `LIMIT` is cap + 1: 2,001 under G-1a today, 5,001 when this was written), so the API falls back to the relevance order with `sort_unavailable` (§12 G-1a; `id` order before §12). That fallback page is a separate query, the normal keyset page. Over the cap the guard check costs ~5–6 ms.
+\* The bench ran the page unconditionally; in the app the second query would be skipped, so over the cap it would cost about the count alone. **Keep the CTE:** one round trip, the filter is evaluated once, and over the cap it just returns `n > 5000`, so the API falls back to `id` order with `sort_unavailable`. That fallback page is a separate query, the normal keyset page. Over the cap the guard check costs ~5–6 ms.
 
 **Key index:** `(key COLLATE "C") INCLUDE (place_id, popularity)` (9 MB) gives an Index Only Scan with 0 heap fetches. The worst case on 55.7k keys goes from p95 28.3–31.0 to **24.3–25.0 ms** (−15–20%); "sao" goes from 3.06 to 2.53. What's left is the `GROUP BY` over 55k rows (the scan itself is 7.5 ms). **Choice (BD-confirmed):** `PRIMARY KEY (key, place_id) INCLUDE (popularity)`, with `COLLATE "C"` on the column definition (`key text COLLATE "C" NOT NULL`), so one index instead of two. The exact PK form was not benched on its own; I expect it to match the separate INCLUDE index [E].
 
@@ -521,12 +500,6 @@ Dense-case EXPLAIN (ANALYZE, BUFFERS) at 4,331 candidates: `explain-total-4331.t
 2. Scores and aggregates are written **on the write path** (same transaction) or **by a Valkey job**, never per request.
 3. Any combination that can't meet the target gets a **guard response** (422, `sort_unavailable`, `zoom_in`; 12.7), never a slow query.
 4. **Decided (Produto, 2026-10-21):** the default sort is **relevance** (G1), replacing `id`. The `id` sort stays only as the keyset tiebreaker.
-5. **Sort values (request param `sort`; the one list, same names as [the spec](../produto/specs/spec-busca-ordenacao-filtros.md) and 12.7a):**
-   - `relevance` (default): `rank_base`; under a storefront channel with weights > 0, `channel_rank.score`.
-   - `rating` (best rated, "Melhor avaliação"): `rating_rank`.
-   - `total_price` (needs dates): computed total, only under G-1a.
-   - `nightly_price` (no dates, "Menor diária"): only under G-1b.
-   - The channel comes from the storefront (host), never from the client, so it is not a sort value. `total_price` without dates or `nightly_price` with dates falls back to `relevance`.
 
 ### 12.1 Search projection `listing_search` (adopted; BD-confirmed rationale)
 The search columns live in a narrow projection table, `listing_search` (DDL in 12.11). It is not on `properties`.
@@ -548,11 +521,12 @@ The search columns live in a narrow projection table, `listing_search` (DDL in 1
   - No try/catch may swallow its error (#168).
   - A listing INSERT creates the row; DELETE cascades.
   - **No trigger:** the `features` mask spans several tables, and a trigger would fire on writes that touch no search column.
-  - A **nightly reconcile job**, `rank:verify` (nightly and after deploys), compares the table with a fresh projection in keyset batches. It rewrites mismatching rows and logs the count, alerting if it is above 0.
-- **Index count (Rafael, 2026-10-21):** **6 search indexes plus the write-path primary key `listing_search_pkey`, whose cost is measured.** Reason: no search reads it, but the app sync, the `rank:*` and `rank:verify` keyset batches and the cascaded delete all go by `id`; the table is updated incrementally, not rebuilt, so dropping it would force full scans, and a `UNIQUE(id)` replacement costs the same. BD's benchmark ran with it: narrow still costs about half of wide (16.5 vs 33 ms per 1k-row recompute batch; 14–21 vs 28–40 ms post-recompute search against the ~30 ms bar). The narrow layout stays; no switch to the wide fallback.
+  - A **nightly reconcile job**, `rank:verify` (nightly and after deploys), compares the table with a fresh projection in keyset batches. It rewrites mismatching rows and logs the count, alerting if it is above 0. **As built (PR4b, #238):** a runit CLI, scripts/rank-verify.php under `casalivre-rank-verify` (via `casalivre-daily`), not a Valkey job. See §12.3 for the parameter-change rule.
+- **Index count:** `listing_search` has its own PK, which no search query reads. BD counts it as a table PK, so **search indexes stay 6**.
+  - Still flagged to Rafael: if he counts it, the wide layout is the fallback, and it misses the bar during recompute windows.
 - **Scores:** written by `RankScore` only to `listing_search` (and `channel_rank`). `properties` keeps `rating_sum` and `rating_count` (§4a).
   - `RankScore::base()`: factors defined by Produto, weights in settings.
-  - `RankScore::rating()`: Bayesian mean with `C` and `m` in settings; integer ×1000, `CHECK 0..5000`, PHP `round()`.
+  - `RankScore::rating()`: Bayesian mean with `C` and `m` in settings; integer ×1000, `CHECK 0..10000` until S8 (`0..5000` after S8, see §10), PHP `round()`.
 - **Filter codes, decided by BD:**
   - `property_type` and `cancel_policy` are smallint codes with CHECKs. Labels live in a PHP enum plus a seeded `search_codes` table, with no FK from the search table.
   - Booleans and amenities are one `features bigint` bitmask. Bits come from a seeded, append-only `search_feature_bits` table (the app role has SELECT and INSERT only).
@@ -581,11 +555,20 @@ The search columns live in a narrow projection table, `listing_search` (DDL in 1
 | Status change | inline | `listing_search.status`; insert or delete `channel_rank` rows | 0 |
 | Calendar write (block, booking, sync, hold) | inline | the listing's `avail_runs` (DELETE 0.17 ms + INSERT 0.29 ms, BD) | 0 |
 | Hold expiry (G9, payment wait) | the existing S7 Valkey expiry job | `avail_runs` | ≤ 60 s [E], on the safe side |
-| Platform weights or G2 `C`, `m` changed | Valkey job `rank:all` | `rank_base`, `rating_rank`, every `channel_rank.score` | ≤ 60 s for 100k [E]. BD measured a full recompute of both tables at 9.3–11.4 s for 150k. |
+| Platform weights or G2 `C`, `m` changed | Valkey job `rank:all` (target; **until it exists, the nightly `rank:verify` applies the change, see "Parameter changes" below**) | `rank_base`, `rating_rank`, every `channel_rank.score` | ≤ 60 s for 100k [E]. BD measured a full recompute of both tables at 9.3–11.4 s for 150k. |
 | Channel weights changed (admin_plataforma, logged) | job `rank:channel:{id}` | that channel's rows, then `rank_ready` | ≤ 60 s [E] |
 | Boost purchased, cancelled or edited | enqueues `rank:sweep` | the listing's rows | ≤ 5 min (12.3a) |
 | Boost start or end reached by time | `rank:sweep`, every 5 min | rows whose boost went live or ended | ≤ 5 min (accepted, 12.3a) |
-| Any writer that forgot `sync` | `rank:verify`, nightly and after deploys | mismatching `listing_search` rows | ≤ 24 h; alert if any |
+| Any writer that forgot `sync` | `rank:verify` (runit CLI as built, nightly and at service start) | mismatching `listing_search` rows | ≤ 24 h; alert if any |
+
+**As built vs target (decided 2026-10-30, after #238):**
+- `rank:verify` is a **runit CLI** (scripts/rank-verify.php, advisory lock, 1,000-id batches, `VACUUM (ANALYZE)`, `--recompute` flag, exit 1 on drift). It is not a Valkey job: a nightly full pass needs no queue, and a manual `--recompute` works without Valkey.
+- `rank:all`, `rank:channel:{id}` and `rank:sweep` stay **Valkey jobs on the #148 worker** (below). They arrive with the PRs that need them.
+
+**Parameter changes (`rank_c`, `rank_m`, `rank_w_rating`) (decided 2026-10-30):**
+- Problem in #238: the nightly verify projects with the *current* settings, so after an admin edit every row differs, the run rewrites all of them and exits 1 (false page).
+- **Step 1, before PR4c (the read switch):** `rank-verify` stores a fingerprint `C|m|w` in a settings row `rank_applied` after each full pass. If the current fingerprint differs, the run is a **recompute**: rewrite all rows, set the new fingerprint, log `params changed`, exit 0. Only drift with an unchanged fingerprint exits 1. Staleness after an admin edit: ≤ 24 h, shown next to the three settings in the admin form. Size: about 30 lines plus a test.
+- **Step 2, with the sprint that adds the admin edit screen (or when Produto needs the ≤ 60 s bound):** saving one of the three settings enqueues `rank:all` (the job below, deduped), and the job writes the fingerprint at its end. The nightly check then never sees a parameter change. Until step 2, `--recompute` is the manual fast path.
 
 **Job design:**
 - It reuses the #148 queue worker: list `cl:q:rank`, payload `{scope}`, deduped with `SET cl:rank:pending:<scope> 1 NX EX 600`.
@@ -599,6 +582,7 @@ The search columns live in a narrow projection table, `listing_search` (DDL in 1
   - the extra sync per listing, review or status write: ≈ 0.1–0.3 ms [E];
   - the table is 14 MB heap + 3.3 MB PK per 150k listings.
 - No time-decay factor goes into `rank_base` now.
+- **PR4 defaults (Produto, 2026-10-30):** `rank_base` = rating factor only, weight 35 (`rank_w_rating`), other factors 0 until their data exists; result order is relevance with newest-first ties.
 
 ### 12.3a Paid boost lag: requirements (accepted by Produto with UI and Jurídico, 2026-10-21)
 1. **The boosted position and the "Patrocinado" label always come from the same `channel_rank` row.**
@@ -655,7 +639,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 ```
 - **Backstop (BD):** `SET LOCAL statement_timeout = '150ms'` in every search transaction, per statement and not per role (the same role runs long jobs). 150 ms is ≈ 3× the slowest warm allowed case after the G-1 change.
 
-### 12.6 Index count (Rafael, 2026-10-21: 6 search indexes plus the write-path PK)
+### 12.6 Index count (Rafael, 2026-10-21: 6 search indexes)
 1. `idx_ls_place_rank`
 2. `idx_ls_place_rating`
 3. `idx_ls_geo` (INCLUDE carries `id`, `lat`, `lng`)
@@ -663,7 +647,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 5. `idx_chrank_place`
 6. `avail_runs` PK (only when ±N flexible dates ship)
 
-- Plus the write-path primary key `listing_search_pkey`, whose cost is measured (Rafael, 2026-10-21; reason in 12.1).
+- `listing_search_pkey` is a table PK, not a search index (BD), and is flagged to Rafael (12.1).
 - The `listing_boosts` indexes and the `search_feature_bits` PK are back-office.
 - `idx_prop_place_active` and `idx_prop_geo_active` (§11, rev 1) are dropped; they only ever existed in proposals.
 - Not adopted (option B, superseded): global rank and rating indexes. Before the revert they cost +48% on a recompute batch (`/workspace/adr/bench-adr001-sorts/round2/w-ls.txt`).
@@ -675,7 +659,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 | G-1b | **Nightly-price sort** (no dates): filtered candidates > 5,000 | same as G-1a | BD at 4,999: 4.9 ms (≤ 7.3 in the worst state) |
 | G-2 | **Kept (Rafael, 2026-10-21).** Map-area list, any sort, channel included: filtered candidates > 5,000 | `items: []`, `zoom_in: true`; the list says "Aproxime o mapa" | BD at 5,001: the guard alone is 2.7–4.6 ms vacuumed, ≤ 8.5 ms unvacuumed. The channel sort at 4,999 is 12.5–18.6 ms. |
 | G-3 | Map span **> 8°** in latitude or longitude (Arquitetura, 2026-10-21; was 16°) **[E]** | `zoom_in` before any query | BD at 16° with all filters: 22–30 ms fresh, 27–48 ms churned before REINDEX (≈ 88k rows filtered inside the index-only scan). 8° is not measured. **Teste confirms on the real seed; fallback: shrink further (e.g. 6°) if it misses.** |
-| G-4 | Map pins > 300 | **Superseded by 12.7b:** 301–5,000 candidates return the top 300 pins in the active sort plus grid `clusters` (viewport-based, up to 32×32) and `pins_truncated: true`; over 5,000, G-2 applies (no pins, no clusters) and the map shows the pill "Aproxime o mapa para ver os imóveis" (UI rev 3.1). 301–5,000 is not a guard state and shows no map message. (Was: empty `pins` with "Aproxime o mapa para ver os imóveis".) | §5 (superseded by 12.7b). BD at 44k all filters: 13.2 ms (≤ 18.5 ms). |
+| G-4 | Map pins > 300 | `pins: []`, `acima_do_limite: true`; "Aproxime o mapa para ver os imóveis" on the map only | §5, unchanged. BD at 44k all filters: 13.2 ms (≤ 18.5 ms). |
 | G-5 | Nights > 30 (G13), or `max_nights` above the cap | 422 with the message, before any query | Bounds the total-price LATERAL to ≤ 30 rows per candidate |
 | G-6 | Flexible dates out of bounds | 422 `flex_invalid` | 12.4 |
 | G-7 | Cursor whose sort, channel or filters changed | 400 | §9 |
@@ -683,49 +667,9 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 | G-9 | Backstop: `SET LOCAL statement_timeout = '150ms'` per search transaction (BD) | 503 JSON `retry`, logged | Bad stats or a cold cache never produce a slow response |
 
 - **Interplay:** in a map area, G-3 runs first (no query), then the one-pass CTE applies G-2 (5,000) for every sort, and G-1a (2,000) for the total price.
-  - An area with 2,001–5,000 candidates lists normally under `relevance` (with or without a channel), `rating` and `nightly_price`.
-  - A `sort=total_price` request there returns the `relevance` order with `sort_unavailable`.
+  - An area with 2,001–5,000 candidates lists normally under relevance, rating, channel and nightly price.
+  - A total-price request there returns the relevance order with `sort_unavailable`.
 - On the place path, G-1a and G-1b apply, and no other guard is needed: the btree is read in key order with `LIMIT` (BD: São Paulo with all filters, 2.8–3.4 ms).
-
-### 12.7a Guard responses (UI answers, Arquitetura, 2026-10-21)
-
-- **No client-side zoom hint** for the total-price sort (the old zoom 13/12 hint is dropped). The server decides through G-1a (more than 2,000 filtered candidates), because the count depends on the filters and no zoom level can predict it.
-- **Guard reason:** every guard response carries `guard: "span" | "candidates" | "price_sort"` next to `zoom_in` or `sort_unavailable`. Client config exposes `max_span_deg` (8). The 5,000 and 2,000 caps are exposed for information only, never for client-side gating.
-- **Suggested area:** only `guard: "span"` returns `suggested_bbox` (the requested centre clipped to 8°, computed, no query). `candidates` and `price_sort` return none, because finding one would cost a query; UI zooms in one level.
-- **Fallback in the cursor:** under the G-1a fallback the response returns `sort_effective: "relevance"` and `sort_fallback_from: "total_price"`, and the cursor encodes both. A request with `sort=total_price` plus that cursor is valid under G-7 and continues in relevance order. The fallback holds for the rest of the cursor chain, even if the area drops under 2,000; the sort switches back only on a new search with no cursor.
-- **Nightly-price fallback (UI Q11):** the `nightly_price` sort (no dates, cap 5,000, G-1b) falls back the same way, with `guard: "price_sort"`, `sort_effective: "relevance"` and `sort_fallback_from: "nightly_price"`. Every other rule (cursor, G-7, kept until a new search) is the same as for G-1a.
-- **Counts are taken before availability (UI Q10, intended):** the G-2 and G-1 counts run over the filtered candidates before the availability check. Counting availability would mean up to 5,000 calendar lookups, the very cost the guard avoids (BD Q12). So adding dates never lifts a guard, while adding G3 filters or zooming in does. The UI copy says "zoom in or add filters", never "add dates".
-- **Pins:** G-3 also applies to the pin query (same bbox; empty pins plus `zoom_in`). A resolved place wider than 8° (for example a state) opens with a map viewport that fits inside 8°, centred on the place's anchor point. The place-path list uses no bbox, so G-3 doesn't affect it.
-
-### 12.7b Map pins between 300 and 5,000 candidates (Arquitetura, 2026-10-21)
-
-Problem (spec #182 §8 Q9): with the pin cap at 300, a city-scale map with 301 to 5,000 filtered candidates shows a list but no pins.
-
-**Decision:** return the top-ranked pins plus grid clusters, from the same one-pass candidate set. Don't raise the cap.
-- The map request already collects up to 5,001 filtered candidates in one pass (§12, G-2). `lat` and `lng` come from the map index INCLUDE, so there are no heap reads.
-- **Pins:** the first 300 candidates in the active sort order (`relevance`, including a channel's `channel_rank` order, `rating`, or `total_price`/`nightly_price` under G-1, falling back to `relevance` there). The map then highlights the same listings the list ranks first. Each pin carries its id, lat/lng, price and the `sponsored` flag (from the same row, per 12.3a).
-- **Clusters:** the remaining candidates (up to 4,700) are grouped in SQL over the CTE by a grid snapped to the bbox, sized from the viewport (see count bubbles below; at most 32×32 cells) [E]. Each cluster returns `{lat, lng (mean), count, bounds}`. The UI draws a count bubble, and tapping it zooms to the cluster's bounds.
-- When there are 300 candidates or fewer, all of them are pins and there are no clusters, the same as today.
-- When there are more than 5,000, G-2 applies unchanged: `zoom_in`, no pins, no clusters and no counts (response below).
-- **Response:** `pins: [...]` (300 or fewer), `clusters: [...]` (1,024 or fewer), `pins_truncated: true` when clusters are present.
-
-**Cost [E]:** the pins are a `LIMIT 300` over rows already sorted in the CTE. The cluster step is one `GROUP BY` of `floor()` grid cells over 4,700 rows or fewer, held in memory, estimated at 1-3 ms. The worst allowed map case goes from 18.6 ms to about 22 ms, under the ~30 ms bar. No new index or table.
-
-**Rejected:**
-- A higher pin cap: 5,000 pins means about 400 KB of JSON and a client rendering cost that hurts mobile p95.
-- Client-side clustering: it would need the full 5,000-row payload.
-- Precomputed tile clusters: they go stale with filters and dates and need a new table and job.
-
-**Count bubbles (UI Q-A1 to Q-A5; Arquitetura, 2026-10-21; every figure [E]):**
-- **Bounds (A1):** each cluster returns `bounds: [s, w, n, e]`, computed from its grid cell index at no extra cost. Tapping a bubble zooms to those bounds.
-- **Grid follows the viewport (A2):** the client sends `vp_w` and `vp_h` in px, and the server uses `ceil(vp_w/64) × ceil(vp_h/64)` cells, capped at 32×32 (1,024 clusters). For example, 1280×800 gives 20×13 and 390×700 gives 7×11; fewer cells are cheaper. Without a viewport the default is 16×16. This replaces the fixed 32×32 grid above.
-- **Over 5,000 (A3):** G-2 returns `items: [], pins: [], clusters: [], zoom_in: true, guard: "candidates"`, with no counts. G-3 (span) returns the same with `guard: "span"` and `suggested_bbox`. There is no `acima_do_limite` field.
-- **With dates (A4):** pins are checked for availability: the top 300 *available* candidates come from the same 5,000-candidate set, at about 300 calendar lookups, roughly 2–3 ms [E]. Cluster counts are not checked (that would cost up to 4,700 lookups), so the response sets `counts_approximate: true` and the UI shows them as approximate ("~N"). Without dates the counts are exact and `counts_approximate` is false.
-- **Sort fields (A5):** the map response also returns `sort_effective` and `sort_fallback_from` (12.7a), and the pins follow `sort_effective`, so they match the list order.
-- **Response shape:** `pins` (≤ 300), `clusters` (≤ 1,024, each `{lat, lng, count, bounds}`), `pins_truncated`, `counts_approximate`, `sort_effective`, `sort_fallback_from`, plus `zoom_in`/`guard`/`suggested_bbox` under G-2/G-3.
-- Map performance re-measurement is deferred (Rafael, #187), so these figures stay [E].
-
-**Measure: deferred (Rafael, 2026-10-21; #187).** Map performance is accepted as done for now on BD's numbers (12.8). The EXPLAIN of the 4,999-candidate map with clusters and Teste's map payload and mobile p95 check are not run until Rafael reopens them.
 
 ### 12.8 Numbers (BD, PG 18.6, 150k-listing scaled real seed, final schema)
 **How BD measured:**
@@ -771,8 +715,8 @@ These are DB times for single requests, **not p95 under load**; that is Teste's 
 
 **Teste must measure** (real seed, VPS php-fpm, 100 concurrent requests):
 1. **Cold-cache total-price sort at 2,000 candidates**, 7 and 30 nights. The final GiST is warm-measured only; it was 491 ms cold at 5,000. If it exceeds the 150 ms backstop or the target, lower G-1a further.
-2. ~~The 8° span cap (G-3) with all filters~~ **Deferred (Rafael, 2026-10-21):** no more map performance testing for now; 8° stays on BD's numbers.
-3. **p95 end to end against the 300 ms target** (and < 50 ms autocomplete), with every option on. It includes one run **during `rank:all`** (the unvacuumed window) and the worst allowed cases: the channel at 4,999, flexible at 44k, total price at 2,000. Map cases (`modo=mapa`, pins, clusters) are deferred with item 2.
+2. **The 8° span cap (G-3) with all filters**, fresh and after `rank:all` before REINDEX. If it is over ≈ 30 ms DB, shrink the span (e.g. 6°) and re-measure.
+3. **p95 end to end against the 300 ms target** (and < 50 ms autocomplete), with every option on. It includes one run **during `rank:all`** (the unvacuumed window) and the worst allowed cases: the channel at 4,999, flexible at 44k, total price at 2,000.
 4. The p95 of `iteracoes` = 1 (criterion 5), with flexible dates and price filters on.
 
 ### 12.10 Appendix: Arquitetura's synthetic bench (rev 1–2, superseded by 12.8)
@@ -790,7 +734,7 @@ Raw output is in `/workspace/adr/bench-adr001-sorts/` and its `round2` subdirect
 Source: `/workspace/casalivre-db/adr001-sorts-answers.md`, appendix. It goes into `database/schema.pgsql.sql` and the seeds in the implementation PR, with no migration code.
 ```sql
 CREATE TABLE listing_search (
-  id            int PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,  -- listing_search_pkey: write-path PK (sync, rank:* / rank:verify batches, cascade), cost measured (12.1)
+  id            int PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,
   status        text     NOT NULL CHECK (status IN ('active','inactive','draft','blocked')),  -- mirror of properties.status values
   city_place_id int      NOT NULL,
   lat double precision NOT NULL CHECK (lat BETWEEN -90 AND 90),
@@ -805,12 +749,8 @@ CREATE TABLE listing_search (
   features      bigint   NOT NULL DEFAULT 0 CHECK (features >= 0),           -- bit 63 unused
   nightly_price int      NOT NULL CHECK (nightly_price >= 0),
   cleaning_fee  int      NOT NULL DEFAULT 0 CHECK (cleaning_fee >= 0),
-  rating_rank   int      NOT NULL DEFAULT 0 CHECK (rating_rank BETWEEN 0 AND 5000),
-  rank_base     int      NOT NULL DEFAULT 0 CHECK (rank_base >= 0),
-  rank_penalty  smallint NOT NULL DEFAULT 1000
-                CHECK (rank_penalty BETWEEN 1 AND 1000),   -- multiplier in permille: 1000 = none, 700 = x0.7, 500 = x0.5
-  penalty_until timestamptz NULL,
-  CONSTRAINT ls_penalty_pair CHECK ((rank_penalty = 1000) = (penalty_until IS NULL))
+  rating_rank   int      NOT NULL DEFAULT 0 CHECK (rating_rank BETWEEN 0 AND 10000),  -- 1..10 scale until S8; 0..5000 after (§10)
+  rank_base     int      NOT NULL DEFAULT 0 CHECK (rank_base >= 0)
 ) WITH (autovacuum_vacuum_scale_factor = 0.02, autovacuum_vacuum_threshold = 1000, autovacuum_analyze_scale_factor = 0.02);
 
 -- 1, 2: place path (index-only, key order, no Sort)
@@ -871,12 +811,6 @@ CREATE INDEX idx_boosts_pending ON listing_boosts (purchased_at) WHERE live_from
 CREATE INDEX idx_boosts_live    ON listing_boosts (ends_at) WHERE live_from IS NOT NULL AND removed_at IS NULL;
 CREATE INDEX idx_boosts_property ON listing_boosts (property_id, purchased_at DESC);
 ```
-- **Rank penalty** (host cancellations; Produto spec #182 §8 and [spec-09](../produto/specs/spec-09-area-hospede-cancelamento.md); BD DDL `/workspace/casalivre-db/adr001-rank-penalty-ddl.md`):
-  - The penalty is folded into the stored scores: `rank_base = raw * rank_penalty / 1000`, and the same for each of the listing's `channel_rank.score` rows (integer math, no float in the index key). No search computes it.
-  - A host cancellation sets `rank_penalty` (factor for the host-responsible cancellations in the last 90 days, counted from the G14 cancellations table) and `penalty_until = GREATEST(coalesce(penalty_until, now()), now() + interval '90 days')`, and recomputes `rank_base` and the `channel_rank` rows **in the same transaction** as the cancel.
-  - A daily `rank:sweep` job clears expired penalties (`penalty_until <= now()`): it resets both columns to (1000, NULL) and recomputes `rank_base` and the `channel_rank` rows in the same transaction.
-  - **No new index.** The sweep reads the narrow table once a day ([E] a few ms at 150k rows; EXPLAIN ANALYZE in Teste's run). If that isn't small, add a partial index on `(penalty_until) WHERE penalty_until IS NOT NULL` (not a search index).
-  - Seeds use the default (1000, NULL); no migration.
 - Billing (a view or query, not a stored column): `GREATEST(interval '0', LEAST(ends_at, COALESCE(cancelled_at, ends_at)) - live_from)`, or 0 when `live_from IS NULL`.
 - **Followups (BD):**
   - `HouseRepository::all()` (unbounded active scan) must stay off every request path;
