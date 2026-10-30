@@ -129,4 +129,73 @@ t_ok($failed, 'a projection error fails the write');
 t_eq($before, (int) HouseRepository::find($many)['max_guests'], 'the property write rolls back');
 t_eq($before, $stored($many)['max_guests'], 'listing_search is unchanged');
 
+echo "missing row\n";
+db()->prepare('DELETE FROM listing_search WHERE id = ?')->execute([$many]);
+[$code, $text] = $verify();
+t_eq(1, $code, "a missing projection exits 1 ($text)");
+t_ok(str_contains($text, 'rewritten 1'), 'the missing row is inserted');
+t_eq($fresh($many), $stored($many), 'the inserted row matches the projection');
+
+echo "concurrent writer\n";
+$race = sys_get_temp_dir() . '/cl-rank-' . bin2hex(random_bytes(4));
+mkdir($race);
+$ready = $race . '/ready';
+$go = $race . '/go';
+$writerErr = $race . '/err';
+file_put_contents($race . '/writer.php', <<<'PHP'
+<?php
+declare(strict_types=1);
+require $argv[1] . '/src/Db.php';
+require $argv[1] . '/src/ListingSearch.php';
+$pdo = db();
+$pdo->beginTransaction();
+$pdo->prepare('UPDATE properties SET lat = ? WHERE id = ?')->execute([(float) $argv[3], (int) $argv[2]]);
+ListingSearch::sync((int) $argv[2]);
+file_put_contents($argv[4], '1');
+$deadline = time() + 20;
+while (!is_file($argv[5]) && time() < $deadline) {
+    usleep(20000);
+}
+$pdo->commit();
+PHP);
+$proc = proc_open(
+    [...t_php_cmd(), $race . '/writer.php', CL_ROOT, (string) $many, '-26.67', $ready, $go],
+    [1 => ['file', '/dev/null', 'w'], 2 => ['file', $writerErr, 'w']],
+    $pipes,
+    CL_ROOT
+);
+$deadline = microtime(true) + 10;
+while (!is_file($ready) && microtime(true) < $deadline) {
+    usleep(20000);
+}
+t_ok(is_file($ready), 'writer holds the open transaction (' . (string) @file_get_contents($writerErr) . ')');
+db()->exec("SET lock_timeout = '3s'");
+try {
+    $rewritten = ListingSearch::rewriteAll();
+} finally {
+    db()->exec('SET lock_timeout = 0');
+    file_put_contents($go, '1');
+}
+$writerCode = proc_close($proc);
+t_eq(0, $rewritten, 'an open writer is not overwritten');
+t_eq(0, $writerCode, 'writer commits (' . (string) file_get_contents($writerErr) . ')');
+$committed = db()->prepare('SELECT p.lat AS properties, ls.lat AS listing_search FROM properties p JOIN listing_search ls ON ls.id = p.id WHERE p.id = ?');
+$committed->execute([$many]);
+$lats = $committed->fetch();
+t_eq(-26.67, (float) $lats['properties'], 'the writer lat is committed');
+t_eq((float) $lats['properties'], (float) $lats['listing_search'], 'listing_search matches the committed property');
+
+echo "legacy status\n";
+db()->prepare("UPDATE properties SET status = '' WHERE id = ?")->execute([$many]);
+[$code, $text] = $verify();
+t_eq(1, $code, "empty status exits 1 ($text)");
+t_eq('inactive', $stored($many)['status'], 'empty status projects as inactive');
+
+echo "rank settings\n";
+$cachedRank = (int) $stored($many)['rating_rank'];
+db()->prepare("UPDATE settings SET value = '6' WHERE skey = 'rank_c'")->execute();
+[$code, $text] = $verify();
+t_eq(1, $code, "rank_c from the database exits 1 ($text)");
+t_ok((int) $stored($many)['rating_rank'] !== $cachedRank, 'rank-verify uses the database rank_c, not settings.json');
+
 t_done();
