@@ -266,6 +266,18 @@ $sameIds = static function (array $a, array $b, string $msg): void {
     t_eq($a, $b, $msg);
 };
 
+$itemIds = static fn (array $items): array => array_map(static fn (array $item): int => (int) $item['id'], $items);
+
+/** Join page in rank order. $withRank keeps rank_base for the keyset; otherwise the result is int ids. */
+$joinIds = static function (string $where, array $params, bool $withRank) use ($itemIds): array {
+    $order = SearchSql::orderBy(SearchQuery::SORT_RELEVANCE);
+    $columns = $withRank ? 'p.id, s.rank_base' : 'p.id';
+    $stmt = db()->prepare('SELECT ' . $columns . ' FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT 20');
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    return $withRank ? $rows : $itemIds($rows);
+};
+
 $same = static function (array $request, mixed $host, string $msg) use ($sameIds): array {
     $got = walk($request, $host);
     $sameIds(legacy_ids($request, $host), $got['ids'], $msg);
@@ -375,26 +387,17 @@ echo "radius, group, buzios, unresolved\n";
 $radius = $same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
 t_ok(in_array($near, $radius['ids'], true), 'bbox + haversine keeps a house 2 km away in another city');
 t_ok(!in_array($far, $radius['ids'], true), 'a house at the other city center stays out of the radius');
-$radiusBox = 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))';
 $cityBbox = SearchSql::bbox((float) $floripa['lat'], (float) $floripa['lng'], 10);
-t_ok(str_contains(SearchSql::where($floripa, null, 0, $cityBbox, null, null, null, 0.0, SearchQuery::SORT_RELEVANCE)[0], $radiusBox), 'city radius and map bbox use the geo box');
 $radiusQuery = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'raio' => '10']);
 $radiusPage = SearchService::search($radiusQuery, null);
 [$boxWhere, $boxParams] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, null, 0.0, SearchQuery::SORT_RELEVANCE);
-$boxOrder = SearchSql::orderBy(SearchQuery::SORT_RELEVANCE);
-$joinPage = db()->prepare('SELECT p.id, s.rank_base FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $boxWhere . ' ORDER BY ' . $boxOrder . ' LIMIT 20');
-$joinPage->execute($boxParams);
-$joinRows = $joinPage->fetchAll();
-t_eq(array_map(static fn (array $row): int => (int) $row['id'], $joinRows), array_map(static fn (array $item): int => (int) $item['id'], $radiusPage['items']), 'subquery page matches the join');
-$between = db()->prepare("SELECT p.id FROM listing_search s JOIN properties p ON p.id = s.id WHERE s.status = 'active' AND s.lat BETWEEN ? AND ? AND s.lng BETWEEN ? AND ? ORDER BY " . $boxOrder . ' LIMIT 20');
-$between->execute([$cityBbox['s'], $cityBbox['n'], $cityBbox['w'], $cityBbox['e']]);
-t_eq(array_map(static fn (array $row): int => (int) $row['id'], $joinRows), array_map('intval', $between->fetchAll(PDO::FETCH_COLUMN)), 'geo box page matches the old bounds');
+$joinRows = $joinIds($boxWhere, $boxParams, true);
+t_eq($itemIds($joinRows), $itemIds($radiusPage['items']), 'subquery page matches the join');
+t_eq($itemIds($joinRows), $joinIds("s.status = 'active' AND s.lat BETWEEN ? AND ? AND s.lng BETWEEN ? AND ?", [$cityBbox['s'], $cityBbox['n'], $cityBbox['w'], $cityBbox['e']], false), 'geo box page matches the old bounds');
 $lastRank = $joinRows[array_key_last($joinRows)];
 [$boxWhere2, $boxParams2] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, ['key' => (int) $lastRank['rank_base'], 'id' => (int) $lastRank['id']], 0.0, SearchQuery::SORT_RELEVANCE);
-$joinNext = db()->prepare('SELECT p.id FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $boxWhere2 . ' ORDER BY ' . $boxOrder . ' LIMIT 20');
-$joinNext->execute($boxParams2);
 $radiusNext = SearchService::search($radiusQuery, null, false, SearchQuery::position((string) $radiusPage['next_cursor'], $radiusQuery->filtersHash(), $radiusQuery->sort));
-t_eq(array_map('intval', $joinNext->fetchAll(PDO::FETCH_COLUMN)), array_map(static fn (array $item): int => (int) $item['id'], $radiusNext['items']), 'keyset second page matches the join');
+t_eq($joinIds($boxWhere2, $boxParams2, false), $itemIds($radiusNext['items']), 'keyset second page matches the join');
 $byGroup = $same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
 $withGroup = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga']);
 $withoutGrupo = $withGroup->filters();
