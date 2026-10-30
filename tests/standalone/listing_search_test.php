@@ -93,9 +93,11 @@ $verify = static function (array $args = []): array {
 };
 
 echo "verify\n";
+t_eq('5|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), 'seed stores the default fingerprint');
 [$code, $text] = $verify();
 t_eq(0, $code, "clean verify exits 0 ($text)");
 t_ok(str_contains($text, 'rewritten 0'), 'clean verify rewrites nothing');
+t_ok(!str_contains($text, 'params changed'), 'first nightly on the seeded fingerprint is not a params change');
 
 db()->prepare('UPDATE listing_search SET rank_base = 0 WHERE id = ?')->execute([$many]);
 $held = db()->query('SELECT pg_try_advisory_lock(' . ListingSearch::ADVISORY_LOCK . ')')->fetchColumn();
@@ -107,13 +109,16 @@ db()->query('SELECT pg_advisory_unlock(' . ListingSearch::ADVISORY_LOCK . ')');
 
 [$code, $text] = $verify();
 t_eq(1, $code, "a nightly mismatch exits 1 ($text)");
+t_ok(!str_contains($text, 'params changed'), 'unchanged fingerprint reports drift');
 t_ok(str_contains($text, 'rewritten 1'), 'the nightly run rewrites one row');
 t_eq($fresh($many), $stored($many), 'the tampered row is restored');
 
 db()->prepare('UPDATE listing_search SET rank_base = 0 WHERE id = ?')->execute([$many]);
+db()->prepare("UPDATE settings SET value = '0|0|0' WHERE skey = 'rank_applied'")->execute();
 [$code, $text] = $verify(['--recompute']);
 t_eq(0, $code, "--recompute exits 0 ($text)");
 t_eq($fresh($many), $stored($many), '--recompute restores the row');
+t_eq('5|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), '--recompute stores the fingerprint');
 
 echo "rollback\n";
 $before = $stored($many)['max_guests'];
@@ -192,10 +197,14 @@ t_eq(1, $code, "empty status exits 1 ($text)");
 t_eq('inactive', $stored($many)['status'], 'empty status projects as inactive');
 
 echo "rank settings\n";
+$houses = (int) db()->query('SELECT COUNT(*) FROM properties')->fetchColumn();
 $cachedRank = (int) $stored($many)['rating_rank'];
 db()->prepare("UPDATE settings SET value = '6' WHERE skey = 'rank_c'")->execute();
 [$code, $text] = $verify();
-t_eq(1, $code, "rank_c from the database exits 1 ($text)");
-t_ok((int) $stored($many)['rating_rank'] !== $cachedRank, 'rank-verify uses the database rank_c, not settings.json');
+t_eq(0, $code, "changed rank_c exits 0 ($text)");
+t_ok(str_contains($text, 'params changed'), 'changed rank_c reports params changed');
+t_ok(str_contains($text, "rewritten $houses"), 'changed rank_c rewrites every row');
+t_eq('6|9|35', (string) db()->query("SELECT value FROM settings WHERE skey = 'rank_applied'")->fetchColumn(), 'rank_applied follows rank_c');
+t_ok((int) $stored($many)['rating_rank'] !== $cachedRank, 'rows use the database rank_c');
 
 t_done();

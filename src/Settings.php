@@ -23,10 +23,34 @@ final class Settings
             'session_minutes' => ['60', 'Minutos até a sessão do proprietário expirar.'],
             'results_per_page' => ['20', 'Número de imóveis mostrados por página nos resultados da busca.'],
             'theme' => ['padrao', 'Tema visual da plataforma (só temas do manifesto de assets; troca pelo admin em /admin/tema).'],
-            'rank_c' => ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
-            'rank_m' => ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
-            'rank_w_rating' => ['35', 'Weight of the rating factor in rank_base, out of 100.'],
+            'rank_c' => $rankC = ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
+            'rank_m' => $rankM = ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
+            'rank_w_rating' => $rankW = ['35', 'Weight of the rating factor in rank_base, out of 100.'],
+            'rank_applied' => [$rankC[0] . '|' . $rankM[0] . '|' . $rankW[0], 'rank_c|rank_m|rank_w_rating last applied by rank-verify.'],
         ];
+    }
+
+    /** Current rank_c|rank_m|rank_w_rating, the same shape stored in rank_applied. */
+    public static function rankFingerprint(): string
+    {
+        return self::int('rank_c') . '|' . self::int('rank_m') . '|' . self::int('rank_w_rating');
+    }
+
+    /** Stored fingerprint, or null when the row is absent. */
+    public static function appliedRank(): ?string
+    {
+        $stmt = db()->prepare('SELECT value FROM settings WHERE skey = ?');
+        $stmt->execute(['rank_applied']);
+        $value = $stmt->fetchColumn();
+        return $value === false ? null : (string) $value;
+    }
+
+    /** Update one seeded settings row and refresh the cache. */
+    public static function set(string $key, string $value): void
+    {
+        db()->prepare('UPDATE settings SET value = ? WHERE skey = ?')->execute([$value, $key]);
+        self::clearCache();
+        self::refresh();
     }
 
     public static function seed(PDO $pdo): void
