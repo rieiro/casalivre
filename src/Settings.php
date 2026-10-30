@@ -9,9 +9,12 @@ require_once __DIR__ . '/FileStamp.php';
 
 final class Settings
 {
+    /** @var list<string> */
+    private const RANK_KEYS = ['rank_c', 'rank_m', 'rank_w_rating'];
+
     public static function defaults(): array
     {
-        return [
+        $defaults = [
             'login_max_failures' => ['5', 'Número máximo de tentativas de login incorretas antes de bloquear a conta.'],
             'login_ip_max_failures' => ['5', 'Número máximo de tentativas de login incorretas a partir do mesmo endereço antes de bloquear o IP.'],
             'login_ip_lock_minutes' => ['15', 'Minutos de bloqueio do endereço após exceder as tentativas de login.'],
@@ -27,6 +30,31 @@ final class Settings
             'rank_m' => ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
             'rank_w_rating' => ['35', 'Weight of the rating factor in rank_base, out of 100.'],
         ];
+        $defaults['rank_applied'] = [
+            self::fingerprint(static fn (string $key): string => $defaults[$key][0]),
+            'rank_c|rank_m|rank_w_rating last applied by rank-verify.',
+        ];
+        return $defaults;
+    }
+
+    /** @param callable(string): string $value */
+    private static function fingerprint(callable $value): string
+    {
+        return implode('|', array_map($value, self::RANK_KEYS));
+    }
+
+    /** Current rank_c|rank_m|rank_w_rating, the same shape stored in rank_applied. */
+    public static function rankFingerprint(): string
+    {
+        return self::fingerprint(static fn (string $key): string => (string) self::int($key));
+    }
+
+    /** Update one seeded settings row and refresh the cache. */
+    public static function set(string $key, string $value): void
+    {
+        db()->prepare('UPDATE settings SET value = ? WHERE skey = ?')->execute([$value, $key]);
+        self::clearCache();
+        self::refresh();
     }
 
     public static function seed(PDO $pdo): void
