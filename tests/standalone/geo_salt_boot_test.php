@@ -5,6 +5,7 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $short = 'curto-' . bin2hex(random_bytes(4)); // 14 caracteres
 
 $cases = [

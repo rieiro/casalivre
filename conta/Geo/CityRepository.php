@@ -323,7 +323,7 @@ final class CityRepository
     }
 
     /** Shared select list for place rows. uf is CHAR(2) and always two letters. */
-    private const PLACE_COLUMNS = 'id, name, label, type, uf, lat, lng';
+    private const PLACE_COLUMNS = 'id, name, label, type, uf, lat, lng, parent_id';
 
     /**
      * ADR 001 §11.2 autocomplete. The inner scan reads key, place_id, popularity and kind
@@ -549,6 +549,7 @@ SQL;
                 'uf' => (string) $row['uf'],
                 'lat' => (float) $row['lat'],
                 'lng' => (float) $row['lng'],
+                'parent_id' => $row['parent_id'] === null ? null : (int) $row['parent_id'],
             ];
         }
         return $rows;

@@ -45,6 +45,7 @@ putenv('APP_ENV=production');
 putenv('GEO_SALT=' . str_repeat('ab', 32));
 $owner = t_seed_owner();
 db()->prepare("UPDATE properties SET status = 'active', lat = ?, lng = ? WHERE id = ?")->execute([$lat, $lng, $owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $expected = public_coord((int) $owner['house_id'], $lat, $lng);
 $base = t_server();
 $loc = urlencode('Florianópolis, SC');

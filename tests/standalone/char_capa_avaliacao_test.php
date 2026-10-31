@@ -235,6 +235,7 @@ t_ok(!str_contains($src, 'PhotoRepository::list(') && str_contains($src, 'PhotoR
 t_ok(PhotoRepository::belongsTo($hid, $p1) && !PhotoRepository::belongsTo($hid, $foreign) && !PhotoRepository::belongsTo($hid, 999999), 'belongsTo: só fotos deste imóvel');
 
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$hid]);
+ListingSearch::sync((int) $hid);
 // Mudança intencional (fix/avaliacao-rate-limit): web e API dividem o limite de 10 avaliações/h por IP.
 // Este arquivo já fez 10 POSTs de avaliação até aqui; zera o limite para checar o 404 de imóvel não ativo.
 t_ratelimit_reset();

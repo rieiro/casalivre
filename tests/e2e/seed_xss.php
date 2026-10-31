@@ -39,6 +39,7 @@ $houseId = HouseRepository::insert([
 ]);
 db()->prepare('UPDATE properties SET rooms = ?, amenities = ?, status = ? WHERE id = ?')
     ->execute([Rooms::parse(["rooms" => $rooms])["json"], json_encode(['pool' => 1, 'bbq' => 1, 'wifi' => 1]), 'active', $houseId]);
+ListingSearch::sync($houseId);
 // Caminho de foto malicioso gravado direto no banco: o front deve trocar pelo placeholder.
 db()->prepare('INSERT INTO photos (property_id, path, is_primary, sort_order) VALUES (?, ?, 1, 0)')
     ->execute([$houseId, 'javascript:alert(1)" onerror="alert(2)']);

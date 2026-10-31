@@ -13,6 +13,7 @@ require_once CL_ROOT . '/src/ImageWorker.php';
 require_once CL_ROOT . '/src/HouseService.php';
 require_once CL_ROOT . '/src/ActivityLog.php';
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $tmp = sys_get_temp_dir() . '/cl-photo-' . bin2hex(random_bytes(3));
 mkdir($tmp, 0700);
 PhotoStorage::$originals = $tmp . '/storage/fotos/originais';
@@ -190,6 +191,7 @@ $seedSrc = (string) file_get_contents(CL_ROOT . '/scripts/seed.php') . file_get_
 t_ok(substr_count($seedSrc, 'PhotoStorage::enqueueOriginal(') === 2 && !str_contains($seedSrc, 'writeGenerated(') && !str_contains($seedSrc, 'PhotoStorage::publicPath('), 'seeds enfileiram o original (sem gravar em /uploads/users)');
 $h2 = HouseRepository::insert(['user_id' => $owner['user_id'], 'title' => 'Casa Seed', 'description' => 'd', 'summary' => 's', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua B, 2', 'cep' => '88000000', 'street' => 'Rua B', 'address_number' => '2', 'address_complement' => '', 'lat' => -27.6, 'lng' => -48.5, 'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 100, 'checkin_time' => '15:00', 'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0]);
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$h2]);
+ListingSearch::sync((int) $h2);
 $seedFile = $tmp . '/seed.png';
 file_put_contents($seedFile, $gd('imagepng', 900, 600));
 $seedRow = PhotoStorage::enqueueOriginal($h2, $seedFile, 1, 0);

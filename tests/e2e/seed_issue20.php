@@ -39,5 +39,6 @@ $houseId = HouseRepository::insert([
 ]);
 db()->prepare('UPDATE properties SET rooms = ?, amenities = ?, status = ? WHERE id = ?')
     ->execute([Rooms::parse(["rooms" => $rooms])["json"], json_encode(['pool' => 1, 'bbq' => 1, 'wifi' => 1]), 'active', $houseId]);
+ListingSearch::sync($houseId);
 $house = HouseRepository::find($houseId);
 echo json_encode(['email' => $email, 'password' => $password, 'hash' => HouseRepository::ensurePublicHash($house), 'id' => $houseId]), "\n";

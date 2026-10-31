@@ -15,9 +15,14 @@ for ($i = 0; $i < 5; $i++) {
     $donos[] = t_seed_owner();
 }
 db()->exec("UPDATE properties SET status = 'active'");
+foreach (db()->query('SELECT id FROM properties')->fetchAll(PDO::FETCH_COLUMN) as $id) {
+    ListingSearch::sync((int) $id);
+}
 db()->prepare("UPDATE properties SET status = 'inactive' WHERE id = ?")->execute([$donos[0]['house_id']]);
+ListingSearch::sync((int) $donos[0]['house_id']);
 db()->exec("INSERT INTO groups (slug, name, theme) VALUES ('outro', 'Outro', 'padrao')");
 db()->prepare("UPDATE properties SET group_id = (SELECT id FROM groups WHERE slug = 'outro') WHERE id = ?")->execute([$donos[1]['house_id']]);
+ListingSearch::sync((int) $donos[1]['house_id']);
 $admins = static fn (): int => $conta('SELECT COUNT(*) FROM users WHERE is_admin = 1');
 
 echo "recusa fora de dev/local\n";
@@ -59,6 +64,7 @@ t_ok((bool) array_filter($r['linhas'], static fn ($l) => str_contains($l, 'já �
 
 echo "completa se faltar\n";
 db()->prepare('UPDATE properties SET group_id = NULL WHERE id = ?')->execute([$donos[2]['house_id']]);
+ListingSearch::sync((int) $donos[2]['house_id']);
 SeedGrupoTeste::run();
 t_eq(3, count($ids()), 'volta a 3 imóveis');
 

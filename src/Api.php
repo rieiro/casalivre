@@ -290,12 +290,16 @@ function handle_api(string $path, string $method): void
         $query = SearchQuery::fromRequest($_GET);
         $cursor = trim((string) ($_GET['cursor'] ?? ''));
         try {
-            $afterId = $cursor === '' ? null : SearchQuery::lastId($cursor, $query->filtersHash());
+            $after = $cursor === '' ? null : SearchQuery::position($cursor, $query->filtersHash(), $query->sort);
         } catch (InvalidSearchCursor) {
             RequestLog::setBusca(0, 0);
             api_error(400, 'Cursor inválido.');
         }
-        $result = SearchService::search($query, $_SERVER['HTTP_HOST'] ?? null, true, $afterId);
+        try {
+            $result = SearchService::search($query, $_SERVER['HTTP_HOST'] ?? null, true, $after);
+        } catch (SearchTimeout) {
+            json_out(503, ['error' => 'Busca indisponível.', 'retry' => true]);
+        }
         RequestLog::setBusca($result['iteracoes'], $result['linhas_lidas']);
         $filters = $result['filters'];
         $results = $result['items'];

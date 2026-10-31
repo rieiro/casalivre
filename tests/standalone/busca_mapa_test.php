@@ -6,6 +6,7 @@ require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $base = t_server();
 $attr = static function (string $body, string $name): ?string {
     if (!preg_match('/<div id="result-map"[^>]*\s' . preg_quote($name, '/') . '="([^"]*)"/s', $body, $m)) {
@@ -49,6 +50,7 @@ t_eq([], json_decode(t_http('GET', $base . (string) $attr($r['body'], 'data-api'
 
 echo "imóvel inativo fica fora\n";
 db()->prepare("UPDATE properties SET status = 'paused' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 t_eq(0, count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . $loc)['body'], true)['items'] ?? [1]), 'API (e o mapa) não lista imóvel pausado');
 
 echo "log: cada visita ao mapa grava exatamente uma busca\n";

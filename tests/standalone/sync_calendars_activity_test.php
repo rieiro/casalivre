@@ -7,6 +7,7 @@ require_once CL_ROOT . '/src/ActivityLog.php';
 $pid = (int) $owner['house_id'];
 $pdo = db();
 $pdo->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$pid]);
+ListingSearch::sync($pid);
 // Feed que o SSRF recusa (loopback): resultado NOK, sem depender de rede.
 $pdo->prepare('INSERT INTO calendar_feeds (property_id, url, title) VALUES (?, ?, ?)')
     ->execute([$pid, 'http://127.0.0.1:1/teste-sync.ics', 'Teste']);

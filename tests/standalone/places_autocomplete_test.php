@@ -227,6 +227,7 @@ $built = HouseService::fromInput((int) $owner['user_id'], [
 ]);
 t_eq($spId, (int) ($built['city_place_id'] ?? 0), 'HouseService resolve o CEP da cidade homônima');
 db()->prepare('UPDATE properties SET lat = ?, lng = ? WHERE id = ?')->execute([-23.5, -46.5, $spHouse]);
+ListingSearch::sync((int) $spHouse);
 $edited = HouseService::update((int) $owner['user_id'], $spHouse, [
     'title' => 'Casa SP', 'description' => 'Descrição de teste do imóvel.', 'cep' => '01001000',
     'address_number' => '10', 'max_guests' => '2', 'nightly_price' => '200', 'bedrooms' => '1', 'beds' => '1',

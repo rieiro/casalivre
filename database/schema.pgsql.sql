@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS properties (
 CREATE UNIQUE INDEX IF NOT EXISTS properties_ical_hash ON properties (ical_hash);
 CREATE UNIQUE INDEX IF NOT EXISTS properties_public_hash ON properties (public_hash);
 
--- Search projection (ADR 001 §12.11). Written by ListingSearch::sync; reads stay on properties until PR4c.
+-- Search projection (ADR 001 §12.11). Written by ListingSearch::sync; search reads this table.
 CREATE TABLE IF NOT EXISTS listing_search (
     id INTEGER PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,
     status TEXT NOT NULL CHECK (status IN ('active', 'inactive')),
@@ -207,8 +207,6 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_users_activation_token ON users(activation_token) WHERE activation_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_prop_place_active ON properties (city_place_id, id) INCLUDE (max_guests) WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS idx_prop_latlng_active ON properties (lat, lng) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_prop_nb_active ON properties (neighborhood_place_id, id) INCLUDE (max_guests) WHERE status = 'active' AND neighborhood_place_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_properties_user ON properties(user_id);
 CREATE INDEX IF NOT EXISTS idx_properties_group ON properties(group_id);
