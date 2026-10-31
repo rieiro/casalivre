@@ -263,9 +263,9 @@ function handle_api(string $path, string $method): void
         $res->registrar();
         if (isset($res->dados['erros'])) {
             // Nenhuma foto salva (PhotoAdd: vazio/nenhuma): 422 com os erros da ação, como CoverSet e ReviewAdd.
-            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros'], 'salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas']]);
+            json_out(422, ['error' => $res->mensagem, 'erros' => $res->dados['erros'], 'salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'rejeitadas' => $res->dados['rejeitadas']]);
         }
-        json_out(201, ['salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'fotos' => PhotoRepository::list((int) $house['id'])]);
+        json_out(201, ['salvas' => $res->dados['salvas'], 'enviadas' => $res->dados['enviadas'], 'rejeitadas' => $res->dados['rejeitadas'], 'fotos' => PhotoRepository::list((int) $house['id'])]);
     }
 
     if (preg_match('#^/api/casas/([a-f0-9]{16})/fotos/(\d+)$#', $path, $m) && $method === 'DELETE') {

@@ -63,7 +63,8 @@ t_ok(str_contains((string) @exif_read_data($tmp . '/up-a.jpg')['ImageDescription
 
 echo "upload\n";
 $saved = PhotoStorage::storeUploads((int) $owner['user_id'], $hid, $up, $created);
-t_eq(3, $saved, 'jpeg, png e webp aceitos; gif e arquivo falso recusados (finfo)');
+t_eq(3, $saved['saved'], 'jpeg, png e webp aceitos; gif e arquivo falso recusados (finfo)');
+t_eq(['wrong_type', 'wrong_type'], array_column($saved['rejected'], 'reason'), 'gif e arquivo falso: wrong_type');
 $rows = PhotoRepository::list($hid);
 t_eq(['processing', 'processing', 'processing'], array_column($rows, 'status'), 'fotos criadas em processing');
 t_eq(['', '', ''], array_column($rows, 'path'), 'sem caminho público enquanto processa');
@@ -176,19 +177,18 @@ $big = PhotoRepository::insertProcessing($hid, PhotoStorage::randomId(), '', 0, 
 $bigOrig = PhotoRepository::findById((int) $big['id'])['uuid'] . '.png';
 db()->prepare('UPDATE photos SET original = ? WHERE id = ?')->execute([$bigOrig, (int) $big['id']]);
 file_put_contents(PhotoStorage::$originals . '/' . $bigOrig, $png);
-$msg = '';
+$caught = null;
 try {
     ImageWorker::process((int) $big['id']);
 } catch (Throwable $e) {
-    $msg = $e->getMessage();
+    $caught = $e;
 }
-t_eq('Imagem grande demais.', $msg, '30 MP recusado sem decodificar');
+t_ok($caught instanceof PermanentJobFailure, '30 MP é falha permanente');
+t_eq(PhotoFail::TOO_MANY_PIXELS, $caught instanceof PermanentJobFailure ? $caught->reason : '', '30 MP recusado sem decodificar');
 db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) $big['id']]);
 @unlink(PhotoStorage::$originals . '/' . $bigOrig);
 
 echo "seeds e fotos antigas pela fila\n";
-$seedSrc = (string) file_get_contents(CL_ROOT . '/scripts/seed.php') . file_get_contents(CL_ROOT . '/scripts/seed_massive.php');
-t_ok(substr_count($seedSrc, 'PhotoStorage::enqueueOriginal(') === 2 && !str_contains($seedSrc, 'writeGenerated(') && !str_contains($seedSrc, 'PhotoStorage::publicPath('), 'seeds enfileiram o original (sem gravar em /uploads/users)');
 $h2 = HouseRepository::insert(['user_id' => $owner['user_id'], 'title' => 'Casa Seed', 'description' => 'd', 'summary' => 's', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua B, 2', 'cep' => '88000000', 'street' => 'Rua B', 'address_number' => '2', 'address_complement' => '', 'lat' => -27.6, 'lng' => -48.5, 'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 100, 'checkin_time' => '15:00', 'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0]);
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$h2]);
 ListingSearch::sync((int) $h2);

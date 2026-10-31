@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/JobQueue.php';
 require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/PermanentJobFailure.php';
 
 /**
  * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
@@ -77,9 +78,18 @@ final class QueueWorker
                         throw $e;
                     }
                     $report['falhas']++;
-                    if ($queue->fail($job['id'], $e::class)) {
+                    $permanent = $e instanceof PermanentJobFailure;
+                    $detail = $permanent ? $e::class . ' ' . $e->reason : $e::class;
+                    $gaveUp = $permanent;
+                    if ($permanent) {
+                        $queue->giveUp((int) $job['id'], $detail);
+                    } else {
+                        $gaveUp = $queue->fail($job['id'], $detail);
+                    }
+                    if ($gaveUp) {
                         $report['desistencias']++;
-                        error_log($label . ' #' . $job['id'] . ' desistido após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $e::class . ')');
+                        $why = $permanent ? '(' . $detail . ')' : 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $detail . ')';
+                        error_log($label . ' #' . $job['id'] . ' desistido ' . $why);
                         if ($onGiveUp !== null) {
                             $onGiveUp($job, $e);
                         }

@@ -2,14 +2,32 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../PhotoFail.php';
+
 function primary_photo(int $propertyId): ?string
 {
     return PhotoRepository::primaryPath($propertyId);
 }
 
-function save_uploaded_photos(int $userId, int $propertyId, array $files, ?array &$created = null): int
+/** @return array{saved:int, rejected:list<array{name:string, reason:string}>} */
+function save_uploaded_photos(int $userId, int $propertyId, array $files, ?array &$created = null): array
 {
     return PhotoStorage::storeUploads($userId, $propertyId, $files, $created);
+}
+
+function photo_fail_text(string $reason): string
+{
+    $key = match ($reason) {
+        PhotoFail::INVALID_TYPE => 'photo.fail_invalid_type',
+        PhotoFail::TOO_MANY_PIXELS => 'photo.fail_too_many_pixels',
+        PhotoFail::CORRUPT => 'photo.fail_corrupt',
+        PhotoFail::MISSING_ORIGINAL => 'photo.fail_missing_original',
+        PhotoFail::STUCK => 'photo.fail_stuck',
+        PhotoFail::QUEUE => 'photo.fail_queue',
+        PhotoFail::RETRIES => 'photo.fail_retries',
+        default => 'form.photo_failed',
+    };
+    return t($key);
 }
 
 /** Caminho de foto seguro para src=: só relativo em /uploads/ (sem "..", esquema ou host); senão o placeholder. */
