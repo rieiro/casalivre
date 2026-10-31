@@ -103,15 +103,14 @@ final class QueueWorkerLoop
     }
 
     /** Mark processing photos older than the limit as failed, delete the original, and log each one. */
-    public static function sweepStuck(): void
+    private static function sweepStuck(): void
     {
         foreach (PhotoRepository::discardStuck() as $row) {
-            PhotoStorage::deleteOriginal((string) ($row['original'] ?? ''));
-            $id = (int) $row['id'];
-            self::alert('stuck photo #' . $id . ' discarded (' . PhotoFail::STUCK . ')');
+            PhotoStorage::deleteOriginal($row['original']);
+            self::alert('stuck photo #' . $row['id'] . ' discarded (' . PhotoFail::STUCK . ')');
             ActivityLog::record(ActivityLog::PHOTO_STUCK, [
-                'imovel_id' => (int) $row['property_id'],
-                'foto_id' => $id,
+                'imovel_id' => $row['property_id'],
+                'foto_id' => $row['id'],
                 'motivo' => PhotoFail::STUCK,
             ]);
         }

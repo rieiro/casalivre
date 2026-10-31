@@ -8,7 +8,8 @@ require_once __DIR__ . '/PermanentJobFailure.php';
 
 /**
  * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
- * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. Erro de conexão com o banco (Db::isConnectionError)
+ * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. PermanentJobFailure desiste na primeira
+ * tentativa. Erro de conexão com o banco (Db::isConnectionError)
  * ou com o Valkey (RedisException) não conta como falha do item: o lote para e a exceção sobe (o worker longo reconecta
  * no Valkey, ou sai para o runit reiniciar no caso do banco). Uma reserva órfã reaproveitada já contou uma tentativa;
  * em MAX_ATTEMPTS o item é desistido sem nova entrega.
@@ -78,17 +79,14 @@ final class QueueWorker
                         throw $e;
                     }
                     $report['falhas']++;
-                    $permanent = $e instanceof PermanentJobFailure;
-                    $detail = $permanent ? $e::class . ' ' . $e->reason : $e::class;
-                    $gaveUp = $permanent;
-                    if ($permanent) {
+                    $detail = $e instanceof PermanentJobFailure ? $e::class . ' ' . $e->reason : $e::class;
+                    if ($e instanceof PermanentJobFailure) {
                         $queue->giveUp((int) $job['id'], $detail);
-                    } else {
-                        $gaveUp = $queue->fail($job['id'], $detail);
                     }
+                    $gaveUp = $e instanceof PermanentJobFailure || $queue->fail($job['id'], $detail);
                     if ($gaveUp) {
                         $report['desistencias']++;
-                        $why = $permanent ? '(' . $detail . ')' : 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $detail . ')';
+                        $why = $e instanceof PermanentJobFailure ? '(' . $detail . ')' : 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $detail . ')';
                         error_log($label . ' #' . $job['id'] . ' desistido ' . $why);
                         if ($onGiveUp !== null) {
                             $onGiveUp($job, $e);

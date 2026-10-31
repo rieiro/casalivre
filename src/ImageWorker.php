@@ -44,7 +44,7 @@ final class ImageWorker
             static function (array $job, Throwable $e): void {
                 $photo = PhotoRepository::findById((int) $job['photo_id']);
                 if ($photo) {
-                    PhotoStorage::deleteOriginal((string) ($photo['original'] ?? ''));
+                    PhotoStorage::deleteOriginal($photo['original']);
                     $reason = $e instanceof PermanentJobFailure ? $e->reason : PhotoFail::RETRIES;
                     PhotoRepository::markFailed((int) $photo['id'], $reason);
                 }
@@ -100,7 +100,7 @@ final class ImageWorker
         }
         imagedestroy($img);
         $ready = PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
-        PhotoStorage::deleteOriginal((string) $photo['original']);
+        PhotoStorage::deleteOriginal($photo['original']);
         if (!$ready) {
             // Removida/inativada durante o processamento: não deixa WebP órfão no public/.
             foreach ($written as $f) {

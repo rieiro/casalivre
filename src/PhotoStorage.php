@@ -185,8 +185,11 @@ final class PhotoStorage
         return preg_match('/^[0-9a-f-]{36}\.(jpg|png|webp)$/', $name) === 1 ? self::originalsDir() . '/' . $name : null;
     }
 
-    public static function deleteOriginal(string $name): void
+    public static function deleteOriginal(?string $name): void
     {
+        if ($name === null) {
+            return;
+        }
         $file = self::originalFile($name);
         if ($file !== null && is_file($file)) {
             @unlink($file);
@@ -209,7 +212,7 @@ final class PhotoStorage
     /** Remove todos os arquivos de uma foto (original e WebP), qualquer que seja o status. */
     public static function deletePhotoFiles(array $photo): void
     {
-        self::deleteOriginal((string) ($photo['original'] ?? ''));
+        self::deleteOriginal($photo['original']);
         $uuid = (string) ($photo['uuid'] ?? '');
         if (preg_match('/^[0-9a-f-]{36}$/', $uuid) === 1) {
             foreach (ImageWorker::SIZES as $w) {

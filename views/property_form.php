@@ -194,7 +194,7 @@
                             <?php if ($photoStatus === 'processing'): ?>
                                 <span class="photo-wait" role="img" aria-label="<?= e(t('form.photo_processing')) ?>"><?= e(t('form.photo_processing')) ?></span>
                             <?php elseif ($photoStatus === 'failed'): ?>
-                                <?php $failText = photo_fail_text((string) ($photo['fail_reason'] ?? '')); ?>
+                                <?php $failText = photo_fail_text($photo['fail_reason']); ?>
                                 <span class="photo-wait is-failed" role="img" aria-label="<?= e($failText) ?>"><?= e($failText) ?></span>
                             <?php else: ?>
                                 <img src="<?= e(photo_url(photo_variant($photo['path'], 'thumb'))) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">

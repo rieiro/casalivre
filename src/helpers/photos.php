@@ -9,12 +9,6 @@ function primary_photo(int $propertyId): ?string
     return PhotoRepository::primaryPath($propertyId);
 }
 
-/** @return array{saved:int, rejected:list<array{name:string, reason:string}>} */
-function save_uploaded_photos(int $userId, int $propertyId, array $files, ?array &$created = null): array
-{
-    return PhotoStorage::storeUploads($userId, $propertyId, $files, $created);
-}
-
 function photo_fail_text(string $reason): string
 {
     $key = match ($reason) {
@@ -25,7 +19,6 @@ function photo_fail_text(string $reason): string
         PhotoFail::STUCK => 'photo.fail_stuck',
         PhotoFail::QUEUE => 'photo.fail_queue',
         PhotoFail::RETRIES => 'photo.fail_retries',
-        default => 'form.photo_failed',
     };
     return t($key);
 }
