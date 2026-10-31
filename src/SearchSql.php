@@ -168,38 +168,27 @@ final class SearchSql
      */
     public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
     {
+        $order = self::orderBy($sort);
+        $select = 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM ';
         if ($bbox !== null) {
             [$listingWhere, $params] = self::listingFilters($place, $guests, $bbox);
             [$listingWhere, $params] = self::andKeyset($listingWhere, $params, $after, $sort);
             [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout, $scoreMin);
-            if ($propertyParams !== []) {
-                array_push($params, ...$propertyParams);
-            }
-        } else {
-            [$listingWhere, $params] = self::where($place, $groupId, $guests, null, $checkin, $checkout, $after, $scoreMin, $sort);
-            $propertyWhere = '';
-        }
-        $sql = 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM '
-            . self::rankedFrom($listingWhere, $propertyWhere, $sort, $limit, $bbox !== null);
-        $stmt = db()->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll();
-    }
-
-    /** Bbox: ordered listing_search scan, property filters and LIMIT outside. Otherwise one join, then LIMIT. */
-    private static function rankedFrom(string $listingWhere, string $propertyWhere, string $sort, int $limit, bool $hasBbox): string
-    {
-        $order = self::orderBy($sort);
-        if ($hasBbox) {
+            array_push($params, ...$propertyParams);
             $from = '(SELECT s.* FROM listing_search s WHERE ' . $listingWhere . ' ORDER BY ' . $order
                 . ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL;
             if ($propertyWhere !== '') {
                 $from .= ' WHERE ' . $propertyWhere;
             }
-            return $from . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+            $from .= ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+        } else {
+            [$listingWhere, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
+            $from = self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
+                . ' WHERE ' . $listingWhere . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
         }
-        return self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
-            . ' WHERE ' . $listingWhere . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+        $stmt = db()->prepare($select . $from);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     /**
