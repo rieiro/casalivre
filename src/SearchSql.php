@@ -66,10 +66,21 @@ final class SearchSql
     public static function where(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, float $scoreMin, string $sort): array
     {
         [$where, $params] = self::filters($place, $groupId, $guests, $bbox, $checkin, $checkout, $scoreMin);
-        if ($after !== null) {
-            $where .= ' AND (s.' . self::sortColumn($sort) . ', s.id) < (?, ?)';
-            array_push($params, $after['key'], $after['id']);
+        return self::andKeyset($where, $params, $after, $sort);
+    }
+
+    /**
+     * @param array{key:int,id:int}|null $after
+     * @param list<int|float|string|null> $params
+     * @return array{0:string,1:list<int|float|string|null>}
+     */
+    private static function andKeyset(string $where, array $params, ?array $after, string $sort): array
+    {
+        if ($after === null) {
+            return [$where, $params];
         }
+        $where .= ' AND (s.' . self::sortColumn($sort) . ', s.id) < (?, ?)';
+        array_push($params, $after['key'], $after['id']);
         return [$where, $params];
     }
 
@@ -80,18 +91,32 @@ final class SearchSql
      */
     private static function filters(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): array
     {
+        [$where, $params] = self::listingFilters($place, $guests, $bbox);
+        [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout, $scoreMin);
+        if ($propertyWhere !== '') {
+            $where .= ' AND ' . $propertyWhere;
+            array_push($params, ...$propertyParams);
+        }
+        return [$where, $params];
+    }
+
+    /**
+     * Predicates on listing_search: status, city, guests, and the geo box.
+     *
+     * @param array{id:int,type:string,parent_id?:int|null} $place
+     * @param array{s:float,n:float,w:float,e:float}|null $bbox
+     * @return array{0:string,1:list<int|float>}
+     */
+    private static function listingFilters(array $place, int $guests, ?array $bbox): array
+    {
         $where = [self::active('s')];
         $params = [];
         if ($place['type'] === 'neighborhood') {
-            $where[] = 's.city_place_id = ? AND ' . self::active('p') . ' AND p.neighborhood_place_id = ?';
-            array_push($params, (int) $place['parent_id'], (int) $place['id']);
+            $where[] = 's.city_place_id = ?';
+            $params[] = (int) $place['parent_id'];
         } elseif ($place['type'] === 'city' && $bbox === null) {
             $where[] = 's.city_place_id = ?';
             $params[] = (int) $place['id'];
-        }
-        if ($groupId !== null) {
-            $where[] = 'p.group_id = ?';
-            $params[] = $groupId;
         }
         if ($guests > 0) {
             $where[] = 's.max_guests >= ?';
@@ -100,6 +125,27 @@ final class SearchSql
         if ($bbox !== null) {
             $where[] = 'point(s.lng, s.lat) <@ box(point(?, ?), point(?, ?))';
             array_push($params, $bbox['w'], $bbox['s'], $bbox['e'], $bbox['n']);
+        }
+        return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * Predicates that need properties: neighborhood, group, dates, and score.
+     *
+     * @param array{id:int,type:string,parent_id?:int|null} $place
+     * @return array{0:string,1:list<int|float|string|null>}
+     */
+    private static function propertyFilters(array $place, ?int $groupId, ?string $checkin, ?string $checkout, float $scoreMin): array
+    {
+        $where = [];
+        $params = [];
+        if ($place['type'] === 'neighborhood') {
+            $where[] = self::active('p') . ' AND p.neighborhood_place_id = ?';
+            $params[] = (int) $place['id'];
+        }
+        if ($groupId !== null) {
+            $where[] = 'p.group_id = ?';
+            $params[] = $groupId;
         }
         if ($checkin !== null && $checkout !== null) {
             $where[] = 'NOT EXISTS (SELECT 1 FROM calendar_days c WHERE c.property_id = p.id AND c.day >= ? AND c.day < ? AND c.blocked = 1)';
@@ -122,29 +168,38 @@ final class SearchSql
      */
     public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
     {
-        [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
-        $limitFirst = $bbox !== null
-            && $place['type'] !== 'neighborhood'
-            && $groupId === null
-            && $checkin === null
-            && $scoreMin <= 0;
+        if ($bbox !== null) {
+            [$listingWhere, $params] = self::listingFilters($place, $guests, $bbox);
+            [$listingWhere, $params] = self::andKeyset($listingWhere, $params, $after, $sort);
+            [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout, $scoreMin);
+            if ($propertyParams !== []) {
+                array_push($params, ...$propertyParams);
+            }
+        } else {
+            [$listingWhere, $params] = self::where($place, $groupId, $guests, null, $checkin, $checkout, $after, $scoreMin, $sort);
+            $propertyWhere = '';
+        }
         $sql = 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM '
-            . self::rankedFrom($where, $sort, $limit, $limitFirst);
+            . self::rankedFrom($listingWhere, $propertyWhere, $sort, $limit, $bbox !== null);
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    /** Bbox page: rank-ordered LIMIT on listing_search, then the property join. Otherwise filter and limit after the join. */
-    private static function rankedFrom(string $where, string $sort, int $limit, bool $limitFirst): string
+    /** Bbox: ordered listing_search scan, property filters and LIMIT outside. Otherwise one join, then LIMIT. */
+    private static function rankedFrom(string $listingWhere, string $propertyWhere, string $sort, int $limit, bool $hasBbox): string
     {
         $order = self::orderBy($sort);
-        if ($limitFirst) {
-            return '(SELECT s.* FROM listing_search s WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit
-                . ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL . ' ORDER BY ' . $order;
+        if ($hasBbox) {
+            $from = '(SELECT s.* FROM listing_search s WHERE ' . $listingWhere . ' ORDER BY ' . $order
+                . ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL;
+            if ($propertyWhere !== '') {
+                $from .= ' WHERE ' . $propertyWhere;
+            }
+            return $from . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
         }
         return self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
-            . ' WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+            . ' WHERE ' . $listingWhere . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
     }
 
     /**
