@@ -35,6 +35,7 @@ t_ok(!str_contains($r['body'], 'Rua A') && !str_contains($r['body'], '"address"'
 
 echo "busca não consulta o endereço (oráculo)\n";
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$owner['house_id']]);
+ListingSearch::sync((int) $owner['house_id']);
 $count = static fn (string $q): int => count(json_decode(t_http('GET', $base . '/api/busca?localidade=' . rawurlencode($q))['body'], true)['items'] ?? []);
 t_eq(0, $count('Rua A, 1'), 'localidade = rua e número: nenhum resultado');
 t_eq(0, $count('Rua A'), 'localidade = rua: nenhum resultado');

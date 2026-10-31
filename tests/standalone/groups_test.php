@@ -379,6 +379,7 @@ t_eq(302, c_form($base, '/grupos/imob-sul/convites/cancelar', ['_csrf' => $cG, '
 t_eq(0, (int) $q('SELECT COUNT(*) FROM group_property_invites'), 'convite cancelado');
 t_eq(1, count($codes($mark, ActivityLog::GROUP_INVITE_CANCEL)), 'um GROUP_INVITE_CANCEL');
 db()->prepare("UPDATE properties SET status = 'inactive' WHERE id = ?")->execute([$houseB['id']]);
+ListingSearch::sync((int) $houseB['id']);
 c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' => $houseB['hash']], $jG);
 t_eq(0, (int) $q('SELECT COUNT(*) FROM group_property_invites'), 'imóvel inativo: sem convite');
 

@@ -5,9 +5,11 @@ declare(strict_types=1);
 /** Typed public-search input. Built from the request; SearchService does not read $_GET. */
 final class SearchQuery
 {
-    public const VERSION = 1;
-    public const SORT = 'id';
-    /** PostgreSQL integer (int4) maximum. A larger last_id overflows the id bind. */
+    public const VERSION = 2;
+    public const SORT_RELEVANCE = 'relevance';
+    public const SORT_RATING = 'rating';
+    public const RAIO_MAX_KM = 20;
+    /** PostgreSQL integer (int4) maximum. A larger id or key overflows the bind. */
     public const LAST_ID_MAX = 2147483647;
 
     /**
@@ -25,6 +27,7 @@ final class SearchQuery
         public readonly float $scoreMin,
         public readonly array $amenidades,
         public readonly ?string $grupo,
+        public readonly string $sort,
     ) {
     }
 
@@ -44,13 +47,21 @@ final class SearchQuery
             (string) ($request['checkin'] ?? ''),
             (string) ($request['checkout'] ?? ''),
             (int) ($request['hospedes'] ?? 0),
-            (int) ($request['raio'] ?? 0),
+            // Above the cap clamps. Zero and below stay as parsed (a POI with raio 0 still defaults to 3 km).
+            min((int) ($request['raio'] ?? 0), self::RAIO_MAX_KM),
             (int) ($request['preco_min'] ?? 0),
             (int) ($request['preco_max'] ?? 0),
             self::readScoreMin($request['score_min'] ?? 0),
             $amenidades,
             $grupo,
+            self::sortOf($request['sort'] ?? null),
         );
+    }
+
+    /** Unknown values are relevance. */
+    private static function sortOf(mixed $raw): string
+    {
+        return $raw === self::SORT_RATING ? self::SORT_RATING : self::SORT_RELEVANCE;
     }
 
     public function searched(): bool
@@ -134,35 +145,42 @@ final class SearchQuery
         ], JSON_UNESCAPED_UNICODE));
     }
 
-    public static function cursor(int $lastId, string $filtersHash): string
+    public static function cursor(int $lastKey, int $id, string $sort, string $filtersHash): string
     {
         $json = json_encode([
             'v' => self::VERSION,
-            'sort' => self::SORT,
-            'last_id' => $lastId,
+            'sort' => $sort,
+            'last_key' => $lastKey,
+            'id' => $id,
             'filters_hash' => $filtersHash,
         ], JSON_UNESCAPED_SLASHES);
         return rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
     }
 
-    public static function lastId(string $cursor, string $filtersHash): int
+    /** @return array{key:int,id:int} */
+    public static function position(string $cursor, string $filtersHash, string $sort): array
     {
         $pad = strtr($cursor, '-_', '+/');
         $pad .= str_repeat('=', (4 - strlen($pad) % 4) % 4);
         $raw = base64_decode($pad, true);
         $data = is_string($raw) ? json_decode($raw, true) : null;
         $hash = is_array($data) ? ($data['filters_hash'] ?? null) : null;
+        $key = is_array($data) ? ($data['last_key'] ?? null) : null;
+        $id = is_array($data) ? ($data['id'] ?? null) : null;
         if (!is_array($data)
             || ($data['v'] ?? null) !== self::VERSION
-            || ($data['sort'] ?? null) !== self::SORT
-            || !is_int($data['last_id'] ?? null)
-            || $data['last_id'] < 1
-            || $data['last_id'] > self::LAST_ID_MAX
+            || ($data['sort'] ?? null) !== $sort
+            || !is_int($key)
+            || $key < 0
+            || $key > self::LAST_ID_MAX
+            || !is_int($id)
+            || $id < 1
+            || $id > self::LAST_ID_MAX
             || !is_string($hash)
             || !hash_equals($filtersHash, $hash)) {
             throw new InvalidSearchCursor();
         }
-        return $data['last_id'];
+        return ['key' => $key, 'id' => $id];
     }
 }
 

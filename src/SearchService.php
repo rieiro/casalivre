@@ -10,20 +10,27 @@ require_once __DIR__ . '/Amenities.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/helpers.php';
 
-/** Public search on a resolved place: keyset pages from the shared SQL builder. */
+/**
+ * Public search on a resolved place: keyset pages from the shared SQL builder.
+ *
+ * @phpstan-type SearchPage array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
+ * @phpstan-type SearchCursor array{key:int,id:int}
+ */
 final class SearchService
 {
     public const PAGE_SIZE = 20;
     public const BATCH_SIZE = 60;
     public const MAX_QUERIES = 4;
+    public const STATEMENT_TIMEOUT_MS = 150;
     private const POI_RADIUS_KM = 3;
 
     /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int}
+     * @param SearchCursor|null $after
+     * @return SearchPage
      */
-    public static function search(SearchQuery $query, mixed $host, bool $log = false, ?int $afterId = null): array
+    public static function search(SearchQuery $query, mixed $host, bool $log = false, ?array $after = null): array
     {
-        $result = self::find($query, $host, $afterId);
+        $result = self::find($query, $host, $after);
         if ($log && $query->searched()) {
             require_once __DIR__ . '/ActivityLog.php';
             activity(ActivityLog::SEARCH, $query->filters() + [
@@ -36,9 +43,10 @@ final class SearchService
     }
 
     /**
-     * @return array{filters:array,items:list<array>,searched:bool,facets:list<string>,next_cursor:?string,total_aprox:int|string|null,unresolved:bool,resolution:?string,options:list<array>,iteracoes:int,linhas_lidas:int,place_id:?int}
+     * @param SearchCursor|null $after
+     * @return SearchPage&array{place_id:?int}
      */
-    private static function find(SearchQuery $query, mixed $host, ?int $afterId): array
+    private static function find(SearchQuery $query, mixed $host, ?array $after): array
     {
         $out = [
             'filters' => $query->filters(),
@@ -57,6 +65,26 @@ final class SearchService
         if (!$query->searched()) {
             return $out;
         }
+        try {
+            return Db::transactional(db(), static function () use ($query, $host, $after, $out): array {
+                db()->exec("SET LOCAL statement_timeout = '" . self::STATEMENT_TIMEOUT_MS . "ms'");
+                return self::listed($query, $host, $after, $out);
+            });
+        } catch (PDOException $e) {
+            if (Db::sqlState($e) !== '57014') {
+                throw $e;
+            }
+            error_log('search statement timeout');
+            throw new SearchTimeout();
+        }
+    }
+
+    /**
+     * @param SearchCursor|null $after
+     * @param SearchPage&array{place_id:?int} $out
+     */
+    private static function listed(SearchQuery $query, mixed $host, ?array $after, array $out): array
+    {
         $place = self::place($query, $out);
         if ($place === null) {
             return $out;
@@ -66,8 +94,9 @@ final class SearchService
         if ($groupId === false) {
             return $out;
         }
-        // Reviews are 1..10, so nothing rounds to more than 10. Skip SQL: 2*t would overflow int4.
+        // Reviews are 1..10, so a score above 10 matches nothing. Skip the listing queries.
         if ($query->scoreMin > 10) {
+            $out['total_aprox'] = 0;
             return $out;
         }
         $nights = nights_between($query->checkin, $query->checkout);
@@ -85,13 +114,13 @@ final class SearchService
             static fn (string $key): bool => in_array($key, $known, true)
         ));
         $page = [];
-        $after = $afterId;
+        $column = SearchSql::sortColumn($query->sort);
         $hasMore = true;
         $read = 0;
         $queries = 0;
         while (count($page) < self::PAGE_SIZE && $queries < self::MAX_QUERIES && $hasMore) {
             $queries++;
-            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1, $query->scoreMin);
+            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1, $query->scoreMin, $query->sort);
             $hasMore = count($fetched) > self::BATCH_SIZE;
             if ($hasMore) {
                 array_pop($fetched);
@@ -105,7 +134,7 @@ final class SearchService
             foreach ($fetched as $property) {
                 $read++;
                 $id = (int) $property['id'];
-                $after = $id;
+                $after = ['key' => (int) $property[$column], 'id' => $id];
                 $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $wanted, $radiusKm);
                 if ($kept === null) {
                     continue;
@@ -116,7 +145,7 @@ final class SearchService
                     break;
                 }
             }
-            if (count($page) === self::PAGE_SIZE && $after !== (int) $fetched[array_key_last($fetched)]['id']) {
+            if (count($page) === self::PAGE_SIZE && $after['id'] !== (int) $fetched[array_key_last($fetched)]['id']) {
                 $hasMore = true;
             }
         }
@@ -124,7 +153,7 @@ final class SearchService
         $out['iteracoes'] = $queries;
         $out['linhas_lidas'] = $read;
         if ($hasMore) {
-            $out['next_cursor'] = SearchQuery::cursor($after, $query->filtersHash());
+            $out['next_cursor'] = SearchQuery::cursor($after['key'], $after['id'], $query->sort, $query->filtersHash());
         }
         return $out;
     }
@@ -226,4 +255,9 @@ final class SearchService
         $property['score'] = $score;
         return $property;
     }
+}
+
+/** The listing query exceeded statement_timeout. The API answers 503. */
+final class SearchTimeout extends RuntimeException
+{
 }

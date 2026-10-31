@@ -19,13 +19,16 @@ t_ok(!method_exists(HouseRepository::class, 'byCity'), 'HouseRepository::byCity 
 t_ok(!method_exists(GroupRepository::class, 'activePropertyStrict'), 'activePropertyStrict removed');
 t_ok(!array_key_exists('Búzios', cities()), 'cities() has no stale Búzios point');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/src/SearchService.php'), '$_GET'), 'SearchService does not read $_GET');
-$where = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, '2026-11-01', '2026-11-03', 9, 0.0);
-$scoreWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 4.5);
+$where = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, '2026-11-01', '2026-11-03', ['key' => 315, 'id' => 9], 0.0, 'relevance');
+$scoreWhere = SearchSql::where(['id' => 1, 'type' => 'city'], null, 0, null, null, null, null, 4.5, 'relevance');
 t_ok(str_contains($scoreWhere[0], 'p.rating_count > 0 AND 20 * p.rating_sum + p.rating_count >= ? * p.rating_count'), 'score_min is a plain filter on the rating columns');
 t_eq(90, $scoreWhere[1][array_key_last($scoreWhere[1])], '4.5 binds 2*ceil(round(45, 6))');
-t_ok(str_contains($where[0], "p.status = 'active'"), 'one active rule');
+t_ok(str_contains($where[0], "s.status = 'active'"), 'one active rule');
 t_ok(str_contains($where[0], 'NOT EXISTS') && str_contains($where[0], 'c.blocked = 1'), 'blocked night is NOT EXISTS');
-t_ok(str_contains($where[0], 'p.id > ?'), 'keyset id > last_id');
+t_ok(str_contains($where[0], '(s.rank_base, s.id) < (?, ?)'), 'keyset is (rank_base, id)');
+t_eq('s.rank_base DESC, s.id DESC', SearchSql::orderBy(SearchQuery::SORT_RELEVANCE), 'relevance orders by rank_base, id');
+t_eq('s.rating_rank DESC, s.id DESC', SearchSql::orderBy(SearchQuery::SORT_RATING), 'rating orders by rating_rank, id');
+t_eq(SearchQuery::SORT_RELEVANCE, SearchQuery::fromRequest(['sort' => 'weekly'])->sort, 'unknown sort falls back to relevance');
 t_ok(!str_contains((string) file_get_contents(CL_ROOT . '/views/search.php'), '<b>'), 'search view does not print facet counts');
 
 t_temp_db();
@@ -85,8 +88,10 @@ $day($special, $in, 0, 100, null);
 $horizon = $house($floripaId, ['title' => 'Horizonte', 'calendar_months' => 1]);
 $emptyStatus = $house($floripaId, ['title' => 'Status vazio']);
 db()->prepare("UPDATE properties SET status = '' WHERE id = ?")->execute([$emptyStatus]);
+ListingSearch::sync($emptyStatus);
 $inactive = $house($floripaId, ['title' => 'Inativo']);
 db()->prepare("UPDATE properties SET status = 'inactive' WHERE id = ?")->execute([$inactive]);
+ListingSearch::sync($inactive);
 $near = $house($rioId, ['title' => 'Perto', 'lat' => $lat + (2 / 111.32), 'lng' => $lng]);
 $far = $house($rioId, ['title' => 'Longe', 'lat' => (float) $rio['lat'], 'lng' => (float) $rio['lng']]);
 $buziosHouse = $house($buziosId, ['title' => 'Buzios', 'lat' => (float) $buzios['lat'], 'lng' => (float) $buzios['lng']]);
@@ -96,7 +101,9 @@ $bulk = static function (int $placeId, int $n, int $price, float $rowLat, float 
     $ids = [];
     for ($i = 0; $i < $n; $i++) {
         $st->execute([$userId, 'Lote', 'Descricao de teste do imovel.', 'Resumo', $placeId, 'Rua A, 1', $rowLat, $rowLng, 1, 1, 4, $price]);
-        $ids[] = (int) $st->fetchColumn();
+        $id = (int) $st->fetchColumn();
+        ListingSearch::sync($id);
+        $ids[] = $id;
     }
     return $ids;
 };
@@ -116,8 +123,11 @@ db()->prepare('INSERT INTO groups (slug, name, theme) VALUES (?, ?, ?)')->execut
 $groupId = (int) db()->query("SELECT id FROM groups WHERE slug = 'ga'")->fetchColumn();
 db()->prepare('INSERT INTO group_domains (group_id, domain, verified_at) VALUES (?, ?, CURRENT_TIMESTAMP)')->execute([$groupId, 'ga.example.com']);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $pool]);
+ListingSearch::sync($pool);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $scored]);
+ListingSearch::sync($scored);
 db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$groupId, $emptyStatus]);
+ListingSearch::sync($emptyStatus);
 GrupoResolvedor::clearCache();
 
 /** Old PHP scan (status active, id ASC). Unresolved text still runs the removed substring branch here. @return list<int> */
@@ -128,7 +138,7 @@ function legacy_ids(array $request, mixed $host): array
         'checkin' => (string) ($request['checkin'] ?? ''),
         'checkout' => (string) ($request['checkout'] ?? ''),
         'hospedes' => (int) ($request['hospedes'] ?? 0),
-        'raio' => (int) ($request['raio'] ?? 0),
+        'raio' => SearchQuery::fromRequest($request)->raio,
         'preco_min' => (int) ($request['preco_min'] ?? 0),
         'preco_max' => (int) ($request['preco_max'] ?? 0),
         'score_min' => (float) ($request['score_min'] ?? 0),
@@ -232,8 +242,8 @@ function walk(array $request, mixed $host = null): array
     $seen = [];
     for ($page = 0; $page < 40; $page++) {
         $query = SearchQuery::fromRequest($request);
-        $afterId = $cursor === null ? null : SearchQuery::lastId($cursor, $query->filtersHash());
-        $result = SearchService::search($query, $host, false, $afterId);
+        $after = $cursor === null ? null : SearchQuery::position($cursor, $query->filtersHash(), $query->sort);
+        $result = SearchService::search($query, $host, false, $after);
         t_ok($result['iteracoes'] <= SearchService::MAX_QUERIES && $result['linhas_lidas'] <= SearchService::MAX_QUERIES * SearchService::BATCH_SIZE, 'page stays within 4 queries and 240 rows');
         $linhas += $result['linhas_lidas'];
         foreach ($result['items'] as $item) {
@@ -250,47 +260,65 @@ function walk(array $request, mixed $host = null): array
     return ['ids' => $ids, 'linhas' => $linhas];
 }
 
-function same(array $request, mixed $host, string $msg): array
-{
+$sameIds = static function (array $a, array $b, string $msg): void {
+    sort($a);
+    sort($b);
+    t_eq($a, $b, $msg);
+};
+
+$itemIds = static fn (array $items): array => array_map(static fn (array $item): int => (int) $item['id'], $items);
+
+/** Join page in rank order. $withRank keeps rank_base for the keyset; otherwise the result is int ids. */
+$joinIds = static function (string $where, array $params, bool $withRank) use ($itemIds): array {
+    $order = SearchSql::orderBy(SearchQuery::SORT_RELEVANCE);
+    $columns = $withRank ? 'p.id, s.rank_base' : 'p.id';
+    $stmt = db()->prepare('SELECT ' . $columns . ' FROM listing_search s JOIN properties p ON p.id = s.id WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT 20');
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    return $withRank ? $rows : $itemIds($rows);
+};
+
+$same = static function (array $request, mixed $host, string $msg) use ($sameIds): array {
     $got = walk($request, $host);
-    t_eq(legacy_ids($request, $host), $got['ids'], $msg);
+    $sameIds(legacy_ids($request, $host), $got['ids'], $msg);
     t_eq(count($got['ids']), count(array_unique($got['ids'])), $msg . ': no repeat');
     return $got;
-}
+};
 
 echo "resolved city and filters\n";
 $city = ['localidade' => 'Florianópolis, SC'];
-$all = same($city, null, 'city walk matches the old scan');
+$all = $same($city, null, 'city walk matches the old scan');
 t_eq('100+', SearchService::search(SearchQuery::fromRequest($city), null)['total_aprox'], 'total_aprox caps at 100+');
 t_eq($activeFloripa(), $all['linhas'], 'city walk reads each SQL candidate once');
 t_ok(!in_array($emptyStatus, $all['ids'], true) && !in_array($inactive, $all['ids'], true), 'empty and inactive status stay out');
 t_ok(in_array($pricey, $all['ids'], true) && in_array($cheapEdge, $all['ids'], true), 'price edges stay in the unfiltered city');
 t_ok(!in_array($near, $all['ids'], true) && !in_array($far, $all['ids'], true), 'other cities stay out of the place filter');
 
-$priced = same(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000], null, 'preco_min walks the whole set');
-t_eq($expensive, $priced['ids'], 'only the three expensive houses');
+$priced = $same(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000], null, 'preco_min walks the whole set');
+$sameIds($expensive, $priced['ids'], 'only the three expensive houses');
 t_eq($activeFloripa(), $priced['linhas'], 'price filter reads each candidate once, no skip');
 $first = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'preco_min' => 9000]), null);
 t_eq(4, $first['iteracoes'], 'first expensive page uses 4 listing queries');
 t_eq(240, $first['linhas_lidas'], 'first expensive page reads 240 rows');
-t_eq(0, count($first['items']), 'first expensive page is not full');
+t_eq(3, count($first['items']), 'newest matches are on the first page');
+t_ok(count($first['items']) < SearchService::PAGE_SIZE, 'first expensive page is not full');
 t_ok(is_string($first['next_cursor']), 'first expensive page has a cursor');
 
-$guests = same(['localidade' => 'Florianópolis, SC', 'hospedes' => 2], null, 'guests');
+$guests = $same(['localidade' => 'Florianópolis, SC', 'hospedes' => 2], null, 'guests');
 t_ok(!in_array($guests1, $guests['ids'], true), 'max_guests 1 drops out');
 $stay = ['localidade' => 'Florianópolis, SC', 'checkin' => $in, 'checkout' => $out];
-$stayed = same($stay, null, 'stay quote, min nights and blocked night');
+$stayed = $same($stay, null, 'stay quote, min nights and blocked night');
 t_ok(!in_array($blocked, $stayed['ids'], true), 'blocked night drops out');
 t_ok(!in_array($minZero, $stayed['ids'], true) && !in_array($minNull, $stayed['ids'], true), 'min_nights 0 and NULL on check-in keep the property minimum');
 t_ok(in_array($custom, $stayed['ids'], true), 'custom min_nights 1 allows the stay');
 t_ok(in_array($horizon, $stayed['ids'], true), 'stay inside the 1-month horizon stays');
-$over = same(['localidade' => 'Florianópolis, SC', 'checkin' => $overIn, 'checkout' => $overOut], null, 'night past the horizon');
+$over = $same(['localidade' => 'Florianópolis, SC', 'checkin' => $overIn, 'checkout' => $overOut], null, 'night past the horizon');
 t_ok(!in_array($horizon, $over['ids'], true), 'calendar_months 1 drops a night after max_calendar_day');
-$pricedNight = same($stay + ['preco_min' => 150, 'preco_max' => 150], null, 'special price on one night');
+$pricedNight = $same($stay + ['preco_min' => 150, 'preco_max' => 150], null, 'special price on one night');
 t_eq([$special], $pricedNight['ids'], 'nightly is round((100+200)/2)');
-$scoreKeep = same($city + ['score_min' => '4.5'], null, 'score 4.5 keeps the x.5 average');
+$scoreKeep = $same($city + ['score_min' => '4.5'], null, 'score 4.5 keeps the x.5 average');
 t_eq([$scored], $scoreKeep['ids'], 'only the reviewed house at 4.5');
-$scoreDrop = same($city + ['score_min' => '4.6'], null, 'score 4.6 drops the x.5 average');
+$scoreDrop = $same($city + ['score_min' => '4.6'], null, 'score 4.6 drops the x.5 average');
 t_eq([], $scoreDrop['ids'], '4.6 drops the house and houses with no reviews');
 $petropolis = CityRepository::resolve('Petrópolis, RJ')['place'];
 t_ok(is_array($petropolis), 'Petrópolis resolves');
@@ -305,12 +333,12 @@ for ($i = 0; $i < 19; $i++) {
 HouseRepository::addReview($edge, 'Baixa', 7, '');
 $bare = $house($petropolisId, ['title' => 'Sem nota']);
 $scoreCity = ['localidade' => 'Petrópolis, RJ'];
-$keep80 = same($scoreCity + ['score_min' => '8'], null, 'score 8.0 keeps the 7.95 average');
+$keep80 = $same($scoreCity + ['score_min' => '8'], null, 'score 8.0 keeps the 7.95 average');
 t_eq([$edge], $keep80['ids'], '7.95 rounds to 8.0 and an empty rating stays out');
-$drop81 = same($scoreCity + ['score_min' => '8.1'], null, 'score 8.1 drops the 7.95 average');
+$drop81 = $same($scoreCity + ['score_min' => '8.1'], null, 'score 8.1 drops the 7.95 average');
 t_eq([], $drop81['ids'], '8.1 drops 7.95');
-$keep45g = same($scoreCity + ['score_min' => '4.5'], null, 'score 4.5 keeps 4.5 and 7.95');
-t_eq([$half, $edge], $keep45g['ids'], '4.5 keeps both rounded averages');
+$keep45g = $same($scoreCity + ['score_min' => '4.5'], null, 'score 4.5 keeps 4.5 and 7.95');
+t_eq([$edge, $half], $keep45g['ids'], '4.5 keeps both rounded averages, newest first');
 t_ok(!in_array($bare, $keep45g['ids'], true), 'a house with no reviews stays out');
 $card = SearchService::search(SearchQuery::fromRequest($scoreCity + ['score_min' => '8']), null)['items'][0] ?? [];
 t_eq(8.0, $card['score'] ?? null, 'card score is round(rating_sum/rating_count, 1)');
@@ -329,37 +357,102 @@ $almost = $house($santosId, ['title' => 'Nove e meio']);
 HouseRepository::addReview($almost, 'Ana', 9, '');
 HouseRepository::addReview($almost, 'Bia', 10, '');
 $santosQ = ['localidade' => 'Santos, SP'];
-$score10 = same($santosQ + ['score_min' => '10'], null, 'score 10 keeps only an all-10 average');
+$score10 = $same($santosQ + ['score_min' => '10'], null, 'score 10 keeps only an all-10 average');
 t_eq([$perfect], $score10['ids'], 'score 10 drops the 9.5 average');
 $score101 = SearchService::search(SearchQuery::fromRequest($santosQ + ['score_min' => '10.1']), null);
 t_eq([], $score101['items'], 'score 10.1 matches nothing');
 t_eq(0, $score101['iteracoes'], 'score 10.1 runs no listing query');
 t_eq(0, $score101['linhas_lidas'], 'score 10.1 reads no rows');
+t_eq(0, $score101['total_aprox'], 'score 10.1 total_aprox matches an empty page');
 t_eq(0.0, SearchQuery::fromRequest(['score_min' => 'nan'])->scoreMin, 'nan score_min is 0');
+t_eq(20, SearchQuery::fromRequest(['raio' => '50'])->raio, 'raio above 20 is clamped');
+t_eq(20, SearchQuery::fromRequest(['raio' => '20'])->raio, 'raio 20 stays 20');
+t_eq(3, SearchQuery::fromRequest(['raio' => '3'])->raio, 'raio 3 stays 3');
+t_eq(0, SearchQuery::fromRequest(['raio' => '0'])->raio, 'raio 0 stays 0');
+t_eq(
+    SearchQuery::fromRequest(['localidade' => 'X', 'raio' => '20'])->filtersHash(),
+    SearchQuery::fromRequest(['localidade' => 'X', 'raio' => '80'])->filtersHash(),
+    'filters_hash uses the clamped raio'
+);
 t_eq(0.0, SearchQuery::fromRequest(['score_min' => '-1'])->scoreMin, 'negative score_min is 0');
 t_eq(
     SearchQuery::fromRequest($santosQ)->filtersHash(),
     SearchQuery::fromRequest($santosQ + ['score_min' => 'nan'])->filtersHash(),
     'nan score_min hashes as zero'
 );
-$amenity = same($city + ['amenidade' => ['pool']], null, 'amenity');
+$amenity = $same($city + ['amenidade' => ['pool']], null, 'amenity');
 t_eq([$pool], $amenity['ids'], 'only the pool house');
 
 echo "radius, group, buzios, unresolved\n";
-$radius = same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
+$radius = $same(['localidade' => 'Florianópolis, SC', 'raio' => 25], null, 'radius matches the old haversine');
 t_ok(in_array($near, $radius['ids'], true), 'bbox + haversine keeps a house 2 km away in another city');
 t_ok(!in_array($far, $radius['ids'], true), 'a house at the other city center stays out of the radius');
-$byGroup = same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
+$cityBbox = SearchSql::bbox((float) $floripa['lat'], (float) $floripa['lng'], 10);
+$radiusQuery = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'raio' => '10']);
+$radiusPage = SearchService::search($radiusQuery, null);
+[$boxWhere, $boxParams] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, null, 0.0, SearchQuery::SORT_RELEVANCE);
+$joinRows = $joinIds($boxWhere, $boxParams, true);
+t_eq($itemIds($joinRows), $itemIds($radiusPage['items']), 'subquery page matches the join');
+t_eq($itemIds($joinRows), $joinIds("s.status = 'active' AND s.lat BETWEEN ? AND ? AND s.lng BETWEEN ? AND ?", [$cityBbox['s'], $cityBbox['n'], $cityBbox['w'], $cityBbox['e']], false), 'geo box page matches the old bounds');
+$lastRank = $joinRows[array_key_last($joinRows)];
+[$boxWhere2, $boxParams2] = SearchSql::where($floripa, null, 0, $cityBbox, null, null, ['key' => (int) $lastRank['rank_base'], 'id' => (int) $lastRank['id']], 0.0, SearchQuery::SORT_RELEVANCE);
+$radiusNext = SearchService::search($radiusQuery, null, false, SearchQuery::position((string) $radiusPage['next_cursor'], $radiusQuery->filtersHash(), $radiusQuery->sort));
+t_eq($joinIds($boxWhere2, $boxParams2, false), $itemIds($radiusNext['items']), 'keyset second page matches the join');
+$byGroup = $same(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga'], null, 'group param matches the old group source');
 $withGroup = SearchQuery::fromRequest(['localidade' => 'Florianópolis, SC', 'grupo' => 'ga']);
 $withoutGrupo = $withGroup->filters();
 unset($withoutGrupo['grupo']);
 t_eq($withoutGrupo, $withGroup->pageFilters(), 'pageFilters drops grupo');
-$byHost = same(['localidade' => 'Florianópolis, SC'], 'ga.example.com', 'verified host matches the old group source');
+$byHost = $same(['localidade' => 'Florianópolis, SC'], 'ga.example.com', 'verified host matches the old group source');
 t_eq($byGroup['ids'], $byHost['ids'], 'storefront and public search return the same rows');
-t_eq([$scored, $pool], $byGroup['ids'], 'group is the two linked houses');
+t_eq([$pool, $scored], $byGroup['ids'], 'group is the two linked houses, newest first');
 $homeIds = array_map('intval', array_column(GroupRepository::properties($groupId), 'id'));
 t_ok(!in_array($emptyStatus, $homeIds, true), 'home does not list empty status');
 t_ok(in_array($pool, $homeIds, true), 'home still lists an active house of the group');
+
+echo "bbox with dates, score and group\n";
+$st = db()->prepare('SELECT id FROM properties WHERE city_place_id = ? AND status = ? ORDER BY id ASC');
+$st->execute([$floripaId, 'active']);
+$byId = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+$oldest = array_slice($byId, 0, 25);
+$newest = array_slice(array_reverse($byId), 0, 25);
+$bboxEqualsJoin = static function (?int $groupId, ?string $checkin, ?string $checkout, float $scoreMin, string $label) use ($floripa, $cityBbox, $joinIds, $itemIds): array {
+    $sort = SearchQuery::SORT_RELEVANCE;
+    $first = SearchSql::batch($floripa, $groupId, 0, $cityBbox, $checkin, $checkout, null, 20, $scoreMin, $sort);
+    [$where, $params] = SearchSql::where($floripa, $groupId, 0, $cityBbox, $checkin, $checkout, null, $scoreMin, $sort);
+    $rows = $joinIds($where, $params, true);
+    $ids = $itemIds($first);
+    t_eq($itemIds($rows), $ids, $label . ' page matches the join');
+    t_eq(20, count($ids), $label . ' first page is 20');
+    $last = $rows[array_key_last($rows)];
+    $after = ['key' => (int) $last['rank_base'], 'id' => (int) $last['id']];
+    $second = SearchSql::batch($floripa, $groupId, 0, $cityBbox, $checkin, $checkout, $after, 20, $scoreMin, $sort);
+    [$where2, $params2] = SearchSql::where($floripa, $groupId, 0, $cityBbox, $checkin, $checkout, $after, $scoreMin, $sort);
+    t_eq($joinIds($where2, $params2, false), $itemIds($second), $label . ' keyset second page matches the join');
+    t_ok($second !== [], $label . ' keyset second page has rows');
+    return $ids;
+};
+foreach ($newest as $id) {
+    $day($id, $in, 1);
+}
+$dateIds = $bboxEqualsJoin(null, $in, $out, 0.0, 'bbox dates');
+t_ok(!in_array($newest[0], $dateIds, true), 'bbox dates drops a blocked house');
+$rate = db()->prepare('UPDATE properties SET rating_sum = 10, rating_count = 2 WHERE id = ?');
+foreach ($oldest as $id) {
+    $rate->execute([$id]);
+    ListingSearch::sync($id);
+}
+$scoreIds = $bboxEqualsJoin(null, null, null, 4.5, 'bbox score');
+t_ok(!in_array($newest[0], $scoreIds, true), 'bbox score drops an unrated house');
+db()->prepare('INSERT INTO groups (slug, name, theme) VALUES (?, ?, ?)')->execute(['gb', 'Grupo B', 'padrao']);
+$groupB = (int) db()->query("SELECT id FROM groups WHERE slug = 'gb'")->fetchColumn();
+$linkGroup = db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?');
+foreach ($newest as $id) {
+    $linkGroup->execute([$groupB, $id]);
+    ListingSearch::sync($id);
+}
+$groupIds = $bboxEqualsJoin($groupB, null, null, 0.0, 'bbox group');
+t_ok(!in_array($oldest[0], $groupIds, true), 'bbox group drops a house outside the group');
 
 $buziosIds = [];
 foreach (['Búzios', 'Búzios, RJ', $officialBuzios] as $name) {
@@ -370,7 +463,12 @@ t_eq($buziosIds['Búzios'], $buziosIds[$officialBuzios], 'Búzios and the offici
 
 $pageCity = ['localidade' => 'Gramado, RS'];
 $pageWalk = walk($pageCity);
-t_eq(legacy_ids($pageCity, null), $pageWalk['ids'], 'Gramado walk');
+$sameIds(legacy_ids($pageCity, null), $pageWalk['ids'], 'Gramado walk');
+$tieDesc = $pageWalk['ids'];
+rsort($tieDesc);
+t_eq($tieDesc, $pageWalk['ids'], 'relevance ties break by newest id');
+t_eq($pageWalk['ids'], walk($pageCity + ['sort' => 'rating'])['ids'], 'rating walk matches relevance while only the rating factor exists');
+t_eq($pageWalk['ids'], walk($pageCity + ['sort' => 'weekly'])['ids'], 'unknown sort falls back to relevance');
 t_eq(45, count($pageWalk['ids']), 'Mostrar mais walks 20 + 20 + 5');
 t_eq(45, SearchService::search(SearchQuery::fromRequest($pageCity), null)['total_aprox'], 'total_aprox is the capped SQL count');
 $pageFirst = SearchService::search(SearchQuery::fromRequest($pageCity), null);
@@ -390,19 +488,23 @@ t_eq(0, $datesOnly['iteracoes'], 'dates without a place run no listing query');
 
 echo "cursor and request log\n";
 $cursorHash = SearchQuery::fromRequest(['localidade' => 'Gramado, RS'])->filtersHash();
-t_eq(2147483647, SearchQuery::lastId(SearchQuery::cursor(2147483647, $cursorHash), $cursorHash), 'int4 max last_id is accepted');
-$cursorError = static function (string $cursor) use ($cursorHash): string {
+$cursorOf = static fn (int $key, int $id, string $sort = 'relevance'): string => SearchQuery::cursor($key, $id, $sort, $cursorHash);
+t_eq(2147483647, SearchQuery::position($cursorOf(9000, 2147483647), $cursorHash, 'relevance')['id'], 'int4 max id is accepted');
+$cursorError = static function (string $cursor, string $sort = 'relevance') use ($cursorHash): string {
     try {
-        SearchQuery::lastId($cursor, $cursorHash);
+        SearchQuery::position($cursor, $cursorHash, $sort);
     } catch (InvalidSearchCursor $e) {
         return $e::class;
     }
     return '';
 };
-$tamperedError = $cursorError(SearchQuery::cursor(1, $cursorHash) . 'x');
+$v1 = rtrim(strtr(base64_encode((string) json_encode(['v' => 1, 'sort' => 'id', 'last_id' => 1, 'filters_hash' => $cursorHash])), '+/', '-_'), '=');
+$tamperedError = $cursorError($cursorOf(9000, 1) . 'x');
 t_eq(InvalidSearchCursor::class, $tamperedError, 'tampered cursor is InvalidSearchCursor');
-t_eq($tamperedError, $cursorError(SearchQuery::cursor(2147483648, $cursorHash)), 'last_id 2147483648 is rejected like a tampered cursor');
-t_eq($tamperedError, $cursorError(SearchQuery::cursor(9999999999, $cursorHash)), 'a much larger last_id is rejected like a tampered cursor');
+t_eq($tamperedError, $cursorError($v1), 'cursor v1 is rejected');
+t_eq($tamperedError, $cursorError($cursorOf(9000, 1), 'rating'), 'changed sort is rejected');
+t_eq($tamperedError, $cursorError($cursorOf(9000, 2147483648)), 'id above int4 max is rejected');
+t_eq($tamperedError, $cursorError($cursorOf(9000, 9999999999)), 'a much larger id is rejected');
 $base = t_server();
 $pageUrl = $base . '/api/busca?localidade=' . rawurlencode('Gramado, RS');
 $open = t_http('GET', $pageUrl);
@@ -412,7 +514,7 @@ $cursor = (string) ($openBody['next_cursor'] ?? '');
 t_ok($cursor !== '', 'HTTP page has next_cursor');
 $tamperedHttp = t_http('GET', $pageUrl . '&cursor=' . rawurlencode($cursor . 'x'));
 t_eq(400, $tamperedHttp['status'], 'tampered cursor is 400');
-$overflowHttp = t_http('GET', $pageUrl . '&cursor=' . rawurlencode(SearchQuery::cursor(2147483648, $cursorHash)));
+$overflowHttp = t_http('GET', $pageUrl . '&cursor=' . rawurlencode($cursorOf(9000, 2147483648)));
 t_eq(400, $overflowHttp['status'], 'last_id above int4 max is 400');
 t_eq($tamperedHttp['body'], $overflowHttp['body'], 'overflow cursor returns the same error as a tampered cursor');
 t_eq(400, t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Florianópolis, SC') . '&cursor=' . rawurlencode($cursor))['status'], 'cursor with different filters is 400');
@@ -425,7 +527,7 @@ foreach (['1e8', '1e18', '1e999'] as $raw) {
     $blocked = SearchService::search(SearchQuery::fromRequest(['localidade' => 'Gramado, RS', 'score_min' => $raw]), null);
     t_eq([], $blocked['items'], "score_min $raw returns no items");
     t_eq(0, $blocked['iteracoes'], "score_min $raw runs no listing query");
-    t_eq(null, $blocked['total_aprox'], "score_min $raw does not run the count query");
+    t_eq(0, $blocked['total_aprox'], "score_min $raw total_aprox matches an empty page");
     $huge = t_http('GET', $base . '/api/busca?localidade=' . rawurlencode('Gramado, RS') . '&score_min=' . rawurlencode($raw));
     $hugeBody = json_decode($huge['body'], true);
     t_eq(200, $huge['status'], "score_min $raw is 200");
@@ -446,5 +548,31 @@ $bad = t_http('GET', $pageUrl . '&cursor=' . rawurlencode('nao-e-cursor'));
 t_eq(400, $bad['status'], 'garbage cursor is 400');
 $badLog = log_entry(CL_ROOT . '/storage/logs/api', $bad['headers']);
 t_eq(['iteracoes' => 0, 'linhas_lidas' => 0], $badLog['busca'] ?? null, '400 still records the counter');
+$sortHttp = t_http('GET', $pageUrl . '&sort=rating&cursor=' . rawurlencode($cursor));
+t_eq(400, $sortHttp['status'], 'changed sort on the HTTP cursor is 400');
+
+echo "statement timeout\n";
+$holder = new PDO((string) getenv('DB_DSN'), getenv('DB_USER') ?: null, getenv('DB_PASSWORD') ?: null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$holder->beginTransaction();
+$holder->exec('LOCK TABLE listing_search IN ACCESS EXCLUSIVE MODE');
+$logFile = tempnam(sys_get_temp_dir(), 'cl-search-log');
+$prevLog = ini_get('error_log');
+ini_set('error_log', $logFile);
+$timedOut = false;
+try {
+    SearchService::search(SearchQuery::fromRequest(['localidade' => 'Gramado, RS']), null);
+} catch (SearchTimeout) {
+    $timedOut = true;
+}
+ini_set('error_log', (string) $prevLog);
+$slow = t_http('GET', $pageUrl);
+$holder->rollBack();
+t_ok($timedOut, 'statement timeout is thrown');
+t_eq(1, substr_count((string) file_get_contents($logFile), 'search statement timeout'), 'statement timeout logs one line');
+@unlink($logFile);
+$slowBody = json_decode($slow['body'], true);
+t_eq(503, $slow['status'], 'statement timeout is 503');
+t_eq(true, $slowBody['retry'] ?? null, 'statement timeout asks for a retry');
+t_ok(isset($slowBody['error']) && is_string($slowBody['error']), 'statement timeout has an error');
 
 t_done();
