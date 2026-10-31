@@ -76,7 +76,7 @@ final class PhotoStorage
             }
             @chmod($dir . '/' . $original, 0600);
             $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $existing === 0 && $saved === 0 ? 1 : 0, $existing + $saved);
-            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0), $queue, $queueDown);
+            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0), $original, $queue, $queueDown);
             $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => $queued ? 'processing' : 'failed', 'capa' => (int) ($row['is_primary'] ?? 0)];
             $saved++;
         }
@@ -101,7 +101,7 @@ final class PhotoStorage
         }
         @chmod($dir . '/' . $original, 0600);
         $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $primary, $sort);
-        if (!self::enqueueOrFail((int) ($row['id'] ?? 0))) {
+        if (!self::enqueueOrFail((int) ($row['id'] ?? 0), $original)) {
             $row['status'] = 'failed';
         }
         return $row;
@@ -113,10 +113,10 @@ final class PhotoStorage
      * batch are marked failed and do not connect again. A queue error (e.g. Valkey down) marks the photo
      * failed instead of leaving it in processing with no job; the error is logged without personal data.
      */
-    public static function enqueueOrFail(int $photoId, ?ImageQueue &$queue = null, bool &$queueDown = false): bool
+    public static function enqueueOrFail(int $photoId, string $original, ?ImageQueue &$queue = null, bool &$queueDown = false): bool
     {
         if ($queueDown) {
-            self::markEnqueueFailed($photoId);
+            self::failEnqueue($photoId, $original);
             return false;
         }
         try {
@@ -126,16 +126,16 @@ final class PhotoStorage
         } catch (Throwable $e) {
             $queueDown = true;
             error_log('image_queue: push failed for photo #' . $photoId . ' (' . $e::class . ')');
-            self::markEnqueueFailed($photoId);
+            self::failEnqueue($photoId, $original);
             return false;
         }
     }
 
-    /** Photo left processing with no job (queue down, or skipped after an earlier failure in the batch). */
-    private static function markEnqueueFailed(int $photoId): void
+    /** Same close as an image-worker give-up: delete the original and mark the row failed. */
+    private static function failEnqueue(int $photoId, string $original): void
     {
-        db()->prepare("UPDATE photos SET status = 'failed', fail_reason = ? WHERE id = ? AND status = 'processing'")
-            ->execute([PhotoFail::QUEUE, $photoId]);
+        self::deleteOriginal($original);
+        PhotoRepository::markFailed($photoId, PhotoFail::QUEUE);
     }
 
     /**

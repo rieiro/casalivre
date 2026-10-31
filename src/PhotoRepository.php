@@ -63,9 +63,12 @@ final class PhotoRepository
         return $stmt->rowCount() === 1;
     }
 
+    /** Assignment shared by markFailed and the stuck sweep. */
+    private const MARK_FAILED = "status = 'failed', fail_reason = ?, original = NULL";
+
     public static function markFailed(int $photoId, string $reason): void
     {
-        db()->prepare("UPDATE photos SET status = 'failed', fail_reason = ?, original = NULL WHERE id = ? AND status = 'processing'")
+        db()->prepare('UPDATE photos SET ' . self::MARK_FAILED . " WHERE id = ? AND status = 'processing'")
             ->execute([$reason, $photoId]);
     }
 
@@ -83,7 +86,7 @@ final class PhotoRepository
                 WHERE status = 'processing' AND created_at < now() - (? * interval '1 second')
             )
             UPDATE photos AS p
-            SET status = 'failed', fail_reason = ?, original = NULL
+            SET " . self::MARK_FAILED . "
             FROM stuck
             WHERE p.id = stuck.id
             RETURNING p.id, p.property_id, stuck.original"

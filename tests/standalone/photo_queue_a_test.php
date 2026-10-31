@@ -35,37 +35,6 @@ $photo = static function (string $status, string $original, string $age) use ($h
     return (int) $st->fetchColumn();
 };
 
-final class EmptyMailQueue implements MailQueue
-{
-    public function push(string $type, string $recipient): bool
-    {
-        return true;
-    }
-
-    public function reserve(int $limit): array
-    {
-        return [];
-    }
-
-    public function ack(int $id): void
-    {
-    }
-
-    public function fail(int $id, string $error = ''): bool
-    {
-        return false;
-    }
-
-    public function giveUp(int $id, string $error = 'stale'): void
-    {
-    }
-
-    public function purge(int $days): int
-    {
-        return 0;
-    }
-}
-
 echo "stuck sweep\n";
 $oldName = PhotoStorage::randomId() . '.jpg';
 $freshName = PhotoStorage::randomId() . '.jpg';
@@ -79,7 +48,7 @@ $readyId = $photo('ready', $readyName, "now() - interval '2 hours'");
 $log = tempnam(sys_get_temp_dir(), 'qa-log');
 $prevLog = ini_get('error_log');
 ini_set('error_log', $log);
-QueueWorkerLoop::tick(new EmptyMailQueue(), null, $tmp);
+QueueWorkerLoop::tick(new DbMailQueue(db()), null, $tmp);
 ini_set('error_log', (string) $prevLog);
 $old = PhotoRepository::findById($oldId);
 $fresh = PhotoRepository::findById($freshId);

@@ -79,18 +79,19 @@ final class QueueWorker
                         throw $e;
                     }
                     $report['falhas']++;
-                    $detail = $e instanceof PermanentJobFailure ? $e::class . ' ' . $e->reason : $e::class;
                     if ($e instanceof PermanentJobFailure) {
+                        $detail = $e::class . ' ' . $e->reason;
                         $queue->giveUp((int) $job['id'], $detail);
+                        $why = '(' . $detail . ')';
+                    } elseif ($queue->fail($job['id'], $e::class)) {
+                        $why = 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $e::class . ')';
+                    } else {
+                        continue;
                     }
-                    $gaveUp = $e instanceof PermanentJobFailure || $queue->fail($job['id'], $detail);
-                    if ($gaveUp) {
-                        $report['desistencias']++;
-                        $why = $e instanceof PermanentJobFailure ? '(' . $detail . ')' : 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $detail . ')';
-                        error_log($label . ' #' . $job['id'] . ' desistido ' . $why);
-                        if ($onGiveUp !== null) {
-                            $onGiveUp($job, $e);
-                        }
+                    $report['desistencias']++;
+                    error_log($label . ' #' . $job['id'] . ' desistido ' . $why);
+                    if ($onGiveUp !== null) {
+                        $onGiveUp($job, $e);
                     }
                 }
             }

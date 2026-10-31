@@ -111,7 +111,6 @@ final class QueueWorkerLoop
             ActivityLog::record(ActivityLog::PHOTO_STUCK, [
                 'imovel_id' => $row['property_id'],
                 'foto_id' => $row['id'],
-                'motivo' => PhotoFail::STUCK,
             ]);
         }
     }
