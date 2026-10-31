@@ -411,11 +411,11 @@ t_ok(!in_array($emptyStatus, $homeIds, true), 'home does not list empty status')
 t_ok(in_array($pool, $homeIds, true), 'home still lists an active house of the group');
 
 echo "bbox with dates, score and group\n";
-$activeIds = static function (string $direction, int $n) use ($floripaId): array {
-    $st = db()->prepare('SELECT id FROM properties WHERE city_place_id = ? AND status = ? ORDER BY id ' . ($direction === 'ASC' ? 'ASC' : 'DESC') . ' LIMIT ' . $n);
-    $st->execute([$floripaId, 'active']);
-    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
-};
+$st = db()->prepare('SELECT id FROM properties WHERE city_place_id = ? AND status = ? ORDER BY id ASC');
+$st->execute([$floripaId, 'active']);
+$byId = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+$oldest = array_slice($byId, 0, 25);
+$newest = array_slice(array_reverse($byId), 0, 25);
 $bboxEqualsJoin = static function (?int $groupId, ?string $checkin, ?string $checkout, float $scoreMin, string $label) use ($floripa, $cityBbox, $joinIds, $itemIds): array {
     $sort = SearchQuery::SORT_RELEVANCE;
     $first = SearchSql::batch($floripa, $groupId, 0, $cityBbox, $checkin, $checkout, null, 20, $scoreMin, $sort);
@@ -432,29 +432,27 @@ $bboxEqualsJoin = static function (?int $groupId, ?string $checkin, ?string $che
     t_ok($second !== [], $label . ' keyset second page has rows');
     return $ids;
 };
-$blockedTop = $activeIds('DESC', 25);
-foreach ($blockedTop as $id) {
+foreach ($newest as $id) {
     $day($id, $in, 1);
 }
 $dateIds = $bboxEqualsJoin(null, $in, $out, 0.0, 'bbox dates');
-t_ok(!in_array($blockedTop[0], $dateIds, true), 'bbox dates drops a blocked house');
-$rated = $activeIds('ASC', 25);
+t_ok(!in_array($newest[0], $dateIds, true), 'bbox dates drops a blocked house');
 $rate = db()->prepare('UPDATE properties SET rating_sum = 10, rating_count = 2 WHERE id = ?');
-foreach ($rated as $id) {
+foreach ($oldest as $id) {
     $rate->execute([$id]);
     ListingSearch::sync($id);
 }
 $scoreIds = $bboxEqualsJoin(null, null, null, 4.5, 'bbox score');
-t_ok(!in_array($blockedTop[0], $scoreIds, true), 'bbox score drops an unrated house');
+t_ok(!in_array($newest[0], $scoreIds, true), 'bbox score drops an unrated house');
 db()->prepare('INSERT INTO groups (slug, name, theme) VALUES (?, ?, ?)')->execute(['gb', 'Grupo B', 'padrao']);
 $groupB = (int) db()->query("SELECT id FROM groups WHERE slug = 'gb'")->fetchColumn();
 $linkGroup = db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?');
-foreach ($blockedTop as $id) {
+foreach ($newest as $id) {
     $linkGroup->execute([$groupB, $id]);
     ListingSearch::sync($id);
 }
 $groupIds = $bboxEqualsJoin($groupB, null, null, 0.0, 'bbox group');
-t_ok(!in_array($rated[0], $groupIds, true), 'bbox group drops a house outside the group');
+t_ok(!in_array($oldest[0], $groupIds, true), 'bbox group drops a house outside the group');
 
 $buziosIds = [];
 foreach (['Búzios', 'Búzios, RJ', $officialBuzios] as $name) {
