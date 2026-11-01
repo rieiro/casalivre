@@ -60,8 +60,7 @@ t_ok(is_file($tmp . '/' . $freshName), 'fresh original kept');
 t_eq('ready', $ready['status'], 'ready row untouched');
 t_ok(is_file($tmp . '/' . $readyName), 'ready file kept');
 t_ok(str_contains((string) file_get_contents($log), 'ALERT') && str_contains((string) file_get_contents($log), PhotoFail::STUCK), 'stuck sweep logs an ALERT');
-$logged = (int) db()->query('SELECT COUNT(*) FROM audit.audit_log WHERE code = ' . ActivityLog::PHOTO_STUCK)->fetchColumn();
-t_eq(1, $logged, 'stuck sweep writes PHOTO_STUCK');
+t_eq(1, t_log_count(ActivityLog::PHOTO_STUCK), 'stuck sweep writes PHOTO_STUCK');
 @unlink($log);
 
 echo "permanent reasons\n";

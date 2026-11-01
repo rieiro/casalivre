@@ -128,16 +128,13 @@ file_put_contents(PhotoStorage::$originals . '/' . $badOrig, 'lixo');
 ImageQueues::make()->push((int) $bad['id']);
 $rep = ImageWorker::run(ImageQueues::make(), $lock);
 t_eq(1, $rep['falhas'] ?? null, '1ª tentativa falha');
-$q = db()->query('SELECT * FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetchAll(PDO::FETCH_ASSOC)[0];
-$delay = strtotime($q['next_attempt_at'] . ' UTC') - time();
-t_ok($q['status'] === 'pending' && $delay > 50 && $delay <= 60, 'reagendada com o backoff da fila de e-mail (60 s)');
-for ($i = 0; $i < Queues::MAX_ATTEMPTS; $i++) {
-    db()->exec("UPDATE image_queue SET next_attempt_at = '2000-01-01 00:00:00' WHERE status = 'pending'");
-    ImageWorker::run(ImageQueues::make(), $lock);
-}
-t_eq('failed', PhotoRepository::findById((int) $bad['id'])['status'], 'após N tentativas: foto failed');
+t_eq(1, $rep['desistencias'] ?? null, 'arquivo inválido desiste na primeira');
+$q = db()->query('SELECT status, attempts, last_error FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetch(PDO::FETCH_ASSOC);
+t_eq('failed', $q['status'], 'item da fila failed na primeira');
+t_eq(0, (int) $q['attempts'], 'falha permanente não conta tentativa');
+t_ok(str_contains((string) $q['last_error'], 'PermanentJobFailure') && str_contains((string) $q['last_error'], PhotoFail::CORRUPT), 'last_error traz a classe e o motivo');
+t_eq(['failed', PhotoFail::CORRUPT], [PhotoRepository::findById((int) $bad['id'])['status'], PhotoRepository::findById((int) $bad['id'])['fail_reason']], 'foto failed com o motivo corrupt');
 t_ok(!is_file(PhotoStorage::$originals . '/' . $badOrig), 'original apagado na desistência');
-t_eq('failed', db()->query('SELECT status FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetchColumn(), 'item da fila failed');
 
 echo "telas\n";
 $proc = PhotoRepository::insertProcessing($hid, PhotoStorage::randomId(), PhotoStorage::randomId() . '.jpg', 0, 11);
