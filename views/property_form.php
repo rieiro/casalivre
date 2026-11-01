@@ -194,12 +194,16 @@
                             <?php if ($photoStatus === 'processing'): ?>
                                 <span class="photo-wait" role="img" aria-label="<?= e(t('form.photo_processing')) ?>"><?= e(t('form.photo_processing')) ?></span>
                             <?php elseif ($photoStatus === 'failed'): ?>
-                                <span class="photo-wait is-failed" role="img" aria-label="<?= e(t('form.photo_failed')) ?>"><?= e(t('form.photo_failed')) ?></span>
+                                <?php $failText = photo_fail_text($photo['fail_reason']); ?>
+                                <span class="photo-wait is-failed" role="img" aria-label="<?= e($failText) ?>"><?= e($failText) ?></span>
                             <?php else: ?>
                                 <img src="<?= e(photo_url(photo_variant($photo['path'], 'thumb'))) ?>" alt="<?= e(t('form.photos')) ?>" loading="lazy">
                             <?php endif; ?>
                             <span class="tick" aria-hidden="true">✓</span>
                         </label>
+                        <?php if ($photoStatus === 'failed'): ?>
+                            <button class="danger" type="submit" data-photo-remove formaction="/imoveis/<?= e(property_ref($property)) ?>/fotos/<?= (int) $photo['id'] ?>/excluir"><?= e(t('form.photo_remove')) ?></button>
+                        <?php endif; ?>
                         <?php if (!empty($photo['is_primary'])): ?><span class="cover-badge"><?= e(t('form.cover_current')) ?></span><?php endif; ?>
                     </div>
                 <?php endforeach; ?>

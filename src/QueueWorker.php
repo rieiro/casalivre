@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/JobQueue.php';
 require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/PermanentJobFailure.php';
 
 /**
  * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
- * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. Erro de conexão com o banco (Db::isConnectionError)
+ * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. PermanentJobFailure desiste na primeira
+ * tentativa. Erro de conexão com o banco (Db::isConnectionError)
  * ou com o Valkey (RedisException) não conta como falha do item: o lote para e a exceção sobe (o worker longo reconecta
  * no Valkey, ou sai para o runit reiniciar no caso do banco). Uma reserva órfã reaproveitada já contou uma tentativa;
  * em MAX_ATTEMPTS o item é desistido sem nova entrega.
@@ -77,12 +79,19 @@ final class QueueWorker
                         throw $e;
                     }
                     $report['falhas']++;
-                    if ($queue->fail($job['id'], $e::class)) {
-                        $report['desistencias']++;
-                        error_log($label . ' #' . $job['id'] . ' desistido após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $e::class . ')');
-                        if ($onGiveUp !== null) {
-                            $onGiveUp($job, $e);
-                        }
+                    if ($e instanceof PermanentJobFailure) {
+                        $detail = $e::class . ' ' . $e->reason;
+                        $queue->giveUp((int) $job['id'], $detail);
+                        $why = '(' . $detail . ')';
+                    } elseif ($queue->fail($job['id'], $e::class)) {
+                        $why = 'após ' . Queues::MAX_ATTEMPTS . ' tentativas (' . $e::class . ')';
+                    } else {
+                        continue;
+                    }
+                    $report['desistencias']++;
+                    error_log($label . ' #' . $job['id'] . ' desistido ' . $why);
+                    if ($onGiveUp !== null) {
+                        $onGiveUp($job, $e);
                     }
                 }
             }

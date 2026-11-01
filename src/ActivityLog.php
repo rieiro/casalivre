@@ -70,6 +70,8 @@ final class ActivityLog
     public const ACTIVITY_LOG_READ = 47;
     /** IpRateLimiter could not reach Valkey (Segurança #160): own code, not INTERNAL_ERROR. 47 is ACTIVITY_LOG_READ. */
     public const VALKEY_UNAVAILABLE = 48;
+    /** A processing photo older than the worker limit was discarded (Queue-A). Admin, like PHOTO_DELETE. */
+    public const PHOTO_STUCK = 49;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -120,6 +122,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_UNVERIFIED => 'Domínio do grupo perdeu a verificação (reverificação DNS TXT)',
         self::ACTIVITY_LOG_READ => 'Leitura do log de atividades (ops, função DEFINER)',
         self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
+        self::PHOTO_STUCK => 'Foto em processamento descartada (tempo esgotado)',
     ];
 
     public const ADMIN = 'admin';
@@ -150,6 +153,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFY_START => self::ADMIN, self::GROUP_DOMAIN_VERIFIED => self::SECURITY,
         self::GROUP_DOMAIN_UNVERIFIED => self::SECURITY, self::ACTIVITY_LOG_READ => self::ADMIN,
         self::VALKEY_UNAVAILABLE => self::SECURITY,
+        self::PHOTO_STUCK => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -456,6 +460,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_VERIFIED => ['grupo', 'dominio'],
         self::GROUP_DOMAIN_UNVERIFIED => ['grupo', 'dominio', 'falhas', 'motivo'],
         self::VALKEY_UNAVAILABLE => ['rota', 'modo', 'excecao'],
+        self::PHOTO_STUCK => ['foto_id'],
         self::CALENDAR_UPDATE => ['inicio', 'fim'],
         self::CALENDAR_IMPORT => ['inicio', 'fim', 'novas'],
         self::CALENDAR_EXPORT => [],

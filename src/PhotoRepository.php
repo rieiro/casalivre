@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/ReturningWrite.php';
+require_once __DIR__ . '/PhotoFail.php';
 
 final class PhotoRepository
 {
+    /** Processing rows older than this are discarded by the queue worker. */
+    public const STUCK_AFTER_SECONDS = 30 * 60;
     public static function list(int $propertyId): array
     {
         $stmt = db()->prepare('SELECT * FROM photos WHERE property_id = ? ORDER BY is_primary DESC, sort_order ASC, id ASC');
@@ -60,9 +63,36 @@ final class PhotoRepository
         return $stmt->rowCount() === 1;
     }
 
-    public static function markFailed(int $photoId): void
+    /** Assignment shared by markFailed and the stuck sweep. */
+    private const MARK_FAILED = "status = 'failed', fail_reason = ?, original = NULL";
+
+    public static function markFailed(int $photoId, string $reason): void
     {
-        db()->prepare("UPDATE photos SET status = 'failed', original = NULL WHERE id = ? AND status = 'processing'")->execute([$photoId]);
+        db()->prepare('UPDATE photos SET ' . self::MARK_FAILED . " WHERE id = ? AND status = 'processing'")
+            ->execute([$reason, $photoId]);
+    }
+
+    /**
+     * One statement: processing rows older than STUCK_AFTER_SECONDS become failed.
+     * stuck.original is the name from before the column is cleared (PostgreSQL 16 RETURNING is the new row).
+     *
+     * @return list<array{id:int|string, original:?string, property_id:int|string}>
+     */
+    public static function discardStuck(): array
+    {
+        $stmt = db()->prepare(
+            "WITH stuck AS (
+                SELECT id, original, property_id FROM photos
+                WHERE status = 'processing' AND created_at < now() - (? * interval '1 second')
+            )
+            UPDATE photos AS p
+            SET " . self::MARK_FAILED . "
+            FROM stuck
+            WHERE p.id = stuck.id
+            RETURNING p.id, p.property_id, stuck.original"
+        );
+        $stmt->execute([self::STUCK_AFTER_SECONDS, PhotoFail::STUCK]);
+        return $stmt->fetchAll();
     }
 
     public static function find(int $propertyId, int $photoId): ?array

@@ -5,6 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/MailWorker.php';
 require_once __DIR__ . '/ImageWorker.php';
 require_once __DIR__ . '/WorkerCaches.php';
+require_once __DIR__ . '/PhotoRepository.php';
+require_once __DIR__ . '/PhotoStorage.php';
+require_once __DIR__ . '/PhotoFail.php';
+require_once __DIR__ . '/ActivityLog.php';
 
 /**
  * One iteration of the long-running scripts/queue-worker.php: one mail batch and, when $image is given, one image batch.
@@ -23,12 +27,15 @@ final class QueueWorkerLoop
     public const DB_LOST_SLEEP_MAX = 30;
     /** Pause (s) between reconnects while Valkey is down. The worker stays up. */
     public const VALKEY_RETRY_SECONDS = 1;
+    /** How often tick() discards photos stuck in processing. The age limit is PhotoRepository::STUCK_AFTER_SECONDS. */
+    public const STUCK_SWEEP_SECONDS = 60;
     /** Test hooks: replace sleep() and STDERR. */
     public static ?Closure $sleep = null;
     /** @var resource|null */
     public static $stderr = null;
     /** True after the first ALERT of the current Valkey outage, so the line is logged once. */
     private static bool $valkeyDown = false;
+    private static int $stuckSweptAt = 0;
 
     /**
      * scripts/queue-worker.php on a lost DB connection, before exit(1): one alertable line (ALERT, as log-retention)
@@ -83,11 +90,29 @@ final class QueueWorkerLoop
     {
         Db::ping();
         WorkerCaches::refreshIfChanged();
+        $now = time();
+        if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
+            self::$stuckSweptAt = $now;
+            self::sweepStuck();
+        }
         $reports = ['mail' => MailWorker::run($mail, $storageDir . '/mail-worker.lock')];
         if ($image !== null) {
             $reports['image'] = ImageWorker::run($image, $storageDir . '/image-worker.lock');
         }
         return $reports;
+    }
+
+    /** Mark processing photos older than the limit as failed, delete the original, and log each one. */
+    private static function sweepStuck(): void
+    {
+        foreach (PhotoRepository::discardStuck() as $row) {
+            PhotoStorage::deleteOriginal($row['original']);
+            self::alert('stuck photo #' . $row['id'] . ' discarded (' . PhotoFail::STUCK . ')');
+            ActivityLog::record(ActivityLog::PHOTO_STUCK, [
+                'imovel_id' => $row['property_id'],
+                'foto_id' => $row['id'],
+            ]);
+        }
     }
 
     /** One ALERT line on STDERR (runit) and, when error_log is set, in the PHP error log. Class names only; no message. */

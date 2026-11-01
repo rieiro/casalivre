@@ -6,6 +6,8 @@ require_once __DIR__ . '/ImageQueue.php';
 require_once __DIR__ . '/QueueWorker.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/PhotoStorage.php';
+require_once __DIR__ . '/PermanentJobFailure.php';
+require_once __DIR__ . '/PhotoFail.php';
 
 /**
  * Worker de imagens (cron): para cada foto em processamento, decodifica o original e grava de novo a
@@ -17,8 +19,9 @@ require_once __DIR__ . '/PhotoStorage.php';
  *  - full  1920 px: tela cheia em monitores Full HD / celulares de alta densidade.
  *
  * Nunca amplia (imagem menor que a largura mantém o tamanho original). Depois apaga o original e marca
- * a foto como pronta; após Queues::MAX_ATTEMPTS falhas (backoff da fila de e-mail), marca como falhou
- * e apaga o original.
+ * a foto como pronta. Um arquivo inválido, grande demais, corrompido ou sem original falha na primeira
+ * tentativa (PermanentJobFailure). As outras falhas seguem o backoff e, em Queues::MAX_ATTEMPTS, marcam
+ * a foto como falhou e apagam o original.
  */
 final class ImageWorker
 {
@@ -38,11 +41,12 @@ final class ImageWorker
             $batch,
             self::RETENTION_DAYS,
             $maxSeconds,
-            static function (array $job): void {
+            static function (array $job, Throwable $e): void {
                 $photo = PhotoRepository::findById((int) $job['photo_id']);
                 if ($photo) {
-                    PhotoStorage::deleteOriginal((string) ($photo['original'] ?? ''));
-                    PhotoRepository::markFailed((int) $photo['id']);
+                    PhotoStorage::deleteOriginal($photo['original']);
+                    $reason = $e instanceof PermanentJobFailure ? $e->reason : PhotoFail::RETRIES;
+                    PhotoRepository::markFailed((int) $photo['id'], $reason);
                 }
             },
             'image_queue: foto'
@@ -58,14 +62,17 @@ final class ImageWorker
         }
         $source = PhotoStorage::originalFile((string) ($photo['original'] ?? ''));
         if ($source === null || !is_file($source)) {
-            throw new RuntimeException('Original ausente.');
+            throw new PermanentJobFailure(PhotoFail::MISSING_ORIGINAL);
         }
         $info = @getimagesize($source);
-        if ($info === false || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) {
-            throw new RuntimeException('Imagem inválida.');
+        if ($info === false) {
+            throw new PermanentJobFailure(PhotoFail::CORRUPT);
+        }
+        if (!in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) {
+            throw new PermanentJobFailure(PhotoFail::INVALID_TYPE);
         }
         if ($info[0] < 1 || $info[1] < 1 || $info[0] * $info[1] > self::MAX_PIXELS) {
-            throw new RuntimeException('Imagem grande demais.');
+            throw new PermanentJobFailure(PhotoFail::TOO_MANY_PIXELS);
         }
         $img = match ($info[2]) {
             IMAGETYPE_JPEG => @imagecreatefromjpeg($source),
@@ -73,7 +80,7 @@ final class ImageWorker
             IMAGETYPE_WEBP => @imagecreatefromwebp($source),
         };
         if (!$img instanceof GdImage) {
-            throw new RuntimeException('Falha ao decodificar.');
+            throw new PermanentJobFailure(PhotoFail::CORRUPT);
         }
         if (!imageistruecolor($img)) {
             imagepalettetotruecolor($img);
@@ -93,7 +100,7 @@ final class ImageWorker
         }
         imagedestroy($img);
         $ready = PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
-        PhotoStorage::deleteOriginal((string) $photo['original']);
+        PhotoStorage::deleteOriginal($photo['original']);
         if (!$ready) {
             // Removida/inativada durante o processamento: não deixa WebP órfão no public/.
             foreach ($written as $f) {
