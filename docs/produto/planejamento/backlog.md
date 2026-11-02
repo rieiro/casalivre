@@ -554,7 +554,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   4. A devolução é uma linha de reembolso na reserva; a lógica de prazo, comprovante e disputa roda uma vez para as duas.
   5. Prazo, janela de contestação e valor da caução são configurações (valor por imóvel, padrão por nó, máximo da plataforma); "sem caução" é aceito.
 - **Pergunta ao Rafael:** o Negócios propõe tornar a janela de aviso de dano uma configuração com padrão de 7 dias (hoje 48 h, decidido pelo Produto na spec-00), com evidência de uma lista ou foto de check-out do faxineiro ou franqueado. Muda uma decisão já escrita; fica pendente até a resposta.
-- **Prioridade:** Should, antes do piloto (edição pequena das spec-00, spec-06 e spec-09). RICE 12,8 (mantido). O Jurídico confirma o prazo padrão. Fonte: competitors.md G41 (`/workspace/produto/competitors.md`, 31/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, depósito de segurança](https://www.airbnb.com/help/article/140), [Vrbo, caução](https://help.vrbo.com/articles/How-do-I-cancel-a-reservation).
+- **Prioridade:** Should, antes do piloto (edição pequena das spec-00, spec-06 e spec-09). RICE 12,8 (mantido). O Jurídico confirma o prazo padrão. Fonte: competitors.md G41 (`/workspace/produto/competitors.md`, 31/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, depósito de segurança](https://www.airbnb.com/help/article/140), [Vrbo, caução reembolsável](https://help.vrbo.com/articles/About-refundable-damage-deposits).
 
 ### G42 — Teto do valor retido por dano (Should, com a G41)
 - **Problema:** a spec-06 §3d pede um "valor pedido" livre, então o anfitrião poderia pedir mais que a caução retida, e nada diz o que acontece com dano acima da caução, em casa sem caução, ou com um segundo registro de dano.
@@ -578,7 +578,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   5. Check-in em até 48 h sem instruções de acesso gera o alerta no Hoje do anfitrião e, sem resposta, escala para o nó e depois para o administrador; nenhum cancelamento é automático.
   6. A liberação usa a regra de 48 h da spec-08, sem um segundo temporizador.
   7. O nó oferece modelos do guia aos anúncios.
-- **Prioridade:** Should, na S7, com a G7. RICE 9,6 (o Negócios subiu de 4,8). Fonte: competitors.md G45 (`/workspace/produto/competitors.md`, 02/11), revisão do Negócios. Referências: [Airbnb, guia de chegada](https://www.airbnb.com/help/article/1926), [Vrbo, guia de boas-vindas](https://help.vrbo.com/articles/what-is-a-welcome-guide).
+- **Prioridade:** Should, na S7, com a G7. RICE 9,6 (o Negócios subiu de 4,8). Fonte: competitors.md G45 (`/workspace/produto/competitors.md`, 02/11), revisão do Negócios. Referências: [Airbnb, guia de chegada](https://www.airbnb.com/help/article/1926), [Vrbo, guia de boas-vindas](https://help.vrbo.com/articles/What-is-the-welcome-guide).
 
 ### G46 — Instruções e lembrete de check-out (Could, com a G45 se for barato)
 - **Problema:** o hóspede só tem o horário das 11h; devolução de chave, trancar a casa, lixo e gás são texto livre ou mensagem, e nada lembra o hóspede na véspera. Como o hóspede já paga o prestador de limpeza, tarefas que a limpeza cobre não devem ser pedidas nem usadas depois como dano contra a caução.
