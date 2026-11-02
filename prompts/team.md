@@ -35,6 +35,7 @@ Each bot's own prompt is just: Read prompts/team.md and your own prompts/roles/<
 - Bots keep running work where they run today. Don't move bot commands to Rafael's PC.
 - Files on the box: each bot works only in `/workspace/<bot-slug>/` (scratch, clones, envs, logs; slug in its role file). Shared assets only in `/workspace/shared/` (rootfs tarballs, ADR evidence), `/workspace/void` and `/workspace/adr`. Anything else is not yours to change. Existing `/workspace/casalivre-*` clones stay with their owner until moved.
 - Measurements, one owner each: Arquitetura sets targets; BD owns PG EXPLAIN and indexes; Teste runs per-PR load tests and `ops/dev-env` checks; Cori only measures on request from Rafael or the team.
+- Context and usage: start a fresh chat for each new PR or task (Gerente: each day). Keep a handoff note in `/workspace/<slug>/handoff.md` (PR number, head SHA, open blockers, decisions, who waits on whom; max 15 lines, rewritten, not appended) and start the next chat from it. Messages between bots are one line plus a link (`QA #N @sha7`, `ready-to-merge #N @sha7`), with no pasted diffs, logs or repeated verdicts; the verdict lives only in the PR comment. On re-review read only the diff since the last reviewed head. Prune memory entries older than about two weeks that decisions.md or backlog.md already hold. If a task is interrupted, resume from the handoff note and your saved notes; do not redo finished checks.
 
 
 ## PR protocol (labels are the state machine)
@@ -50,15 +51,15 @@ Related small fixes go in one PR so they get one review pass. Programador bundle
    - Docs-only: no labels; `ops/tools/check-doc-links.sh` passes, then Gerente merges.
 1b. Gerente calls Segurança, BD, UI or Arquitetura only when the diff touches their area (auth and input handling; schema and queries; views/UX; hot paths). Docs-only and test-tooling PRs need only Revisor and Teste (docs-only PRs keep no labels).
 2. Each reviewer checks PRs carrying its own label **when it is woken** (no constant polling), posts a verdict comment, and swaps `needs:<role>` for `approved:<role>` or `changes:<role>`.
-2b. Programador code PRs (`needs:review` from the Programador): Revisor reviews first. Other reviewers do not start until `approved:review` is on the current head (Revisor `VERDICT review @sha: APPROVED`); on CHANGES / `changes:review` they stay off until Revisor approves a later head. Docs-only PRs (no labels) are unchanged.
+2b. Programador code PRs (`needs:review` from the Programador): Revisor reviews first. Other reviewers do not start until `approved:review` is on the current head (Revisor `VERDICT review @sha: APPROVED`); on CHANGES / `changes:review` they stay off until Revisor approves a later head. Docs-only PRs (no labels) are unchanged. Teste (`needs:test`) starts last: only after every other reviewer the diff requires has posted APPROVED at the current head (Rafael via Gerente, 2026-10-30). The last of them messages Teste `QA #N @sha7`.
 3. The author fixes, pushes, and restores `needs:<role>` for each role that requested changes.
-3b. On a new head, the author messages only the reviewers whose label it restored; not Gerente. On a Programador code PR, message Revisor first; other reviewers only after Revisor APPROVED that head.
-4. When all required approvals are present, the last approver adds `ready-to-merge`. Before merging, Gerente checks one verdict comment per `approved:*` label.
+3b. On a new head, the author messages only the reviewers whose label it restored; not Gerente. On a Programador code PR, message Revisor first; other reviewers only after Revisor APPROVED that head, and Teste only after all of them approved it.
+4. Teste is normally the last approver and adds `ready-to-merge`; on a PR without `needs:test`, the last of the other reviewers adds it. Before merging, Gerente checks one verdict comment per `approved:*` label.
 4b. Reviewers report only via the verdict comment. The last approver sends Gerente one line: `ready-to-merge #N @sha7`.
 5. A conflict-free develop merge that doesn't touch reviewed files keeps the approvals; only Teste reruns (`needs:test`).
 6. Changes to `tests/standalone/snapshots/csp.txt` or `html-erro-*.txt` always need Seguranca.
 
-Chat only for new work, decisions and blockers; no FYI or acks; priority only when the recipient must act.
+Chat only for new work, decisions and blockers; no FYI or acks; priority only when the recipient must act. Every message is one line plus a link.
 
 ## Verdict format (PR comment, about 400 chars, 3 lines)
 ```
@@ -69,7 +70,7 @@ Followups: optional items (or "none")
 One line each for Blockers and Followups for every reviewer role (db and arch included), except the Revisor: its verdicts have only the Blockers line (no follow-ups, revisor.md). Evidence (logs, query plans, benchmarks) goes in a linked file, gist or collapsed `<details>` section, never in the verdict body. Gerente collects `Followups:` items into the backlog once per batch, (the Revisor has none: a finding is a blocker or isn't written; larger-than-PR items go to Gerente for the backlog). No recaps.
 
 ## Scripts and tests
-Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Only Teste runs the full suite: once per PR, on the head the Revisor approved, and once per batch on develop. On intermediate pushes Teste runs only the specs the change touches. Authors run only the tests their change touches; Arquitetura measures performance and does not re-run the suite.
+Report one summary line (e.g. `suite 67/67 OK`); full logs go to files. Only Teste runs the full suite: once per PR, on the head every required reviewer approved, and once per batch on develop. On intermediate pushes Teste runs only the specs the change touches. Authors run only the tests their change touches; Arquitetura measures performance and does not re-run the suite.
 
 ## Docs
 - `prompts/backlog.md`: development tracking. Every new item names its sprint or it is dropped; each sprint clears the items touching its code plus about 20% of its effort on the rest (decisions.md). `prompts/deploy.md`: production go-live items only.

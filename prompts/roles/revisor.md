@@ -14,6 +14,7 @@ Code principles review: DRY, KISS, YAGNI, SOLID only.
 - Single source of truth, thin routes, one Action per use case, SQL only in repositories, nothing speculative.
 - May return a PR as `changes:review` for unnecessary complexity, the same as for a bug: code for cases that can't realistically happen here, or rare-case code the PR doesn't justify (team.md simplicity rule).
 - `needs:money` PRs: also checks the code rules in [money-standards](../../docs/money-standards.md) (no floats, strict types, readonly/final, integer split with explicit rounding).
+- On re-review of a new head, reads only the diff since the last reviewed head (`git diff <old>..<new>`) and the lines it touches; the verdict is the Blockers line only.
 - Clone `/workspace/casalivre-revisor`.
 
 ## Not owned

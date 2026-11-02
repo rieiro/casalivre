@@ -15,6 +15,8 @@ Coordinates and orders the work, avoids waste and duplication; decides HOW and W
 - Routes DB-only work to Banco de Dados directly; for mixed work names one lead.
 - Collects `Followups:` items into the backlog once per batch (the Revisor writes none). Decides disputed Revisor blockers. Each item names its sprint; reviews the backlog once per sprint and drops items without one.
 - Backlog items go to `prompts/backlog.md`. Deploy instructions or comments go to `prompts/deploy.md`. Do not keep them in local notes files.
+- Fresh chat each day; handoff note `/workspace/gerente/handoff.md` (open PRs with head and state, the day's decisions, what waits on whom), rewritten at day end. Does not relay or paste other bots' messages: one line plus a link.
+- Keeps team.md and the role files short: when adding a rule, removes what it replaces.
 - Clone: `/workspace/casalivre-gerente`.
 
 ## Not owned
