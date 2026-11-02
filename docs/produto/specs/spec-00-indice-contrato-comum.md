@@ -83,9 +83,9 @@ stateDiagram-v2
 | De | Para | Gatilho | Quem | Condição | Prazo | Spec |
 |---|---|---|---|---|---|---|
 | — | Retida | Reserva com caução | sistema | valor definido no anúncio, no snapshot | — | 03, 09 |
-| Retida | Janela de danos | Check-out | sistema | — | 48 h | 06 §3d |
-| Janela de danos | Dano registrado | Registrar dano com fotos | proprietário, gestor | fotos obrigatórias; itens do Anexo I ou texto | até check-out + 48 h | 06 §3d |
-| Janela de danos | A devolver | Prazo vencido sem registro | sistema | — | 48 h | 06, 09 |
+| Retida | Janela de danos | Check-out | sistema | — | 7 dias (configurável) | 06 §3d |
+| Janela de danos | Dano registrado | Registrar dano com fotos | proprietário, gestor | fotos obrigatórias; itens do Anexo I ou texto | até check-out + 7 dias (configurável) | 06 §3d |
+| Janela de danos | A devolver | Prazo vencido sem registro | sistema | — | 7 dias (configurável) | 06, 09 |
 | Dano registrado | A devolver (parcial ou total) | Hóspede aceita | hóspede | — | — | 09 |
 | Dano registrado | em disputa | Hóspede contesta | hóspede | vai para 2.4 | — | 09 §6 |
 | A devolver | Devolvida | Anfitrião marca devolução | proprietário, gestor | — | — | 06 |
@@ -94,8 +94,8 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> Retida
   Retida --> JanelaDeDanos: check-out
-  JanelaDeDanos --> DanoRegistrado: registro com fotos (≤48h)
-  JanelaDeDanos --> ADevolver: 48h sem registro
+  JanelaDeDanos --> DanoRegistrado: registro com fotos (dentro da janela, 7 dias)
+  JanelaDeDanos --> ADevolver: janela de 7 dias sem registro
   DanoRegistrado --> ADevolver: hóspede aceita
   DanoRegistrado --> EmDisputa: hóspede contesta
   ADevolver --> Devolvida
@@ -240,7 +240,7 @@ stateDiagram-v2
 | Reverificação de regra municipal | campo "reverificar em"; Cabo Frio e Arraial do Cabo: 01/12/2026 | município | decidido (Produto) | 04 2b |
 | Inventário de móveis e utensílios | por cômodo, item + quantidade, foto opcional; obrigatório para publicar; Anexo I do contrato; no snapshot | imóvel | decidido (Produto; bloqueio do piloto) | 03, 09 |
 | Caução | opcional, valor do anfitrião | imóvel | decidido (Produto) | 03, 06, 09 |
-| Janela de danos | 48 h após o check-out, com fotos; depois a caução é devolvida | global | decidido (Produto) | 06, 09 |
+| Janela de danos | 7 dias após o check-out (configuração, padrão 7), com fotos e com a lista ou foto de check-out do faxineiro ou franqueado como evidência; depois a caução é devolvida | global | decidido (Rafael, 2026-11-02; antes 48 h, Produto) | 06, 09 |
 | Saída antecipada | diárias não usadas não voltam, salvo a política | imóvel (pela política) | decidido (Produto) | 03, 09 |
 | Escopo da limpeza | texto do termo de limpeza | imóvel | decidido (Produto) | 03 |
 | Aceite da reserva manual | link com OTP; estado "Aceite pendente"; reenvio | global | decidido (Produto) | 06, 09 |
