@@ -52,6 +52,11 @@ $coll = static fn (string $table, string $col): string => (string) $pdo->query("
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
 t_eq('30', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 30');
+t_eq(
+    "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
+    (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),
+    'idx_photos_processing'
+);
 $rating = [];
 foreach ($pdo->query("SELECT a.attname, a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE a.attrelid = 'properties'::regclass AND a.attname IN ('rating_sum', 'rating_count') AND NOT a.attisdropped") as $row) {
     $rating[$row['attname']] = $row;

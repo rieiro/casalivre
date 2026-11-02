@@ -63,6 +63,50 @@ t_ok(str_contains((string) file_get_contents($log), 'ALERT') && str_contains((st
 t_eq(1, t_log_count(ActivityLog::PHOTO_STUCK), 'stuck sweep writes PHOTO_STUCK');
 @unlink($log);
 
+echo "ready row wins the sweep lock\n";
+$raceName = PhotoStorage::randomId() . '.jpg';
+$raceId = $photo('processing', $raceName, "now() - interval '31 minutes'");
+$raceDir = sys_get_temp_dir() . '/cl-stuck-' . bin2hex(random_bytes(4));
+mkdir($raceDir);
+$held = $raceDir . '/held';
+$holdErr = $raceDir . '/err';
+file_put_contents($raceDir . '/hold.php', <<<'PHP'
+<?php
+declare(strict_types=1);
+require $argv[1] . '/src/Db.php';
+$pdo = db();
+$pdo->beginTransaction();
+$pdo->prepare("UPDATE photos SET status = 'ready' WHERE id = ?")->execute([(int) $argv[2]]);
+file_put_contents($argv[3], '1');
+usleep(1000000);
+$pdo->commit();
+PHP);
+$hold = proc_open(
+    [...t_php_cmd(), $raceDir . '/hold.php', CL_ROOT, (string) $raceId, $held],
+    [1 => ['file', '/dev/null', 'w'], 2 => ['file', $holdErr, 'w']],
+    $holdPipes,
+    CL_ROOT
+);
+$holdDeadline = microtime(true) + 10;
+while (!is_file($held) && microtime(true) < $holdDeadline) {
+    usleep(20000);
+}
+t_ok(is_file($held), 'other session holds the row (' . (string) @file_get_contents($holdErr) . ')');
+db()->exec("SET lock_timeout = '5s'");
+$waited = microtime(true);
+try {
+    $swept = PhotoRepository::discardStuck();
+} finally {
+    db()->exec('SET lock_timeout = 0');
+}
+$waited = microtime(true) - $waited;
+$holdCode = proc_close($hold);
+t_eq(0, $holdCode, 'other session commits (' . (string) file_get_contents($holdErr) . ')');
+t_ok($waited >= 0.5, 'sweep waited on the row lock');
+t_eq([], array_map(static fn (array $row): int => (int) $row['id'], $swept), 'discardStuck returns no row');
+$raceRow = PhotoRepository::findById($raceId);
+t_eq(['ready', null, $raceName], [$raceRow['status'], $raceRow['fail_reason'], $raceRow['original']], 'row stays ready with no fail reason');
+
 echo "permanent reasons\n";
 $cases = [
     PhotoFail::MISSING_ORIGINAL => '',

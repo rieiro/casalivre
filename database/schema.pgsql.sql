@@ -281,6 +281,8 @@ CREATE TABLE IF NOT EXISTS image_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_image_queue_ready ON image_queue(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(property_id, status);
+-- The stuck sweep filters status and created_at for every property. idx_photos_status leads with property_id and does not serve it.
+CREATE INDEX IF NOT EXISTS idx_photos_processing ON photos (created_at) WHERE status = 'processing';
 
 -- Antes só via migrate() (src/Db.php)
 CREATE TABLE IF NOT EXISTS settings (skey TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT NOT NULL);

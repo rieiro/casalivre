@@ -74,6 +74,7 @@ final class PhotoRepository
 
     /**
      * One statement: processing rows older than STUCK_AFTER_SECONDS become failed.
+     * The outer status check runs again after a lock wait, so a row that became ready or removed is left alone.
      * stuck.original is the name from before the column is cleared (PostgreSQL 16 RETURNING is the new row).
      *
      * @return list<array{id:int|string, original:?string, property_id:int|string}>
@@ -88,7 +89,7 @@ final class PhotoRepository
             UPDATE photos AS p
             SET " . self::MARK_FAILED . "
             FROM stuck
-            WHERE p.id = stuck.id
+            WHERE p.id = stuck.id AND p.status = 'processing'
             RETURNING p.id, p.property_id, stuck.original"
         );
         $stmt->execute([self::STUCK_AFTER_SECONDS, PhotoFail::STUCK]);
