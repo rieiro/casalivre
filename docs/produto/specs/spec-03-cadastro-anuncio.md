@@ -77,7 +77,7 @@ Vale para todas: 100% em até 7 dias **a partir da confirmação da reserva, des
 - **Caução** (opcional): valor definido pelo anfitrião ("Caução: R$ 500"). Aparece no anúncio e no checkout como linha informativa, separada do total.
 - **Saída antecipada:** regra exibida no anúncio e no contrato: "Saída antes da data: as diárias não usadas não são devolvidas, salvo se a política escolhida disser outra coisa." Pré-preenchida pela política, só leitura.
 - **Escopo da limpeza:** campo de texto (termo de limpeza: o que está incluído e o que não está), mostrado no anúncio e no contrato.
-- **Danos:** o anfitrião tem **até 48 h depois do check-out** para registrar dano com fotos (spec-06 §3d); depois disso, a caução é devolvida.
+- **Danos:** o anfitrião tem **até 7 dias depois do check-out** (configuração da plataforma, padrão 7 dias) para registrar dano com fotos (spec-06 §3d); depois disso, a caução é devolvida.
 
 **Regra municipal** (spec-04 2b): pelo município do endereço, o wizard mostra o campo **"Número do cadastro municipal"** quando a cidade exige, com o formato da regra. Se a regra marcar o cadastro como obrigatório para publicar, ele entra no checklist ("Informe o cadastro municipal exigido em [cidade]"). O número informado é **exibido no anúncio**. Com uma regra **ativa**, o **texto do aviso** e a taxa de turismo (valor por hóspede ou por noite, vigência, quem recolhe) aparecem ao anfitrião; a cobrança no checkout é porta futura. Regras inativas (ex.: Búzios, não confirmada) não aparecem.
 

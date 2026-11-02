@@ -108,11 +108,11 @@ Antes de confirmar, aparece a **comissão do canal manual**: "Comissão casalivr
 No menu do modo Gerenciar: tabela com **termo** (contrato do anfitrião, termos de uso, política de privacidade etc.), **versão**, **data e hora do aceite** e **"Baixar PDF"**. O PDF reproduz a versão aceita, não a atual. Estado vazio: "Nenhum termo aceito ainda."
 
 ## 3d. Caução e danos (anfitrião) *(Produto, requisito de tela)*
-- Depois do check-out, a reserva com caução mostra o card **"Registrar dano · até [check-out + 48 h]"** no painel Hoje e no detalhe.
+- Depois do check-out, a reserva com caução mostra o card **"Registrar dano · até [check-out + 7 dias]" (a janela é uma configuração, padrão 7 dias)** no painel Hoje e no detalhe.
 - **Registrar dano:** itens do inventário (Anexo I) ou texto livre, **fotos obrigatórias** (upload com as regras da spec-09 §6), valor pedido.
-- Sem registro em 48 h, a caução fica **"Devolver caução"** para o anfitrião, e o hóspede é avisado (spec-09).
+- Sem registro dentro da janela, a caução fica **"Devolver caução"** para o anfitrião, e o hóspede é avisado (spec-09).
 - Com registro, o hóspede vê e pode aceitar ou contestar; a contestação abre disputa (spec-09 §6).
-**Critérios de aceite:** (1) depois de 48 h do check-out o botão "Registrar dano" some e o servidor recusa o registro; (2) um registro sem foto não é salvo; (3) o hóspede vê o registro e as fotos.
+**Critérios de aceite:** (1) depois da janela (padrão 7 dias) do check-out o botão "Registrar dano" some e o servidor recusa o registro; (2) um registro sem foto não é salvo; (3) o hóspede vê o registro e as fotos.
 
 ## 4. WCAG 2.2 AA
 - Calendário mensal no padrão **Grid da APG** (`role="grid"`, com setas, Home/End, PageUp/PageDown e `aria-selected`). No multicalendário, cada célula é rotulada com o imóvel, a data e o status (1.3.1, 2.1.1).

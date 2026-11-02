@@ -553,7 +553,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. Devolução atrasada abre disputa automática, com as mesmas consequências dos reembolsos.
   4. A devolução é uma linha de reembolso na reserva; a lógica de prazo, comprovante e disputa roda uma vez para as duas.
   5. Prazo, janela de contestação e valor da caução são configurações (valor por imóvel, padrão por nó, máximo da plataforma); "sem caução" é aceito.
-- **Pergunta ao Rafael:** o Negócios propõe tornar a janela de aviso de dano uma configuração com padrão de 7 dias (hoje 48 h, decidido pelo Produto na spec-00), com evidência de uma lista ou foto de check-out do faxineiro ou franqueado. Muda uma decisão já escrita; fica pendente até a resposta.
+- **Decidido pelo Rafael (2026-11-02):** a janela de aviso de dano é uma configuração com padrão de 7 dias (antes 48 h), com a lista ou foto de check-out do faxineiro ou franqueado como evidência. Atualizado nas spec-00, 03, 06 e 09. Os textos jurídicos (contratos e política) ainda dizem 48 h e são alinhados na redação final, quando o Rafael pedir.
 - **Prioridade:** Should, antes do piloto (edição pequena das spec-00, spec-06 e spec-09). RICE 12,8 (mantido). O Jurídico confirma o prazo padrão. Fonte: competitors.md G41 (`/workspace/produto/competitors.md`, 31/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, depósito de segurança](https://www.airbnb.com/help/article/140), [Vrbo, caução reembolsável](https://help.vrbo.com/articles/About-refundable-damage-deposits).
 
 ### G42 — Teto do valor retido por dano (Should, com a G41)
