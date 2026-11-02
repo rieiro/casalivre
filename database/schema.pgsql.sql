@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS photos (
     uuid TEXT,
     -- nome do original em storage/fotos/originais (apagado quando fica pronta ou falha)
     original TEXT,
-    -- when the row was inserted; the worker discards processing rows older than 30 minutes
+    -- when the row was inserted; the daily sweep fails processing rows older than 30 minutes
     created_at timestamptz NOT NULL DEFAULT now(),
     -- short code when status = failed (invalid_type, too_many_pixels, corrupt, missing_original, stuck, queue, retries)
     fail_reason TEXT

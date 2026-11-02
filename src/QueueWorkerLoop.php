@@ -27,8 +27,12 @@ final class QueueWorkerLoop
     public const DB_LOST_SLEEP_MAX = 30;
     /** Pause (s) between reconnects while Valkey is down. The worker stays up. */
     public const VALKEY_RETRY_SECONDS = 1;
-    /** How often tick() discards photos stuck in processing. The age limit is PhotoRepository::STUCK_AFTER_SECONDS. */
-    public const STUCK_SWEEP_SECONDS = 60;
+    /**
+     * How often tick() discards photos stuck in processing. $stuckSweptAt starts at 0, so the first tick
+     * after a worker start sweeps immediately, then once per this many seconds. A restart sweeps once.
+     * The age limit stays PhotoRepository::STUCK_AFTER_SECONDS (30 min).
+     */
+    public const STUCK_SWEEP_SECONDS = 86400;
     /** Test hooks: replace sleep() and STDERR. */
     public static ?Closure $sleep = null;
     /** @var resource|null */
