@@ -243,10 +243,13 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G1 | Definir "Relevância" | 10 | 2 | 80% | 1 | 16 | Should | antes da frente do ADR 001 (T7) | aprovado com mudança; posição paga e rede decididas pelo Rafael (2026-10-21) |
 | G14 | Cancelamento causado pelo anfitrião e iniciado pelo hóspede | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes da S7 | aprovado com mudanças |
 | G18 | Regras de disponibilidade | 4 | 2 | 80% | 0,5 | 12,8 | Should | antes de fechar a disponibilidade da busca (restrição já no ADR 001) | aprovado com mudança (I 1 → 2; 6,4 → 12,8) |
+| G41 | Devolução da caução com prazo e comprovante | — | — | — | — | 12,8 | Should | antes do piloto | aprovado com mudança |
 | G6 | Câmeras e monitores de ruído | 6 | 2 | 50% | 0,5 | 12 | Should | S7 (P10) | aprovado; orientação do Jurídico recebida |
 | G2 | Confiabilidade de "Melhor avaliação" | 6 | 1 | 80% | 0,5 | 9,6 | Should | com G1 | aprovado |
 | G21 | Tipo de solicitação "pergunta" | — | — | — | — | 9,6 | **Must** | antes da S7 | aprovado com mudança |
 | G22 | Avisos automáticos da estadia | — | — | — | — | 9,6 | Could | depois do piloto (proprietário direto) | aprovado com mudança (9,6 pelo valor para corretores) |
+| G42 | Teto do valor retido por dano | — | — | — | — | 9,6 | Should | com a G41 | aprovado com mudança |
+| G45 | Guia de chegada do anúncio | — | — | — | — | 9,6 | Should | S7 (com a G7, P10) | aprovado com mudança (4,8 → 9,6) |
 | G39 | Cão de assistência no contador de hóspedes | — | — | — | — | 8 | Should | com a G38 | aprovado (Jurídico confirma a base legal) |
 | G3 | Painel de filtros (UC-H04) | 8 | 1 | 80% | 1 | 6,4 | Should | ADR 001 (construtor SQL) | aprovado |
 | G5 | Camas por quarto | 8 | 1 | 80% | 1 | 6,4 | Should | spec de schema | aprovado como restrição de schema |
@@ -254,6 +257,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
 | G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
 | G43 | Pedido de alteração de reserva confirmada (datas e hóspedes) | — | — | — | — | 4,8 | Should | S8 (restrição já na S7) | aprovado com mudança (2 → 4,8) |
+| G46 | Instruções e lembrete de check-out | — | — | — | — | 4,8 | Could | com a G45 se for barato, senão depois do piloto | aprovado com mudança |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
@@ -539,6 +543,52 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 - **Problema:** fora da janela gratuita, o hóspede só pode escrever uma mensagem livre ao anfitrião; nada registra o pedido nem recalcula o reembolso e a comissão. O Booking.com tem o pedido estruturado "Cancel for less".
 - **Decisão do Negócios: adiar, sem fluxo próprio.** Não há evidência de demanda. Depois da G43, é só mais um tipo de solicitação. Até lá o hóspede usa a rota de disputa ou suporte, e registramos as saídas da tela de cancelamento seguidas de contato com o suporte como evidência.
 - **Prioridade:** Could, depois do piloto e depois da G43. RICE 1 (mantido). Fonte: competitors.md G44 (01/11), revisão do Negócios. Referência: [Booking.com, mensagens estruturadas](https://developers.booking.com/connectivity/docs/messaging-api/understanding-the-messaging-api).
+
+### G41 — Devolução da caução com prazo e comprovante (Should, antes do piloto)
+- **Problema:** depois de "A devolver", o anfitrião só marca "Devolvida" (spec-00 §2.2b), sem prazo nem condição. Os reembolsos têm 5 dias úteis, comprovante Pix com ID da transação, 72 h para o hóspede contestar e disputa automática se atrasar; nada disso vale para a caução, e no piloto o dinheiro está na conta do anfitrião. O rascunho do contrato (§5.4) deixa o prazo em aberto. O Airbnb devolve em até 7 dias com evidência do que ficar retido; o Vrbo devolve sozinho depois de 7 ou 14 dias.
+- **Solução (aprovada pelo Negócios com mudança):** reaproveitar o fluxo de reembolso: a devolução da caução é mais uma linha de pagamento do tipo reembolso na reserva (restrição da G12), com o prazo, o comprovante Pix e a disputa automática do reembolso rodando uma vez só. O hóspede vê o prazo ("Devolução da caução até 07/11"). **A mais, pelo Negócios:** (1) prazo, comprovante e janela de contestação são configurações, com o padrão definido pelo Jurídico; (2) o valor da caução é por imóvel, com padrão por nó e um máximo da plataforma, e "sem caução" é válido; (3) no piloto, acompanhar a conversão com e sem caução (o Negócios não verificou a afirmação do Booking.com de que a caução reduz reservas).
+- **Critérios de aceite:**
+  1. Depois de "A devolver", o anfitrião devolve por Pix dentro do prazo configurado e anexa o comprovante.
+  2. O hóspede vê a data limite e pode confirmar ou contestar dentro da janela configurada.
+  3. Devolução atrasada abre disputa automática, com as mesmas consequências dos reembolsos.
+  4. A devolução é uma linha de reembolso na reserva; a lógica de prazo, comprovante e disputa roda uma vez para as duas.
+  5. Prazo, janela de contestação e valor da caução são configurações (valor por imóvel, padrão por nó, máximo da plataforma); "sem caução" é aceito.
+- **Pergunta ao Rafael:** o Negócios propõe tornar a janela de aviso de dano uma configuração com padrão de 7 dias (hoje 48 h, decidido pelo Produto na spec-00), com evidência de uma lista ou foto de check-out do faxineiro ou franqueado. Muda uma decisão já escrita; fica pendente até a resposta.
+- **Prioridade:** Should, antes do piloto (edição pequena das spec-00, spec-06 e spec-09). RICE 12,8 (mantido). O Jurídico confirma o prazo padrão. Fonte: competitors.md G41 (`/workspace/produto/competitors.md`, 31/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, depósito de segurança](https://www.airbnb.com/help/article/140), [Vrbo, caução](https://help.vrbo.com/articles/How-do-I-cancel-a-reservation).
+
+### G42 — Teto do valor retido por dano (Should, com a G41)
+- **Problema:** a spec-06 §3d pede um "valor pedido" livre, então o anfitrião poderia pedir mais que a caução retida, e nada diz o que acontece com dano acima da caução, em casa sem caução, ou com um segundo registro de dano.
+- **Solução (aprovada pelo Negócios, mantida):** regra no servidor: valor retido no máximo igual à caução do snapshot, um registro de dano por reserva. Dano acima da caução, ou em casa sem caução, segue pelo "Relatar problema" existente (até 14 dias depois do check-out); no piloto a casalivre nunca cobra o hóspede (contrato §10.3). Sem tela nova. **A mais, pelo Negócios:** o registro de dano exige evidência, e o nó acima revisa primeiro, depois o administrador da plataforma. Proteção contra danos como complemento é uma receita futura, não agora.
+- **Critérios de aceite:**
+  1. O servidor recusa um valor retido acima da caução do snapshot da reserva.
+  2. Só existe um registro de dano por reserva; um segundo é recusado.
+  3. O registro exige evidência (foto); sem ela não é enviado.
+  4. O texto do registro diz que dano acima da caução, ou sem caução, vai pelo "Relatar problema".
+  5. A revisão vai primeiro ao nó acima e depois ao administrador da plataforma.
+- **Prioridade:** Should, com a G41. RICE 9,6 (mantido). Fonte: competitors.md G42 (31/10), revisão do Negócios.
+
+### G45 — Guia de chegada do anúncio (Should, S7 com a G7)
+- **Problema:** UC-P11 e UC-H20 existem, mas nenhuma spec os define. O hóspede confirmado vê o endereço e o telefone do anfitrião, mas não como entrar (código, caixa de chaves, quem entrega a chave), vaga, wifi ou como a casa funciona. Depende de o anfitrião digitar uma resposta rápida, que corretores com muitas casas esquecem, e não há regra de quando dados sensíveis (códigos, wifi) aparecem ou somem. O Airbnb tem guia de chegada com detalhes 48 h antes; o Vrbo envia o guia 3 dias antes e o remove depois do check-out ou do cancelamento.
+- **Solução (aprovada pelo Negócios com mudança):** seção "Guia de chegada" no anúncio (instruções de acesso em texto e fotos, como chegar e estacionar, wifi, manual da casa) e uma nota de acesso opcional por reserva (código único) que substitui o texto de acesso do anúncio. Na reserva aparece como "Como chegar e entrar". Acesso e wifi liberam 48 h antes do check-in (a mesma regra configurável dos contatos da spec-08; na confirmação, se o check-in for antes) e somem depois do check-out ou do cancelamento. Usa a versão atual, não o snapshot, para um código trocado chegar ao hóspede. O Hoje mostra "Chegada em 48 h sem instruções de acesso" em Alertas. Quem edita: a mesma delegação da lista da portaria (06-2). **A mais, pelo Negócios:** (1) modelos por nó; (2) sem cancelamento automático do anfitrião no piloto: os alertas escalam (anfitrião, depois nó, depois administrador).
+- **Critérios de aceite:**
+  1. O anúncio tem o "Guia de chegada" com acesso (texto e fotos), como chegar e estacionar, wifi e manual da casa.
+  2. A nota de acesso por reserva, quando existe, substitui o texto de acesso do anúncio só naquela reserva.
+  3. Acesso e wifi aparecem na reserva confirmada 48 h antes do check-in (na confirmação, se o check-in for antes) e somem depois do check-out ou do cancelamento.
+  4. Um código trocado depois da confirmação chega ao hóspede (versão atual, não o snapshot).
+  5. Check-in em até 48 h sem instruções de acesso gera o alerta no Hoje do anfitrião e, sem resposta, escala para o nó e depois para o administrador; nenhum cancelamento é automático.
+  6. A liberação usa a regra de 48 h da spec-08, sem um segundo temporizador.
+  7. O nó oferece modelos do guia aos anúncios.
+- **Prioridade:** Should, na S7, com a G7. RICE 9,6 (o Negócios subiu de 4,8). Fonte: competitors.md G45 (`/workspace/produto/competitors.md`, 02/11), revisão do Negócios. Referências: [Airbnb, guia de chegada](https://www.airbnb.com/help/article/1926), [Vrbo, guia de boas-vindas](https://help.vrbo.com/articles/what-is-a-welcome-guide).
+
+### G46 — Instruções e lembrete de check-out (Could, com a G45 se for barato)
+- **Problema:** o hóspede só tem o horário das 11h; devolução de chave, trancar a casa, lixo e gás são texto livre ou mensagem, e nada lembra o hóspede na véspera. Como o hóspede já paga o prestador de limpeza, tarefas que a limpeza cobre não devem ser pedidas nem usadas depois como dano contra a caução.
+- **Solução (aprovada pelo Negócios com mudança):** lista curta de check-out no anúncio (trancar e onde deixar as chaves, mais até 5 itens curtos), mostrada ao lado do "Escopo da limpeza" na reserva e em "Em estadia"; um lembrete transacional na noite anterior ao check-out; e um aviso na tela do anfitrião para não pedir o que a limpeza já cobre. **A mais, pelo Negócios:** o modelo da lista é por nó, e o lembrete é mais um gatilho da G22. **Posição do Negócios sobre a pergunta ao Jurídico:** pedidos de check-out não cumpridos não podem ser cobrados da caução; só dano documentado, pela G42.
+- **Critérios de aceite:**
+  1. O anúncio tem a lista de check-out (trancar, chaves e até 5 itens), mostrada na reserva ao lado do escopo da limpeza.
+  2. Uma mensagem transacional lembra o hóspede na noite anterior ao check-out.
+  3. A tela do anfitrião avisa para não pedir o que a limpeza paga já cobre.
+  4. O descumprimento de um item da lista não pode ser retido da caução; só dano documentado (G42).
+- **Prioridade:** Could, com a G45 se for barato, senão depois do piloto. RICE 4,8 (mantido). O Jurídico confirma o texto do contrato. Fonte: competitors.md G46 (02/11), revisão do Negócios. Referência: [Airbnb, regras de check-out](https://www.airbnb.com/help/article/472).
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
