@@ -253,6 +253,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G23 | Conversa aberta depois do cancelamento ou do check-out | — | — | — | — | 6,4 | Should | antes da S9 | aprovado com mudança (14 dias, não 30) |
 | G12 | Controles do saldo agendado | 6 | 1 | 50% | 0,5 | 6 | Could | P6 (restrição já na S7) | aprovado como restrição |
 | G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
+| G43 | Pedido de alteração de reserva confirmada (datas e hóspedes) | — | — | — | — | 4,8 | Should | S8 (restrição já na S7) | aprovado com mudança (2 → 4,8) |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
@@ -261,6 +262,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
 | G34 | Buscas salvas com resumo opcional | — | — | — | — | 1,5 | Could | depois do piloto | aprovado com mudança (1 → 1,5) |
 | G8 | Tempo de resposta medido do anfitrião | 5 | 0,5 | 50% | 1 | 1,25 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
+| G44 | Pedir ao anfitrião para cancelar sem multa | — | — | — | — | 1 | Could | depois do piloto, depois da G43 | adiado pelo Negócios (sem evidência de demanda) |
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | calendário do anfitrião (só a cor) | decidido pelo Rafael (2026-10-22): só a cor |
 | G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
@@ -517,6 +519,26 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. O total mostrado antes do pagamento inclui as taxas aplicáveis.
   4. A taxa passa pelo motor de divisão, e a comissão sobre ela segue a regra do canal, escrita na spec-02.
 - **Prioridade:** Could, com a spec-07 (S8). RICE 4 (o Negócios subiu de 2,5). Fonte: competitors.md G40 (30/10), revisão do Negócios. Referências: [Airbnb, taxas adicionais](https://www.airbnb.com/help/article/2385), [Vrbo, gerenciar taxas](https://help.vrbo.com/articles/How-do-I-manage-my-fees).
+
+### G43 — Pedido de alteração de reserva confirmada (Should, S8, com restrição já na S7)
+- **Problema:** "Alterar datas" está desabilitado (spec-09 §7) e manda cancelar e reservar de novo. Depois dos 7 dias do CDC isso custa a multa da política ao hóspede, as datas antigas são liberadas, as novas podem já ter sido reservadas, e o anfitrião perde a reserva mesmo que aceitasse mudar. O anfitrião também não tem ação para alterar uma reserva confirmada (spec-06). O Airbnb e o Booking.com têm pedido de alteração dos dois lados.
+- **Solução (aprovada pelo Negócios com mudança):** o hóspede ou o anfitrião envia um pedido de alteração de datas e de número de hóspedes, com o total novo calculado pelo servidor. A outra parte aceita ou recusa em 24 h; a reserva fica como está até a aceitação; as datas novas ficam seguradas enquanto o pedido está pendente; a política da reserva é mantida. No piloto, total maior é pago e menor é reembolsado por Pix, com o mesmo comprovante e prazo dos reembolsos. **A mais, pelo Negócios:** (1) o pedido de alteração é um **tipo genérico de solicitação**, para a substituição de imóvel da G14 e o pedido da G44 o reutilizarem; (2) a diferença de preço passa pelo motor de divisão, com a regra da comissão dita por canal; (3) os limites de alterações por reserva e a janela de 24 h são configurações; (4) o nó acima vê os pedidos de alteração pendentes. O teto de 30 noites vale para a estadia alterada.
+- **Restrição para a S7 (regra obrigatória):** uma alteração é **uma nova versão da mesma reserva** (datas, hóspedes, total e histórico), nunca um cancelamento mais uma reserva nova, para a comissão, a métrica de confiabilidade e as avaliações manterem um só identificador de reserva. A política da reserva não muda. O calculador de reembolso e as linhas de pagamento da G12 aceitam uma linha de "diferença" (cobrança ou reembolso) vinda de uma alteração.
+- **Critérios de aceite:**
+  1. O hóspede ou o anfitrião envia um pedido com novas datas ou novo número de hóspedes e vê o total novo calculado pelo servidor antes de enviar.
+  2. A outra parte tem 24 h (configuração) para aceitar ou recusar; sem resposta, o pedido expira e a reserva fica como estava.
+  3. Enquanto o pedido está pendente, as datas novas ficam seguradas e a reserva original não muda.
+  4. Aceito o pedido, a reserva ganha uma nova versão com o mesmo identificador, a política original e o histórico; nunca nasce uma segunda reserva.
+  5. A diferença de preço passa pelo motor de divisão; no piloto, é paga ou reembolsada por Pix com comprovante e prazo iguais aos dos reembolsos.
+  6. O limite de pedidos por reserva é uma configuração e é respeitado.
+  7. O pedido é do tipo genérico de solicitação, sem fluxo separado.
+- **Pergunta ao Jurídico:** uma alteração aceita reinicia os 7 dias do CDC? Fica com o Jurídico.
+- **Prioridade:** Should, na S8, com a restrição já na S7. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G43 (`/workspace/produto/competitors.md`, 01/11), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, alterar datas](https://www.airbnb.com/help/article/913), [Airbnb, alterar como anfitrião](https://www.airbnb.com/help/article/50).
+
+### G44 — Pedir ao anfitrião para cancelar sem multa (Could, depois do piloto)
+- **Problema:** fora da janela gratuita, o hóspede só pode escrever uma mensagem livre ao anfitrião; nada registra o pedido nem recalcula o reembolso e a comissão. O Booking.com tem o pedido estruturado "Cancel for less".
+- **Decisão do Negócios: adiar, sem fluxo próprio.** Não há evidência de demanda. Depois da G43, é só mais um tipo de solicitação. Até lá o hóspede usa a rota de disputa ou suporte, e registramos as saídas da tela de cancelamento seguidas de contato com o suporte como evidência.
+- **Prioridade:** Could, depois do piloto e depois da G43. RICE 1 (mantido). Fonte: competitors.md G44 (01/11), revisão do Negócios. Referência: [Booking.com, mensagens estruturadas](https://developers.booking.com/connectivity/docs/messaging-api/understanding-the-messaging-api).
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
