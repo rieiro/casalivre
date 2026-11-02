@@ -4,18 +4,11 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ImageQueue.php';
 require_once __DIR__ . '/ImageWorker.php';
+require_once __DIR__ . '/PhotoFail.php';
 
 final class PhotoStorage
 {
-    public static function directory(int $userId, int $houseId): string
-    {
-        return dirname(__DIR__) . '/public/uploads/users/' . $userId . '/imoveis/' . $houseId;
-    }
-
-    public static function publicPath(int $userId, int $houseId, string $filename): string
-    {
-        return '/uploads/users/' . $userId . '/imoveis/' . $houseId . '/' . $filename;
-    }
+    public const MAX_UPLOAD_BYTES = 16 * 1048576;
 
     /**
      * Upload assíncrono: valida o tipo real (finfo: jpeg/png/webp), grava o original FORA do public/
@@ -23,14 +16,17 @@ final class PhotoStorage
      * ImageQueue. Os WebP públicos (/uploads/fotos/<uuid>-<largura>.webp, sem id de usuário nem de
      * imóvel) são gerados pelo scripts/image-worker.php. O lote abre a fila uma vez (uma conexão
      * Valkey); se ela falhar, o restante do lote é marcado failed sem conectar de novo.
+     *
+     * @return array{saved:int, rejected:list<array{name:string, reason:string}>}
      */
-    public static function storeUploads(int $userId, int $houseId, array $files, ?array &$created = null): int
+    public static function storeUploads(int $userId, int $houseId, array $files, ?array &$created = null): array
     {
         $saved = 0;
         $created = [];
+        $rejected = [];
         $dir = self::originalsDir();
         if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
-            return 0;
+            return ['saved' => 0, 'rejected' => []];
         }
         $existing = PhotoRepository::count($houseId);
         $limit = class_exists('Settings') ? max(1, Settings::int('max_photos_per_property') ?: 40) : 40;
@@ -38,27 +34,39 @@ final class PhotoStorage
         $tmp = $files['tmp_name'] ?? [];
         $errors = $files['error'] ?? [];
         if (!is_array($names)) {
-            return 0;
+            return ['saved' => 0, 'rejected' => []];
         }
         $queue = null;
         $queueDown = false;
         foreach ($names as $i => $name) {
-            if (($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $label = (string) $name;
+            $error = (int) ($errors[$i] ?? UPLOAD_ERR_NO_FILE);
+            if ($error === UPLOAD_ERR_NO_FILE) {
                 continue;
             }
-            if ($existing + $saved >= $limit) {
-                break;
+            if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+                $rejected[] = ['name' => $label, 'reason' => PhotoFail::TOO_LARGE];
+                continue;
+            }
+            if ($error !== UPLOAD_ERR_OK) {
+                continue;
             }
             $tmpName = (string) ($tmp[$i] ?? '');
             if ($tmpName === '' || !(self::$acceptFile ?? 'is_uploaded_file')($tmpName)) {
                 continue;
             }
             $size = (int) ($files['size'][$i] ?? 0);
-            if ($size < 1 || $size > 16 * 1048576) {
+            if ($size < 1 || $size > self::MAX_UPLOAD_BYTES) {
+                $rejected[] = ['name' => $label, 'reason' => PhotoFail::TOO_LARGE];
                 continue;
             }
             $ext = self::imageExtension($tmpName);
             if ($ext === null) {
+                $rejected[] = ['name' => $label, 'reason' => PhotoFail::WRONG_TYPE];
+                continue;
+            }
+            if ($existing + $saved >= $limit) {
+                $rejected[] = ['name' => $label, 'reason' => PhotoFail::OVER_LIMIT];
                 continue;
             }
             $uuid = self::randomId();
@@ -68,11 +76,11 @@ final class PhotoStorage
             }
             @chmod($dir . '/' . $original, 0600);
             $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $existing === 0 && $saved === 0 ? 1 : 0, $existing + $saved);
-            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0), $queue, $queueDown);
+            $queued = self::enqueueOrFail((int) ($row['id'] ?? 0), $original, $queue, $queueDown);
             $created[] = ['id' => (int) ($row['id'] ?? 0), 'estado' => $queued ? 'processing' : 'failed', 'capa' => (int) ($row['is_primary'] ?? 0)];
             $saved++;
         }
-        return $saved;
+        return ['saved' => $saved, 'rejected' => $rejected];
     }
 
     /**
@@ -93,7 +101,7 @@ final class PhotoStorage
         }
         @chmod($dir . '/' . $original, 0600);
         $row = PhotoRepository::insertProcessing($houseId, $uuid, $original, $primary, $sort);
-        if (!self::enqueueOrFail((int) ($row['id'] ?? 0))) {
+        if (!self::enqueueOrFail((int) ($row['id'] ?? 0), $original)) {
             $row['status'] = 'failed';
         }
         return $row;
@@ -105,10 +113,10 @@ final class PhotoStorage
      * batch are marked failed and do not connect again. A queue error (e.g. Valkey down) marks the photo
      * failed instead of leaving it in processing with no job; the error is logged without personal data.
      */
-    public static function enqueueOrFail(int $photoId, ?ImageQueue &$queue = null, bool &$queueDown = false): bool
+    public static function enqueueOrFail(int $photoId, string $original, ?ImageQueue &$queue = null, bool &$queueDown = false): bool
     {
         if ($queueDown) {
-            self::markEnqueueFailed($photoId);
+            self::failEnqueue($photoId, $original);
             return false;
         }
         try {
@@ -118,15 +126,16 @@ final class PhotoStorage
         } catch (Throwable $e) {
             $queueDown = true;
             error_log('image_queue: push failed for photo #' . $photoId . ' (' . $e::class . ')');
-            self::markEnqueueFailed($photoId);
+            self::failEnqueue($photoId, $original);
             return false;
         }
     }
 
-    /** Photo left processing with no job (queue down, or skipped after an earlier failure in the batch). */
-    private static function markEnqueueFailed(int $photoId): void
+    /** Same close as an image-worker give-up: delete the original and mark the row failed. */
+    private static function failEnqueue(int $photoId, string $original): void
     {
-        db()->prepare("UPDATE photos SET status = 'failed' WHERE id = ? AND status = 'processing'")->execute([$photoId]);
+        self::deleteOriginal($original);
+        PhotoRepository::markFailed($photoId, PhotoFail::QUEUE);
     }
 
     /**
@@ -176,8 +185,11 @@ final class PhotoStorage
         return preg_match('/^[0-9a-f-]{36}\.(jpg|png|webp)$/', $name) === 1 ? self::originalsDir() . '/' . $name : null;
     }
 
-    public static function deleteOriginal(string $name): void
+    public static function deleteOriginal(?string $name): void
     {
+        if ($name === null) {
+            return;
+        }
         $file = self::originalFile($name);
         if ($file !== null && is_file($file)) {
             @unlink($file);
@@ -200,7 +212,7 @@ final class PhotoStorage
     /** Remove todos os arquivos de uma foto (original e WebP), qualquer que seja o status. */
     public static function deletePhotoFiles(array $photo): void
     {
-        self::deleteOriginal((string) ($photo['original'] ?? ''));
+        self::deleteOriginal($photo['original']);
         $uuid = (string) ($photo['uuid'] ?? '');
         if (preg_match('/^[0-9a-f-]{36}$/', $uuid) === 1) {
             foreach (ImageWorker::SIZES as $w) {
@@ -235,16 +247,6 @@ final class PhotoStorage
         return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4) . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20, 12);
     }
 
-    public static function writeGenerated(int $userId, int $houseId, string $filename, string $binary): string
-    {
-        $dir = self::directory($userId, $houseId);
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-            throw new RuntimeException('Não foi possível criar a pasta de fotos.');
-        }
-        file_put_contents($dir . '/' . $filename, $binary);
-        return self::publicPath($userId, $houseId, $filename);
-    }
-
     public static function deletePublicFile(string $publicPath): void
     {
         $root = realpath(dirname(__DIR__) . '/public/uploads');
@@ -256,35 +258,5 @@ final class PhotoStorage
             return;
         }
         unlink($full);
-    }
-
-    public static function deleteHouse(int $userId, int $houseId): void
-    {
-        self::deleteTree(self::directory($userId, $houseId));
-    }
-
-    public static function deleteUser(int $userId): void
-    {
-        self::deleteTree(dirname(__DIR__) . '/public/uploads/users/' . $userId);
-    }
-
-    private static function deleteTree(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-        $items = scandir($dir) ?: [];
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') {
-                continue;
-            }
-            $path = $dir . '/' . $item;
-            if (is_dir($path)) {
-                self::deleteTree($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
     }
 }

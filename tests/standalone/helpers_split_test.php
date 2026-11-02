@@ -76,7 +76,7 @@ $antes = [
 t_eq(67, count($antes), 'lista do develop tem 67 funções');
 // search_filters_from_query: pages use SearchQuery::fromRequest()/filters()/searched().
 // review_score: HouseRepository::score reads the stored totals.
-$removidas = ['review_score', 'search_filters_from_query'];
+$removidas = ['review_score', 'search_filters_from_query', 'save_uploaded_photos'];
 foreach ($antes as $fn) {
     if (in_array($fn, $removidas, true)) {
         t_ok(!function_exists($fn), $fn . ' foi removida');
@@ -101,7 +101,7 @@ sort($definidas);
 // asset_url saiu de src/AssetManifest.php para src/helpers/url.php (Sprint 3, Etapa 1; Revisor do #54).
 // safe_local_return: redirect seguro do /idioma (#72).
 // oversize_upload_message: frase do 413 de upload, compartilhada com o char_snapshot_test (#111).
-$adicionadas = ['asset_url', 'osm_attribution', 'osm_attribution_template', 'oversize_upload_message', 'place_label', 'place_option_text', 'require_admin', 'safe_local_return', 'unresolved_place'];
+$adicionadas = ['asset_url', 'osm_attribution', 'osm_attribution_template', 'oversize_upload_message', 'photo_fail_text', 'place_label', 'place_option_text', 'require_admin', 'safe_local_return', 'unresolved_place'];
 $esperadas = array_values(array_diff(array_merge($antes, $adicionadas), $removidas));
 sort($esperadas);
 t_eq($esperadas, $definidas, 'mesmo conjunto de funções, sem duplicatas nem extras');

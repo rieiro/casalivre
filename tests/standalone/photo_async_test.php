@@ -63,7 +63,8 @@ t_ok(str_contains((string) @exif_read_data($tmp . '/up-a.jpg')['ImageDescription
 
 echo "upload\n";
 $saved = PhotoStorage::storeUploads((int) $owner['user_id'], $hid, $up, $created);
-t_eq(3, $saved, 'jpeg, png e webp aceitos; gif e arquivo falso recusados (finfo)');
+t_eq(3, $saved['saved'], 'jpeg, png e webp aceitos; gif e arquivo falso recusados (finfo)');
+t_eq(['wrong_type', 'wrong_type'], array_column($saved['rejected'], 'reason'), 'gif e arquivo falso: wrong_type');
 $rows = PhotoRepository::list($hid);
 t_eq(['processing', 'processing', 'processing'], array_column($rows, 'status'), 'fotos criadas em processing');
 t_eq(['', '', ''], array_column($rows, 'path'), 'sem caminho público enquanto processa');
@@ -127,16 +128,13 @@ file_put_contents(PhotoStorage::$originals . '/' . $badOrig, 'lixo');
 ImageQueues::make()->push((int) $bad['id']);
 $rep = ImageWorker::run(ImageQueues::make(), $lock);
 t_eq(1, $rep['falhas'] ?? null, '1ª tentativa falha');
-$q = db()->query('SELECT * FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetchAll(PDO::FETCH_ASSOC)[0];
-$delay = strtotime($q['next_attempt_at'] . ' UTC') - time();
-t_ok($q['status'] === 'pending' && $delay > 50 && $delay <= 60, 'reagendada com o backoff da fila de e-mail (60 s)');
-for ($i = 0; $i < Queues::MAX_ATTEMPTS; $i++) {
-    db()->exec("UPDATE image_queue SET next_attempt_at = '2000-01-01 00:00:00' WHERE status = 'pending'");
-    ImageWorker::run(ImageQueues::make(), $lock);
-}
-t_eq('failed', PhotoRepository::findById((int) $bad['id'])['status'], 'após N tentativas: foto failed');
+t_eq(1, $rep['desistencias'] ?? null, 'arquivo inválido desiste na primeira');
+$q = db()->query('SELECT status, attempts, last_error FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetch(PDO::FETCH_ASSOC);
+t_eq('failed', $q['status'], 'item da fila failed na primeira');
+t_eq(0, (int) $q['attempts'], 'falha permanente não conta tentativa');
+t_ok(str_contains((string) $q['last_error'], 'PermanentJobFailure') && str_contains((string) $q['last_error'], PhotoFail::CORRUPT), 'last_error traz a classe e o motivo');
+t_eq(['failed', PhotoFail::CORRUPT], [PhotoRepository::findById((int) $bad['id'])['status'], PhotoRepository::findById((int) $bad['id'])['fail_reason']], 'foto failed com o motivo corrupt');
 t_ok(!is_file(PhotoStorage::$originals . '/' . $badOrig), 'original apagado na desistência');
-t_eq('failed', db()->query('SELECT status FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetchColumn(), 'item da fila failed');
 
 echo "telas\n";
 $proc = PhotoRepository::insertProcessing($hid, PhotoStorage::randomId(), PhotoStorage::randomId() . '.jpg', 0, 11);
@@ -176,19 +174,18 @@ $big = PhotoRepository::insertProcessing($hid, PhotoStorage::randomId(), '', 0, 
 $bigOrig = PhotoRepository::findById((int) $big['id'])['uuid'] . '.png';
 db()->prepare('UPDATE photos SET original = ? WHERE id = ?')->execute([$bigOrig, (int) $big['id']]);
 file_put_contents(PhotoStorage::$originals . '/' . $bigOrig, $png);
-$msg = '';
+$caught = null;
 try {
     ImageWorker::process((int) $big['id']);
 } catch (Throwable $e) {
-    $msg = $e->getMessage();
+    $caught = $e;
 }
-t_eq('Imagem grande demais.', $msg, '30 MP recusado sem decodificar');
+t_ok($caught instanceof PermanentJobFailure, '30 MP é falha permanente');
+t_eq(PhotoFail::TOO_MANY_PIXELS, $caught instanceof PermanentJobFailure ? $caught->reason : '', '30 MP recusado sem decodificar');
 db()->prepare('DELETE FROM photos WHERE id = ?')->execute([(int) $big['id']]);
 @unlink(PhotoStorage::$originals . '/' . $bigOrig);
 
 echo "seeds e fotos antigas pela fila\n";
-$seedSrc = (string) file_get_contents(CL_ROOT . '/scripts/seed.php') . file_get_contents(CL_ROOT . '/scripts/seed_massive.php');
-t_ok(substr_count($seedSrc, 'PhotoStorage::enqueueOriginal(') === 2 && !str_contains($seedSrc, 'writeGenerated(') && !str_contains($seedSrc, 'PhotoStorage::publicPath('), 'seeds enfileiram o original (sem gravar em /uploads/users)');
 $h2 = HouseRepository::insert(['user_id' => $owner['user_id'], 'title' => 'Casa Seed', 'description' => 'd', 'summary' => 's', 'city_place_id' => t_city_place_id('Florianópolis, SC'), 'address' => 'Rua B, 2', 'cep' => '88000000', 'street' => 'Rua B', 'address_number' => '2', 'address_complement' => '', 'lat' => -27.6, 'lng' => -48.5, 'bedrooms' => 1, 'beds' => 1, 'max_guests' => 2, 'nightly_price' => 100, 'checkin_time' => '15:00', 'checkout_time' => '11:00', 'min_nights' => 1, 'pool' => 0, 'bbq' => 0, 'garage' => 0]);
 db()->prepare("UPDATE properties SET status = 'active' WHERE id = ?")->execute([$h2]);
 ListingSearch::sync((int) $h2);
