@@ -8,7 +8,7 @@ require_once __DIR__ . '/I18n.php';
 
 /**
  * Per-process caches that are per request on the web but would live forever in a long-running worker
- * (QueueWorkerLoop::tick calls refreshIfChanged() before each batch). Without invalidation:
+ * (QueueWorkerLoop calls refreshIfChanged() before each batch). Without invalidation:
  *  - Settings (settings.json): mail kept the old theme brand and links the old expiry minutes;
  *  - AssetManifest (manifest.json): a rebuilt manifest (theme list) was never seen;
  *  - I18n (translations.json): a changed translation was never seen;

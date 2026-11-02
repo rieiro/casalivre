@@ -183,9 +183,12 @@ ops/dev-env/db-setup.sh --no-seed
   0660. `valkey-acl-check.sh` checks the socket mode, that the admin secret is
   not visible inside the env, that `cl_app` does LPUSH/RPOP on `cl:*`, and that
   `keys *`, `config get *`, `get x`, XADD and EVAL fail.
-- **queue-worker** (P0-4): `scripts/queue-worker.php` in a loop, with
-  `QUEUE_DRIVER=valkey` (lists under `cl:q:mail:*`/`cl:q:image:*`, phpredis,
-  `cl_app` allowlist only); runit restarts it if it dies.
+- **casalivre-mail-worker** and **casalivre-image-worker-1** (dev installs one
+  image worker; production runs `casalivre-image-worker-1..N`, N = cores minus one):
+  `scripts/queue-worker.php mail|image` in a loop, `memory_limit=256M`,
+  `QUEUE_DRIVER=valkey`. Mail uses Valkey user `cl_mail` (`~cl:q:mail:*`);
+  image uses `cl_image` (`~cl:q:image:*`). The FPM stays on `cl_app`.
+  runit restarts a worker if it dies.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs e o migrate (bairros): `bz2` só na chamada
   (`php8.4 -d extension=bz2`); o `php.ini` não muda.

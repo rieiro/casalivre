@@ -38,12 +38,12 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$html
 $header = static fn (string $theme): string => MailHtml::render('Aviso', "Texto\n\nhttps://casalivre.example/", Theme::brand($theme));
 t_ok($header('padrao') !== $header('contraste'), 'control: the two themes render different mail');
 t_ok($mail->push('activation', 'b1@casalivre.test'), 'job 1 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_ok(($html[0] ?? '') === $header('padrao'), 'tick 1: padrao brand');
 t_eq('ok', ThemeSet::run('contraste', Theme::current(), Theme::available())->tipo, 'admin switches the theme to contraste (DB + settings.json)');
 t_backdate($cacheFile);
 t_ok($mail->push('activation', 'b2@casalivre.test'), 'job 2 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_ok(($html[1] ?? '') === $header('contraste'), 'tick 2: contraste brand');
 t_eq('ok', ThemeSet::run('padrao', 'contraste', Theme::available())->tipo, 'theme back to padrao');
 t_backdate($cacheFile);
@@ -60,8 +60,8 @@ $round = static function () use ($mail, $dir): array {
     $r = c_user('active');
     $mail->push('activation', $p['email']);
     $mail->push('reset', $r['email']);
-    $rep = QueueWorkerLoop::tick($mail, null, $dir);
-    return [$rep['mail']['enviados'] ?? null, (int) $p['id'], (int) $r['id']];
+    $rep = QueueWorkerLoop::mail($mail, $dir);
+    return [$rep['enviados'] ?? null, (int) $p['id'], (int) $r['id']];
 };
 [$sent, $p, $r] = $round();
 t_eq(2, $sent, 'tick 1: activation and reset delivered (mail-dev.log)');

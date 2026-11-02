@@ -1,6 +1,6 @@
 <?php
 // Fotos assíncronas: upload (finfo jpeg/png/webp) grava o original fora do public/ (0600, nome uuid) e cria a
-// foto em processing + ImageQueue; o image-worker (flock 0600, teto de tempo) regrava pelos pixels com GD
+// foto em processing + ImageQueue; o worker de imagens (sem flock, teto de tempo) regrava pelos pixels com GD
 // (sem EXIF/GPS), corrige a orientação, gera WebP 320/800/1920 com nome uuid (sem id de usuário/imóvel),
 // apaga o original e marca ready; após N falhas (backoff da fila de e-mail) marca failed e apaga o original.
 // Dono vê moldura de espera/falha; público só vê fotos prontas (com srcset); CSP continua estrita.
@@ -76,16 +76,8 @@ t_eq([], PhotoRepository::listReady($hid), 'público: nenhuma foto pronta ainda'
 t_eq(null, PhotoRepository::primaryPath($hid), 'público: sem capa enquanto processa');
 
 echo "worker\n";
-$lock = $tmp . '/image-worker.lock';
-$h = fopen($lock, 'c');
-flock($h, LOCK_EX);
-t_eq(null, ImageWorker::run(ImageQueues::make(), $lock), 'lock ocupado: outro worker não roda');
-flock($h, LOCK_UN);
-fclose($h);
-@unlink($lock);
-$rep = ImageWorker::run(ImageQueues::make(), $lock);
+$rep = ImageWorker::run(ImageQueues::make());
 t_eq(3, $rep['enviados'] ?? null, 'worker processa as 3');
-t_eq('600', substr(sprintf('%o', fileperms($lock)), -3), 'lock 0600');
 $rows = PhotoRepository::list($hid);
 t_eq(['ready', 'ready', 'ready'], array_column($rows, 'status'), 'fotos prontas');
 t_eq([], glob(PhotoStorage::$originals . '/*') ?: [], 'originais apagados');
@@ -125,14 +117,14 @@ $badOrig = PhotoRepository::findById((int) $bad['id'])['uuid'] . '.jpg';
 db()->prepare('UPDATE photos SET original = ? WHERE id = ?')->execute([$badOrig, (int) $bad['id']]);
 file_put_contents(PhotoStorage::$originals . '/' . $badOrig, 'lixo');
 ImageQueues::make()->push((int) $bad['id']);
-$rep = ImageWorker::run(ImageQueues::make(), $lock);
+$rep = ImageWorker::run(ImageQueues::make());
 t_eq(1, $rep['falhas'] ?? null, '1ª tentativa falha');
 $q = db()->query('SELECT * FROM image_queue WHERE photo_id = ' . (int) $bad['id'])->fetchAll(PDO::FETCH_ASSOC)[0];
 $delay = strtotime($q['next_attempt_at'] . ' UTC') - time();
 t_ok($q['status'] === 'pending' && $delay > 50 && $delay <= 60, 'reagendada com o backoff da fila de e-mail (60 s)');
 for ($i = 0; $i < Queues::MAX_ATTEMPTS; $i++) {
     db()->exec("UPDATE image_queue SET next_attempt_at = '2000-01-01 00:00:00' WHERE status = 'pending'");
-    ImageWorker::run(ImageQueues::make(), $lock);
+    ImageWorker::run(ImageQueues::make());
 }
 t_eq('failed', PhotoRepository::findById((int) $bad['id'])['status'], 'após N tentativas: foto failed');
 t_ok(!is_file(PhotoStorage::$originals . '/' . $badOrig), 'original apagado na desistência');
@@ -219,8 +211,7 @@ t_ok(PhotoStorage::enqueueOriginal($h2, $exifFile, 0, 1) !== null, 'jpeg with EX
 $st = db()->prepare('SELECT status, path FROM photos WHERE property_id = ? ORDER BY sort_order');
 $st->execute([$h2]);
 t_eq(['processing', 'processing'], array_column($st->fetchAll(), 'status'), 'seed and EXIF jpeg in processing');
-@unlink($lock);
-$rep = ImageWorker::run(ImageQueues::make(), $lock);
+$rep = ImageWorker::run(ImageQueues::make());
 t_eq(2, $rep['enviados'] ?? null, 'worker gera os WebP do seed e do jpeg com EXIF');
 $st->execute([$h2]);
 $after = $st->fetchAll();
@@ -244,7 +235,7 @@ t_ok(!is_file(PhotoStorage::$originals . '/' . PhotoRepository::findById((int) $
 $st = db()->prepare("SELECT DISTINCT status FROM photos WHERE property_id = ?");
 $st->execute([$h2]);
 t_eq(['removed'], array_column($st->fetchAll(), 'status'), 'fotos marcadas removed');
-$rep = ImageWorker::run(ImageQueues::make(), $lock);
+$rep = ImageWorker::run(ImageQueues::make());
 t_eq([0, 1], [$rep['enviados'] ?? null, $rep['ignorados'] ?? null], 'worker ignora foto de imóvel inativado');
 t_eq([], glob(PhotoStorage::$public . '/' . PhotoRepository::findById((int) $pend['id'])['uuid'] . '-*') ?: [], 'nenhum WebP gerado depois de inativar');
 

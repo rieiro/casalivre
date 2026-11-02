@@ -8,7 +8,7 @@ require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/PhotoStorage.php';
 
 /**
- * Worker de imagens (cron): para cada foto em processamento, decodifica o original e grava de novo a
+ * Worker de imagens (runit, vários processos): para cada foto em processamento, decodifica o original e grava de novo a
  * partir dos pixels com GD (nenhum metadado do arquivo enviado sobrevive: EXIF, GPS, ICC, comentários),
  * corrige a orientação (EXIF Orientation, se a extensão exif existir) e gera WebP em 3 larguras:
  *
@@ -29,11 +29,11 @@ final class ImageWorker
     /** Teto de pixels decodificados (protege a memória contra "bombas" de descompressão). */
     public const MAX_PIXELS = 25_000_000; // ~100-125 MB de RAM no GD (truecolor)
 
-    public static function run(ImageQueue $queue, string $lockFile, int $batch = self::DEFAULT_BATCH, int $maxSeconds = QueueWorker::MAX_RUN_SECONDS): ?array
+    public static function run(ImageQueue $queue, int $batch = self::DEFAULT_BATCH, int $maxSeconds = QueueWorker::MAX_RUN_SECONDS): ?array
     {
         return QueueWorker::run(
             $queue,
-            $lockFile,
+            null,
             static fn (array $job): bool => self::process((int) $job['photo_id']),
             $batch,
             self::RETENTION_DAYS,

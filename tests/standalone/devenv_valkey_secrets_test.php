@@ -52,7 +52,17 @@ foreach (['dev-env.env', 'php-fpm-env.conf'] as $f) {
     t_ok(!str_contains($c, 'admin'), "$f does not mention the admin secret");
     t_ok(str_contains($c, 'valkey-app.secret') && str_contains($c, 'QUEUE_DRIVER'), "$f: app secret path and QUEUE_DRIVER");
 }
-t_ok(is_file("$home/sv/queue-worker/run"), 'queue-worker runit service installed');
+t_ok(str_contains($acl, 'user cl_mail on') && str_contains($acl, '~cl:q:mail:*'), 'cl_mail limited to the mail queue');
+t_ok(str_contains($acl, 'user cl_image on') && str_contains($acl, '~cl:q:image:*'), 'cl_image limited to the image queue');
+t_eq('440', $mode("$home/etc/valkey-mail.secret"), 'mail secret 0440');
+t_eq('440', $mode("$home/etc/valkey-image.secret"), 'image secret 0440');
+t_ok(is_file("$home/sv/casalivre-mail-worker/run"), 'mail worker installed');
+t_ok(is_file("$home/sv/casalivre-image-worker-1/run"), 'one image worker installed');
+t_ok(!is_file("$home/sv/queue-worker/run"), 'combined queue-worker service is not installed');
+$mailRun = (string) file_get_contents("$home/sv/casalivre-mail-worker/run");
+t_ok(str_contains($mailRun, '-d memory_limit=256M') && str_contains($mailRun, 'cl_mail'), 'mail run sets the memory limit and cl_mail');
+$imageRun = (string) file_get_contents("$home/sv/casalivre-image-worker-1/run");
+t_ok(str_contains($imageRun, '-d memory_limit=256M') && str_contains($imageRun, 'cl_image'), 'image run sets the memory limit and cl_image');
 
 echo "runtime binds and socket mode\n";
 $up = (string) file_get_contents("$dev/up-bwrap.sh");

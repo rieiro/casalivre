@@ -33,7 +33,7 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$read
 };
 
 t_ok($mail->push('activation', 'u1@casalivre.test'), 'job 1 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 $first = $read[0] ?? [];
 t_eq('20', $first['settings'] ?? null, 'tick 1: results_per_page from settings.json');
 t_eq('Buscar', $first['i18n'] ?? null, 'tick 1: nav.search from translations.json');
@@ -65,14 +65,14 @@ foreach ($files as $k => $f) {
 }
 
 t_ok($mail->push('activation', 'u2@casalivre.test'), 'job 2 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_eq($first, $read[1] ?? null, 'tick 2: unchanged files are not re-read (values still from memory)');
 
 echo "control: a real change is picked up\n";
 clearstatcache();
 touch($files['i18n'], time() + 5);
 t_ok($mail->push('activation', 'u3@casalivre.test'), 'job 3 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_eq('Buzcar', $read[2]['i18n'] ?? null, 'tick 3: translations.json mtime changed -> re-read');
 t_eq($first['settings'], $read[2]['settings'] ?? null, 'tick 3: settings.json still unchanged -> not re-read');
 $restore();

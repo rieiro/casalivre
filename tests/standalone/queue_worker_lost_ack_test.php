@@ -40,7 +40,7 @@ $afterSend = static function () use ($other): void {
 };
 $err = null;
 try {
-    QueueWorkerLoop::tick($mail, null, $dir);
+    QueueWorkerLoop::mail($mail, $dir);
 } catch (Throwable $e) {
     $err = $e;
 }
@@ -49,14 +49,14 @@ t_eq(['ack@casalivre.test'], $sent, 'the email went out once');
 (static fn () => Db::$conn = null)->bindTo(null, Db::class)(); // the restarted worker: new connection
 $mail = MailQueues::make();
 t_eq([['status' => 'processing', 'attempts' => 0, 'last_error' => '']], array_map(static fn ($r) => ['status' => $r['status'], 'attempts' => (int) $r['attempts'], 'last_error' => $r['last_error']], $rows()), 'still reserved, no attempt spent, no error recorded');
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq([0, 0], [$rep['enviados'], $rep['falhas']], 'restarted worker: ticks fine (no crash loop), job not resent while reserved');
 $other->exec("UPDATE mail_queue SET updated_at = '2000-01-01 00:00:00' WHERE status = 'processing'"); // 10 min later
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'after STALE_SECONDS: sent again and acked');
 t_eq(['ack@casalivre.test', 'ack@casalivre.test'], $sent, 'at-least-once: the recipient got it twice');
 t_eq(['sent', 1], [$rows()[0]['status'], (int) $rows()[0]['attempts']], 'sent; the stale reclaim counted one attempt');
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq(0, $rep['enviados'], 'no third send');
 
 echo "stale reclaim stops at MAX_ATTEMPTS\n";

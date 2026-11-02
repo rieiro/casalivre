@@ -40,7 +40,7 @@ t_backdate($files[1]);
 
 echo "tick 1: manifest lists contraste\n";
 t_ok($mail->push('activation', 'm1@casalivre.test'), 'job 1 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_ok(in_array('contraste', Theme::available(), true), 'tick 1: contraste available');
 t_ok(($html[0] ?? '') === $header('contraste'), 'tick 1: contraste brand');
 
@@ -50,7 +50,7 @@ unset($m['/assets/themes/contraste.css']);
 file_put_contents(AssetManifest::file(), AssetManifest::encode($m));
 t_backdate(AssetManifest::file());
 t_ok($mail->push('activation', 'm2@casalivre.test'), 'job 2 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
+QueueWorkerLoop::mail($mail, $dir);
 t_ok(!array_key_exists('/assets/themes/contraste.css', AssetManifest::load()), 'tick 2: rebuilt manifest seen');
 t_eq(['padrao'], Theme::available(), 'tick 2: theme list from the rebuilt manifest');
 t_ok(($html[1] ?? '') === $header('padrao'), 'tick 2: mail falls back to the default brand');

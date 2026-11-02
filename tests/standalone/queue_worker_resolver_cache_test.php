@@ -41,9 +41,8 @@ GrupoResolvedor::$clock = static function () use (&$now): int {
 
 echo "iteration 1: domain verified\n";
 t_ok($mail->push('activation', 'a1@casalivre.test'), 'job 1 queued');
-$r = QueueWorkerLoop::tick($mail, null, $dir);
-t_eq(['mail'], array_keys($r), 'no image queue: mail report only');
-t_eq(1, $r['mail']['enviados'] ?? null, 'iteration 1: one mail delivered');
+$r = QueueWorkerLoop::mail($mail, $dir);
+t_eq(1, $r['enviados'] ?? null, 'iteration 1: one mail delivered');
 t_ok(str_contains($html[0] ?? '', $link), 'iteration 1: verified domain is a link');
 
 echo "domain loses verification between iterations\n";
@@ -54,16 +53,17 @@ t_ok(GrupoResolvedor::doDominio('imob.example.com') !== null, 'within the TTL: t
 echo "iteration 2: TTL expired, domain no longer verified\n";
 $now += 1;
 t_ok($mail->push('activation', 'a2@casalivre.test'), 'job 2 queued');
-$r = QueueWorkerLoop::tick($mail, null, $dir);
-t_eq(1, $r['mail']['enviados'] ?? null, 'iteration 2: one mail delivered');
+$r = QueueWorkerLoop::mail($mail, $dir);
+t_eq(1, $r['enviados'] ?? null, 'iteration 2: one mail delivered');
 t_ok(isset($html[1]) && !str_contains($html[1], $link), 'iteration 2: unverified domain is no longer a link');
 t_ok(str_contains($html[1] ?? '', 'https://imob.example.com/g/imob/'), 'iteration 2: URL kept as plain text');
 t_ok(str_contains($html[1] ?? '', '<a href="https://casalivre.example/"'), 'iteration 2: APP_URL still linked');
 t_ok(GrupoResolvedor::doDominio('imob.example.com') === null, 'cache now reflects the database');
 GrupoResolvedor::$clock = null;
 
-echo "scripts/queue-worker.php runs its loop through QueueWorkerLoop::tick\n";
+echo "scripts/queue-worker.php runs one queue per process\n";
 $src = (string) file_get_contents(CL_ROOT . '/scripts/queue-worker.php');
-t_ok(preg_match('/do \{(?:(?!\} while).)*\$reports = QueueWorkerLoop::tick\(/s', $src) === 1, 'loop body is QueueWorkerLoop::tick');
+t_ok(str_contains($src, 'QueueWorkerLoop::mail(') && str_contains($src, 'QueueWorkerLoop::image('), 'loop body is one queue');
+t_ok(!str_contains($src, 'image queue skipped'), 'missing WebP does not skip the image queue');
 @exec('rm -rf ' . escapeshellarg($dir));
 t_done();

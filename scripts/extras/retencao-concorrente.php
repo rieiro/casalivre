@@ -11,7 +11,7 @@ if (!function_exists('link_ativacao')) {
     function link_ativacao(string $email): string
     {
         $root = dirname(__DIR__, 2);
-        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/queue-worker.php') . ' mail --once 2>&1';
         $arq = $root . '/storage/logs/mail-dev.log';
         for ($i = 0; $i < 5; $i++) {
             shell_exec($cmd);
@@ -74,7 +74,7 @@ foreach (['127.0.0.1', '::1'] as $ip) {
 pdo()->exec("DELETE FROM login_rate_limit WHERE ip IN ('127.0.0.1', '::1')");
 
 // Preparação (sem criar imóvel): usa a massa dos seeds.
-// 1) Sessão + CSRF: conta própria do teste, cadastrada pela API, ativada pelo link do mail-dev.log (mail-worker)
+// 1) Sessão + CSRF: conta própria do teste, cadastrada pela API, ativada pelo link do mail-dev.log (worker de e-mail)
 //    e logada com o mesmo cookie; confere /api/users/eu = 200 (o 419 antigo vinha de token lido de um redirect).
 $appDb = pdo();
 $jar = tempnam(sys_get_temp_dir(), 'conc');
@@ -84,7 +84,7 @@ $cep = (string) ($appDb->query("SELECT cep FROM ceps WHERE street <> '' AND city
     'phone' => '48999990000', 'email' => $email, 'password' => 'Senha-segura1', 'password_confirm' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/cadastro')]);
 ok($stCad === 201, "preparação: cadastro pela API com CSRF da sessão ($stCad)");
 $link = link_ativacao($email);
-ok($link !== '', 'preparação: link de ativação no mail-dev.log após o mail-worker');
+ok($link !== '', 'preparação: link de ativação no mail-dev.log após o worker de e-mail');
 // Ativação por POST com CSRF (o GET do link só mostra o botão).
 if ($link !== '') { parse_str((string) parse_url($link, PHP_URL_QUERY), $q); http('POST', '/api/auth/verificar', ['token' => (string) ($q['token'] ?? '')], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]); }
 [$stLogin] = http('POST', '/api/sessao', ['email' => $email, 'password' => 'Senha-segura1'], $jar, ['X-CSRF-Token: ' . csrf($jar, '/entrar')]);

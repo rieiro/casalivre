@@ -6,7 +6,7 @@ require_once __DIR__ . '/JobQueue.php';
 require_once __DIR__ . '/Db.php';
 
 /**
- * Lote genérico de worker por cron: lock exclusivo (arquivo 0600, flock sem espera), teto de tempo
+ * Lote genérico de um worker: lock exclusivo só quando $lockFile não é null (arquivo 0600, flock sem espera), teto de tempo
  * abaixo de STALE_SECONDS, ack/fail com backoff e purga de itens antigos. Erro de conexão com o banco (Db::isConnectionError)
  * ou com o Valkey (RedisException) não conta como falha do item: o lote para e a exceção sobe (o worker longo reconecta
  * no Valkey, ou sai para o runit reiniciar no caso do banco). Uma reserva órfã reaproveitada já contou uma tentativa;
@@ -40,13 +40,17 @@ final class QueueWorker
      * @param callable(array): bool $handle
      * @param null|callable(array, Throwable): void $onGiveUp
      */
-    public static function run(JobQueue $queue, string $lockFile, callable $handle, int $batch, int $retentionDays, int $maxSeconds = self::MAX_RUN_SECONDS, ?callable $onGiveUp = null, string $label = 'queue: item'): ?array
+    public static function run(JobQueue $queue, ?string $lockFile, callable $handle, int $batch, int $retentionDays, int $maxSeconds = self::MAX_RUN_SECONDS, ?callable $onGiveUp = null, string $label = 'queue: item'): ?array
     {
-        $lock = self::openLock($lockFile);
-        try {
+        $lock = null;
+        if ($lockFile !== null) {
+            $lock = self::openLock($lockFile);
             if (!flock($lock, LOCK_EX | LOCK_NB)) {
+                fclose($lock);
                 return null;
             }
+        }
+        try {
             $report = ['enviados' => 0, 'ignorados' => 0, 'falhas' => 0, 'desistencias' => 0, 'purgados' => 0];
             $deadline = microtime(true) + min($maxSeconds, self::MAX_RUN_SECONDS);
             for ($i = 0; $i < $batch && microtime(true) < $deadline; $i++) {
@@ -87,10 +91,14 @@ final class QueueWorker
                 }
             }
             $report['purgados'] = $queue->purge($retentionDays);
-            flock($lock, LOCK_UN);
+            if ($lock !== null) {
+                flock($lock, LOCK_UN);
+            }
             return $report;
         } finally {
-            fclose($lock);
+            if ($lock !== null) {
+                fclose($lock);
+            }
         }
     }
 }

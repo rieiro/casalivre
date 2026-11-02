@@ -10,7 +10,7 @@ if (!function_exists('link_ativacao')) {
     function link_ativacao(string $email): string
     {
         $root = dirname(__DIR__, 1);
-        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/queue-worker.php') . ' mail --once 2>&1';
         $arq = $root . '/storage/logs/mail-dev.log';
         for ($i = 0; $i < 5; $i++) {
             shell_exec($cmd);
@@ -132,7 +132,7 @@ function limpar_rodada_anterior(): void
 /** Fotos são assíncronas (#39): processa a fila de imagens (o servidor de teste não roda o worker). */
 function processar_fotos(int $rodadas = 3): void
 {
-    $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/scripts/image-worker.php') . ' 2>&1';
+    $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/scripts/queue-worker.php') . ' image --once 2>&1';
     for ($i = 0; $i < $rodadas; $i++) {
         shell_exec($cmd);
     }
@@ -143,7 +143,7 @@ limpar_rodada_anterior();
 /**
  * Pré-requisito: fila de imagens vazia. Os seeds só enfileiram as capas (fotos assíncronas, #39); sem o
  * worker, imóveis dos seeds sem foto pronta podem cair na busca do Caso 4 ("cada item tem foto principal").
- * Roda o image-worker em laço até a fila esvaziar, com teto de CASOS_FILA_FOTOS_SEGUNDOS (padrão 300 s;
+ * Roda o worker de imagens em laço até a fila esvaziar, com teto de CASOS_FILA_FOTOS_SEGUNDOS (padrão 300 s;
  * ~10 mil capas dos seeds levam ~4-5 min). No teto, avisa e segue.
  */
 function esvaziar_fila_de_fotos(): void
@@ -275,7 +275,7 @@ for ($n = 1; $n <= 20; $n++) {
     $photoCount = 0;
     $rounds = 0;
     // Limite #39: 30 envios de foto por 10 min por IP. Um POST por imóvel com as 10 fotos (máx. 10 por POST)
-    // = 20 POSTs no caso inteiro; depois o image-worker processa a fila (fotos assíncronas).
+    // = 20 POSTs no caso inteiro; depois o worker de imagens processa a fila (fotos assíncronas).
     while ($photoCount < 10 && $rounds < 2) {
         $rounds++;
         [$status, , $html] = req('GET', $base . "/imoveis/$id/editar");

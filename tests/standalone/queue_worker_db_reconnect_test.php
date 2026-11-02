@@ -50,7 +50,7 @@ foreach (['a', 'b', 'c'] as $n) {
 }
 $err = null;
 try {
-    QueueWorkerLoop::tick($mail, null, $dir);
+    QueueWorkerLoop::mail($mail, $dir);
 } catch (Throwable $e) {
     $err = $e;
 }
@@ -61,11 +61,11 @@ $r = $rows();
 t_eq(['sent', 'processing', 'pending'], array_column($r, 'status'), 'a sent; b still reserved; c pending');
 t_eq([0, 0, 0], array_map('intval', array_column($r, 'attempts')), 'the drop spent no attempt (not a job failure)');
 t_eq('', (string) $r[1]['last_error'], 'no error recorded on b');
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'after the restart the worker keeps processing (c)');
 // b's reservation goes stale after STALE_SECONDS and returns to the queue: age it instead of waiting 10 min.
 $other->exec("UPDATE mail_queue SET updated_at = '2000-01-01 00:00:00' WHERE status = 'processing'");
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'b retried once its reservation is stale');
 sort($sent);
 t_eq(['a@casalivre.test', 'b@casalivre.test', 'c@casalivre.test'], $sent, 'every job delivered exactly once (none lost, none duplicated)');
@@ -77,7 +77,7 @@ $mail->push('activation', 'd@casalivre.test');
 $kill();
 $err = null;
 try {
-    QueueWorkerLoop::tick($mail, null, $dir);
+    QueueWorkerLoop::mail($mail, $dir);
 } catch (Throwable $e) {
     $err = $e;
 }
@@ -85,7 +85,7 @@ t_ok($err !== null && Db::isConnectionError($err), 'tick: the DB ping fails firs
 $d = $rows()[3];
 t_eq(['pending', 0], [$d['status'], (int) $d['attempts']], 'd untouched (not reserved, no attempt)');
 $mail = $restart();
-$rep = QueueWorkerLoop::tick($mail, null, $dir)['mail'];
+$rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq(1, $rep['enviados'], 'd delivered after the restart');
 t_eq(4, count($sent), 'four deliveries in total');
 
@@ -105,10 +105,12 @@ t_ok(!Db::isConnectionError(new RuntimeException('SMTP down')), 'non-PDO error i
 
 echo "scripts/queue-worker.php: DB session dropped -> ALERT line, 5-30 s sleep, exit 1\n";
 $stderr = (string) tempnam(sys_get_temp_dir(), 'qwerr');
-$proc = proc_open([PHP_BINARY, CL_ROOT . '/scripts/queue-worker.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT);
+$workerEnv = getenv();
+$workerEnv['APP_ENV'] = 'dev';
+$proc = proc_open([PHP_BINARY, CL_ROOT . '/scripts/queue-worker.php', 'mail'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT, $workerEnv);
 $mine = (int) db()->query('SELECT pg_backend_pid()')->fetchColumn();
 $ownPid = (int) $other->query('SELECT pg_backend_pid()')->fetchColumn();
-$find = $other->prepare('SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND pid NOT IN (?, ?)');
+$find = $other->prepare("SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND backend_type = 'client backend' AND usename = current_user AND pid NOT IN (?, ?)");
 $worker = [];
 for ($i = 0; $i < 100 && $worker === []; $i++) {
     usleep(50000);
@@ -149,8 +151,9 @@ t_ok($ms < 2000, "SIGTERM ends the sleep at once ($ms ms)");
 echo "scripts/queue-worker.php: PG unreachable at start -> same ALERT + sleep, not a crash loop\n";
 $stderr = (string) tempnam(sys_get_temp_dir(), 'qwerr');
 $env = getenv();
+$env['APP_ENV'] = 'dev';
 $env['DB_DSN'] = (string) preg_replace('/dbname=[^;]+/', 'dbname=casalivre_no_such_db_' . getmypid(), $dsn);
-$proc = proc_open([PHP_BINARY, CL_ROOT . '/scripts/queue-worker.php'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT, $env);
+$proc = proc_open([PHP_BINARY, CL_ROOT . '/scripts/queue-worker.php', 'mail'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']], $pipes, CL_ROOT, $env);
 $alert = '';
 for ($i = 0; $i < 100 && !str_contains($alert, 'ALERT'); $i++) {
     usleep(50000);
