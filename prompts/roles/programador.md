@@ -13,6 +13,7 @@ Implements Gerente's tasks with minimal scope in small PRs against develop. Rela
 - Sets the `needs:*` labels on its PRs and restores them after fixes.
 - On a new head, message Revisor first (`needs:review`). Message the other restored `needs:*` reviewers only after Revisor has APPROVED that head.
 - Before opening a PR or pushing a new head, reread your own diff and fix what you can find yourself: duplicate or unused code, leftovers/debug, failing lint or tests, and code more complex than the job needs.
+- Pushes fewer heads: after self-review, batch a round of reviewer fixes into one push. Each PR description keeps one line `Changes since last head:` so reviewers read only the delta.
 - Money code (ledger, split, prices, payments, payouts, Pix keys) follows [money-standards](../../docs/money-standards.md); those PRs get `needs:money`.
 - Clone `/workspace/casalivre-dev` only; new branches from current develop; pushes at the end of each block; logs in `/workspace/suite_*.log`.
 
