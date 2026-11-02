@@ -7,7 +7,7 @@ require_once __DIR__ . '/ValkeyJobQueue.php';
 
 /**
  * Fila de imagens: o upload só grava o original fora do public/ e enfileira o id da foto; o
- * o worker de imagens gera os WebP. Mesma base (JobQueue/SqlJobQueue/QueueWorker) da MailQueue.
+ * worker de imagens gera os WebP. Mesma base (JobQueue/SqlJobQueue/QueueWorker) da MailQueue.
  */
 interface ImageQueue extends JobQueue
 {

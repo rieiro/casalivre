@@ -1,7 +1,7 @@
 <?php
-// #142 (Rafael): the queue worker must not re-read settings.json, manifest.json or translations.json on every tick.
+// #142 (Rafael): the queue worker must not re-read settings.json, manifest.json or translations.json on every batch.
 // WorkerCaches::refreshIfChanged reloads a cache only when its file's mtime differs from the one stored at load (#192).
-// Here each file is altered in place and its old mtime put back: if the next tick re-read it, the altered value would
+// Here each file is altered in place and its old mtime put back: if the next batch re-read it, the altered value would
 // show up.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
@@ -35,9 +35,9 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$read
 t_ok($mail->push('activation', 'u1@casalivre.test'), 'job 1 queued');
 QueueWorkerLoop::mail($mail, $dir);
 $first = $read[0] ?? [];
-t_eq('20', $first['settings'] ?? null, 'tick 1: results_per_page from settings.json');
-t_eq('Buscar', $first['i18n'] ?? null, 'tick 1: nav.search from translations.json');
-t_ok(is_string($first['manifest'] ?? null) && strlen($first['manifest']) === AssetManifest::HASH_LEN, 'tick 1: app.css hash from manifest.json');
+t_eq('20', $first['settings'] ?? null, 'batch 1: results_per_page from settings.json');
+t_eq('Buscar', $first['i18n'] ?? null, 'batch 1: nav.search from translations.json');
+t_ok(is_string($first['manifest'] ?? null) && strlen($first['manifest']) === AssetManifest::HASH_LEN, 'batch 1: app.css hash from manifest.json');
 
 // In-place edits, old mtime restored: the stamp does not change.
 // [anchors to skip to, from, to]
@@ -66,15 +66,15 @@ foreach ($files as $k => $f) {
 
 t_ok($mail->push('activation', 'u2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_eq($first, $read[1] ?? null, 'tick 2: unchanged files are not re-read (values still from memory)');
+t_eq($first, $read[1] ?? null, 'batch 2: unchanged files are not re-read (values still from memory)');
 
 echo "control: a real change is picked up\n";
 clearstatcache();
 touch($files['i18n'], time() + 5);
 t_ok($mail->push('activation', 'u3@casalivre.test'), 'job 3 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_eq('Buzcar', $read[2]['i18n'] ?? null, 'tick 3: translations.json mtime changed -> re-read');
-t_eq($first['settings'], $read[2]['settings'] ?? null, 'tick 3: settings.json still unchanged -> not re-read');
+t_eq('Buzcar', $read[2]['i18n'] ?? null, 'batch 3: translations.json mtime changed -> re-read');
+t_eq($first['settings'], $read[2]['settings'] ?? null, 'batch 3: settings.json still unchanged -> not re-read');
 $restore();
 @exec('rm -rf ' . escapeshellarg($dir));
 t_done();

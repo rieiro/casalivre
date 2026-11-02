@@ -1,7 +1,7 @@
 <?php
 // #142: the long-running queue worker kept I18n's per-process copy of translations.json forever, so a changed
-// translation was never seen. Each QueueWorkerLoop::tick reloads it when translations.json changed
-// (WorkerCaches::refreshIfChanged): the next tick sees the new text.
+// translation was never seen. Each QueueWorkerLoop::mail batch reloads it when translations.json changed
+// (WorkerCaches::refreshIfChanged): the next batch sees the new text.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -32,12 +32,12 @@ MailWorker::$deliver = static function (string $type, string $email) use (&$seen
 
 t_ok($mail->push('activation', 'i1@casalivre.test'), 'job 1 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_eq('Buscar', $seen[0] ?? null, 'tick 1: pt-BR nav.search from translations.json');
+t_eq('Buscar', $seen[0] ?? null, 'batch 1: pt-BR nav.search from translations.json');
 db()->prepare('UPDATE translations SET text = ? WHERE lang = ? AND tkey = ?')->execute(['Procurar', 'pt-BR', 'nav.search']);
 I18n::refresh(); // what scripts/refresh-settings-cache.php does after a translation change (another process)
 t_backdate($cacheFile);
 t_ok($mail->push('activation', 'i2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_eq('Procurar', $seen[1] ?? null, 'tick 2: the changed translation is seen');
+t_eq('Procurar', $seen[1] ?? null, 'batch 2: the changed translation is seen');
 @exec('rm -rf ' . escapeshellarg($dir));
 t_done();

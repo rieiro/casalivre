@@ -1,8 +1,8 @@
 <?php
 // Cleanup sprint #158 (Arquitetura #142): the long-running queue worker never reconnected to the DB, so after a PG
-// restart every mail job failed until it was given up. Now each QueueWorkerLoop::tick pings the DB first, a lost
+// restart every mail job failed until it was given up. Now each QueueWorkerLoop::mail batch pings the DB first, a lost
 // connection is not counted as a job failure, and scripts/queue-worker.php exits 1 so runit restarts it with a fresh
-// connection. Here the worker's backend is dropped with pg_terminate_backend (same role) mid-batch and between ticks;
+// connection. Here the worker's backend is dropped with pg_terminate_backend (same role) mid-batch and between batches;
 // after the restart every job is delivered exactly once (none lost, none duplicated, no attempt spent). PG only.
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
@@ -54,7 +54,7 @@ try {
 } catch (Throwable $e) {
     $err = $e;
 }
-t_ok($err !== null && Db::isConnectionError($err), 'tick propagates the lost connection (' . ($err === null ? 'nothing thrown' : $err::class) . ')');
+t_ok($err !== null && Db::isConnectionError($err), 'batch propagates the lost connection (' . ($err === null ? 'nothing thrown' : $err::class) . ')');
 t_eq(['a@casalivre.test'], $sent, 'job a delivered before the drop; nothing after it in that batch');
 $mail = $restart();
 $r = $rows();
@@ -72,7 +72,7 @@ t_eq(['a@casalivre.test', 'b@casalivre.test', 'c@casalivre.test'], $sent, 'every
 t_eq(['sent', 'sent', 'sent'], array_column($rows(), 'status'), 'all three sent');
 t_eq([0, 1, 0], array_map('intval', array_column($rows(), 'attempts')), 'only the reclaimed reservation counted an attempt');
 
-echo "connection dropped between ticks (PG restart while idle)\n";
+echo "connection dropped between batches (PG restart while idle)\n";
 $mail->push('activation', 'd@casalivre.test');
 $kill();
 $err = null;
@@ -81,7 +81,7 @@ try {
 } catch (Throwable $e) {
     $err = $e;
 }
-t_ok($err !== null && Db::isConnectionError($err), 'tick: the DB ping fails first');
+t_ok($err !== null && Db::isConnectionError($err), 'batch: the DB ping fails first');
 $d = $rows()[3];
 t_eq(['pending', 0], [$d['status'], (int) $d['attempts']], 'd untouched (not reserved, no attempt)');
 $mail = $restart();

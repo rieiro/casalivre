@@ -50,7 +50,7 @@ t_eq(['ack@casalivre.test'], $sent, 'the email went out once');
 $mail = MailQueues::make();
 t_eq([['status' => 'processing', 'attempts' => 0, 'last_error' => '']], array_map(static fn ($r) => ['status' => $r['status'], 'attempts' => (int) $r['attempts'], 'last_error' => $r['last_error']], $rows()), 'still reserved, no attempt spent, no error recorded');
 $rep = QueueWorkerLoop::mail($mail, $dir);
-t_eq([0, 0], [$rep['enviados'], $rep['falhas']], 'restarted worker: ticks fine (no crash loop), job not resent while reserved');
+t_eq([0, 0], [$rep['enviados'], $rep['falhas']], 'restarted worker: the next batch runs (no crash loop), job not resent while reserved');
 $other->exec("UPDATE mail_queue SET updated_at = '2000-01-01 00:00:00' WHERE status = 'processing'"); // 10 min later
 $rep = QueueWorkerLoop::mail($mail, $dir);
 t_eq([1, 0], [$rep['enviados'], $rep['falhas']], 'after STALE_SECONDS: sent again and acked');

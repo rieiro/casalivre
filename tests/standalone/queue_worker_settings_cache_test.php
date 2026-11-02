@@ -1,7 +1,7 @@
 <?php
 // #142: the long-running queue worker kept Settings' per-process copy of settings.json forever, so mail kept the old
-// theme brand and account links kept the old expiry minutes after an admin change. Each QueueWorkerLoop::tick now
-// reloads it when settings.json changed (WorkerCaches::refreshIfChanged): the second tick sees the new values.
+// theme brand and account links kept the old expiry minutes after an admin change. Each QueueWorkerLoop::mail batch now
+// reloads it when settings.json changed (WorkerCaches::refreshIfChanged): the second batch sees the new values.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -39,12 +39,12 @@ $header = static fn (string $theme): string => MailHtml::render('Aviso', "Texto\
 t_ok($header('padrao') !== $header('contraste'), 'control: the two themes render different mail');
 t_ok($mail->push('activation', 'b1@casalivre.test'), 'job 1 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_ok(($html[0] ?? '') === $header('padrao'), 'tick 1: padrao brand');
+t_ok(($html[0] ?? '') === $header('padrao'), 'batch 1: padrao brand');
 t_eq('ok', ThemeSet::run('contraste', Theme::current(), Theme::available())->tipo, 'admin switches the theme to contraste (DB + settings.json)');
 t_backdate($cacheFile);
 t_ok($mail->push('activation', 'b2@casalivre.test'), 'job 2 queued');
 QueueWorkerLoop::mail($mail, $dir);
-t_ok(($html[1] ?? '') === $header('contraste'), 'tick 2: contraste brand');
+t_ok(($html[1] ?? '') === $header('contraste'), 'batch 2: contraste brand');
 t_eq('ok', ThemeSet::run('padrao', 'contraste', Theme::available())->tipo, 'theme back to padrao');
 t_backdate($cacheFile);
 
@@ -64,18 +64,18 @@ $round = static function () use ($mail, $dir): array {
     return [$rep['enviados'] ?? null, (int) $p['id'], (int) $r['id']];
 };
 [$sent, $p, $r] = $round();
-t_eq(2, $sent, 'tick 1: activation and reset delivered (mail-dev.log)');
-t_eq(60, $minutes($p, 'activation_expires_at'), 'tick 1: activation link expires in 60 min');
-t_eq(30, $minutes($r, 'reset_expires_at'), 'tick 1: reset link expires in 30 min');
+t_eq(2, $sent, 'batch 1: activation and reset delivered (mail-dev.log)');
+t_eq(60, $minutes($p, 'activation_expires_at'), 'batch 1: activation link expires in 60 min');
+t_eq(30, $minutes($r, 'reset_expires_at'), 'batch 1: reset link expires in 30 min');
 $upd = db()->prepare('UPDATE settings SET value = ? WHERE skey = ?');
 $upd->execute(['180', 'email_verify_minutes']);
 $upd->execute(['90', 'password_reset_minutes']);
 Settings::refresh(); // what scripts/refresh-settings-cache.php does after a settings change (another process)
 t_backdate($cacheFile);
 [$sent, $p, $r] = $round();
-t_eq(2, $sent, 'tick 2: activation and reset delivered');
-t_eq(180, $minutes($p, 'activation_expires_at'), 'tick 2: activation link expires in the new 180 min');
-t_eq(90, $minutes($r, 'reset_expires_at'), 'tick 2: reset link expires in the new 90 min');
+t_eq(2, $sent, 'batch 2: activation and reset delivered');
+t_eq(180, $minutes($p, 'activation_expires_at'), 'batch 2: activation link expires in the new 180 min');
+t_eq(90, $minutes($r, 'reset_expires_at'), 'batch 2: reset link expires in the new 90 min');
 t_ok(str_contains((string) file_get_contents($dir . '/mail-dev.log'), 'https://casalivre.example/senha/redefinir?token='), 'reset link in mail-dev.log');
 @exec('rm -rf ' . escapeshellarg($dir));
 t_done();
