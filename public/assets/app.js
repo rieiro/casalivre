@@ -385,6 +385,9 @@ document.querySelectorAll('[data-photo-select]').forEach((form) => {
     }
     form.addEventListener('change', sync);
     form.addEventListener('submit', (event) => {
+        if (event.submitter && event.submitter.hasAttribute('data-photo-remove')) {
+            return;
+        }
         const selected = selectedBoxes().length;
         if (selected === 0 || !window.confirm(form.dataset.confirm || '')) {
             event.preventDefault();

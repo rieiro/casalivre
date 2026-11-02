@@ -5,6 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/MailWorker.php';
 require_once __DIR__ . '/ImageWorker.php';
 require_once __DIR__ . '/WorkerCaches.php';
+require_once __DIR__ . '/PhotoRepository.php';
+require_once __DIR__ . '/PhotoStorage.php';
+require_once __DIR__ . '/PhotoFail.php';
+require_once __DIR__ . '/ActivityLog.php';
 
 /**
  * One batch of one long-running worker (scripts/queue-worker.php mail|image).
@@ -23,12 +27,20 @@ final class QueueWorkerLoop
     public const DB_LOST_SLEEP_MAX = 30;
     /** Pause (s) between reconnects while Valkey is down. The worker stays up. */
     public const VALKEY_RETRY_SECONDS = 1;
+    /**
+     * How often an image worker discards photos left in processing. The sweep runs after the image batch.
+     * $stuckSweptAt starts at 0, so the first batch of a worker start is followed by one sweep, then one
+     * sweep per this many seconds. A restart sweeps once, after that first batch. The age limit is
+     * PhotoRepository::STUCK_AFTER_SECONDS (30 min).
+     */
+    public const STUCK_SWEEP_SECONDS = 86400;
     /** Test hooks: replace sleep() and STDERR. */
     public static ?Closure $sleep = null;
     /** @var resource|null */
     public static $stderr = null;
     /** True after the first ALERT of the current Valkey outage, so the line is logged once. */
     private static bool $valkeyDown = false;
+    private static int $stuckSweptAt = 0;
 
     public static function hasWebp(): bool
     {
@@ -90,11 +102,21 @@ final class QueueWorkerLoop
         return MailWorker::run($queue, $storageDir . '/mail-worker.lock');
     }
 
-    /** One image batch. No lock: the claim is atomic, so several image workers can run. */
+    /**
+     * One image batch, then the stuck sweep when it is due. The batch is first so a photo that still has
+     * a queue job is handled before rows left in processing are discarded. No lock: the claim is atomic,
+     * so several image workers can run. Every image worker sweeps; discardStuck is one statement.
+     */
     public static function image(ImageQueue $queue): ?array
     {
         self::begin();
-        return ImageWorker::run($queue);
+        $report = ImageWorker::run($queue);
+        $now = time();
+        if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
+            self::$stuckSweptAt = $now;
+            self::sweepStuck();
+        }
+        return $report;
     }
 
     /**
@@ -113,6 +135,19 @@ final class QueueWorkerLoop
     {
         Db::ping();
         WorkerCaches::refreshIfChanged();
+    }
+
+    /** Mark processing photos older than the limit as failed, delete the original, and log each one. */
+    private static function sweepStuck(): void
+    {
+        foreach (PhotoRepository::discardStuck() as $row) {
+            PhotoStorage::deleteOriginal($row['original']);
+            self::alert('stuck photo #' . $row['id'] . ' discarded (' . PhotoFail::STUCK . ')');
+            ActivityLog::record(ActivityLog::PHOTO_STUCK, [
+                'imovel_id' => $row['property_id'],
+                'foto_id' => $row['id'],
+            ]);
+        }
     }
 
     /** One ALERT line on STDERR (runit) and, when error_log is set, in the PHP error log. Class names only; no message. */

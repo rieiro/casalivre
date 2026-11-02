@@ -96,7 +96,7 @@ PhotoStorage::$queueFactory = static function () use (&$connects, $queue): Image
     return $queue;
 };
 $saved = PhotoStorage::storeUploads($uid, $hid, $upload(3), $created);
-t_eq(3, $saved, '3 photos stored');
+t_eq(3, $saved['saved'], '3 photos stored');
 t_eq(1, $connects, 'one connection for 3 photos');
 t_eq(3, $queue->pushes, 'all 3 pushed on that same queue');
 t_eq(['processing', 'processing', 'processing'], $statuses($created), 'queued photos stay processing');
@@ -110,7 +110,7 @@ PhotoStorage::$queueFactory = static function () use (&$connects): ImageQueue {
     throw new RuntimeException('valkey down');
 };
 $saved = PhotoStorage::storeUploads($uid, $hid, $upload(3), $created);
-t_eq(3, $saved, '3 photos stored while Valkey is down');
+t_eq(3, $saved['saved'], '3 photos stored while Valkey is down');
 t_eq(1, $connects, 'one failed connect, then no further connects in this upload');
 t_eq(['failed', 'failed', 'failed'], $statuses($created), 'remaining photos marked failed without a job');
 t_eq(['failed', 'failed', 'failed'], array_column($created, 'estado'), 'created rows report failed');
@@ -123,7 +123,7 @@ PhotoStorage::$queueFactory = static function () use (&$connects, $queue): Image
     return $queue;
 };
 $saved = PhotoStorage::storeUploads($uid, $hid, $upload(3), $created);
-t_eq(3, $saved, '3 photos stored when the first push fails');
+t_eq(3, $saved['saved'], '3 photos stored when the first push fails');
 t_eq(1, $connects, 'push failure does not connect again');
 t_eq(1, $queue->pushes, 'no further Valkey work after the first push failure');
 t_eq(['failed', 'failed', 'failed'], $statuses($created), 'the batch is failed after the first push error');
@@ -136,7 +136,7 @@ PhotoStorage::$queueFactory = static function () use (&$connects, $queue): Image
     return $queue;
 };
 $saved = PhotoStorage::storeUploads($uid, $hid, $upload(3), $created);
-t_eq(3, $saved, 'a later upload stores 3 photos');
+t_eq(3, $saved['saved'], 'a later upload stores 3 photos');
 t_eq(1, $connects, 'the next upload opens its own connection');
 t_eq(3, $queue->pushes, 'the new connection is reused for that upload');
 t_eq(['processing', 'processing', 'processing'], $statuses($created), 'the later upload is queued');
