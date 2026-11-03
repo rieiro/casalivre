@@ -94,8 +94,8 @@ final class SearchService
         if ($groupId === false) {
             return $out;
         }
-        // Reviews are 1..10, so a score above 10 matches nothing. Skip the listing queries.
-        if ($query->scoreMin > 10) {
+        // Reviews are 1..10, and the property form caps guests at 999. Above either, nothing matches.
+        if ($query->scoreMin > 10 || $query->hospedes > 999) {
             $out['total_aprox'] = 0;
             return $out;
         }
@@ -107,6 +107,10 @@ final class SearchService
         $radiusKm = self::radiusKm($place, $query->raio);
         $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
         $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin);
+        // The batch adds only the keyset, so a count of 0 is an empty page.
+        if ($out['total_aprox'] === 0) {
+            return $out;
+        }
 
         $known = Amenities::keys();
         $wanted = array_values(array_filter(

@@ -6,7 +6,7 @@ require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/SearchSql.php';
 
-/** Writes the search projection. Search reads stay on properties until PR4c. */
+/** Writes listing_search. Search reads that table. */
 final class ListingSearch
 {
     /** Session lock so a second rank-verify exits without touching rows. */
@@ -18,6 +18,8 @@ final class ListingSearch
      * Fresh projection for the properties filter. Binds: weight, C, m, C, then the filter.
      * rating_rank = round(1000 * (C*m + rating_sum) / (C + n)); n = 0 yields round(1000*m).
      * rank_base = round((rating_rank / 10) * weight / 100).
+     * rating_tenths is NULL when rating_count is 0, otherwise
+     * (20*rating_sum + rating_count) / (2*rating_count). It is the last column.
      * Status follows SearchSql::active(): 'active' stays active, anything else is inactive.
      */
     private static function projection(string $where): string
@@ -25,11 +27,13 @@ final class ListingSearch
         return sprintf(
             <<<'SQL'
 SELECT s.id, s.status, s.city_place_id, s.lat, s.lng, s.max_guests, s.rating_rank,
-       round(s.rating_rank / 10.0 * ?::numeric / 100.0)::integer AS rank_base
+       round(s.rating_rank / 10.0 * ?::numeric / 100.0)::integer AS rank_base,
+       s.rating_tenths
 FROM (
     SELECT p.id, CASE WHEN %s THEN 'active' ELSE 'inactive' END AS status,
            p.city_place_id, p.lat, p.lng, p.max_guests::smallint AS max_guests,
-           round((1000::numeric * (?::numeric * ?::numeric + p.rating_sum)) / (?::numeric + p.rating_count))::integer AS rating_rank
+           round((1000::numeric * (?::numeric * ?::numeric + p.rating_sum)) / (?::numeric + p.rating_count))::integer AS rating_rank,
+           CASE WHEN p.rating_count > 0 THEN ((20 * p.rating_sum + p.rating_count) / (2 * p.rating_count))::smallint END AS rating_tenths
     FROM properties p
     WHERE %s
 ) s
@@ -54,7 +58,7 @@ SQL,
     private static function apply(string $where, array $params): int
     {
         $stmt = db()->prepare(
-            'INSERT INTO listing_search (id, status, city_place_id, lat, lng, max_guests, rating_rank, rank_base) '
+            'INSERT INTO listing_search (id, status, city_place_id, lat, lng, max_guests, rating_rank, rank_base, rating_tenths) '
             . self::projection($where)
             . <<<'SQL'
  ON CONFLICT (id) DO UPDATE SET
@@ -64,7 +68,8 @@ SQL,
     lng = EXCLUDED.lng,
     max_guests = EXCLUDED.max_guests,
     rating_rank = EXCLUDED.rating_rank,
-    rank_base = EXCLUDED.rank_base
+    rank_base = EXCLUDED.rank_base,
+    rating_tenths = EXCLUDED.rating_tenths
 WHERE listing_search IS DISTINCT FROM EXCLUDED
 RETURNING id
 SQL
