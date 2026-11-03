@@ -301,4 +301,27 @@ $paged = (string) file_get_contents("$tmp/alerts.log");
 t_ok(str_contains($paged, 'ALERT DB connection lost') && !str_contains($paged, 'hello'), 'only the ALERT line is paged');
 t_eq(1, substr_count((string) file_get_contents("$tmp/page.out"), "\n"), 'one page for one ALERT line');
 
+echo "dev worker reads the service directory before cd\n";
+$svc = $tmp . '/casalivre-image-worker-1';
+$repo = $tmp . '/pr246';
+$runDir = $tmp . '/run';
+mkdir($svc, 0700);
+mkdir($repo, 0700);
+mkdir($runDir, 0700);
+$sock = stream_socket_server('unix://' . $runDir . '/valkey.sock', $errno, $errstr);
+t_ok(is_resource($sock), 'name test has a socket (' . $errstr . ')');
+file_put_contents($tmp . '/bin/php8.4', "#!/bin/sh\nprintf '%s\\n' \"\$*\" > " . escapeshellarg($tmp . '/php-args') . "\nexit 0\n");
+chmod($tmp . '/bin/php8.4', 0755);
+[$code, $out, $err] = $run(
+    '/bin/sh ' . escapeshellarg(CL_ROOT . '/ops/dev-env/queue-worker-run'),
+    $svc,
+    ['CL_REPO' => $repo, 'CL_RUN' => $runDir, 'CL_HOME' => $tmp]
+);
+$args = (string) @file_get_contents($tmp . '/php-args');
+t_eq(0, $code, 'image service exits 0 (' . trim($out . $err) . ')');
+t_ok(str_contains($args, 'queue-worker.php image') && !str_contains($err . $out, 'unknown service'), 'queue is image, not the repo folder (' . $args . ' ' . trim($err) . ')');
+if (is_resource($sock)) {
+    fclose($sock);
+}
+
 t_done();

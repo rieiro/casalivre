@@ -1,8 +1,9 @@
 # One queue per service directory (casalivre-mail-worker or casalivre-image-worker-N).
 # Prod runs N image workers (cores minus one). Dev installs casalivre-image-worker-1 only.
+# The service name is this directory. Read it before cd: CL_REPO's folder is not the service.
+name=$(basename "$(pwd)")
 [ -S "$CL_RUN/valkey.sock" ] || { sleep 0.2; exit 1; }
 cd "$CL_REPO" || exit 1
-name=$(basename "$(pwd)")
 case $name in
   *mail*)
     queue=mail

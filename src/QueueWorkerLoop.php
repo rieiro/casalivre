@@ -28,10 +28,11 @@ final class QueueWorkerLoop
     /** Pause (s) between reconnects while Valkey is down. The worker stays up. */
     public const VALKEY_RETRY_SECONDS = 1;
     /**
-     * How often an image worker discards photos left in processing. The sweep runs after the image batch.
-     * $stuckSweptAt starts at 0, so the first batch of a worker start is followed by one sweep, then one
-     * sweep per this many seconds. A restart sweeps once, after that first batch. The age limit is
-     * PhotoRepository::STUCK_AFTER_SECONDS (30 min).
+     * How often an image worker discards photos left in processing.
+     * The sweep runs after a batch that came back short of ImageWorker::DEFAULT_BATCH (nothing more was
+     * waiting). A full batch leaves $stuckSweptAt unchanged and tries again later.
+     * It starts at 0, so the first short batch of a worker start sweeps, then once per this many seconds.
+     * The age limit is PhotoRepository::STUCK_AFTER_SECONDS (30 min).
      */
     public const STUCK_SWEEP_SECONDS = 86400;
     /** Test hooks: replace sleep() and STDERR. */
@@ -103,18 +104,22 @@ final class QueueWorkerLoop
     }
 
     /**
-     * One image batch, then the stuck sweep when it is due. The batch is first so a photo that still has
-     * a queue job is handled before rows left in processing are discarded. No lock: the claim is atomic,
-     * so several image workers can run. Every image worker sweeps; discardStuck is one statement.
+     * One image batch, then the stuck sweep when it is due and this batch did not fill.
+     * A full batch means jobs may still be waiting, so those photos are not discarded.
+     * The batch runs first either way. No lock: the claim is atomic, so several image workers can run.
+     * Every image worker may sweep; discardStuck is one statement.
      */
     public static function image(ImageQueue $queue): ?array
     {
         self::begin();
         $report = ImageWorker::run($queue);
-        $now = time();
-        if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
-            self::$stuckSweptAt = $now;
-            self::sweepStuck();
+        $handled = (int) $report['enviados'] + (int) $report['ignorados'] + (int) $report['falhas'];
+        if ($handled < ImageWorker::DEFAULT_BATCH) {
+            $now = time();
+            if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
+                self::$stuckSweptAt = $now;
+                self::sweepStuck();
+            }
         }
         return $report;
     }

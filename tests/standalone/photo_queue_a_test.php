@@ -35,17 +35,22 @@ $photo = static function (string $status, string $original, string $age) use ($h
     return (int) $st->fetchColumn();
 };
 
-echo "stuck sweep after the image batch\n";
+echo "stuck sweep waits until the image queue is drained\n";
 $oldName = PhotoStorage::randomId() . '.jpg';
 $freshName = PhotoStorage::randomId() . '.jpg';
-$queuedName = PhotoStorage::randomId() . '.jpg';
 file_put_contents($tmp . '/' . $oldName, $jpeg);
 file_put_contents($tmp . '/' . $freshName, $jpeg);
-file_put_contents($tmp . '/' . $queuedName, 'not-an-image');
 $oldId = $photo('processing', $oldName, "now() - interval '31 minutes'");
 $freshId = $photo('processing', $freshName, 'now()');
-$queuedId = $photo('processing', $queuedName, "now() - interval '31 minutes'");
-t_ok(ImageQueues::make()->push($queuedId), 'old photo still has a queue job');
+$queued = [];
+for ($i = 0; $i < 50; $i++) {
+    $name = PhotoStorage::randomId() . '.jpg';
+    file_put_contents($tmp . '/' . $name, 'not-an-image');
+    $id = $photo('processing', $name, "now() - interval '31 minutes'");
+    ImageQueues::make()->push($id);
+    $queued[$id] = $name;
+}
+t_eq(50, (int) db()->query("SELECT COUNT(*) FROM image_queue WHERE status = 'pending'")->fetchColumn(), '50 old photos are queued');
 $readyName = PhotoStorage::randomId() . '.jpg';
 file_put_contents($tmp . '/' . $readyName, $jpeg);
 $readyId = $photo('ready', $readyName, "now() - interval '2 hours'");
@@ -54,20 +59,40 @@ $prevLog = ini_get('error_log');
 ini_set('error_log', $log);
 QueueWorkerLoop::mail(new DbMailQueue(db()), $tmp);
 t_eq('processing', PhotoRepository::findById($oldId)['status'], 'mail batch does not sweep stuck photos');
+$tally = static function () use ($queued, $tmp): array {
+    $corrupt = 0;
+    $waiting = 0;
+    $stuck = 0;
+    foreach ($queued as $id => $name) {
+        $row = PhotoRepository::findById($id);
+        if ($row['fail_reason'] === PhotoFail::STUCK) {
+            $stuck++;
+        } elseif ($row['fail_reason'] === PhotoFail::CORRUPT && $row['original'] === null && !is_file($tmp . '/' . $name)) {
+            $corrupt++;
+        } elseif ($row['status'] === 'processing' && $row['fail_reason'] === null && $row['original'] === $name && is_file($tmp . '/' . $name)) {
+            $waiting++;
+        }
+    }
+    return [$corrupt, $waiting, $stuck];
+};
 QueueWorkerLoop::image(ImageQueues::make());
-ini_set('error_log', (string) $prevLog);
-$old = PhotoRepository::findById($oldId);
+t_eq([20, 30, 0], $tally(), 'first batch handles 20; the other 30 stay queued and none are stuck');
+t_eq(['processing', $oldName], [PhotoRepository::findById($oldId)['status'], PhotoRepository::findById($oldId)['original']], 'stuck row with no job waits while the queue is full');
+t_eq(0, t_log_count(ActivityLog::PHOTO_STUCK), 'no PHOTO_STUCK while jobs are still queued');
 $fresh = PhotoRepository::findById($freshId);
 $ready = PhotoRepository::findById($readyId);
-$queued = PhotoRepository::findById($queuedId);
-t_eq(['failed', PhotoFail::CORRUPT, null], [$queued['status'], $queued['fail_reason'], $queued['original']], 'queued photo is handled by the batch, not discarded as stuck');
-t_ok(!is_file($tmp . '/' . $queuedName), 'queued original removed by the batch');
-t_eq(['failed', PhotoFail::STUCK, null], [$old['status'], $old['fail_reason'], $old['original']], 'processing row with no queue job is failed with stuck');
-t_ok(!is_file($tmp . '/' . $oldName), 'stuck original deleted');
 t_eq(['processing', $freshName], [$fresh['status'], $fresh['original']], 'fresh processing row untouched');
 t_ok(is_file($tmp . '/' . $freshName), 'fresh original kept');
 t_eq('ready', $ready['status'], 'ready row untouched');
 t_ok(is_file($tmp . '/' . $readyName), 'ready file kept');
+QueueWorkerLoop::image(ImageQueues::make());
+t_eq([40, 10, 0], $tally(), 'second full batch still does not sweep');
+QueueWorkerLoop::image(ImageQueues::make());
+t_eq([50, 0, 0], $tally(), 'the last short batch finishes the queue without marking those photos stuck');
+$old = PhotoRepository::findById($oldId);
+t_eq(['failed', PhotoFail::STUCK, null], [$old['status'], $old['fail_reason'], $old['original']], 'after the queue drains, a processing row with no job is failed with stuck');
+t_ok(!is_file($tmp . '/' . $oldName), 'stuck original deleted');
+ini_set('error_log', (string) $prevLog);
 t_ok(str_contains((string) file_get_contents($log), 'ALERT') && str_contains((string) file_get_contents($log), PhotoFail::STUCK), 'stuck sweep logs an ALERT');
 t_eq(1, t_log_count(ActivityLog::PHOTO_STUCK), 'stuck sweep writes PHOTO_STUCK');
 @unlink($log);
