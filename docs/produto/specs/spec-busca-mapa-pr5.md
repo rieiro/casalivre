@@ -17,13 +17,13 @@ Out: price sorts and feature filters (PR6); "Perto de mim"; any change to sponso
 1. Only a user move (drag, zoom control, keyboard, wheel) can start a search. A programmatic move (fit to a place, "Aproximar", a bubble tap, restoring from the URL) never starts a second search; those actions run their own single search.
 2. The search starts 500 ms after the move ends, never during a drag. A new move cancels the pending timer and aborts the request in flight; only the latest response is drawn.
 3. The setting is ON by default on desktop and OFF on mobile, and is not remembered: it resets on each page load.
-4. With the setting OFF, a move shows "Buscar nesta área" and changes nothing else. The button disappears after the search runs or when the map returns to the searched area.
+4. With the setting OFF, a move shows "Buscar nesta área" and changes nothing else. The button disappears after the search runs or when the map returns to the searched area. Turning the setting ON while the map is outside the searched area runs one search for the view at once.
 5. The list and the map are two parallel requests for the same search. The list never waits for the map, and the map never waits for the list.
 
 **URL and history** (completes localidade item 7)
 6. The page URL holds `bbox=lat_min,lng_min,lat_max,lng_max` with 4 decimals, and no `local_id`. `modo=mapa` exists only in the API request, never in the page URL.
 7. Leaving a place for a map area pushes one history entry (`pushState`). While the URL already holds a `bbox` set by "Buscar ao mover o mapa", each later automatic search replaces the entry (`replaceState`), so Back returns to the place and not to a pile of pans. A click on "Buscar nesta área" always pushes.
-8. On mobile, the map or list view is in the URL as `vista=mapa` (absent means list), so Back from a listing returns to the same view.
+8. On mobile, the map or list view is in the URL as `vista=mapa` (absent means list), so Back from a listing returns to the same view. Switching view pushes a history entry.
 9. A shared `bbox` URL opens the map fitted to that box. A different map size may show slightly more or less area; the search results are still those of the box.
 
 **Pin and card sync** (extends Q-P1)
@@ -76,5 +76,32 @@ Sorts in PR6: "Menor preço total" (`total_price`) and "Menor diária" (`nightly
 ## 5. Open questions
 None for Produto. Arquitetura aligns ADR §10 and §12.11 for the rating decision (PR4), not for this spec.
 
-## 6. UI screen specs
-To be added by UI (Bot UI): desktop 60/40 layout and sticky map; the move setting, "Buscar nesta área" and loading states; pin, card and popup highlight states; skeleton cards and map loading; mobile Mapa/Lista toggle with the synced carousel; keyboard order. Source file and summary go here when delivered.
+## 6. UI screen specs and Produto decisions on UI's gaps (2026-11-03)
+Source: UI's `/workspace/ui/pr5-map-screens.md` rev 1.0 (the full screen spec: layout, states, tab order, live regions, strings). Programador builds the screens from that file together with sections 2 to 4 above; where they differ, this section wins. Items UI marked [NV] (not verified in a render) are checked by Teste with a render, not assumed.
+
+**Screens, in short**
+- **Desktop (width 1024 and up):** grid `3fr 2fr` (list 768 px and map 512 px at 1280), full-width page, map sticky for the height of the viewport. The filters move from the 280 px side column to a bar above the split. Below 1024 px the mobile pattern applies.
+- **Map controls (inside the map):** the switch top-left, zoom top-right, "Buscar nesta área" centered below the switch, attribution bottom-right. Controls never overlap at map widths of 410 and 512 px.
+- **Cards:** one per row. A card is at least 182 px tall with the title clamped to 1 line and the summary to 2, so the 6 skeleton cards match it exactly and nothing shifts.
+- **Focus and selected rings:** the current sand outline is 1.46:1 against the map and fails WCAG 1.4.11. PR5 replaces it with the ink ring (3 px) with a white halo, and a double ring on the selected pin. This is a CSS change inside PR5.
+- **Pin, card and popup states, mobile Mapa/Lista and carousel, tab order, live regions and strings:** as in UI's file; one live region per purpose, all polite.
+
+**Decisions on UI's gaps**
+| Gap | Decision |
+|---|---|
+| G1 | Desktop means 1024 px and up. Below that, the mobile pattern with the switch OFF. |
+| G2 | Turning the switch ON while the map is outside the searched area runs one search for the current view at once (`pushState`, like the button). If the map is already on the searched area, nothing runs. |
+| G3 | After "Buscar nesta área", focus goes to the map region "Mapa". |
+| G4 | The Mapa/Lista button uses `pushState`, so Back from the map returns to the list. |
+| G5 | Pins stay lean (no title or photo, to keep the 300-pin payload small). The accessible name is price only ("R$ 2.250 total", "R$ 450 por diária"), with "Anúncio patrocinado." first when sponsored. The list is the screen-reader alternative. |
+| G6 | The mobile carousel shows the price at once and fetches `/api/imoveis/<h>` for the visible card and its neighbors, with a skeleton while loading. The pin payload does not grow. Arquitetura can overrule this only with a measured payload number. |
+| G7 | Cards stay one per row, not two columns. The line "cards em 2 colunas" in the v1 map spec is corrected in this PR. |
+| G8 | Filters move to a bar above the split, and the search page becomes full-width. |
+| G9 | Fitting the map to a shared `bbox` is programmatic, so it runs no extra search. The switch follows its normal default, and the first user move then replaces history. |
+| G10 | Accepted: the ink focus ring and the double selected ring replace the sand outline (CSS in PR5). |
+| G11 | On a map failure the desktop map column collapses and the list takes the full width, with a notice only. The redundant "Ver a lista de resultados" link goes away. |
+| G12 | The "Ver no mapa" teaser disappears on desktop, and mobile uses "Mapa". The "Ver no mapa" string stays free for the place-to-map-area action. |
+| G13 | Esc closes the popup from any focus inside the map (map-level handler). |
+| G14 | Tracked already (the `acima_do_limite` leftovers in ADR 001 are Arquitetura's); nothing for PR5 UI. |
+
+New strings approved for the table: "Carregando…", "Mais de 100 imóveis encontrados.", "{n} imóveis carregados." (1 imóvel carregado.), "Imóvel anterior" and "Próximo imóvel", "Mapa" as the region label, and "R$ {valor} total" and "R$ {valor} por diária" as pin names.
