@@ -1,1 +1,1 @@
-Read [team.md](team.md) and [../docs/decisions.md](../docs/decisions.md) before each task.
+Read [team.md](team.md) and your role file at the start of each new task or PR, not on follow-ups. [../docs/decisions.md](../docs/decisions.md) is not read before a task; open it only when the task depends on a past decision.
