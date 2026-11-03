@@ -184,6 +184,18 @@ final class SearchSql
         return 'SELECT p.*, s.rank_base, s.rating_rank, ' . HouseRepository::CITY_LABEL_SQL . ' AS city FROM ' . $from;
     }
 
+    /** p.status, plus the property predicates when there are any. */
+    private static function outerWhere(string $propertyWhere): string
+    {
+        return self::active('p') . ($propertyWhere !== '' ? ' AND ' . $propertyWhere : '');
+    }
+
+    /** Close the listing subquery and join properties and the city. */
+    private static function joinPage(): string
+    {
+        return ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL;
+    }
+
     /** @param list<int|float|string|null> $params */
     private static function rows(string $sql, array $params): array
     {
@@ -206,8 +218,7 @@ final class SearchSql
         [$inner, $params] = self::listingFilters($place, $guests, $bbox, $scoreMin, groupBox: true);
         [$inner, $params] = self::andKeyset($inner, $params, $after, $sort);
         [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout);
-        $outer = self::active('p') . ($propertyWhere !== '' ? ' AND ' . $propertyWhere : '');
-        return [$inner, $outer, [$groupId, ...$params, ...$propertyParams]];
+        return [$inner, self::outerWhere($propertyWhere), [$groupId, ...$params, ...$propertyParams]];
     }
 
     /**
@@ -216,13 +227,13 @@ final class SearchSql
      * @param array{key:int,id:int}|null $after
      * @return list<array>
      */
-    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort    ): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
     {
         $order = self::orderBy($sort);
         if ($bbox !== null && $groupId !== null) {
             [$inner, $outer, $params] = self::groupParts($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
             $from = '(SELECT s.id, s.rank_base, s.rating_rank FROM g JOIN listing_search s ON s.id = g.id WHERE ' . $inner
-                . ' ORDER BY ' . $order . ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL
+                . ' ORDER BY ' . $order . self::joinPage()
                 . ' WHERE ' . $outer . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
             return self::rows(self::GROUP_CTE . self::pageSql($from), $params);
         }
@@ -238,18 +249,16 @@ final class SearchSql
         [$where, $params] = self::listingFilters($place, $guests, $bbox, $scoreMin);
         [$where, $params] = self::andKeyset($where, $params, $after, $sort);
         $sub = '(SELECT s.id, s.rank_base, s.rating_rank FROM listing_search s WHERE ' . $where . ' ORDER BY ' . $order;
-        $joined = ') s ' . self::JOIN_PROPERTIES . ' ' . HouseRepository::JOIN_CITY_SQL;
         if (!$propertyFilter) {
             // p.status is outside the inner LIMIT: a stale listing_search row is not returned. It can only shorten that page.
-            $from = $sub . ' LIMIT ' . $limit . $joined
-                . ' WHERE ' . self::active('p')
+            $from = $sub . ' LIMIT ' . $limit . self::joinPage()
+                . ' WHERE ' . self::outerWhere('')
                 . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
             return self::rows(self::pageSql($from), $params);
         }
         [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout);
         array_push($params, ...$propertyParams);
-        $outer = self::active('p') . ($propertyWhere !== '' ? ' AND ' . $propertyWhere : '');
-        $from = $sub . $joined . ' WHERE ' . $outer . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+        $from = $sub . self::joinPage() . ' WHERE ' . self::outerWhere($propertyWhere) . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
         return self::rows(self::pageSql($from), $params);
     }
 
