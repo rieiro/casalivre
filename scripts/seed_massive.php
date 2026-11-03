@@ -121,7 +121,7 @@ foreach ($cities as $index => $city) {
             'bbq' => 0,
             'garage' => 1,
         ]);
-        // Capa pela fila de imagens (o image-worker gera os WebP).
+        // Capa pela fila de imagens (o worker de imagens gera os WebP).
         if (PhotoStorage::enqueueOriginal($houseId, $cover, 1, 0) === null) {
             throw new RuntimeException('Não foi possível enfileirar a foto de capa.');
         }

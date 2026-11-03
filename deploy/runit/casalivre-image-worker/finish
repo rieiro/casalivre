@@ -1,0 +1,3 @@
+#!/bin/sh
+name=$(basename "$(pwd)")
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-finish "$name" 0 "$@"

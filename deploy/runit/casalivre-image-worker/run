@@ -1,0 +1,5 @@
+#!/bin/sh
+# runit service template: CasaLivre image worker. Copy this directory to
+# casalivre-image-worker-1..N. The queue comes from the directory name.
+exec 2>&1
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-queue-run

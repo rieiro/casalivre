@@ -13,7 +13,8 @@ require_once CL_ROOT . '/src/QueueWorkerLoop.php';
 echo "worker PHP does not keep exception arguments\n";
 $src = (string) file_get_contents(CL_ROOT . '/scripts/queue-worker.php');
 t_eq(1, substr_count($src, "ini_set('zend.exception_ignore_args', '1')"), 'queue-worker.php sets zend.exception_ignore_args');
-t_ok(str_contains((string) file_get_contents(CL_ROOT . '/ops/dev-env/sv/queue-worker/run'), '-d zend.exception_ignore_args=1'), 'dev-env run passes -d zend.exception_ignore_args=1');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/ops/dev-env/queue-worker-run'), '-d zend.exception_ignore_args=1'), 'dev-env run passes -d zend.exception_ignore_args=1');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/ops/dev-env/queue-worker-run'), '-d memory_limit=256M'), 'dev-env run sets memory_limit=256M');
 t_ok(str_contains($src, 'QueueWorkerLoop::valkeyDown'), 'Valkey outage handler lives on QueueWorkerLoop');
 t_ok(str_contains($src, 'QueueWorkerLoop::dbLost'), 'DB loss still goes through dbLost');
 
@@ -60,11 +61,12 @@ $stderr = $dir . '/stderr';
 $errorLog = $dir . '/php-error.log';
 $ns = 't' . substr(bin2hex(random_bytes(8)), 0, 16);
 $env = getenv();
+$env['APP_ENV'] = 'dev';
 $env['QUEUE_DRIVER'] = 'valkey';
 $env['VALKEY_SOCKET'] = $link;
 $env['VALKEY_QUEUE_NS'] = $ns;
 $start = static fn (array $argv) => proc_open(
-    [PHP_BINARY, '-d', 'error_log=' . $errorLog, '-d', 'zend.exception_ignore_args=1', CL_ROOT . '/scripts/queue-worker.php', ...$argv],
+    [PHP_BINARY, '-d', 'error_log=' . $errorLog, '-d', 'zend.exception_ignore_args=1', CL_ROOT . '/scripts/queue-worker.php', 'mail', ...$argv],
     [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderr, 'w']],
     $pipes,
     CL_ROOT,
@@ -173,7 +175,7 @@ $stderrBad = $dir . '/stderr-bad';
 $errorBad = $dir . '/error-bad';
 file_put_contents($stderrBad, '');
 $proc = proc_open(
-    [PHP_BINARY, '-d', 'error_log=' . $errorBad, '-d', 'zend.exception_ignore_args=1', CL_ROOT . '/scripts/queue-worker.php'],
+    [PHP_BINARY, '-d', 'error_log=' . $errorBad, '-d', 'zend.exception_ignore_args=1', CL_ROOT . '/scripts/queue-worker.php', 'mail'],
     [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', $stderrBad, 'w']],
     $pipes,
     CL_ROOT,

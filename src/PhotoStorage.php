@@ -14,7 +14,7 @@ final class PhotoStorage
      * Upload assíncrono: valida o tipo real (finfo: jpeg/png/webp), grava o original FORA do public/
      * (storage/fotos/originais/<uuid>.<ext>, 0600), cria a foto com status processing e enfileira na
      * ImageQueue. Os WebP públicos (/uploads/fotos/<uuid>-<largura>.webp, sem id de usuário nem de
-     * imóvel) são gerados pelo scripts/image-worker.php. O lote abre a fila uma vez (uma conexão
+     * imóvel) são gerados pelo worker de imagens. O lote abre a fila uma vez (uma conexão
      * Valkey); se ela falhar, o restante do lote é marcado failed sem conectar de novo.
      *
      * @return array{saved:int, rejected:list<array{name:string, reason:string}>}
@@ -85,7 +85,7 @@ final class PhotoStorage
 
     /**
      * Seeds/scripts: copia um arquivo local para os originais (finfo jpeg/png/webp, 0600), cria a foto em
-     * processing e enfileira; o image-worker gera os WebP. Devolve a linha criada ou null se recusado.
+     * processing e enfileira; o worker de imagens gera os WebP. Devolve a linha criada ou null se recusado.
      */
     public static function enqueueOriginal(int $houseId, string $sourceFile, int $primary, int $sort): ?array
     {

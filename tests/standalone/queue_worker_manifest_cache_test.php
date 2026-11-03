@@ -1,7 +1,7 @@
 <?php
 // #142: the long-running queue worker kept AssetManifest's per-process copy of public/assets/manifest.json forever,
-// so a rebuilt manifest (theme list, Theme::available) was never seen. Each QueueWorkerLoop::tick now reloads it when
-// manifest.json changed (WorkerCaches::refreshIfChanged): after a rebuild that drops a theme, the next tick's mail
+// so a rebuilt manifest (theme list, Theme::available) was never seen. Each QueueWorkerLoop::mail batch reloads it when
+// manifest.json changed (WorkerCaches::refreshIfChanged): after a rebuild that drops a theme, the next batch's mail
 // falls back to the default brand.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
@@ -38,11 +38,11 @@ $header = static fn (string $theme): string => MailHtml::render('Aviso', "Texto\
 t_eq('ok', ThemeSet::run('contraste', Theme::current(), Theme::available())->tipo, 'platform theme: contraste');
 t_backdate($files[1]);
 
-echo "tick 1: manifest lists contraste\n";
+echo "batch 1: manifest lists contraste\n";
 t_ok($mail->push('activation', 'm1@casalivre.test'), 'job 1 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
-t_ok(in_array('contraste', Theme::available(), true), 'tick 1: contraste available');
-t_ok(($html[0] ?? '') === $header('contraste'), 'tick 1: contraste brand');
+QueueWorkerLoop::mail($mail, $dir);
+t_ok(in_array('contraste', Theme::available(), true), 'batch 1: contraste available');
+t_ok(($html[0] ?? '') === $header('contraste'), 'batch 1: contraste brand');
 
 echo "manifest rebuilt without contraste\n";
 $m = AssetManifest::load();
@@ -50,10 +50,10 @@ unset($m['/assets/themes/contraste.css']);
 file_put_contents(AssetManifest::file(), AssetManifest::encode($m));
 t_backdate(AssetManifest::file());
 t_ok($mail->push('activation', 'm2@casalivre.test'), 'job 2 queued');
-QueueWorkerLoop::tick($mail, null, $dir);
-t_ok(!array_key_exists('/assets/themes/contraste.css', AssetManifest::load()), 'tick 2: rebuilt manifest seen');
-t_eq(['padrao'], Theme::available(), 'tick 2: theme list from the rebuilt manifest');
-t_ok(($html[1] ?? '') === $header('padrao'), 'tick 2: mail falls back to the default brand');
+QueueWorkerLoop::mail($mail, $dir);
+t_ok(!array_key_exists('/assets/themes/contraste.css', AssetManifest::load()), 'batch 2: rebuilt manifest seen');
+t_eq(['padrao'], Theme::available(), 'batch 2: theme list from the rebuilt manifest');
+t_ok(($html[1] ?? '') === $header('padrao'), 'batch 2: mail falls back to the default brand');
 $restore();
 t_eq($saved[0], (string) file_get_contents(AssetManifest::file()), 'manifest.json restored');
 @exec('rm -rf ' . escapeshellarg($dir));

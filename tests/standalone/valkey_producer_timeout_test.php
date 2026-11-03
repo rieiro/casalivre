@@ -1,7 +1,7 @@
 <?php
 // Cleanup sprint #158 (Arquitetura #160 follow-up): a queue producer in a web request (MailQueues/ImageQueues::make
 // with QUEUE_DRIVER=valkey) connected with phpredis defaults, so with Valkey frozen an FPM worker hung for over 20 s.
-// Producers outside the CLI use Valkey::PRODUCER_TIMEOUT (0.5 s, connect + read). The CLI (queue worker, cron)
+// Producers outside the CLI use Valkey::PRODUCER_TIMEOUT (0.5 s, connect + read). The CLI queue worker
 // uses Valkey::WORKER_TIMEOUT (5 s), so a frozen Valkey is not a ~60 s hang. A "frozen" Valkey is a unix socket
 // that accepts (listen backlog) but never answers.
 declare(strict_types=1);
@@ -14,7 +14,7 @@ echo "timeout per SAPI\n";
 t_eq(0.5, Valkey::PRODUCER_TIMEOUT, 'producer timeout is 0.5 s');
 t_eq(5.0, Valkey::WORKER_TIMEOUT, 'worker timeout is 5 s');
 t_eq(0.5, Valkey::queueTimeout('fpm-fcgi'), 'FPM (web request): 0.5 s');
-t_eq(5.0, Valkey::queueTimeout('cli'), 'CLI (queue worker, cron): 5 s');
+t_eq(5.0, Valkey::queueTimeout('cli'), 'CLI (queue worker): 5 s');
 t_eq(5.0, Valkey::queueTimeout(), 'this process (CLI): 5 s');
 foreach (['src/MailQueue.php', 'src/ImageQueue.php'] as $f) {
     t_ok(str_contains((string) file_get_contents(CL_ROOT . '/' . $f), 'Valkey::connect(Valkey::queueTimeout())'), "$f: the factory connects with queueTimeout()");

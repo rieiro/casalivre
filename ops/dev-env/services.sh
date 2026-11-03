@@ -27,6 +27,8 @@ gen_secret() {
 }
 secret=$etc/valkey-app.secret
 app_hash=$(gen_secret "$secret")
+mail_hash=$(gen_secret "$etc/valkey-mail.secret")
+image_hash=$(gen_secret "$etc/valkey-image.secret")
 # cl_admin secret (#112 L2): in $CL_HOME/admin (0700, 0400 file), which up-bwrap.sh never binds into
 # the runtime, so the FPM, the worker and anything else inside the env cannot read it (single uid in dev).
 chmod 700 "$admin"
@@ -40,10 +42,19 @@ app_cmds='+get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incr
 +sadd +srem +smembers +sismember
 +multi +exec +discard +watch +unwatch
 +ping +hello +auth +select|0'
+# Queue workers only. Same commands as ValkeyJobQueue; keys are one queue each.
+# cl_app (FPM) still enqueues both and keeps the rate-limiter keys.
+worker_cmds='+incr +hset +hdel +hgetall +hincrby +del +expire
++lpush +lmove +lrange +lrem
++zadd +zrem +zrange +zrangebyscore
++multi +exec +watch +unwatch
++ping +hello +auth'
 # Sem Lua (nem +eval/+script/+evalsha), sem streams. aclfile 0600, fora do valkey.conf.
 {
 	echo 'user default off resetkeys resetchannels -@all'
 	echo "user cl_app on #$app_hash resetkeys ~cl:* resetchannels &cl:* -@all $(echo $app_cmds)"
+	echo "user cl_mail on #$mail_hash resetkeys ~cl:q:mail:* resetchannels -@all $(echo $worker_cmds)"
+	echo "user cl_image on #$image_hash resetkeys ~cl:q:image:* resetchannels -@all $(echo $worker_cmds)"
 	echo "user cl_admin on #$admin_hash ~* &* +@all"
 } >"$etc/valkey.acl.tmp"
 chmod 0600 "$etc/valkey.acl.tmp"
@@ -87,4 +98,15 @@ for src in "$CL_DEVENV_DIR"/sv/*/; do
 		mv "$dst/$rel.tmp" "$dst/$rel"
 	done < <(find "$src" -type f)
 done
-log "serviços instalados em $CL_HOME/sv: $(cd "$CL_DEVENV_DIR/sv" && echo */ | tr -d /)"
+# Mail worker plus one image worker. Prod runs casalivre-image-worker-1..N (N = cores minus one).
+rm -rf "$CL_HOME/sv/queue-worker"
+install_queue() {
+	dst=$CL_HOME/sv/$1
+	mkdir -p "$dst"
+	{ printf '#!/bin/sh\n. %s/dev-env.env\n' "$etc"; cat "$CL_DEVENV_DIR/queue-worker-run"; } >"$dst/run.tmp"
+	chmod 700 "$dst/run.tmp"
+	mv "$dst/run.tmp" "$dst/run"
+}
+install_queue casalivre-mail-worker
+install_queue casalivre-image-worker-1
+log "serviços instalados em $CL_HOME/sv: $(cd "$CL_HOME/sv" && echo */ | tr -d /)"

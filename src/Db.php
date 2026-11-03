@@ -237,7 +237,7 @@ final class Db
     }
 
     /**
-     * Long-running worker liveness (QueueWorkerLoop::tick): one SELECT 1 on the shared connection. Throws when the
+     * Long-running worker liveness (QueueWorkerLoop::mail / ::image): one SELECT 1 on the shared connection. Throws when the
      * connection is gone (e.g. after a PG restart); the shared connection is never reopened in-process, the
      * worker exits and runit restarts it with a fresh one.
      */
