@@ -30,7 +30,7 @@ if [ "$php" = php8.4 ]; then
 				--setenv VALKEY_SOCKET "$CL_RUN/valkey.sock" --setenv VALKEY_USER cl_app
 				--setenv VALKEY_PASSWORD_FILE "$CL_HOME/etc/valkey-app.secret")
 		fi
-		for v in TEST_PG_DSN TEST_PG_USER TEST_PG_PASSWORD; do
+		for v in TEST_PG_DSN TEST_PG_USER TEST_PG_PASSWORD CL_ICS_STRICT; do
 			[ -z "${!v:-}" ] || args+=(--setenv "$v" "${!v}")
 		done
 		bwrap "${args[@]}" -- "$@"
