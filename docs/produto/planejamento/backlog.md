@@ -258,6 +258,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
 | G43 | Pedido de alteração de reserva confirmada (datas e hóspedes) | — | — | — | — | 4,8 | Should | S8 (restrição já na S7) | aprovado com mudança (2 → 4,8) |
 | G46 | Instruções e lembrete de check-out | — | — | — | — | 4,8 | Could | com a G45 se for barato, senão depois do piloto | aprovado com mudança |
+| G47 | Descontos de última hora e de anúncio novo | — | — | — | — | 4,8 | Could | S8 (com a spec-07) | aprovado com mudança (2 → 4,8) |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
@@ -503,6 +504,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   7. Cada bloqueio soma 1 numa contagem diária por regra, sem dado pessoal.
 - **Política (visão de negócio; o Jurídico confirma o lado do reembolso do hóspede antes da S7):** cancelamento do anfitrião causado por violação de regra não gera penalidade ao anfitrião quando o hóspede deu dado falso (idade, pets, hóspedes) ou quebrou uma regra que a checagem mostrou. Se a checagem deixou passar a violação, o anfitrião também não tem penalidade, porque a falha foi da plataforma. O reembolso do hóspede segue a política de cancelamento e o mínimo do consumidor; até a resposta do Jurídico vale a política de cancelamento atual.
 - **Prioridade:** Should, antes da S7 (edição pequena da spec-01 §3/§4). RICE 25,6 (mantido). Fonte: competitors.md G38 (`/workspace/produto/competitors.md`, 30/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Vrbo, regras da casa](https://help.vrbo.com/articles/what-are-house-rules), [Airbnb, taxa de pet](https://www.airbnb.com/help/article/3623).
+- **Parecer do Jurídico (03/11):** sem penalidade ao anfitrião é válido. Hóspede honesto que passou pela nossa checagem: reembolso integral das noites não usufruídas, taxa da plataforma incluída. Dados falsos: tratado como cancelamento do hóspede, com as faixas normais e sem multa extra, só se estiver escrito antes da reserva. Noites já usufruídas não são reembolsáveis, e a chegada deve ser documentada (fotos e mensagens).
 
 ### G39 — Cão de assistência no contador de hóspedes (Should, com a G38)
 - **Problema:** o contador só tem "pets"; uma regra "sem pets" bloquearia ou sinalizaria um hóspede com cão-guia como se fosse um pet. O Airbnb exige aceitar animais de serviço mesmo com a regra "sem pets" e sem taxa de pet.
@@ -513,6 +515,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. O cão de assistência nunca soma taxa de pet (G40).
   4. O detalhe mostra a nota com o texto aprovado pelo Jurídico.
 - **Prioridade:** Should, com a G38. RICE 8 (mantido). Depende da confirmação do Jurídico. Fonte: competitors.md G39 (30/10), revisão do Negócios. Referência: [Airbnb, receber pets](https://www.airbnb.com/resources/hosting-homes/a/what-you-need-to-know-about-hosting-pets-463).
+- **Parecer do Jurídico (03/11):** base legal: Lei 11.126/2005 e Decreto 5.904/2006 (cão-guia) e Lei 13.146/2015 arts. 3, 4 e 88; cão de assistência treinado nunca é conflito de regra nem taxa de pet; animal de apoio emocional fica de fora e segue a regra de animais do anúncio. O anfitrião só pode perguntar se é cão de assistência e ver a identificação ou o colete. O hóspede continua responsável por danos (caução). Texto para a página do anúncio: "Cães de assistência (cão-guia e outros cães treinados para auxiliar pessoa com deficiência) são aceitos mesmo onde animais não são permitidos, sem taxa de animal. Animais de apoio emocional e de estimação seguem a regra de animais deste anúncio." Texto final no fim do projeto.
 
 ### G40 — Taxas estruturadas de pet e de hóspede extra (Could, com a spec-07, S8)
 - **Problema:** o preço tem só a diária e a limpeza fixa; anfitriões que cobram por pet ou por hóspedes acima de um número vão pôr isso no texto livre ou pedir por Pix fora do total mostrado, o que quebra a regra "o total é o que se paga". Airbnb e Vrbo têm essas taxas como campos estruturados, sempre no total mostrado antes.
@@ -538,6 +541,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   7. O pedido é do tipo genérico de solicitação, sem fluxo separado.
 - **Pergunta ao Jurídico:** uma alteração aceita reinicia os 7 dias do CDC? Fica com o Jurídico.
 - **Prioridade:** Should, na S8, com a restrição já na S7. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G43 (`/workspace/produto/competitors.md`, 01/11), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, alterar datas](https://www.airbnb.com/help/article/913), [Airbnb, alterar como anfitrião](https://www.airbnb.com/help/article/50).
+- **Parecer do Jurídico (03/11):** a alteração aceita não reinicia os 7 dias do CDC art. 49 (é o mesmo contrato), e o ponto perde peso porque o cancelamento até o check-in continua. Mostrar o novo total e a política antes do aceite, registrar o aceite como nova versão com data e hora, e contar as faixas de reembolso a partir do novo check-in, com o texto da política original.
 
 ### G44 — Pedir ao anfitrião para cancelar sem multa (Could, depois do piloto)
 - **Problema:** fora da janela gratuita, o hóspede só pode escrever uma mensagem livre ao anfitrião; nada registra o pedido nem recalcula o reembolso e a comissão. O Booking.com tem o pedido estruturado "Cancel for less".
@@ -589,6 +593,21 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. A tela do anfitrião avisa para não pedir o que a limpeza paga já cobre.
   4. O descumprimento de um item da lista não pode ser retido da caução; só dano documentado (G42).
 - **Prioridade:** Could, com a G45 se for barato, senão depois do piloto. RICE 4,8 (mantido). O Jurídico confirma o texto do contrato. Fonte: competitors.md G46 (02/11), revisão do Negócios. Referência: [Airbnb, regras de check-out](https://www.airbnb.com/help/article/472).
+
+### G47 — Descontos de última hora e de anúncio novo (Could, S8 com a spec-07)
+- **Problema:** a spec-07 só define desconto semanal e mensal. Com o teto de 30 noites, o mensal (28 noites ou mais) quase nunca vale, então na prática o anfitrião tem uma ferramenta de preço só. A UC-P19 promete "última hora" e "lançamento", mas nada os define. Dias úteis vazios na baixa temporada da Região dos Lagos e anúncios novos sem avaliações não têm outra alavanca além de editar períodos à mão.
+- **Solução (aprovada pelo Negócios com mudança):** desconto de última hora (N dias antes do check-in) e de anúncio novo, aplicados por noite dentro da janela, na mesma regra "só o maior desconto vale"; o snapshot mostra quais noites receberam desconto. O preço por noite já com o desconto é pré-calculado, sem avaliar regra a cada busca (Arquitetura e BD confirmam). **A mais, pelo Negócios:**
+  1. Os tipos de desconto são registros de configuração, não código: tipo, janela, percentual e escopo. O tipo "antecedência" (early bird) já entra no schema e só é ativado depois.
+  2. O escopo é por imóvel, por nó e por canal: um franqueado ou parceiro faz uma promoção regional de baixa temporada nos próprios imóveis, e uma promoção pode valer só no canal direto.
+  3. Quem financia é uma configuração: o anfitrião por padrão, com opção de fundo da plataforma ou regional (o Jurídico e o contrato do fundo decidem). A comissão é sempre calculada sobre o preço com desconto.
+  4. Anúncio novo: padrão de 90 dias ou 3 reservas, o que vier primeiro (estimativa, uma configuração).
+- **Critérios de aceite:**
+  1. Uma noite dentro da janela de última hora recebe o desconto; fora da janela, não.
+  2. Com vários descontos na mesma noite, vale só o maior, e o snapshot guarda qual foi por noite.
+  3. Uma promoção de escopo "canal direto" não aparece nos outros canais, e uma de um nó vale só para os imóveis desse nó.
+  4. A busca ordenada por preço usa o preço por noite já calculado e continua dentro das metas de velocidade (sem avaliação de regra por requisição).
+  5. A comissão é calculada sobre o valor com desconto.
+- **Prioridade:** Could, na S8 com a spec-07. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G47 (`/workspace/produto/competitors.md`, 03/11), revisão do Negócios. Referências: [Airbnb, promoções](https://www.airbnb.com/help/article/1233), [Vrbo, promoções](https://help.vrbo.com/articles/About-promotions). A G48 (selo de desconto no card da busca) não foi enviada.
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
