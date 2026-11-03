@@ -31,7 +31,7 @@ $search = static function (int $guests, float $score = 0.0): array {
 echo "no match\n";
 $miss = $search(16);
 t_eq([], $miss['items'], 'hospedes 16 returns no items');
-t_eq(0, $miss['iteracoes'], 'hospedes 16 runs no batch');
+t_eq(1, $miss['iteracoes'], 'hospedes 16 counts the total and skips the batch');
 t_eq(0, $miss['linhas_lidas'], 'hospedes 16 reads no rows');
 t_eq(0, $miss['total_aprox'], 'hospedes 16 total is 0');
 $hit = $search(4);

@@ -107,8 +107,10 @@ final class SearchService
         $radiusKm = self::radiusKm($place, $query->raio);
         $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
         $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin);
-        // The batch adds only the keyset, so a count of 0 is an empty page.
+        // The count is the listing query. A batch would only add the keyset, so it is skipped.
+        // iteracoes stays 1: 0 would look like the search never ran (unresolved text, or a score/guest cap).
         if ($out['total_aprox'] === 0) {
+            $out['iteracoes'] = 1;
             return $out;
         }
 
