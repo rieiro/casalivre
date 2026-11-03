@@ -9,7 +9,7 @@ require_once dirname(__DIR__) . '/conta/Account/Email.php';
 
 /**
  * Fila de e-mails de conta. A requisição só enfileira o tipo e o e-mail (push); o worker
- * (scripts/mail-worker.php) reserva, gera token/link, envia e confirma (ack) ou devolve com erro (fail).
+ * (casalivre-mail-worker) reserva, gera token/link, envia e confirma (ack) ou devolve com erro (fail).
  * Nenhum token, link ou corpo de e-mail passa pela fila.
  */
 interface MailQueue extends JobQueue

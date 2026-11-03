@@ -1,0 +1,4 @@
+#!/bin/sh
+# runit service: CasaLivre mail worker. The queue comes from this directory's name.
+exec 2>&1
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-queue-run

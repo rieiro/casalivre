@@ -20,14 +20,14 @@ final class Valkey
     public const PRODUCER_TIMEOUT = 0.5;
 
     /**
-     * Connect + read timeout (s) for CLI queue workers and cron. A frozen Valkey is noticed in about 5 s instead of
+     * Connect + read timeout (s) for CLI queue workers. A frozen Valkey is noticed in about 5 s instead of
      * default_socket_timeout (about 60 s).
      */
     public const WORKER_TIMEOUT = 5.0;
 
     /**
      * Timeout for the queue connection (MailQueues/ImageQueues::make): PRODUCER_TIMEOUT in a web request,
-     * WORKER_TIMEOUT in the CLI (queue worker and cron). $sapi: test hook.
+     * WORKER_TIMEOUT in the CLI (queue worker). $sapi: test hook.
      */
     public static function queueTimeout(?string $sapi = null): float
     {

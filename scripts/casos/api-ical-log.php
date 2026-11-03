@@ -10,7 +10,7 @@ if (!function_exists('link_ativacao')) {
     function link_ativacao(string $email): string
     {
         $root = dirname(__DIR__, 2);
-        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/mail-worker.php') . ' 2>&1';
+        $cmd = 'APP_ENV=dev ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/scripts/queue-worker.php') . ' mail --once 2>&1';
         $arq = $root . '/storage/logs/mail-dev.log';
         for ($i = 0; $i < 5; $i++) {
             shell_exec($cmd);

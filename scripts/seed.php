@@ -105,7 +105,7 @@ for ($i = 1; $i <= 5; $i++) {
             'garage' => random_int(0, 1),
         ]);
         $binary = solid_png(random_int(20, 80), random_int(70, 140), random_int(140, 210));
-        // Capa pela fila de imagens (o image-worker gera os WebP).
+        // Capa pela fila de imagens (o worker de imagens gera os WebP).
         $tmpCover = tempnam(sys_get_temp_dir(), 'seed');
         file_put_contents($tmpCover, $binary);
         PhotoStorage::enqueueOriginal($houseId, $tmpCover, 1, 0);

@@ -650,6 +650,7 @@ SELECT n.n, t.id FROM n LEFT JOIN LATERAL (
 - `listing_search_pkey` is a table PK, not a search index (BD), and is flagged to Rafael (12.1).
 - The `listing_boosts` indexes and the `search_feature_bits` PK are back-office.
 - `idx_prop_place_active` and `idx_prop_geo_active` (§11, rev 1) are dropped; they only ever existed in proposals.
+- `idx_prop_nb_active` is outside the cap of 6.
 - Not adopted (option B, superseded): global rank and rating indexes. Before the revert they cost +48% on a recompute batch (`/workspace/adr/bench-adr001-sorts/round2/w-ls.txt`).
 
 ### 12.7 Guards (complete list; rev 3)
