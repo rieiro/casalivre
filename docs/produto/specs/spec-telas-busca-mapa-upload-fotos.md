@@ -5,7 +5,7 @@
 **Objetivo:** comparar imóveis por localização e preço total do período.
 
 **Desktop**
-- Lista (60%, cards em 2 colunas) e mapa (40%) fixo ao rolar.
+- Lista (60%, um card por linha) e mapa (40%) fixo ao rolar, a partir de 1024 px; abaixo disso vale o padrão mobile. Detalhes em [spec-busca-mapa-pr5.md](spec-busca-mapa-pr5.md).
 - Card e pin ficam destacados juntos. Cards além dos 300 pins não destacam nada no mapa (piloto).
 - "Buscar ao mover o mapa" vem ligado, com espera de ~500 ms. Desligado, aparece o botão "Buscar nesta área". A map search replaces the place: the location field shows "Map area" with × to return to the last place (`spec-busca-localidade-resolvida.md`, UX item 6).
 
