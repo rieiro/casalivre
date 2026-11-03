@@ -67,7 +67,11 @@ final class SearchService
         }
         try {
             return Db::transactional(db(), static function () use ($query, $host, $after, $out): array {
+                // The idx_ls_* INCLUDE lists let a neighborhood scan pick Gather Merge
+                // (largest SP neighborhood 2.0 ms -> 11.9 ms; 1.5 ms with parallel off).
+                // Those workers also compete for the 4 cores under load.
                 db()->exec("SET LOCAL statement_timeout = '" . self::STATEMENT_TIMEOUT_MS . "ms'");
+                db()->exec('SET LOCAL max_parallel_workers_per_gather = 0');
                 return self::listed($query, $host, $after, $out);
             });
         } catch (PDOException $e) {
