@@ -7,6 +7,7 @@
 // SCHEMA 25: POIs OSM (category/osm_ref/wikidata), PK INCLUDE (popularity, kind), city popularity.
 // SCHEMA 27: properties.rating_sum and rating_count.
 // SCHEMA 29: search reads listing_search; idx_prop_place_active and idx_prop_latlng_active are gone.
+// SCHEMA 31: listing_search.rating_tenths and idx_ls_* INCLUDE lists. Index count stays 58.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
@@ -16,7 +17,7 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(30, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 30');
+t_eq(31, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 31');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -51,7 +52,7 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('30', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 30');
+t_eq('31', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 31');
 t_eq(
     "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
     (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),
@@ -72,9 +73,15 @@ $ls = [];
 foreach ($pdo->query("SELECT indexname, pg_get_indexdef(c.oid) AS def FROM pg_indexes i JOIN pg_class c ON c.relname = i.indexname WHERE i.schemaname = 'public' AND i.indexname IN ('idx_ls_place_rank', 'idx_ls_place_rating', 'idx_ls_geo')") as $row) {
     $ls[$row['indexname']] = $row['def'];
 }
-t_ok(isset($ls['idx_ls_place_rank']) && str_contains($ls['idx_ls_place_rank'], '(city_place_id, rank_base DESC, id DESC)') && str_contains($ls['idx_ls_place_rank'], 'INCLUDE (max_guests)') && str_contains($ls['idx_ls_place_rank'], "status = 'active'"), 'idx_ls_place_rank');
-t_ok(isset($ls['idx_ls_place_rating']) && str_contains($ls['idx_ls_place_rating'], '(city_place_id, rating_rank DESC, id DESC)') && str_contains($ls['idx_ls_place_rating'], 'INCLUDE (max_guests)') && str_contains($ls['idx_ls_place_rating'], "status = 'active'"), 'idx_ls_place_rating');
-t_ok(isset($ls['idx_ls_geo']) && str_contains($ls['idx_ls_geo'], 'USING gist') && str_contains($ls['idx_ls_geo'], 'point(lng, lat)') && str_contains($ls['idx_ls_geo'], 'INCLUDE (id, lat, lng, rank_base, rating_rank, max_guests)') && str_contains($ls['idx_ls_geo'], "status = 'active'"), 'idx_ls_geo');
+t_ok(isset($ls['idx_ls_place_rank']) && str_contains($ls['idx_ls_place_rank'], '(city_place_id, rank_base DESC, id DESC)') && str_contains($ls['idx_ls_place_rank'], 'INCLUDE (max_guests, rating_tenths, rating_rank)') && str_contains($ls['idx_ls_place_rank'], "status = 'active'"), 'idx_ls_place_rank');
+t_ok(isset($ls['idx_ls_place_rating']) && str_contains($ls['idx_ls_place_rating'], '(city_place_id, rating_rank DESC, id DESC)') && str_contains($ls['idx_ls_place_rating'], 'INCLUDE (max_guests, rating_tenths, rank_base)') && str_contains($ls['idx_ls_place_rating'], "status = 'active'"), 'idx_ls_place_rating');
+t_ok(isset($ls['idx_ls_geo']) && str_contains($ls['idx_ls_geo'], 'USING gist') && str_contains($ls['idx_ls_geo'], 'point(lng, lat)') && str_contains($ls['idx_ls_geo'], 'INCLUDE (id, lat, lng, rank_base, rating_rank, max_guests, rating_tenths)') && str_contains($ls['idx_ls_geo'], "status = 'active'"), 'idx_ls_geo');
+t_eq(58, (int) $pdo->query("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public'")->fetchColumn(), 'public index count stays 58');
+t_eq('rating_tenths', (string) $pdo->query("SELECT attname FROM pg_attribute WHERE attrelid = 'listing_search'::regclass AND attnum > 0 AND NOT attisdropped ORDER BY attnum DESC LIMIT 1")->fetchColumn(), 'rating_tenths is the last listing_search column');
+t_eq('smallint', (string) $pdo->query("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'listing_search'::regclass AND attname = 'rating_tenths'")->fetchColumn(), 'rating_tenths is smallint');
+t_eq(0, (int) $pdo->query("SELECT attnotnull::int FROM pg_attribute WHERE attrelid = 'listing_search'::regclass AND attname = 'rating_tenths'")->fetchColumn(), 'rating_tenths allows NULL');
+$lsChecks = implode("\n", $pdo->query("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'listing_search'::regclass AND contype = 'c'")->fetchAll(PDO::FETCH_COLUMN));
+t_ok(str_contains($lsChecks, 'rating_tenths >= 10') && str_contains($lsChecks, 'rating_tenths <= 100'), 'rating_tenths is between 10 and 100');
 $opts = (string) $pdo->query("SELECT reloptions FROM pg_class WHERE relname = 'listing_search'")->fetchColumn();
 t_ok(str_contains($opts, 'autovacuum_vacuum_scale_factor=0.02') && str_contains($opts, 'autovacuum_vacuum_threshold=1000') && str_contains($opts, 'autovacuum_analyze_scale_factor=0.02'), 'listing_search autovacuum');
 $poiCols = $pdo->query("SELECT attname FROM pg_attribute WHERE attrelid = 'places'::regclass AND attname IN ('category', 'osm_ref', 'wikidata') AND NOT attisdropped")->fetchAll(PDO::FETCH_COLUMN);

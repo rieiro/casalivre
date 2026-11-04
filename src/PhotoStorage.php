@@ -11,6 +11,24 @@ final class PhotoStorage
     public const MAX_UPLOAD_BYTES = 16 * 1048576;
 
     /**
+     * Basename only, without control, bidi, zero-width, or <> characters, capped at 100
+     * plus an ellipsis. Used for the rejected-file name before session, JSON, or a notice.
+     */
+    private static function uploadLabel(string $name): string
+    {
+        $base = basename(str_replace('\\', '/', $name));
+        if (!mb_check_encoding($base, 'UTF-8')) {
+            $base = iconv('UTF-8', 'UTF-8//IGNORE', $base);
+            $base = is_string($base) ? $base : '';
+        }
+        $stripped = preg_replace('/[\p{Cc}<>\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2069}\x{FEFF}]/u', '', $base) ?? '';
+        if (mb_strlen($stripped, 'UTF-8') > 100) {
+            return mb_substr($stripped, 0, 100, 'UTF-8') . '…';
+        }
+        return $stripped;
+    }
+
+    /**
      * Upload assíncrono: valida o tipo real (finfo: jpeg/png/webp), grava o original FORA do public/
      * (storage/fotos/originais/<uuid>.<ext>, 0600), cria a foto com status processing e enfileira na
      * ImageQueue. Os WebP públicos (/uploads/fotos/<uuid>-<largura>.webp, sem id de usuário nem de
@@ -39,7 +57,7 @@ final class PhotoStorage
         $queue = null;
         $queueDown = false;
         foreach ($names as $i => $name) {
-            $label = (string) $name;
+            $label = self::uploadLabel((string) $name);
             $error = (int) ($errors[$i] ?? UPLOAD_ERR_NO_FILE);
             if ($error === UPLOAD_ERR_NO_FILE) {
                 continue;
