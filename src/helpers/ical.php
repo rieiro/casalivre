@@ -80,8 +80,8 @@ function exported_calendar_body(string $url): ?string
 /**
  * Nights this feed wants, from today through max_calendar_day. Does not write.
  * An invalid DTSTART or DTEND skips that event (the rest of the feed still imports).
- * A VEVENT over MAX_EVENT_BYTES, more than MAX_EVENTS events, or a body over MAX_BYTES
- * fails the whole feed with too_big — the event is not dropped and the sync is not OK.
+ * A VEVENT over MAX_EVENT_BYTES, or more than MAX_EVENTS events, fails the feed with too_big.
+ * Body size and BEGIN:VCALENDAR are CalendarSync::acceptBody, before this runs.
  * RRULE/RDATE are ignored. STATUS:CANCELLED contributes no nights (the diff then frees them).
  * The first holder of a night is decided by the import SQL, not here.
  *
@@ -89,38 +89,21 @@ function exported_calendar_body(string $url): ?string
  */
 function import_ics(int $propertyId, string $body): array
 {
-    if (strlen($body) > CalendarSync::MAX_BYTES) {
-        return ['error' => 'too_big'];
-    }
     $body = preg_replace("/\r?\n[ \t]/", '', $body) ?? $body;
-    if (!str_contains($body, 'BEGIN:VCALENDAR')) {
-        return ['error' => 'not_ics'];
-    }
     $house = HouseRepository::find($propertyId);
     $max = max_calendar_day($house ?: null);
     $today = date('Y-m-d');
-    $scan = 0;
-    $eventCount = 0;
-    while (($at = strpos($body, 'BEGIN:VEVENT', $scan)) !== false) {
-        $endAt = strpos($body, 'END:VEVENT', $at);
-        $span = $endAt === false ? strlen($body) - $at : $endAt - $at;
-        if ($span > CalendarSync::MAX_EVENT_BYTES) {
-            return ['error' => 'too_big'];
-        }
-        $eventCount++;
-        if ($eventCount > CalendarSync::MAX_EVENTS) {
-            return ['error' => 'too_big'];
-        }
-        if ($endAt === false) {
-            break;
-        }
-        $scan = $endAt + strlen('END:VEVENT');
+    // The default backtrack limit (1e6) is under MAX_EVENT_BYTES, so a too-big VEVENT would not be captured.
+    $previous = ini_set('pcre.backtrack_limit', (string) (CalendarSync::MAX_BYTES * 5));
+    preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
+    if ($previous !== false) {
+        ini_set('pcre.backtrack_limit', $previous);
     }
-    $matched = preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
-    if ($matched === false) {
+    $found = $events[1] ?? [];
+    if (count($found) > CalendarSync::MAX_EVENTS) {
         return ['error' => 'too_big'];
     }
-    if ($matched === 0) {
+    if ($found === []) {
         return ['nights' => [], 'origins' => []];
     }
     $ymd = static function (string $raw): ?DateTimeImmutable {
@@ -139,7 +122,10 @@ function import_ics(int $propertyId, string $body): array
     $nights = [];
     $origins = [];
     $seen = [];
-    foreach ($events[1] as $event) {
+    foreach ($found as $event) {
+        if (strlen($event) > CalendarSync::MAX_EVENT_BYTES) {
+            return ['error' => 'too_big'];
+        }
         if (preg_match('/UID:casalivre-' . $propertyId . '-/', $event)) {
             continue;
         }

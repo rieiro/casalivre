@@ -21,7 +21,6 @@ final class HouseRepository
     /** Two-int advisory lock namespace: sync vs sync and feed removal. Bookings do not take it. */
     public const SYNC_ADVISORY_NS = 48001403;
     public const FEED_SLOTS = 5;
-    public const ADD_FEED_ATTEMPTS = 5;
     /** The 16th consecutive failure stops the feed (next_sync_at = infinity). */
     public const FAIL_STOP = 16;
     /** Added to a scheduled next_sync_at so a restart does not sync every feed at once. */
@@ -265,11 +264,6 @@ SQL;
         return $stmt->fetchAll();
     }
 
-    public static function all(): array
-    {
-        return db()->query(self::SQL_WITH_CITY . " WHERE p.status = 'active' ORDER BY p.id ASC")->fetchAll();
-    }
-
     public static function inactivate(int $id, int $userId, string $at): array
     {
         return self::synced($id, static function () use ($id, $userId, $at): array {
@@ -362,13 +356,6 @@ SQL;
         return $rows;
     }
 
-    public static function blockedDays(int $propertyId): array
-    {
-        $stmt = db()->prepare('SELECT day, origin FROM calendar_days WHERE property_id = ? AND blocked = 1 ORDER BY day');
-        $stmt->execute([$propertyId]);
-        return $stmt->fetchAll();
-    }
-
     public static function upsertDay(int $propertyId, string $day, int $blocked, ?int $price, ?int $minNights = null): void
     {
         db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, price, min_nights) VALUES (?, ?, ?, ?, ?)
@@ -438,9 +425,8 @@ SQL;
     }
 
     /**
-     * Feeds para exibição/API: só campos seguros e URL mascarada (esquema + host + ••••).
-     * A URL real pode conter token; para sincronizar use feedsWithUrl().
-     * stopped and last_error are the coarse status the owner sees (the code, never the URL).
+     * Owner list: masked URL (scheme + host + ••••), stopped, and last_error.
+     * The code is the coarse class the screen translates. The raw URL stays in the table.
      */
     public static function feeds(int $propertyId): array
     {
@@ -456,14 +442,6 @@ SQL;
             $rows[] = $row;
         }
         return $rows;
-    }
-
-    /** Uso interno (sincronização/comparação): inclui a URL real. Nunca devolver ao cliente. */
-    public static function feedsWithUrl(int $propertyId): array
-    {
-        $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE property_id = ? ORDER BY id');
-        $stmt->execute([$propertyId]);
-        return $stmt->fetchAll();
     }
 
     /** https://www.airbnb.com/calendar/ical/123.ics?s=TOKEN -> https://www.airbnb.com/•••• */
@@ -487,26 +465,25 @@ SQL;
         if ($title === '' || $titleLen > 40) {
             return 'title';
         }
-        if (strlen($url) > CalendarSync::MAX_URL_LENGTH || !CalendarSync::isHttpsUrl($url)) {
+        if (!CalendarSync::isHttpsUrl($url)) {
             return 'url';
         }
-        for ($attempt = 0; $attempt < self::ADD_FEED_ATTEMPTS; $attempt++) {
-            $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url = ?');
-            $exists->execute([$propertyId, $url]);
-            if ($exists->fetchColumn()) {
-                return 'duplicate';
-            }
-            $stmt = db()->prepare('SELECT COUNT(*) FROM calendar_feeds WHERE property_id = ?');
-            $stmt->execute([$propertyId]);
-            if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
-                return 'limit';
-            }
-            $row = self::insertFeedSlot($propertyId, $url, $title);
-            if ($row !== null) {
-                return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
-            }
+        $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url = ?');
+        $exists->execute([$propertyId, $url]);
+        if ($exists->fetchColumn()) {
+            return 'duplicate';
         }
-        return 'limit';
+        $stmt = db()->prepare('SELECT COUNT(*) FROM calendar_feeds WHERE property_id = ?');
+        $stmt->execute([$propertyId]);
+        if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
+            return 'limit';
+        }
+        $row = self::insertFeedSlot($propertyId, $url, $title);
+        if ($row !== null) {
+            return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
+        }
+        $exists->execute([$propertyId, $url]);
+        return $exists->fetchColumn() ? 'duplicate' : 'limit';
     }
 
     /**
@@ -677,22 +654,12 @@ SQL;
     /** @param list<string> $days */
     private static function pgDateArray(array $days): string
     {
-        foreach ($days as $day) {
-            if (!is_string($day) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
-                throw new InvalidArgumentException('day');
-            }
-        }
         return '{' . implode(',', $days) . '}';
     }
 
     /** @param list<string> $origins */
     private static function pgTextArray(array $origins): string
     {
-        foreach ($origins as $origin) {
-            if ($origin !== 'sync' && $origin !== 'reserva') {
-                throw new InvalidArgumentException('origin');
-            }
-        }
         return '{' . implode(',', $origins) . '}';
     }
 

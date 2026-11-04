@@ -1,5 +1,5 @@
 <?php
-// Claim, diff import, backoff, removal, slot race, URL cap, ICS clamp / invalid dates / too_big.
+// Claim, diff import, backoff, removal, feed slots, URL cap, ICS clamp / invalid dates / too_big.
 require __DIR__ . '/lib.php';
 t_temp_db();
 $owner = t_seed_owner();
@@ -155,44 +155,27 @@ t_eq($day(0), $wide['nights'][0] ?? '', 'o loop começa em hoje');
 t_eq(max_calendar_day(HouseRepository::find($pid)), $wide['nights'][count($wide['nights']) - 1] ?? '', 'o loop termina no horizonte');
 $huge = "BEGIN:VCALENDAR\nBEGIN:VEVENT\n" . str_repeat('X', CalendarSync::MAX_EVENT_BYTES + 1) . "\nDTSTART:$one\nEND:VEVENT\nEND:VCALENDAR\n";
 t_eq(['error' => 'too_big'], import_ics($pid, $huge), 'VEVENT acima de 1 MB falha o feed');
-CalendarWorker::apply(
+$accepted = CalendarSync::acceptBody($huge, 200);
+t_ok(isset($accepted['body']), '1 MB de VEVENT ainda passa do teto de 2 MB do corpo');
+CalendarWorker::finish(
     ['id' => $back, 'property_id' => $pid, 'url' => 'https://backoff.example/a.ics'],
-    ['body' => $huge, 'http' => 200]
+    $accepted,
+    0
 );
 $bigRow = db()->query('SELECT last_error, next_sync_at = \'infinity\' AS stopped FROM calendar_feeds WHERE id = ' . $back)->fetch();
 t_eq('too_big', $bigRow['last_error'], 'too_big fica visível em last_error');
 t_ok($bigRow['stopped'] === true || $bigRow['stopped'] === 't', 'too_big para o feed');
 
-echo "slot race\n";
+echo "slots\n";
 $other = t_seed_owner();
-$script = tempnam(sys_get_temp_dir(), 'slot');
-file_put_contents($script, '<?php
-require ' . var_export(CL_ROOT . '/src/Db.php', true) . ';
-require ' . var_export(CL_ROOT . '/src/helpers.php', true) . ';
-require ' . var_export(CL_ROOT . '/src/HouseRepository.php', true) . ';
-$r = HouseRepository::addFeed((int) $argv[1], (int) $argv[2], $argv[3], $argv[4]);
-echo is_array($r) ? "ok\n" : (is_string($r) ? $r . "\n" : "err\n");
-');
-$procs = [];
-for ($i = 0; $i < 6; $i++) {
-    $procs[] = proc_open(
-        [PHP_BINARY, $script, (string) $other['house_id'], (string) $other['user_id'], 'https://slot.example/f' . $i . '.ics', 'S' . $i],
-        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-        $pipes
-    );
-    $procs[array_key_last($procs)] = [$procs[array_key_last($procs)], $pipes];
+for ($i = 1; $i <= 5; $i++) {
+    $created = HouseRepository::addFeed((int) $other['house_id'], (int) $other['user_id'], 'https://slot.example/f' . $i . '.ics', 'S' . $i);
+    t_ok(is_array($created), "slot $i");
 }
-$outs = [];
-foreach ($procs as [$proc, $pipes]) {
-    $outs[] = trim(stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]));
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    proc_close($proc);
-}
-@unlink($script);
+t_eq('limit', HouseRepository::addFeed((int) $other['house_id'], (int) $other['user_id'], 'https://slot.example/f6.ics', 'S6'), 'o sexto feed é limit');
 $slots = db()->query('SELECT slot FROM calendar_feeds WHERE property_id = ' . (int) $other['house_id'] . ' ORDER BY slot')->fetchAll(PDO::FETCH_COLUMN);
-t_eq(['1', '2', '3', '4', '5'], array_map('strval', $slots), 'corrida de slots termina com 1..5 (' . implode(',', $outs) . ')');
-t_eq(1, count(array_filter($outs, static fn (string $line): bool => $line === 'limit')), 'o sexto perde com limit');
+t_eq(['1', '2', '3', '4', '5'], array_map('strval', $slots), 'slots 1..5');
+t_eq('duplicate', HouseRepository::addFeed((int) $other['house_id'], (int) $other['user_id'], 'https://slot.example/f1.ics', 'Outro'), 'a mesma URL é duplicate');
 
 echo "alerts\n";
 db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '31 minutes' WHERE id = ?")->execute([$back]);

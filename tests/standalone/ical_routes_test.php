@@ -32,8 +32,9 @@ t_eq(true, $json['ok'] ?? null, 'import ok');
 t_eq(0, $json['importadas'] ?? null, 'nenhuma noite importada do ics_body');
 $feed = $json['feeds'][0] ?? [];
 t_eq(null, $feed['last_status'], 'feed novo ainda sem status (o worker sincroniza)');
-$blocked = HouseRepository::blockedDays($owner['house_id']);
-t_eq(0, count($blocked), 'nenhum dia bloqueado no banco');
+$blocked = db()->prepare('SELECT COUNT(*) FROM calendar_days WHERE property_id = ? AND blocked = 1');
+$blocked->execute([$owner['house_id']]);
+t_eq(0, (int) $blocked->fetchColumn(), 'nenhum dia bloqueado no banco');
 $long = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
     'external_ical_url' => 'https://feeds.example/' . str_repeat('a', 8000), 'feed_title' => 'Longa',
 ]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
@@ -53,7 +54,9 @@ t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['f
 $w = t_http('GET', $base . '/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $w['status'], 'tela web do calendário continua 200');
 t_ok(!str_contains($w['body'], 'TOKENFEED') && str_contains($w['body'], 'Teste'), 'tela web lista o feed sem token');
-t_eq($feedUrl, HouseRepository::feedsWithUrl($owner['house_id'])[0]['url'] ?? null, 'feedsWithUrl (interno) mantém URL real; banco sem criptografia');
+$stored = db()->prepare('SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id');
+$stored->execute([$owner['house_id']]);
+t_eq($feedUrl, $stored->fetchColumn(), 'a URL real fica no banco; a API devolve a mascarada');
 
 echo "DELETE do feed\n";
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);

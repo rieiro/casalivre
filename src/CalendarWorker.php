@@ -59,15 +59,6 @@ final class CalendarWorker
         return 0;
     }
 
-    /**
-     * @param array{id: int, property_id: int, url: string} $feed
-     * @param array{body?: string, error?: string, http?: int} $result
-     */
-    public static function apply(array $feed, array $result): void
-    {
-        self::finish($feed, $result, 0);
-    }
-
     /** @param array{prev_due?: ?string, last_synced_at?: ?string} $feed */
     public static function observeClaim(array $feed): void
     {
@@ -147,13 +138,7 @@ final class CalendarWorker
         if (!is_string($body)) {
             return ['error' => 'timeout', 'http' => $status];
         }
-        if ($status === 429 || $status >= 500) {
-            return ['error' => 'http_5xx', 'http' => $status];
-        }
-        if ($status >= 400) {
-            return ['error' => 'http_4xx', 'http' => $status];
-        }
-        return CalendarSync::acceptBody($body, $status ?: 200);
+        return CalendarSync::classify($status ?: 200, $body);
     }
 
     /** @param array{id: int, property_id: int, url: string} $feed */
@@ -167,21 +152,15 @@ final class CalendarWorker
     }
 
     /**
+     * $result is already classified (fetch or classify): a body or an error code.
+     *
      * @param array{id: int, property_id: int, url: string} $feed
      * @param array{body?: string, error?: string, http?: int} $result
      */
-    private static function finish(array $feed, array $result, int $ms): void
+    public static function finish(array $feed, array $result, int $ms): void
     {
         $http = (int) ($result['http'] ?? 0);
         $now = date('Y-m-d H:i:s');
-        if (isset($result['body'])) {
-            $accepted = CalendarSync::acceptBody($result['body'], $http);
-            if (isset($accepted['error'])) {
-                self::fail($feed, $accepted['error'], $now, $http, $ms);
-                return;
-            }
-            $result = $accepted;
-        }
         if (isset($result['error'])) {
             self::fail($feed, (string) $result['error'], $now, $http, $ms);
             return;
@@ -210,14 +189,10 @@ final class CalendarWorker
     /** @param array{id: int, property_id: int, url: string} $feed */
     private static function fail(array $feed, string $code, string $now, int $http, int $ms): void
     {
-        $known = [...HouseRepository::PERMANENT_FEED_ERRORS, ...HouseRepository::TEMPORARY_FEED_ERRORS];
-        if (!in_array($code, $known, true)) {
-            $code = 'http_5xx';
-        }
         $row = HouseRepository::recordFeedFailure((int) $feed['id'], $code, $now, random_int(0, HouseRepository::JITTER_MAX_SECONDS));
         self::logLine((int) $feed['id'], (int) $feed['property_id'], 'nok', $code, $http, $ms);
         self::auditSync($feed, 'nok', 0);
-        if ($row['stopped'] && function_exists('activity')) {
+        if ($row['stopped']) {
             activity(ActivityLog::CALENDAR_FEED_FAIL, [
                 'imovel_id' => (int) $feed['property_id'],
                 'feed_id' => (int) $feed['id'],
@@ -229,9 +204,6 @@ final class CalendarWorker
     /** @param array{id: int, property_id: int, url: string} $feed */
     private static function auditSync(array $feed, string $result, int $written): void
     {
-        if (!function_exists('activity')) {
-            return;
-        }
         activity(ActivityLog::CALENDAR_SYNC, [
             'imovel_id' => (int) $feed['property_id'],
             'url' => CalendarSync::logRef($feed['url']),

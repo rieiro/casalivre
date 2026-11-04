@@ -155,7 +155,7 @@ function legacy_ids(array $request, mixed $host): array
     } elseif (($hostGroup = GrupoResolvedor::doDominio($host)) !== null) {
         $source = legacy_group((int) $hostGroup['id']);
     } else {
-        $source = HouseRepository::all();
+        $source = db()->query(HouseRepository::SQL_WITH_CITY . " WHERE p.status = 'active' ORDER BY p.id ASC")->fetchAll();
     }
     $localidade = $filters['localidade'];
     $center = $localidade !== '' ? CityRepository::resolve($localidade)['place'] : null;

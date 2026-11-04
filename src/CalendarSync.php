@@ -18,28 +18,6 @@ final class CalendarSync
     public const FETCH_TIMEOUT = 20;
     public const CONNECT_TIMEOUT = 5;
 
-    /**
-     * Drops nights past each active property's horizon.
-     * Calendar save trims the property being edited. This worker does not call trimHorizon;
-     * a separate daily runit loop can.
-     */
-    public static function trimHorizon(): int
-    {
-        $total = 0;
-        foreach (HouseRepository::all() as $property) {
-            $removed = HouseRepository::clearBlockedAfter((int) $property['id'], max_calendar_day($property));
-            if ($removed === []) {
-                continue;
-            }
-            $total += count($removed);
-            if (function_exists('activity') && class_exists('ActivityLog')) {
-                $audit = HouseRepository::nightAudit($removed);
-                activity(ActivityLog::CALENDAR_UPDATE, ['imovel_id' => (int) $property['id'], 'motivo' => 'limite'], $audit['anterior'], ['estado' => 'removida']);
-            }
-        }
-        return $total;
-    }
-
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
     public static function logRef(?string $url): ?string
     {
@@ -121,18 +99,28 @@ final class CalendarSync
                 $current = $location;
                 continue;
             }
-            if ($code === 429 || $code >= 500) {
-                return ['error' => 'http_5xx', 'http' => $code];
-            }
-            if ($code >= 400) {
-                return ['error' => 'http_4xx', 'http' => $code];
-            }
-            if ($code >= 200 && $code < 300) {
-                return self::acceptBody($body, $code);
-            }
-            return ['error' => 'http_5xx', 'http' => $code];
+            return self::classify($code, $body);
         }
         return ['error' => 'bad_url', 'http' => 0];
+    }
+
+    /**
+     * HTTP status to a feed result. 2xx goes through acceptBody (size and BEGIN:VCALENDAR).
+     *
+     * @return array{body: string, http: int}|array{error: string, http: int}
+     */
+    public static function classify(int $code, string $body): array
+    {
+        if ($code === 429 || $code >= 500) {
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        if ($code >= 400) {
+            return ['error' => 'http_4xx', 'http' => $code];
+        }
+        if ($code >= 200 && $code < 300) {
+            return self::acceptBody($body, $code);
+        }
+        return ['error' => 'http_5xx', 'http' => $code];
     }
 
     /**

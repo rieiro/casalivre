@@ -18,8 +18,16 @@ $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $hid = $owner['house_id'];
 $cal = '/imoveis/' . $owner['hash'] . '/calendario';
 $day = static fn (int $n): string => date('Y-m-d', strtotime("+$n days"));
-$blocked = static fn (int $id): array => array_column(HouseRepository::blockedDays($id), 'origin', 'day');
-$feeds = static fn (): array => HouseRepository::feedsWithUrl($hid);
+$blocked = static function (int $id): array {
+    $stmt = db()->prepare('SELECT day, origin FROM calendar_days WHERE property_id = ? AND blocked = 1 ORDER BY day');
+    $stmt->execute([$id]);
+    return array_column($stmt->fetchAll(), 'origin', 'day');
+};
+$feeds = static function () use ($hid): array {
+    $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE property_id = ? ORDER BY id');
+    $stmt->execute([$hid]);
+    return $stmt->fetchAll();
+};
 
 echo "calendário: web\n";
 $m = c_mark($act);
