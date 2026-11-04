@@ -155,6 +155,12 @@ t_eq($day(0), $wide['nights'][0] ?? '', 'o loop começa em hoje');
 t_eq(max_calendar_day(HouseRepository::find($pid)), $wide['nights'][count($wide['nights']) - 1] ?? '', 'o loop termina no horizonte');
 $huge = "BEGIN:VCALENDAR\nBEGIN:VEVENT\n" . str_repeat('X', CalendarSync::MAX_EVENT_BYTES + 1) . "\nDTSTART:$one\nEND:VEVENT\nEND:VCALENDAR\n";
 t_eq(['error' => 'too_big'], import_ics($pid, $huge), 'VEVENT acima de 1 MB falha o feed');
+$over = "BEGIN:VCALENDAR\nBEGIN:VEVENT\n" . str_repeat('Y', CalendarSync::MAX_EVENT_BYTES + 1) . "\nDTSTART:$one\nEND:VEVENT\nEND:VCALENDAR\n";
+$previousLimit = ini_set('pcre.backtrack_limit', (string) (CalendarSync::MAX_BYTES * 5));
+t_eq(['error' => 'too_big'], import_ics($pid, $over), 'evento pouco acima de 1 MB continua too_big quando o match cabe');
+if ($previousLimit !== false) {
+    ini_set('pcre.backtrack_limit', $previousLimit);
+}
 $accepted = CalendarSync::acceptBody($huge, 200);
 t_ok(isset($accepted['body']), '1 MB de VEVENT ainda passa do teto de 2 MB do corpo');
 CalendarWorker::finish(

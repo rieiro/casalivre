@@ -93,11 +93,9 @@ function import_ics(int $propertyId, string $body): array
     $house = HouseRepository::find($propertyId);
     $max = max_calendar_day($house ?: null);
     $today = date('Y-m-d');
-    // The default backtrack limit (1e6) is under MAX_EVENT_BYTES, so a too-big VEVENT would not be captured.
-    $previous = ini_set('pcre.backtrack_limit', (string) (CalendarSync::MAX_BYTES * 5));
-    preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
-    if ($previous !== false) {
-        ini_set('pcre.backtrack_limit', $previous);
+    $matched = preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
+    if ($matched === false) {
+        return ['error' => 'too_big'];
     }
     $found = $events[1] ?? [];
     if (count($found) > CalendarSync::MAX_EVENTS) {
