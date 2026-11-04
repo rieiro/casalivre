@@ -10,7 +10,6 @@ require_once CL_ROOT . '/src/CalendarWorker.php';
 $pid = (int) $owner['house_id'];
 $uid = (int) $owner['user_id'];
 $day = static fn (int $n): string => date('Y-m-d', strtotime("+$n days"));
-$now = date('Y-m-d H:i:s');
 $add = static function (string $url, string $title) use ($pid, $uid): int {
     $created = HouseRepository::addFeed($pid, $uid, $url, $title);
     t_ok(is_array($created), "addFeed $title");
@@ -69,41 +68,41 @@ echo "diff\n";
 $d1 = $day(2);
 $d2 = $day(3);
 $d3 = $day(4);
-$wrote = HouseRepository::importFeed($pid, $a, [$d1, $d2], ['sync', 'reserva'], $now, 0);
+$wrote = HouseRepository::importFeed($pid, $a, [$d1, $d2], ['sync', 'reserva'], 0);
 t_eq(['freed' => 0, 'written' => 2], $wrote, 'primeira importação grava as duas noites');
 t_eq(['blocked' => 1, 'origin' => 'sync', 'feed_id' => $a, 'price' => null], $night($pid, $d1), 'noite do feed A');
-$again = HouseRepository::importFeed($pid, $a, [$d1, $d2], ['sync', 'reserva'], $now, 0);
+$again = HouseRepository::importFeed($pid, $a, [$d1, $d2], ['sync', 'reserva'], 0);
 t_eq(['freed' => 0, 'written' => 0], $again, 'sync sem mudança grava 0 linhas');
 db()->prepare('UPDATE calendar_days SET price = 123 WHERE property_id = ? AND day = ?')->execute([$pid, $d1]);
-$cancelled = HouseRepository::importFeed($pid, $a, [$d2], ['reserva'], $now, 0);
+$cancelled = HouseRepository::importFeed($pid, $a, [$d2], ['reserva'], 0);
 t_eq(1, $cancelled['freed'] ?? 0, 'noite cancelada é liberada');
 t_eq(['blocked' => 0, 'origin' => '', 'feed_id' => null, 'price' => 123], $night($pid, $d1), 'preço fica, feed_id sai');
 db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, origin) VALUES (?, ?, 1, 'sistema')")->execute([$pid, $d3]);
-$kept = HouseRepository::importFeed($pid, $a, [$d2, $d3], ['reserva', 'sync'], $now, 0);
+$kept = HouseRepository::importFeed($pid, $a, [$d2, $d3], ['reserva', 'sync'], 0);
 t_eq(0, $kept['written'] ?? -1, 'bloco do dono não é escrito');
 t_eq(['blocked' => 1, 'origin' => 'sistema', 'feed_id' => null, 'price' => null], $night($pid, $d3), 'origem sistema permanece');
 db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '2 hours' WHERE id = ?")->execute([$b]);
-$stolen = HouseRepository::importFeed($pid, $b, [$d2], ['sync'], $now, 0);
+$stolen = HouseRepository::importFeed($pid, $b, [$d2], ['sync'], 0);
 t_eq(0, $stolen['written'] ?? -1, 'segundo feed não toma a noite do primeiro');
 t_eq($a, $night($pid, $d2)['feed_id'], 'feed_id continua o do primeiro');
-$freed = HouseRepository::importFeed($pid, $a, [], [], $now, 0);
+$freed = HouseRepository::importFeed($pid, $a, [], [], 0);
 t_ok(($freed['freed'] ?? 0) >= 1, 'o primeiro feed liberou a noite');
 $reDue = (float) db()->query('SELECT EXTRACT(EPOCH FROM (next_sync_at - now())) FROM calendar_feeds WHERE id = ' . $b)->fetchColumn();
 t_ok($reDue <= 2, 'o outro feed fica devido na hora');
-$took = HouseRepository::importFeed($pid, $b, [$d2], ['sync'], $now, 0);
+$took = HouseRepository::importFeed($pid, $b, [$d2], ['sync'], 0);
 t_eq(1, $took['written'] ?? 0, 'depois de livre, o segundo feed fica com a noite');
 t_eq($b, $night($pid, $d2)['feed_id'], 'feed_id passa a ser o segundo');
 
 echo "removal\n";
 db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '3 hours' WHERE id = ?")->execute([$b]);
-HouseRepository::importFeed($pid, $a, [$d1], ['sync'], $now, 0);
+HouseRepository::importFeed($pid, $a, [$d1], ['sync'], 0);
 $gone = HouseRepository::removeFeed($pid, $uid, $a);
 t_eq($a, (int) ($gone['feed']['id'] ?? 0), 'remove devolve o feed');
 t_eq(['blocked' => 0, 'origin' => '', 'feed_id' => null, 'price' => 123], $night($pid, $d1), 'remover libera só as noites daquele feed e guarda o preço');
 t_eq($b, $night($pid, $d2)['feed_id'], 'a noite do outro feed continua');
 $afterRemove = (float) db()->query('SELECT EXTRACT(EPOCH FROM (next_sync_at - now())) FROM calendar_feeds WHERE id = ' . $b)->fetchColumn();
 t_ok($afterRemove <= 2, 'remover o feed marca o outro como devido');
-t_eq(null, HouseRepository::importFeed($pid, $a, [$d1], ['sync'], $now, 0), 'import de feed já removido não grava');
+t_eq(null, HouseRepository::importFeed($pid, $a, [$d1], ['sync'], 0), 'import de feed já removido não grava');
 
 echo "backoff\n";
 $back = $add('https://backoff.example/a.ics', 'Back');
@@ -113,16 +112,16 @@ for ($i = 4; $i <= 14; $i++) {
 }
 foreach ($expect as $before => $seconds) {
     db()->prepare('UPDATE calendar_feeds SET fail_count = ?, last_error = NULL, next_sync_at = now(), last_status = NULL WHERE id = ?')->execute([$before, $back]);
-    $row = HouseRepository::recordFeedFailure($back, 'timeout', $now, 0);
+    $row = HouseRepository::recordFeedFailure($back, 'timeout', 0);
     $delay = (float) db()->query('SELECT EXTRACT(EPOCH FROM (next_sync_at - now())) FROM calendar_feeds WHERE id = ' . $back)->fetchColumn();
     t_eq(false, $row['stopped'], "fail_count $before ainda não para");
     t_ok(abs($delay - $seconds) < 8, "fail_count $before espera {$seconds}s (obteve $delay)");
 }
 db()->prepare('UPDATE calendar_feeds SET fail_count = 15, next_sync_at = now() WHERE id = ?')->execute([$back]);
-$stop = HouseRepository::recordFeedFailure($back, 'dns', $now, 0);
+$stop = HouseRepository::recordFeedFailure($back, 'dns', 0);
 t_eq([16, true], [$stop['fail_count'], $stop['stopped']], 'a 16ª falha temporária para o feed');
 db()->prepare('UPDATE calendar_feeds SET fail_count = 0, last_error = NULL, next_sync_at = now() WHERE id = ?')->execute([$back]);
-$permanent = HouseRepository::recordFeedFailure($back, 'http_4xx', $now, 0);
+$permanent = HouseRepository::recordFeedFailure($back, 'http_4xx', 0);
 t_eq([1, true], [$permanent['fail_count'], $permanent['stopped']], 'http_4xx para na hora');
 HouseRepository::markFeedPending($pid, $back);
 $reset = db()->query('SELECT fail_count, last_error, last_status FROM calendar_feeds WHERE id = ' . $back)->fetch();
@@ -210,8 +209,69 @@ rewind($fh);
 t_ok(str_contains(stream_get_contents($fh), 'lease expiries'), 'ALERT de lease vencido');
 CalendarWorker::$stderr = null;
 fclose($fh);
-HouseRepository::importFeed($pid, $b, [$d2], ['sync'], $now, HouseRepository::JITTER_MAX_SECONDS);
+HouseRepository::importFeed($pid, $b, [$d2], ['sync'], HouseRepository::JITTER_MAX_SECONDS);
 $jitterGap = (float) db()->query('SELECT EXTRACT(EPOCH FROM (next_sync_at - now())) FROM calendar_feeds WHERE id = ' . $b)->fetchColumn();
 t_ok($jitterGap >= 1790 && $jitterGap <= 2110, 'os 30 min de sucesso ganham no máximo 300 s de jitter');
+
+echo "zones\n";
+$fresh = $add('https://zone.example/new.ics', 'ZoneNew');
+$stale = $add('https://zone.example/old.ics', 'ZoneOld');
+$phpWas = date_default_timezone_get();
+$pgWas = (string) db()->query('SHOW TIME ZONE')->fetchColumn();
+$window = db()->prepare("SELECT count(*) FROM calendar_feeds
+    WHERE id IN (?, ?) AND last_error IN ('timeout','dns','http_5xx') AND last_synced_at > now() - interval '1 hour'");
+foreach ([['UTC', 'America/Sao_Paulo'], ['America/Sao_Paulo', 'UTC']] as [$phpZone, $pgZone]) {
+    date_default_timezone_set($phpZone);
+    db()->exec('SET TIME ZONE ' . db()->quote($pgZone));
+    db()->prepare("UPDATE calendar_feeds SET last_synced_at = now() - interval '2 hours', last_error = 'timeout', fail_count = 1 WHERE id = ?")->execute([$stale]);
+    db()->prepare('UPDATE calendar_feeds SET last_synced_at = NULL, last_error = NULL, fail_count = 0, next_sync_at = now() WHERE id = ?')->execute([$fresh]);
+    HouseRepository::recordFeedFailure($fresh, 'timeout', 0);
+    $window->execute([$fresh, $stale]);
+    t_eq(1, (int) $window->fetchColumn(), "janela de 1 h conta 1 falha (PHP $phpZone, PG $pgZone)");
+}
+date_default_timezone_set('America/Sao_Paulo');
+db()->exec("SET TIME ZONE 'UTC'");
+HouseRepository::recordFeedFailure($fresh, 'dns', 0);
+$stored = (string) db()->query('SELECT last_synced_at::text FROM calendar_feeds WHERE id = ' . $fresh)->fetchColumn();
+$ago = time() - (int) strtotime($stored . ' UTC');
+t_ok($ago >= -5 && $ago < 120, "a tela lê last_synced_at gravado em UTC ($stored, $ago s)");
+date_default_timezone_set($phpWas);
+db()->exec('SET TIME ZONE ' . db()->quote($pgWas));
+
+echo "slot race\n";
+$race = t_seed_owner();
+$slotScript = tempnam(sys_get_temp_dir(), 'slot');
+file_put_contents($slotScript, '<?php
+require ' . var_export(CL_ROOT . '/src/Db.php', true) . ';
+require ' . var_export(CL_ROOT . '/src/helpers.php', true) . ';
+require ' . var_export(CL_ROOT . '/src/HouseRepository.php', true) . ';
+$r = HouseRepository::addFeed((int) $argv[1], (int) $argv[2], $argv[3], $argv[4]);
+echo is_array($r) ? "ok\n" : $r . "\n";
+');
+$spawn = static function (string $url, string $title) use ($slotScript, $race): array {
+    $proc = proc_open(
+        [PHP_BINARY, $slotScript, (string) $race['house_id'], (string) $race['user_id'], $url, $title],
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    return [$proc, $pipes];
+};
+$jobs = [$spawn('https://race.example/a.ics', 'RA'), $spawn('https://race.example/b.ics', 'RB')];
+$outs = [];
+foreach ($jobs as [$proc, $pipes]) {
+    $outs[] = trim(stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]));
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
+}
+@unlink($slotScript);
+t_eq(['ok', 'ok'], $outs, 'duas adições simultâneas entram');
+$raceSlots = db()->query('SELECT slot FROM calendar_feeds WHERE property_id = ' . (int) $race['house_id'] . ' ORDER BY slot')->fetchAll(PDO::FETCH_COLUMN);
+t_eq(2, count(array_unique($raceSlots)), 'slots distintos');
+for ($i = 3; $i <= 5; $i++) {
+    t_ok(is_array(HouseRepository::addFeed((int) $race['house_id'], (int) $race['user_id'], 'https://race.example/c' . $i . '.ics', 'R' . $i)), "feed $i");
+}
+t_eq('limit', HouseRepository::addFeed((int) $race['house_id'], (int) $race['user_id'], 'https://race.example/c6.ics', 'R6'), 'o sexto feed é limit');
+t_eq('duplicate', HouseRepository::addFeed((int) $race['house_id'], (int) $race['user_id'], 'https://race.example/a.ics', 'RAdupe'), 'a mesma URL é duplicate');
 
 t_done();

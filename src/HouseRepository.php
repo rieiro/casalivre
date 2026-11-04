@@ -21,6 +21,7 @@ final class HouseRepository
     /** Two-int advisory lock namespace: sync vs sync and feed removal. Bookings do not take it. */
     public const SYNC_ADVISORY_NS = 48001403;
     public const FEED_SLOTS = 5;
+    private const ADD_SLOT_ATTEMPTS = 5;
     /** The 16th consecutive failure stops the feed (next_sync_at = infinity). */
     public const FAIL_STOP = 16;
     /** Added to a scheduled next_sync_at so a restart does not sync every feed at once. */
@@ -478,7 +479,7 @@ SQL;
         if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
             return 'limit';
         }
-        $row = self::insertFeedSlot($propertyId, $url, $title);
+        $row = self::takeFreeSlot($propertyId, $url, $title);
         if ($row !== null) {
             return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
         }
@@ -579,7 +580,7 @@ SQL;
      * @param list<string> $origins
      * @return array{freed: int, written: int}|null
      */
-    public static function importFeed(int $propertyId, int $feedId, array $nights, array $origins, string $syncedAt, int $jitterSeconds): ?array
+    public static function importFeed(int $propertyId, int $feedId, array $nights, array $origins, int $jitterSeconds): ?array
     {
         $pdo = db();
         $pdo->beginTransaction();
@@ -617,8 +618,8 @@ SQL;
                     ->execute([$propertyId, $feedId]);
             }
             $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '30 minutes' + (? * interval '1 second'),
-                fail_count = 0, last_error = NULL, last_status = 'OK', last_synced_at = ?
-                WHERE id = ?")->execute([$jitterSeconds, $syncedAt, $feedId]);
+                fail_count = 0, last_error = NULL, last_status = 'OK', last_synced_at = now()
+                WHERE id = ?")->execute([$jitterSeconds, $feedId]);
             $pdo->commit();
             return ['freed' => $freed, 'written' => $written];
         } catch (Throwable $e) {
@@ -632,18 +633,18 @@ SQL;
     /**
      * @return array{fail_count: int, stopped: bool}
      */
-    public static function recordFeedFailure(int $feedId, string $code, string $syncedAt, int $jitterSeconds): array
+    public static function recordFeedFailure(int $feedId, string $code, int $jitterSeconds): array
     {
         if (in_array($code, self::PERMANENT_FEED_ERRORS, true)) {
-            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = ?,
+            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
                 next_sync_at = 'infinity' WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
-            $params = [$code, $syncedAt, $feedId];
+            $params = [$code, $feedId];
         } else {
-            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = ?,
+            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
                 next_sync_at = CASE WHEN fail_count + 1 >= " . self::FAIL_STOP . " THEN 'infinity'
                     ELSE now() + interval '30 minutes' * LEAST(power(2, fail_count), 12) + (? * interval '1 second') END
                 WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
-            $params = [$code, $syncedAt, $jitterSeconds, $feedId];
+            $params = [$code, $jitterSeconds, $feedId];
         }
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
@@ -669,6 +670,17 @@ SQL;
     }
 
     /** @return array{id: int|string, url: string, title: string}|null */
+    private static function takeFreeSlot(int $propertyId, string $url, string $title): ?array
+    {
+        for ($attempt = 0; $attempt < self::ADD_SLOT_ATTEMPTS; $attempt++) {
+            $row = self::insertFeedSlot($propertyId, $url, $title);
+            if ($row !== null) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
     private static function insertFeedSlot(int $propertyId, string $url, string $title): ?array
     {
         $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, title)

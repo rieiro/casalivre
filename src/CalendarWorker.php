@@ -14,6 +14,8 @@ final class CalendarWorker
     public const TEMP_FAIL_RATE = 0.20;
     public const LEASE_EXPIRY_RATE = 0.01;
     public const ALERT_AGAIN_SECONDS = 900;
+    /** Full calendar_feeds scans for alerts, at most this often per process. */
+    public const ALERT_INTERVAL_SECONDS = 60;
     /** A 10-minute lease sits this far past a normal 30min..6h schedule (jitter is at most 300s). */
     private const LEASE_GAP_MIN = 480;
     private const LEASE_GAP_MAX = 900;
@@ -27,6 +29,8 @@ final class CalendarWorker
     private static array $claims = [];
     /** @var list<int> */
     private static array $expiries = [];
+    /** Monotonic hrtime(true) of the last alert scan. */
+    private static int $alertsCheckedAt = 0;
 
     public static function run(bool $once, ?string $fixtureBase = null): int
     {
@@ -37,11 +41,20 @@ final class CalendarWorker
                 $stop = true;
             });
         }
+        $utc = false;
         do {
             $feed = null;
             try {
+                if (!$utc) {
+                    db()->exec("SET TIME ZONE 'UTC'");
+                    $utc = true;
+                }
                 Db::ping();
-                self::checkAlerts();
+                $tick = hrtime(true);
+                if ($tick - self::$alertsCheckedAt >= self::ALERT_INTERVAL_SECONDS * 1_000_000_000) {
+                    self::$alertsCheckedAt = $tick;
+                    self::checkAlerts();
+                }
                 $feed = HouseRepository::claimDueFeed();
                 if ($feed !== null && $feed['active']) {
                     self::observeClaim($feed);
@@ -160,14 +173,13 @@ final class CalendarWorker
     public static function finish(array $feed, array $result, int $ms): void
     {
         $http = (int) $result['http'];
-        $now = date('Y-m-d H:i:s');
         if (isset($result['error'])) {
-            self::fail($feed, (string) $result['error'], $now, $http, $ms);
+            self::fail($feed, (string) $result['error'], $http, $ms);
             return;
         }
         $parsed = import_ics((int) $feed['property_id'], (string) $result['body']);
         if (isset($parsed['error'])) {
-            self::fail($feed, (string) $parsed['error'], $now, $http, $ms);
+            self::fail($feed, (string) $parsed['error'], $http, $ms);
             return;
         }
         $imported = HouseRepository::importFeed(
@@ -175,7 +187,6 @@ final class CalendarWorker
             (int) $feed['id'],
             $parsed['nights'],
             $parsed['origins'],
-            $now,
             random_int(0, HouseRepository::JITTER_MAX_SECONDS)
         );
         if ($imported === null) {
@@ -187,9 +198,9 @@ final class CalendarWorker
     }
 
     /** @param array{id: int, property_id: int, url: string} $feed */
-    private static function fail(array $feed, string $code, string $now, int $http, int $ms): void
+    private static function fail(array $feed, string $code, int $http, int $ms): void
     {
-        $row = HouseRepository::recordFeedFailure((int) $feed['id'], $code, $now, random_int(0, HouseRepository::JITTER_MAX_SECONDS));
+        $row = HouseRepository::recordFeedFailure((int) $feed['id'], $code, random_int(0, HouseRepository::JITTER_MAX_SECONDS));
         self::logLine((int) $feed['id'], (int) $feed['property_id'], 'nok', $code, $http, $ms);
         self::auditSync($feed, 'nok', 0);
         if ($row['stopped']) {

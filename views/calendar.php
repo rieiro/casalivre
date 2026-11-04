@@ -122,7 +122,7 @@ $feeds = $feeds ?? [];
                                 <td><?= e($statusLabel) ?><?php if ($reason !== ''): ?><br><span class="muted fine"><?= e($reason) ?></span><?php endif; ?></td>
                                 <td><?php
                                     $syncedAt = (string) ($feed['last_synced_at'] ?? '');
-                                    $synced = $syncedAt !== '' ? strtotime($syncedAt) : false;
+                                    $synced = $syncedAt !== '' ? strtotime($syncedAt . ' UTC') : false;
                                     echo $synced === false ? '—' : max(0, (int) floor((time() - $synced) / 60)) . ' ' . e(t('cal.minutes_ago'));
                                 ?></td>
                                 <td>
