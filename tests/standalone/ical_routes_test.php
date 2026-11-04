@@ -22,48 +22,52 @@ echo "import ignora ics_body\n";
 $csrf = t_login($base, $jar, $owner['email'], $owner['password']);
 $day = date('Ymd', strtotime('+10 days'));
 $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:$day\r\nDTEND;VALUE=DATE:" . date('Ymd', strtotime('+12 days')) . "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+$feedUrl = 'https://feeds.example/bloqueado.ics?t=TOKENFEED';
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
-    'external_ical_url' => 'https://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', 'feed_title' => 'Teste', 'ics_body' => $ics,
+    'external_ical_url' => $feedUrl, 'feed_title' => 'Teste', 'ics_body' => $ics,
 ]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
-t_eq(502, $r['status'], 'import com download falho responde 502 (feed salvo como NOK)');
-t_eq('NOK', $json['status'] ?? null, 'falha no download marca status NOK');
+t_eq(200, $r['status'], 'import grava o feed e não baixa no pedido');
+t_eq(true, $json['ok'] ?? null, 'import ok');
 t_eq(0, $json['importadas'] ?? null, 'nenhuma noite importada do ics_body');
 $feed = $json['feeds'][0] ?? [];
-t_eq('NOK', $feed['last_status'] ?? null, 'feed gravado com last_status NOK');
+t_eq(null, $feed['last_status'], 'feed novo ainda sem status (o worker sincroniza)');
 $blocked = HouseRepository::blockedDays($owner['house_id']);
 t_eq(0, count($blocked), 'nenhum dia bloqueado no banco');
+$long = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
+    'external_ical_url' => 'https://feeds.example/' . str_repeat('a', 8000), 'feed_title' => 'Longa',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(422, $long['status'], 'URL de 8 KB é 422, não 500');
+$badPort = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
+    'external_ical_url' => 'https://127.0.0.1:9/bloqueado.ics', 'feed_title' => 'Porta',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(422, $badPort['status'], 'porta diferente de 443 é recusada');
 
 echo "URL do feed mascarada\n";
-t_eq('https://127.0.0.1/••••', $feed['url'] ?? null, 'import: feeds[].url mascarada');
+t_eq('https://feeds.example/••••', $feed['url'] ?? null, 'import: feeds[].url mascarada');
 t_ok(!str_contains($r['body'], 'TOKENFEED') && !str_contains($r['body'], 'bloqueado.ics'), 'import: resposta sem token/caminho');
-t_eq(['id', 'property_id', 'title', 'url', 'last_status', 'last_synced_at'], array_keys($feed), 'import: só campos seguros');
+t_eq(['id', 'property_id', 'title', 'url', 'last_status', 'last_synced_at', 'last_error', 'fail_count', 'stopped'], array_keys($feed), 'import: só campos seguros');
 $g = t_http('GET', $base . '/api/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $g['status'], 'GET calendario API 200');
-t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['feeds'][0]['url'] ?? null) === 'https://127.0.0.1/••••', 'GET calendario API: URL mascarada');
+t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['feeds'][0]['url'] ?? null) === 'https://feeds.example/••••', 'GET calendario API: URL mascarada');
 $w = t_http('GET', $base . '/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $w['status'], 'tela web do calendário continua 200');
 t_ok(!str_contains($w['body'], 'TOKENFEED') && str_contains($w['body'], 'Teste'), 'tela web lista o feed sem token');
-t_eq('https://127.0.0.1:9/bloqueado.ics?t=TOKENFEED', HouseRepository::feedsWithUrl($owner['house_id'])[0]['url'] ?? null, 'feedsWithUrl (interno) mantém URL real; banco sem criptografia');
+t_eq($feedUrl, HouseRepository::feedsWithUrl($owner['house_id'])[0]['url'] ?? null, 'feedsWithUrl (interno) mantém URL real; banco sem criptografia');
 
 echo "DELETE do feed\n";
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'DELETE responde 200');
-t_ok(isset($json['ressincronizados']), 'DELETE devolve resultado da ressincronização');
+t_ok(!isset($json['ressincronizados']) && is_array($json['feeds'] ?? null), 'DELETE não baixa os outros feeds');
 
-echo "orçamento de tempo do resync\n";
+echo "retry marca o feed como devido\n";
 require_once CL_ROOT . '/src/CalendarSync.php';
-HouseRepository::addFeed($owner['house_id'], $owner['user_id'], 'https://127.0.0.1:9/a.ics', 'A');
-HouseRepository::addFeed($owner['house_id'], $owner['user_id'], 'https://127.0.0.1:9/b.ics', 'B');
-$res = CalendarSync::resyncProperty($owner['house_id'], 0.0);
-t_eq(2, $res['pendentes'], 'sem orçamento: todos os feeds ficam PENDENTE para o cron');
-$statuses = array_column(HouseRepository::feeds($owner['house_id']), 'last_status');
-t_eq(['PENDENTE', 'PENDENTE'], $statuses, 'feeds marcados como PENDENTE');
-$t0 = microtime(true);
-$res = CalendarSync::resyncProperty($owner['house_id']);
-t_eq(2, $res['nok'], 'com orçamento: URLs internas viram NOK');
-t_ok(microtime(true) - $t0 < CalendarSync::RESYNC_BUDGET_SECONDS + 1, 'resync respeita o orçamento total');
+$a = HouseRepository::addFeed($owner['house_id'], $owner['user_id'], 'https://feeds.example/a.ics', 'A');
+HouseRepository::addFeed($owner['house_id'], $owner['user_id'], 'https://feeds.example/b.ics', 'B');
+HouseRepository::markFeedPending($owner['house_id'], (int) $a['feed']['id']);
+$pending = array_values(array_filter(HouseRepository::feeds($owner['house_id']), static fn ($f) => ($f['title'] ?? '') === 'A'))[0] ?? [];
+t_eq('PENDENTE', $pending['last_status'] ?? null, 'markFeedPending grava PENDENTE');
 
 @unlink($jar);
 t_done();

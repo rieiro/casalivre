@@ -1,9 +1,8 @@
 <?php
 // Caracterização (PR 0 do refactor): POST do calendário, import iCal e exclusão de feed, web x API.
 // Paridade (PR B): mesma regra, mesmos logs e mesmas mensagens nos dois canais; a web mostra o erro na tela e a
-// API responde 422/409 (502 na falha de download) com {error, erros: {campo: mensagem}}.
-// Sem rede externa: o import "OK" usa a URL do próprio site (/ical/{ical_hash}, lida em processo por
-// exported_calendar_body) e o "NOK" usa https://127.0.0.1:9 (recusado pelo fetch).
+// API responde 422/409 com {error, erros: {campo: mensagem}}. O pedido só grava o feed; o worker sincroniza.
+// Sem rede externa: a URL https é aceita e uma porta diferente de 443 é recusada.
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 t_temp_db();
@@ -81,11 +80,10 @@ $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
 t_eq(200, $r['status'], 'web: import OK 200 (tela do calendário)');
 $logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD, ActivityLog::CALENDAR_SYNC], array_column($logs, 'code'), 'web: import OK grava CALENDAR_FEED_ADD + CALENDAR_SYNC');
-t_eq('ok', $logs[1]['params']['resultado'] ?? null, 'web: CALENDAR_SYNC resultado=ok');
-t_ok(($logs[1]['params']['novas'] ?? 0) >= 2, 'web: CALENDAR_SYNC novas >= 2');
-t_ok(isset($blocked($hid)[$day(20)]) && isset($blocked($hid)[$day(21)]), 'DB: noites importadas bloqueadas');
-t_eq('OK', $feeds()[0]['last_status'] ?? null, 'DB: feed web last_status=OK');
+t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'web: import grava só CALENDAR_FEED_ADD (o worker sincroniza)');
+t_ok(str_contains($r['body'], e(t('cal.feed_added'))), 'web: aviso de feed adicionado');
+t_ok(!isset($blocked($hid)[$day(20)]), 'DB: o pedido não bloqueia noites');
+t_eq(null, $feeds()[0]['last_status'], 'DB: feed web ainda sem last_status');
 
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
@@ -94,7 +92,7 @@ t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'],
 // Paridade (PR B): recusa não grava CALENDAR_FEED_ADD (o feed não foi salvo), nos dois canais.
 t_eq([], c_codes($act, $m), 'web: duplicado não grava');
 $m = c_mark($act);
-$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'https://127.0.0.1:9/x.ics', 'feed_title' => ''], $jar);
+$r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'https://feeds.example/x.ics', 'feed_title' => ''], $jar);
 t_eq(200, $r['status'], 'web: sem título 200 (mensagem)');
 t_ok(str_contains($r['body'], e(t('cal.feed_title_required'))), 'web: sem título mostra o erro');
 t_eq([], c_codes($act, $m), 'web: sem título não grava');
@@ -106,13 +104,10 @@ t_eq([], c_codes($act, $m), 'web: URL vazia não grava');
 t_eq(1, count($feeds()), 'DB: recusas não criam feed');
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => 'https://127.0.0.1:9/web.ics', 'feed_title' => 'NokWeb'], $jar);
-t_eq(200, $r['status'], 'web: download falho 200 (mensagem de erro)');
-t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'], e(t('cal.import_fail'))), 'web: download falho mostra o erro');
-$logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD, ActivityLog::CALENDAR_SYNC], array_column($logs, 'code'), 'web: NOK grava CALENDAR_FEED_ADD (feed salvo) + CALENDAR_SYNC');
-t_eq('nok', $logs[1]['params']['resultado'] ?? null, 'web: CALENDAR_SYNC resultado=nok');
-$nokWeb = array_values(array_filter($feeds(), static fn ($f) => $f['url'] === 'https://127.0.0.1:9/web.ics'))[0] ?? [];
-t_eq('NOK', $nokWeb['last_status'] ?? null, 'DB: feed web NOK gravado com last_status=NOK');
+t_eq(200, $r['status'], 'web: porta diferente de 443 200 (mensagem de erro)');
+t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'], e(t('cal.url_https'))), 'web: porta recusada com a mensagem de URL');
+t_eq([], c_codes($act, $m), 'web: porta recusada não grava');
+t_eq(1, count($feeds()), 'DB: porta recusada não cria feed');
 
 echo "iCal import: API\n";
 $api = '/api/imoveis/' . $owner['hash'] . '/ical/importar';
@@ -122,27 +117,43 @@ t_eq([422, ['external_ical_url' => t('cal.url_required')]], [$r['status'], $r['j
 t_eq([], c_codes($act, $m), 'API: url/title antigos não gravam');
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);
 t_eq(200, $r['status'], 'API: import OK 200');
-t_ok(($r['json']['importadas'] ?? 0) >= 1 && !isset($r['json']['status']), 'API: {importadas} sem campo status');
+t_eq([true, 0], [$r['json']['ok'] ?? null, $r['json']['importadas'] ?? null], 'API: {ok, importadas:0} (sem download)');
+t_ok(!isset($r['json']['status']), 'API: sem campo status');
 $logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD, ActivityLog::CALENDAR_SYNC], array_column($logs, 'code'), 'API: import OK grava CALENDAR_FEED_ADD + CALENDAR_SYNC (como a web)');
-t_eq('ok', $logs[1]['params']['resultado'] ?? null, 'API: CALENDAR_SYNC resultado=ok');
-t_ok(isset($blocked($hid)[$day(30)]), 'DB: noite importada pela API bloqueada');
+t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'API: import grava só CALENDAR_FEED_ADD');
+t_ok(!isset($blocked($hid)[$day(30)]), 'DB: o pedido não bloqueia a noite');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);
 t_eq([409, ['external_ical_url' => t('cal.feed_duplicate')]], [$r['status'], $r['json']['erros'] ?? null], 'API: duplicado 409 com a mensagem da web');
-$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/y.ics', 'feed_title' => ''], $csrf, $jar);
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://feeds.example/y.ics', 'feed_title' => ''], $csrf, $jar);
 t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem título 422 erros.feed_title');
 $r = c_api('POST', $base, $api, ['external_ical_url' => '', 'feed_title' => 'Vazio'], $csrf, $jar);
 t_eq([422, ['external_ical_url' => t('cal.url_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: URL vazia 422 erros.external_ical_url');
 t_eq([], c_codes($act, $m), 'API: recusas não gravam activity_log');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/api.ics', 'feed_title' => 'NokApi'], $csrf, $jar);
-t_eq(502, $r['status'], 'API: download falho 502 (não 200)');
-t_eq(['NOK', 0, null, t('cal.import_fail')], [$r['json']['status'] ?? null, $r['json']['importadas'] ?? null, $r['json']['ok'] ?? null, $r['json']['error'] ?? null], 'API: NOK -> {error, status:NOK, importadas:0}, sem ok:true');
-$logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD, ActivityLog::CALENDAR_SYNC], array_column($logs, 'code'), 'API: NOK grava CALENDAR_FEED_ADD + CALENDAR_SYNC (como a web)');
-t_eq('nok', $logs[1]['params']['resultado'] ?? null, 'API: CALENDAR_SYNC resultado=nok');
-t_eq(4, count($feeds()), 'DB: 4 feeds (web OK, web NOK, API OK, API NOK)');
+t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json']['erros'] ?? null], 'API: porta diferente de 443 é 422');
+t_eq([], c_codes($act, $m), 'API: porta recusada não grava');
+t_eq(2, count($feeds()), 'DB: 2 feeds (web e API), ambos pendentes');
+
+$byUrl = static function (string $url) use ($feeds): int {
+    foreach ($feeds() as $f) {
+        if ($f['url'] === $url) {
+            return (int) $f['id'];
+        }
+    }
+    return 0;
+};
+$webId = $byUrl($urlWeb);
+$apiId = $byUrl($urlApi);
+$ins = db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id) VALUES (?, ?, 1, ?, ?)');
+$ins->execute([$hid, $day(20), 'sync', $webId]);
+$ins->execute([$hid, $day(21), 'sync', $webId]);
+$ins->execute([$hid, $day(30), 'reserva', $apiId]);
+db()->prepare("UPDATE calendar_feeds SET last_status = 'NOK', last_error = 'private_ip', next_sync_at = 'infinity' WHERE id = ?")->execute([$webId]);
+$g = t_http('GET', $base . $cal, null, [], $jar);
+t_ok(str_contains($g['body'], e(t('cal.status_stopped'))) && str_contains($g['body'], e(t('cal.err_url'))) && !str_contains($g['body'], 'private_ip'), 'web: feed parado mostra o texto da URL, não o código');
+db()->prepare('UPDATE calendar_feeds SET last_status = NULL, last_error = NULL, next_sync_at = now() WHERE id = ?')->execute([$webId]);
 
 echo "calendário: noites travadas pela sincronização (conflito)\n";
 $m = c_mark($act);
@@ -153,14 +164,6 @@ t_ok(str_contains($w['body'], 'class="alert error"') && str_contains($w['body'],
 t_eq([], c_codes($act, $m), 'conflito não grava (web e API)');
 
 echo "excluir feed\n";
-$byUrl = static function (string $url) use ($feeds): int {
-    foreach ($feeds() as $f) {
-        if ($f['url'] === $url) {
-            return (int) $f['id'];
-        }
-    }
-    return 0;
-};
 $m = c_mark($act);
 $r = c_form($base, '/imoveis/' . $owner['hash'] . '/ical/' . $byUrl($urlWeb) . '/excluir', ['_csrf' => $csrf], $jar);
 t_eq(302, $r['status'], 'web: excluir 302');
@@ -185,10 +188,10 @@ t_eq([], c_codes($act, $m), 'API: feed inexistente não grava');
 $m = c_mark($act);
 $r = c_api('DELETE', $base, '/api/imoveis/' . $owner['hash'] . '/ical/' . $byUrl($urlApi), null, $csrf, $jar);
 t_eq(200, $r['status'], 'API: excluir 200');
-t_ok(isset($r['json']['ressincronizados']) && is_array($r['json']['feeds'] ?? null), 'API: devolve ressincronizados + feeds');
+t_ok(!isset($r['json']['ressincronizados']) && is_array($r['json']['feeds'] ?? null), 'API: devolve feeds, sem ressincronizar no pedido');
 t_eq(ActivityLog::CALENDAR_FEED_REMOVE, c_logs($act, $m)[0]['code'] ?? null, 'API: excluir grava CALENDAR_FEED_REMOVE');
-t_ok(!isset($blocked($hid)[$day(30)]), 'DB: noite importada pela API liberada');
-t_eq(2, count($feeds()), 'DB: sobram os 2 feeds NOK');
+t_ok(!isset($blocked($hid)[$day(30)]), 'DB: noite do feed removido liberada');
+t_eq(0, count($feeds()), 'DB: os dois feeds foram removidos');
 
 echo "calendar-3.js: tela usa o contrato da API (#86 D1 do Teste)\n";
 $js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/calendar-3.js');
@@ -203,11 +206,11 @@ echo "ajustes: GET sem aviso não tem tom de erro; exclusão com aviso de sucess
 $g = t_http('GET', $base . $cal, null, [], $jar); // consome o flash do DELETE da API acima
 $g = t_http('GET', $base . $cal, null, [], $jar);
 t_ok(!str_contains($g['body'], 'class="alert error"') && !str_contains($g['body'], 'class="alert ok"'), 'web GET sem flash: nenhum aviso (nem tom de erro vazio)');
-$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://127.0.0.1:9/flash.ics', 'feed_title' => 'Flash'], $csrf, $jar);
-t_eq(502, $r['status'], 'API: feed NOK 502 (para excluir em seguida)');
+$r = c_api('POST', $base, $api, ['external_ical_url' => 'https://feeds.example/flash.ics', 'feed_title' => 'Flash'], $csrf, $jar);
+t_eq(200, $r['status'], 'API: feed adicionado 200 (para excluir em seguida)');
 $g = t_http('GET', $base . $cal, null, [], $jar);
-t_ok(str_contains($g['body'], 'class="alert error"') && str_contains($g['body'], e(t('cal.import_fail'))), 'flash: o 502 da API aparece como erro no GET seguinte (sem ?msg=)');
-$r = c_form($base, '/imoveis/' . $owner['hash'] . '/ical/' . $byUrl('https://127.0.0.1:9/flash.ics') . '/excluir', ['_csrf' => $csrf], $jar);
+t_ok(str_contains($g['body'], 'class="alert ok"') && str_contains($g['body'], e(t('cal.feed_added'))), 'flash: o aviso de feed adicionado aparece no GET seguinte (sem ?msg=)');
+$r = c_form($base, '/imoveis/' . $owner['hash'] . '/ical/' . $byUrl('https://feeds.example/flash.ics') . '/excluir', ['_csrf' => $csrf], $jar);
 t_eq([302, $cal], [$r['status'], c_location($r)], 'web: excluir 302 para o calendário, sem ?msg= na URL');
 $g = t_http('GET', $base . $cal, null, [], $jar);
 t_ok(str_contains($g['body'], 'class="alert ok"') && str_contains($g['body'], e(t('cal.feed_removed'))), 'web: depois de excluir, aviso de sucesso (tom ok)');

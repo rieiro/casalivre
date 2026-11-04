@@ -102,11 +102,24 @@ $feeds = $feeds ?? [];
                         <?php foreach ($feeds as $feed): ?>
                             <?php
                             $status = (string) ($feed['last_status'] ?? '');
-                            $statusLabel = $status === 'OK' ? t('cal.status_ok') : ($status === 'NOK' ? t('cal.status_nok') : t('cal.status_pending'));
+                            $stopped = ($feed['stopped'] ?? false) === true;
+                            $statusLabel = $stopped
+                                ? t('cal.status_stopped')
+                                : ($status === 'OK' ? t('cal.status_ok') : ($status === 'NOK' ? t('cal.status_nok') : t('cal.status_pending')));
+                            $reason = match ((string) ($feed['last_error'] ?? '')) {
+                                'bad_url', 'private_ip' => t('cal.err_url'),
+                                'http_4xx' => t('cal.err_http'),
+                                'not_ics' => t('cal.err_ics'),
+                                'too_big' => t('cal.err_size'),
+                                'timeout' => t('cal.err_timeout'),
+                                'dns' => t('cal.err_dns'),
+                                'http_5xx' => t('cal.err_server'),
+                                default => '',
+                            };
                             ?>
                             <tr>
                                 <td><strong><?= e((string) ($feed['title'] ?? '')) ?></strong></td>
-                                <td><?= e($statusLabel) ?></td>
+                                <td><?= e($statusLabel) ?><?php if ($reason !== ''): ?><br><span class="muted fine"><?= e($reason) ?></span><?php endif; ?></td>
                                 <td><?php
                                     $syncedAt = (string) ($feed['last_synced_at'] ?? '');
                                     $synced = $syncedAt !== '' ? strtotime($syncedAt) : false;

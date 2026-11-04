@@ -189,6 +189,10 @@ ops/dev-env/db-setup.sh --no-seed
   `QUEUE_DRIVER=valkey`. Mail uses Valkey user `cl_mail` (`~cl:q:mail:*`);
   image uses `cl_image` (`~cl:q:image:*`). The FPM stays on `cl_app`.
   runit restarts a worker if it dies.
+- **casalivre-calendar-worker** (dev installs one; production runs N=2):
+  `scripts/calendar-worker.php` in a loop, `memory_limit=256M`. Postgres lease
+  only: the service has no Valkey user and the Valkey ACL is unchanged.
+  runit restarts it if it dies.
 - Seed: credenciais em `storage/seed-users.txt` (0600, fora do `public/`),
   sem eco no terminal. CEPs e o migrate (bairros): `bz2` só na chamada
   (`php8.4 -d extension=bz2`); o `php.ini` não muda.

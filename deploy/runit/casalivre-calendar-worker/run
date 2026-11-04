@@ -1,0 +1,4 @@
+#!/bin/sh
+# runit service: CasaLivre calendar sync. Prod: two copies (N=2). Dev: one.
+exec 2>&1
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-calendar-run

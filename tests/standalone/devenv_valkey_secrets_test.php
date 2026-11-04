@@ -63,6 +63,9 @@ $mailRun = (string) file_get_contents("$home/sv/casalivre-mail-worker/run");
 t_ok(str_contains($mailRun, '-d memory_limit=256M') && str_contains($mailRun, 'cl_mail'), 'mail run sets the memory limit and cl_mail');
 $imageRun = (string) file_get_contents("$home/sv/casalivre-image-worker-1/run");
 t_ok(str_contains($imageRun, '-d memory_limit=256M') && str_contains($imageRun, 'cl_image'), 'image run sets the memory limit and cl_image');
+t_ok(is_file("$home/sv/casalivre-calendar-worker/run"), 'calendar worker installed');
+$calRun = (string) file_get_contents("$home/sv/casalivre-calendar-worker/run");
+t_ok(str_contains($calRun, '-d memory_limit=256M') && str_contains($calRun, 'scripts/calendar-worker.php') && !str_contains($calRun, 'VALKEY'), 'calendar run: 256M, no Valkey');
 
 echo "runtime binds and socket mode\n";
 $up = (string) file_get_contents("$dev/up-bwrap.sh");
