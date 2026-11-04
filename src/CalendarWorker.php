@@ -64,7 +64,7 @@ final class CalendarWorker
     {
         $now = time();
         self::$claims[] = $now;
-        if (self::isExpiredLease($feed['prev_due'] ?? null, $feed['last_synced_at'] ?? null)) {
+        if (self::isExpiredLease($feed['prev_due'], $feed['last_synced_at'])) {
             self::$expiries[] = $now;
         }
         self::pruneWindow($now);
@@ -159,7 +159,7 @@ final class CalendarWorker
      */
     public static function finish(array $feed, array $result, int $ms): void
     {
-        $http = (int) ($result['http'] ?? 0);
+        $http = (int) $result['http'];
         $now = date('Y-m-d H:i:s');
         if (isset($result['error'])) {
             self::fail($feed, (string) $result['error'], $now, $http, $ms);

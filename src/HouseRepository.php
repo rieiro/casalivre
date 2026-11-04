@@ -516,7 +516,7 @@ SQL;
                 ->execute([$propertyId]);
             $link = self::syncExternalUrl($propertyId, $userId);
             $pdo->commit();
-            return ['feed' => $deleted[0]['old'] ?? null, 'link' => $link, 'nights' => $nights];
+            return ['feed' => $deleted[0]['old'], 'link' => $link, 'nights' => $nights];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();

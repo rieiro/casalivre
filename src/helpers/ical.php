@@ -97,7 +97,7 @@ function import_ics(int $propertyId, string $body): array
     if ($matched === false) {
         return ['error' => 'too_big'];
     }
-    $found = $events[1] ?? [];
+    $found = $events[1];
     if (count($found) > CalendarSync::MAX_EVENTS) {
         return ['error' => 'too_big'];
     }
@@ -110,7 +110,7 @@ function import_ics(int $propertyId, string $body): array
         if (!$dt instanceof DateTimeImmutable) {
             return null;
         }
-        if (is_array($errors) && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0)) {
+        if (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
             return null;
         }
         return $dt->format('Ymd') === $raw ? $dt : null;

@@ -102,7 +102,7 @@ $feeds = $feeds ?? [];
                         <?php foreach ($feeds as $feed): ?>
                             <?php
                             $status = (string) ($feed['last_status'] ?? '');
-                            $stopped = ($feed['stopped'] ?? false) === true;
+                            $stopped = $feed['stopped'] === true;
                             $statusLabel = $stopped
                                 ? t('cal.status_stopped')
                                 : ($status === 'OK' ? t('cal.status_ok') : ($status === 'NOK' ? t('cal.status_nok') : t('cal.status_pending')));
