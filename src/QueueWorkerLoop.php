@@ -128,10 +128,10 @@ final class QueueWorkerLoop
      * One ALERT line, then the same 5-30 s pause as a lost DB, so runit does not restart every second.
      * Returns the delay. The caller exits non-zero.
      */
-    public static function halt(string $what): int
+    public static function halt(string $what, string $prefix = 'queue-worker'): int
     {
         $delay = random_int(self::DB_LOST_SLEEP_MIN, self::DB_LOST_SLEEP_MAX);
-        self::alert($what . ', exiting in ' . $delay . ' s so runit restarts the worker');
+        self::alert($what . ', exiting in ' . $delay . ' s so runit restarts the worker', $prefix);
         self::pause($delay);
         return $delay;
     }
@@ -156,11 +156,12 @@ final class QueueWorkerLoop
     }
 
     /** One ALERT line on STDERR (runit) and, when error_log is set, in the PHP error log. Class names only; no message. */
-    private static function alert(string $what): void
+    private static function alert(string $what, string $prefix = 'queue-worker'): void
     {
-        fwrite(self::$stderr ?? STDERR, 'queue-worker: ALERT ' . $what . "\n");
+        fwrite(self::$stderr ?? STDERR, $prefix . ': ALERT ' . $what . "\n");
         if ((string) ini_get('error_log') !== '') {
-            error_log('CasaLivre ALERT: queue worker: ' . $what . '.');
+            $label = $prefix === 'queue-worker' ? 'queue worker' : $prefix;
+            error_log('CasaLivre ALERT: ' . $label . ': ' . $what . '.');
         }
     }
 

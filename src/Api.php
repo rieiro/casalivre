@@ -531,15 +531,6 @@ function handle_api(string $path, string $method): void
         }
         // Aviso para a tela do calendário depois do reload do JS (flash na sessão, não ?msg= na URL).
         CalendarFlash::set((string) $res->mensagem, $res->tipo === 'ok' ? 'ok' : 'error');
-        if ($res->tipo === 'nok') {
-            // Feed salvo, mas o download falhou: erro do servidor de origem (502), com o estado atual dos feeds.
-            json_out(502, [
-                'error' => $res->mensagem,
-                'status' => 'NOK',
-                'importadas' => 0,
-                'feeds' => HouseRepository::feeds((int) $property['id']),
-            ]);
-        }
         json_out(200, [
             'ok' => true,
             'importadas' => $res->dados['importadas'],
@@ -558,9 +549,8 @@ function handle_api(string $path, string $method): void
             CalendarFlash::set((string) $res->mensagem, 'error');
             api_error(404, $res->mensagem);
         }
-        $resync = CalendarSync::resyncProperty((int) $property['id']);
         CalendarFlash::set(t('cal.feed_removed'), 'ok');
-        json_out(200, ['ok' => true, 'ressincronizados' => $resync, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+        json_out(200, ['ok' => true, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
     // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.

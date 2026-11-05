@@ -109,4 +109,10 @@ install_queue() {
 }
 install_queue casalivre-mail-worker
 install_queue casalivre-image-worker-1
+# Calendar sync: one process in dev (prod N=2). No Valkey user; the ACL above is unchanged.
+dst=$CL_HOME/sv/casalivre-calendar-worker
+mkdir -p "$dst"
+{ printf '#!/bin/sh\n. %s/dev-env.env\n' "$etc"; cat "$CL_DEVENV_DIR/calendar-worker-run"; } >"$dst/run.tmp"
+chmod 700 "$dst/run.tmp"
+mv "$dst/run.tmp" "$dst/run"
 log "serviços instalados em $CL_HOME/sv: $(cd "$CL_HOME/sv" && echo */ | tr -d /)"

@@ -14,12 +14,16 @@ $scripts = [
     "$root/casalivre-svlogd",
     "$root/casalivre-daily",
     "$root/casalivre-queue-run",
+    "$root/casalivre-calendar-run",
     "$root/casalivre-mail-worker/run",
     "$root/casalivre-mail-worker/finish",
     "$root/casalivre-mail-worker/log/run",
     "$root/casalivre-image-worker/run",
     "$root/casalivre-image-worker/finish",
     "$root/casalivre-image-worker/log/run",
+    "$root/casalivre-calendar-worker/run",
+    "$root/casalivre-calendar-worker/finish",
+    "$root/casalivre-calendar-worker/log/run",
     "$root/casalivre-log-retention/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
@@ -43,6 +47,12 @@ t_ok(str_contains($workerRun, 'queue-worker.php "$queue"'), 'queue worker passes
 t_ok(!str_contains($workerRun, '|| echo'), 'queue worker run does not swallow the exit code');
 t_eq((string) file_get_contents("$root/casalivre-mail-worker/finish"), (string) file_get_contents("$root/casalivre-image-worker/finish"), 'mail and image finish scripts match');
 t_eq((string) file_get_contents("$root/casalivre-mail-worker/log/run"), (string) file_get_contents("$root/casalivre-image-worker/log/run"), 'mail and image log scripts match');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/finish"), (string) file_get_contents("$root/casalivre-calendar-worker/finish"), 'calendar finish matches the queue workers');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/log/run"), (string) file_get_contents("$root/casalivre-calendar-worker/log/run"), 'calendar log script matches the queue workers');
+$calRun = (string) file_get_contents("$root/casalivre-calendar-run");
+t_ok(str_contains($calRun, 'exec chpst -u') && str_contains($calRun, 'scripts/calendar-worker.php'), 'calendar worker: chpst and calendar-worker.php');
+t_ok(str_contains($calRun, '-d zend.exception_ignore_args=1') && str_contains($calRun, '-d memory_limit=256M'), 'calendar worker php: ignore args, memory_limit 256M');
+t_ok(!str_contains($calRun, 'VALKEY'), 'calendar worker run has no Valkey env');
 $daily = (string) file_get_contents("$root/casalivre-daily");
 t_ok(!preg_match('/\|\|\s*echo/', $daily) && str_contains($daily, 'exit "$status"') && str_contains($daily, 'sleep 86400'), 'daily helper: failure exits, success sleeps 24h');
 $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
@@ -58,6 +68,8 @@ $wrappers = [
     "$root/casalivre-mail-worker/log/run",
     "$root/casalivre-image-worker/finish",
     "$root/casalivre-image-worker/log/run",
+    "$root/casalivre-calendar-worker/finish",
+    "$root/casalivre-calendar-worker/log/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
     "$root/casalivre-rank-verify/finish",
