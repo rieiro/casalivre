@@ -262,6 +262,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
+| G49 | Ordenar as avaliações do anúncio | 5 | 0,5 | 80% | 0,5 | 4 | Should | S8 (com a spec-07) | aprovado |
 | G27 | Respostas do anfitrião publicadas como FAQ do anúncio | — | — | — | — | 3,6 | Should | depois da S7, antes da P8 | aprovado com mudança (2,4 → 3,6) |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
@@ -271,6 +272,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | calendário do anfitrião (só a cor) | decidido pelo Rafael (2026-10-22): só a cor |
 | G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
+| G51 | Autor retira a própria avaliação | 2 | 0,5 | 50% | 0,5 | 1 | Won't (por ora) | — | Negócios concorda: a moderação segue como única via de remoção |
 
 ### G9 — Bloqueio durante a aprovação (S7)
 - **Problema:** nenhuma regra diz se uma solicitação `solicitada` bloqueia as datas; a disponibilidade do ADR 001 §4 lê só `calendar_days.blocked`, e o antibloqueio (spec-01 §5b) não cobre solicitações, então um hóspede pode segurar várias casas por 24 h. Uma OTA pode vender as mesmas noites na janela de 24 h / 4 h.
@@ -608,6 +610,21 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   4. A busca ordenada por preço usa o preço por noite já calculado e continua dentro das metas de velocidade (sem avaliação de regra por requisição).
   5. A comissão é calculada sobre o valor com desconto.
 - **Prioridade:** Could, na S8 com a spec-07. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G47 (`/workspace/produto/competitors.md`, 03/11), revisão do Negócios. Referências: [Airbnb, promoções](https://www.airbnb.com/help/article/1233), [Vrbo, promoções](https://help.vrbo.com/articles/About-promotions). A G48 (selo de desconto no card da busca) não foi enviada.
+
+### G49 — Ordenar as avaliações do anúncio (Should, S8 com a spec-07)
+- **Problema:** a lista de avaliações é só paginada, sem ordem definida. Uma família não consegue ir direto às mais recentes ou às piores antes de pagar.
+- **Solução (aprovada pelo Negócios sem mudança de escopo):** ordem padrão "mais recentes primeiro" (fica escrita na spec-07), com as opções "Mais recentes", "Maior nota" e "Menor nota". Índices por `(property_id, created_at)` e `(property_id, rating)`. Sem busca por palavra-chave por ora. **A mais, pelo Negócios:** a ordem "Menor nota" não pode ser desligada por anfitriões, franqueados nem canais.
+- **Critérios de aceite:**
+  1. Sem escolha do usuário, as avaliações vêm da mais recente para a mais antiga.
+  2. As três opções ordenam corretamente, com desempate pela mais recente.
+  3. Nenhuma configuração de anfitrião, nó ou canal remove a opção "Menor nota".
+  4. A ordenação usa os índices e fica dentro das metas de velocidade do ADR 001.
+- **Prioridade:** Should, na S8 com a spec-07. RICE 4 (mantido). Fonte: competitors.md G49 (`/workspace/produto/competitors.md`, 04/11), revisão do Negócios. Referência: [Airbnb, como funcionam as avaliações](https://www.airbnb.com/help/article/13).
+
+### G51 — Autor retira a própria avaliação (Won't por ora)
+- **Problema:** hoje só a moderação remove uma avaliação. O Airbnb deixa o autor pedir a remoção em até 30 dias.
+- **Decisão (Rafael aprovou o envio; o Negócios concorda com Won't):** não construir. O franqueado é ao mesmo tempo o avaliado e o suporte de nível 1, então o risco de pressão do anfitrião sobre o hóspede é maior que o ganho. A moderação continua sendo o único caminho de remoção. Rever só com evidência do piloto de avaliações escritas por engano; se for adotada, só remoção (sem edição), em até 30 dias e registrada.
+- **Prioridade:** Won't por ora, RICE 1 (mantido). Fonte: competitors.md G51 (04/11), revisão do Negócios. A G50 (contexto da viagem na avaliação) não foi enviada.
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.
