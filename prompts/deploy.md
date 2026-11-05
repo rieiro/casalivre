@@ -44,6 +44,11 @@ Moved from the Gerente's notes (16/10). Superseded #99 notes (money_unit, price 
 - [ ] #112: PUBLISH is not allowlisted in the Valkey ACL; any pub/sub use needs Segurança review.
 - [ ] #113: photos left in failed state by the push bug must be re-uploaded.
 
+## Pending after #246
+
+- [ ] Prod Valkey ACL must mirror `ops/dev-env/services.sh:53-57` (default user off, `-@all` plus the worker command list, `~cl:q:mail:*` and `~cl:q:image:*` keys, no channels, secret files 0440, never in ./conf or .env).
+- [ ] The `casalivre-daily` and `casalivre-rank-verify` runit services from #238.
+
 ## Servidor e PHP
 
 - [ ] **nginx + php-fpm** em produção. Nunca `php -S` (`scripts/start.sh`), que escreve a URL completa no stderr.

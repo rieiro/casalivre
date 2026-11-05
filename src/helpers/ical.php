@@ -77,38 +77,73 @@ function exported_calendar_body(string $url): ?string
     return export_ics($source);
 }
 
-function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = null): int
+/**
+ * Nights this feed wants, from today through max_calendar_day. Does not write.
+ * An invalid DTSTART or DTEND skips that event (the rest of the feed still imports).
+ * A VEVENT over MAX_EVENT_BYTES, or more than MAX_EVENTS events, fails the feed with too_big.
+ * Body size and BEGIN:VCALENDAR are CalendarSync::acceptBody, before this runs.
+ * RRULE/RDATE are ignored. STATUS:CANCELLED contributes no nights (the diff then frees them).
+ * The first holder of a night is decided by the import SQL, not here.
+ *
+ * @return array{nights: list<string>, origins: list<string>}|array{error: string}
+ */
+function import_ics(int $propertyId, string $body): array
 {
     $body = preg_replace("/\r?\n[ \t]/", '', $body) ?? $body;
     $house = HouseRepository::find($propertyId);
     $max = max_calendar_day($house ?: null);
-    HouseRepository::clearBlockedAfter($propertyId, $max);
     $today = date('Y-m-d');
-    if ($alreadyBlocked === null) {
-        $alreadyBlocked = [];
-        foreach (HouseRepository::blockedDays($propertyId) as $row) {
-            $alreadyBlocked[$row['day']] = (string) ($row['origin'] ?? '');
+    $matched = preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
+    if ($matched === false) {
+        return ['error' => 'too_big'];
+    }
+    $found = $events[1];
+    if (count($found) > CalendarSync::MAX_EVENTS) {
+        return ['error' => 'too_big'];
+    }
+    if ($found === []) {
+        return ['nights' => [], 'origins' => []];
+    }
+    $ymd = static function (string $raw): ?DateTimeImmutable {
+        $dt = DateTimeImmutable::createFromFormat('!Ymd', $raw);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$dt instanceof DateTimeImmutable) {
+            return null;
         }
-    }
-    if (!preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events)) {
-        return 0;
-    }
-    $count = 0;
-    foreach ($events[1] as $event) {
+        if (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+            return null;
+        }
+        return $dt->format('Ymd') === $raw ? $dt : null;
+    };
+    $windowStart = new DateTimeImmutable($today);
+    $windowEnd = (new DateTimeImmutable($max))->modify('+1 day');
+    $nights = [];
+    $origins = [];
+    $seen = [];
+    foreach ($found as $event) {
+        if (strlen($event) > CalendarSync::MAX_EVENT_BYTES) {
+            return ['error' => 'too_big'];
+        }
         if (preg_match('/UID:casalivre-' . $propertyId . '-/', $event)) {
+            continue;
+        }
+        if (preg_match('/(?:^|[\r\n])STATUS:CANCELLED/i', $event)) {
             continue;
         }
         if (!preg_match('/DTSTART(?:;[^:\r\n]*)?:(\d{8})/', $event, $startMatch)) {
             continue;
         }
-        $start = DateTimeImmutable::createFromFormat('!Ymd', $startMatch[1]);
-        if (!$start) {
+        $start = $ymd($startMatch[1]);
+        if ($start === null) {
             continue;
         }
         $end = $start->modify('+1 day');
         if (preg_match('/DTEND(?:;[^:\r\n]*)?:(\d{8})/', $event, $endMatch)) {
-            $parsedEnd = DateTimeImmutable::createFromFormat('!Ymd', $endMatch[1]);
-            if ($parsedEnd && $parsedEnd > $start) {
+            $parsedEnd = $ymd($endMatch[1]);
+            if ($parsedEnd === null) {
+                continue;
+            }
+            if ($parsedEnd > $start) {
                 $end = $parsedEnd;
             }
         }
@@ -120,19 +155,17 @@ function import_ics(int $propertyId, string $body, ?array &$alreadyBlocked = nul
         if (preg_match('/bloquead|indispon|ocupado|closed|not available|unavailable|blocked/', $summary)) {
             $origin = 'sync';
         }
-        for ($day = $start; $day < $end; $day = $day->modify('+1 day')) {
+        $from = $start > $windowStart ? $start : $windowStart;
+        $to = $end < $windowEnd ? $end : $windowEnd;
+        for ($day = $from; $day < $to; $day = $day->modify('+1 day')) {
             $iso = $day->format('Y-m-d');
-            if ($iso > $max || $iso < $today) {
+            if (isset($seen[$iso])) {
                 continue;
             }
-            $current = $alreadyBlocked[$iso] ?? null;
-            if ($current === 'sync' || $current === 'reserva') {
-                continue;
-            }
-            HouseRepository::blockDay($propertyId, $iso, $origin);
-            $alreadyBlocked[$iso] = $origin;
-            $count++;
+            $seen[$iso] = true;
+            $nights[] = $iso;
+            $origins[] = $origin;
         }
     }
-    return $count;
+    return ['nights' => $nights, 'origins' => $origins];
 }

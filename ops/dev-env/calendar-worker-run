@@ -1,0 +1,6 @@
+# Calendar sync. No Valkey socket and no Valkey ACL user: the lease is Postgres.
+# Dev installs one service. Prod runs N=2.
+cd "$CL_REPO" || exit 1
+# zend.exception_ignore_args: a stack trace must not include argument values (the script sets it too).
+# memory_limit=256M, same as the queue workers.
+exec php8.4 -d zend.exception_ignore_args=1 -d memory_limit=256M scripts/calendar-worker.php 2>&1

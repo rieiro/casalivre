@@ -3,6 +3,7 @@
 One line per decision in force, newest first within each area. A superseded decision is struck through and points to the decision that replaces it. Only Gerente edits this file.
 
 ## Process
+- 2026-11-03: PR order for Programador: search follow-up (#242 F1-F5), Calendar-sync, PR6 price sorts, PR5 map (after spec-busca-mapa-pr5), PR7 demand log (after Segurança sign-off; Jurídico LIA already covers kind search in #215) (Gerente, 2026-11-03).
 - 2026-11-02: PR review rounds: when any reviewer requests changes, every required reviewer, including those that had approved, re-approves the new head. Gerente wakes the reviewers on a PR's first head; the author wakes them on later heads. Bots do not read decisions.md before a task; they open it only when the task depends on a past decision. Programador logs go in `/workspace/programador/` (Rafael, 2026-11-02).
 - 2026-11-02: Context reduction for every bot: fresh chat per PR or task (Gerente: each day) started from a short handoff note; messages are one line plus a link; re-review reads only the diff since the last head; prune memory older than about two weeks already in decisions.md or backlog.md; resume interrupted work from saved notes. Each bot's single chat is very long and every turn re-reads it; usage re-measured 2026-11-12 (Rafael, 2026-11-02).
 - 2026-10-30: Teste starts QA last, only after Revisor and every other reviewer the diff requires have posted APPROVED at that head; the last of them messages Teste `QA #N @sha7`. Full suite once per PR on that head. Docs-only and test-tooling PRs need only Revisor and Teste (Rafael via Gerente, 2026-10-30).
@@ -24,6 +25,8 @@ One line per decision in force, newest first within each area. A superseded deci
 - 2026-10-21: Revisor findings are blockers or not written: duplicate or copy-pasted functions, unused or dead code, leftovers and unnecessary complexity are always blockers (`changes:review`); Revisor verdicts have no Followups line. The Revisor decides blocker-or-not when writing; a disputed blocker is decided by Gerente; anything larger than the PR goes to the backlog with a sprint. Supersedes the #195 follow-up wording (Rafael, 2026-10-21).
 
 ## Infrastructure and database
+- 2026-11-03: Production VPS is 4 cores and 16 GB RAM, the hardware baseline for budgets and worker counts (pilot: calendar workers capped at 2, image workers nice 10, design peak /api/busca 20 req/s) (Rafael, 2026-11-03).
+- 2026-11-03: `idx_prop_nb_active` is a back-office/properties filter index outside the 6-index search cap (BD, 2026-11-03).
 - 2026-10-29: Calendar sync is Postgres-only (lease claim with `FOR UPDATE SKIP LOCKED`, `next_sync_at`, backoff, runit `casalivre-calendar-worker`, no Valkey queue, no scheduler) (Rafael, 2026-10-29).
 - 2026-10-25: Partial index `idx_prop_latlng_active` on `(lat, lng) WHERE status = 'active'` replaces the unused gist `idx_prop_geo_active` (index count stays flat; ADR 001 §12.6, `docs/adr/001-busca-sql-paginada.md`). `random_page_cost = 1.1` is a deploy setting, not a schema change (Rafael, 2026-10-25; merged in #220/#219).
 - 2026-10-23: Places beyond cities load as versioned JSON seeds on DB recreate (`places` + `place_search_keys`); no migration (see Product, 2026-10-23).
@@ -47,6 +50,8 @@ One line per decision in force, newest first within each area. A superseded deci
 - Audit: UPDATE/DELETE record the previous value; every API query is logged.
 
 ## Product
+- 2026-11-03: Calendar-sync stops after 16 consecutive failures (about 3 days, 73.5 h), replacing 72 h. Owner unblock does not mark feeds pending (a 1-day lease for inactive accounts and re-save resets are enough for the pilot) (Produto, 2026-11-03).
+- 2026-11-03: PR5 map: dates filter before the top-300 pick (probe up to 5,000 loops); pins never show unavailable listings; bubble counts stay approximate (~N) per [spec-busca-ordenacao-filtros](produto/specs/spec-busca-ordenacao-filtros.md) §7.4 (Produto, 2026-11-03).
 - 2026-10-25: Búzios is an alias of Armação dos Búzios and never a second city row. `places_city_uf_uk` drops the duplicate Armação dos Búzios/RJ row labeled "Búzios" in `database/cities.json`, so the nickname cannot be its own city (Produto, 2026-10-25).
 - 2026-10-25: Aliases live only in `place_search_keys` with `kind='alias'`, seeded from a data file. ADR 001 PR2 removes the PHP const `CityRepository::ALIASES` (the Búzios alias from #213). The primary key is `(key, place_id)` and does not include `kind`, so a name key and an alias for the same place collide; the seed upserts `kind='alias'`. Arquitetura may object (Produto, 2026-10-25).
 - 2026-10-25: ADR 001 PR1 ships `id ASC` as the interim list order until PR4 `listing_search`. `id` is unique, so the cursor stays one column, and relevance waits for that table. Facet counts are dropped in PR1: ADR 001 §5b (`docs/adr/001-busca-sql-paginada.md`) keeps facets as the amenity list with no counts, so a request does no extra aggregation (Produto, 2026-10-25).

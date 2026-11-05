@@ -258,9 +258,11 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G33 | Favorito indisponível nas datas escolhidas | — | — | — | — | 4,8 | Should | S9 | aprovado com mudança |
 | G43 | Pedido de alteração de reserva confirmada (datas e hóspedes) | — | — | — | — | 4,8 | Should | S8 (restrição já na S7) | aprovado com mudança (2 → 4,8) |
 | G46 | Instruções e lembrete de check-out | — | — | — | — | 4,8 | Could | com a G45 se for barato, senão depois do piloto | aprovado com mudança |
+| G47 | Descontos de última hora e de anúncio novo | — | — | — | — | 4,8 | Could | S8 (com a spec-07) | aprovado com mudança (2 → 4,8) |
 | G13 | Estadia longa × repasse | 2 | 1 | 50% | 0,25 | 4 | Could | agora (teto, piloto e P6) | decidido pelo Rafael (2026-10-21): teto de 30 noites |
 | G16 | Política de cancelamento sazonal | 4 | 1 | 50% | 0,5 | 4 | Could | depois do piloto (restrição já na S7) | aprovado como restrição, prioridade elevada |
 | G40 | Taxas estruturadas de pet e de hóspede extra | — | — | — | — | 4 | Could | com a spec-07 (S8) | aprovado com mudança (2,5 → 4) |
+| G49 | Ordenar as avaliações do anúncio | 5 | 0,5 | 80% | 0,5 | 4 | Should | S8 (com a spec-07) | aprovado |
 | G27 | Respostas do anfitrião publicadas como FAQ do anúncio | — | — | — | — | 3,6 | Should | depois da S7, antes da P8 | aprovado com mudança (2,4 → 3,6) |
 | G15 | Evento disruptivo declarado pela plataforma | 3 | 2 | 50% | 1 | 3 | Should | restrição agora, tela depois | aprovado como restrição |
 | G4 | Datas flexíveis | 4 | 0,5 | 50% | 0,5 | 2 | Could | piloto (versão simples) | aprovado (o mais simples) |
@@ -270,6 +272,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
 | G11 | Oferta personalizada a partir da conversa | 3 | 0,5 | 50% | 1 | 0,75 | Could | depois do piloto (restrição já na S7) | aprovado só como restrição |
 | G19 | Noites vazias entre reservas (gap nights) | 3 | 0,5 | 50% | 1 | 0,75 | Could | calendário do anfitrião (só a cor) | decidido pelo Rafael (2026-10-22): só a cor |
 | G17 | Tarifa não reembolsável com desconto | 2 | 0,5 | 50% | 1 | 0,5 | Won't (por ora) | — | rejeitado por ora |
+| G51 | Autor retira a própria avaliação | 2 | 0,5 | 50% | 0,5 | 1 | Won't (por ora) | — | Negócios concorda: a moderação segue como única via de remoção |
 
 ### G9 — Bloqueio durante a aprovação (S7)
 - **Problema:** nenhuma regra diz se uma solicitação `solicitada` bloqueia as datas; a disponibilidade do ADR 001 §4 lê só `calendar_days.blocked`, e o antibloqueio (spec-01 §5b) não cobre solicitações, então um hóspede pode segurar várias casas por 24 h. Uma OTA pode vender as mesmas noites na janela de 24 h / 4 h.
@@ -503,6 +506,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   7. Cada bloqueio soma 1 numa contagem diária por regra, sem dado pessoal.
 - **Política (visão de negócio; o Jurídico confirma o lado do reembolso do hóspede antes da S7):** cancelamento do anfitrião causado por violação de regra não gera penalidade ao anfitrião quando o hóspede deu dado falso (idade, pets, hóspedes) ou quebrou uma regra que a checagem mostrou. Se a checagem deixou passar a violação, o anfitrião também não tem penalidade, porque a falha foi da plataforma. O reembolso do hóspede segue a política de cancelamento e o mínimo do consumidor; até a resposta do Jurídico vale a política de cancelamento atual.
 - **Prioridade:** Should, antes da S7 (edição pequena da spec-01 §3/§4). RICE 25,6 (mantido). Fonte: competitors.md G38 (`/workspace/produto/competitors.md`, 30/10), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Vrbo, regras da casa](https://help.vrbo.com/articles/what-are-house-rules), [Airbnb, taxa de pet](https://www.airbnb.com/help/article/3623).
+- **Parecer do Jurídico (03/11):** sem penalidade ao anfitrião é válido. Hóspede honesto que passou pela nossa checagem: reembolso integral das noites não usufruídas, taxa da plataforma incluída. Dados falsos: tratado como cancelamento do hóspede, com as faixas normais e sem multa extra, só se estiver escrito antes da reserva. Noites já usufruídas não são reembolsáveis, e a chegada deve ser documentada (fotos e mensagens).
 
 ### G39 — Cão de assistência no contador de hóspedes (Should, com a G38)
 - **Problema:** o contador só tem "pets"; uma regra "sem pets" bloquearia ou sinalizaria um hóspede com cão-guia como se fosse um pet. O Airbnb exige aceitar animais de serviço mesmo com a regra "sem pets" e sem taxa de pet.
@@ -513,6 +517,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. O cão de assistência nunca soma taxa de pet (G40).
   4. O detalhe mostra a nota com o texto aprovado pelo Jurídico.
 - **Prioridade:** Should, com a G38. RICE 8 (mantido). Depende da confirmação do Jurídico. Fonte: competitors.md G39 (30/10), revisão do Negócios. Referência: [Airbnb, receber pets](https://www.airbnb.com/resources/hosting-homes/a/what-you-need-to-know-about-hosting-pets-463).
+- **Parecer do Jurídico (03/11):** base legal: Lei 11.126/2005 e Decreto 5.904/2006 (cão-guia) e Lei 13.146/2015 arts. 3, 4 e 88; cão de assistência treinado nunca é conflito de regra nem taxa de pet; animal de apoio emocional fica de fora e segue a regra de animais do anúncio. O anfitrião só pode perguntar se é cão de assistência e ver a identificação ou o colete. O hóspede continua responsável por danos (caução). Texto para a página do anúncio: "Cães de assistência (cão-guia e outros cães treinados para auxiliar pessoa com deficiência) são aceitos mesmo onde animais não são permitidos, sem taxa de animal. Animais de apoio emocional e de estimação seguem a regra de animais deste anúncio." Texto final no fim do projeto.
 
 ### G40 — Taxas estruturadas de pet e de hóspede extra (Could, com a spec-07, S8)
 - **Problema:** o preço tem só a diária e a limpeza fixa; anfitriões que cobram por pet ou por hóspedes acima de um número vão pôr isso no texto livre ou pedir por Pix fora do total mostrado, o que quebra a regra "o total é o que se paga". Airbnb e Vrbo têm essas taxas como campos estruturados, sempre no total mostrado antes.
@@ -538,6 +543,7 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   7. O pedido é do tipo genérico de solicitação, sem fluxo separado.
 - **Pergunta ao Jurídico:** uma alteração aceita reinicia os 7 dias do CDC? Fica com o Jurídico.
 - **Prioridade:** Should, na S8, com a restrição já na S7. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G43 (`/workspace/produto/competitors.md`, 01/11), revisão do Negócios (`/workspace/negocios/review-gaps-g1-g17.md`, última seção). Referências: [Airbnb, alterar datas](https://www.airbnb.com/help/article/913), [Airbnb, alterar como anfitrião](https://www.airbnb.com/help/article/50).
+- **Parecer do Jurídico (03/11):** a alteração aceita não reinicia os 7 dias do CDC art. 49 (é o mesmo contrato), e o ponto perde peso porque o cancelamento até o check-in continua. Mostrar o novo total e a política antes do aceite, registrar o aceite como nova versão com data e hora, e contar as faixas de reembolso a partir do novo check-in, com o texto da política original.
 
 ### G44 — Pedir ao anfitrião para cancelar sem multa (Could, depois do piloto)
 - **Problema:** fora da janela gratuita, o hóspede só pode escrever uma mensagem livre ao anfitrião; nada registra o pedido nem recalcula o reembolso e a comissão. O Booking.com tem o pedido estruturado "Cancel for less".
@@ -589,6 +595,36 @@ Origem: pesquisa diária de concorrentes do Produto (`/workspace/produto/competi
   3. A tela do anfitrião avisa para não pedir o que a limpeza paga já cobre.
   4. O descumprimento de um item da lista não pode ser retido da caução; só dano documentado (G42).
 - **Prioridade:** Could, com a G45 se for barato, senão depois do piloto. RICE 4,8 (mantido). O Jurídico confirma o texto do contrato. Fonte: competitors.md G46 (02/11), revisão do Negócios. Referência: [Airbnb, regras de check-out](https://www.airbnb.com/help/article/472).
+
+### G47 — Descontos de última hora e de anúncio novo (Could, S8 com a spec-07)
+- **Problema:** a spec-07 só define desconto semanal e mensal. Com o teto de 30 noites, o mensal (28 noites ou mais) quase nunca vale, então na prática o anfitrião tem uma ferramenta de preço só. A UC-P19 promete "última hora" e "lançamento", mas nada os define. Dias úteis vazios na baixa temporada da Região dos Lagos e anúncios novos sem avaliações não têm outra alavanca além de editar períodos à mão.
+- **Solução (aprovada pelo Negócios com mudança):** desconto de última hora (N dias antes do check-in) e de anúncio novo, aplicados por noite dentro da janela, na mesma regra "só o maior desconto vale"; o snapshot mostra quais noites receberam desconto. O preço por noite já com o desconto é pré-calculado, sem avaliar regra a cada busca (Arquitetura e BD confirmam). **A mais, pelo Negócios:**
+  1. Os tipos de desconto são registros de configuração, não código: tipo, janela, percentual e escopo. O tipo "antecedência" (early bird) já entra no schema e só é ativado depois.
+  2. O escopo é por imóvel, por nó e por canal: um franqueado ou parceiro faz uma promoção regional de baixa temporada nos próprios imóveis, e uma promoção pode valer só no canal direto.
+  3. Quem financia é uma configuração: o anfitrião por padrão, com opção de fundo da plataforma ou regional (o Jurídico e o contrato do fundo decidem). A comissão é sempre calculada sobre o preço com desconto.
+  4. Anúncio novo: padrão de 90 dias ou 3 reservas, o que vier primeiro (estimativa, uma configuração).
+- **Critérios de aceite:**
+  1. Uma noite dentro da janela de última hora recebe o desconto; fora da janela, não.
+  2. Com vários descontos na mesma noite, vale só o maior, e o snapshot guarda qual foi por noite.
+  3. Uma promoção de escopo "canal direto" não aparece nos outros canais, e uma de um nó vale só para os imóveis desse nó.
+  4. A busca ordenada por preço usa o preço por noite já calculado e continua dentro das metas de velocidade (sem avaliação de regra por requisição).
+  5. A comissão é calculada sobre o valor com desconto.
+- **Prioridade:** Could, na S8 com a spec-07. RICE 4,8 (o Negócios subiu de 2). Fonte: competitors.md G47 (`/workspace/produto/competitors.md`, 03/11), revisão do Negócios. Referências: [Airbnb, promoções](https://www.airbnb.com/help/article/1233), [Vrbo, promoções](https://help.vrbo.com/articles/About-promotions). A G48 (selo de desconto no card da busca) não foi enviada.
+
+### G49 — Ordenar as avaliações do anúncio (Should, S8 com a spec-07)
+- **Problema:** a lista de avaliações é só paginada, sem ordem definida. Uma família não consegue ir direto às mais recentes ou às piores antes de pagar.
+- **Solução (aprovada pelo Negócios sem mudança de escopo):** ordem padrão "mais recentes primeiro" (fica escrita na spec-07), com as opções "Mais recentes", "Maior nota" e "Menor nota". Índices por `(property_id, created_at)` e `(property_id, rating)`. Sem busca por palavra-chave por ora. **A mais, pelo Negócios:** a ordem "Menor nota" não pode ser desligada por anfitriões, franqueados nem canais.
+- **Critérios de aceite:**
+  1. Sem escolha do usuário, as avaliações vêm da mais recente para a mais antiga.
+  2. As três opções ordenam corretamente, com desempate pela mais recente.
+  3. Nenhuma configuração de anfitrião, nó ou canal remove a opção "Menor nota".
+  4. A ordenação usa os índices e fica dentro das metas de velocidade do ADR 001.
+- **Prioridade:** Should, na S8 com a spec-07. RICE 4 (mantido). Fonte: competitors.md G49 (`/workspace/produto/competitors.md`, 04/11), revisão do Negócios. Referência: [Airbnb, como funcionam as avaliações](https://www.airbnb.com/help/article/13).
+
+### G51 — Autor retira a própria avaliação (Won't por ora)
+- **Problema:** hoje só a moderação remove uma avaliação. O Airbnb deixa o autor pedir a remoção em até 30 dias.
+- **Decisão (Rafael aprovou o envio; o Negócios concorda com Won't):** não construir. O franqueado é ao mesmo tempo o avaliado e o suporte de nível 1, então o risco de pressão do anfitrião sobre o hóspede é maior que o ganho. A moderação continua sendo o único caminho de remoção. Rever só com evidência do piloto de avaliações escritas por engano; se for adotada, só remoção (sem edição), em até 30 dias e registrada.
+- **Prioridade:** Won't por ora, RICE 1 (mantido). Fonte: competitors.md G51 (04/11), revisão do Negócios. A G50 (contexto da viagem na avaliação) não foi enviada.
 
 **Notas de 22/10 (não são gaps novos):**
 - **Níveis de co-anfitrião:** cobertos pela árvore de gestão e pelas listas de permissões predefinidas (spec-02 §0); nenhum gap novo. A regra do Airbnb "o proprietário responde pelos co-anfitriões adicionados por co-anfitriões" é uma nota do Jurídico para os contratos do fim do projeto.

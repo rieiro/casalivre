@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
 require_once __DIR__ . '/ListingSearch.php';
+require_once __DIR__ . '/CalendarSync.php';
 
 final class HouseRepository
 {
@@ -16,6 +17,36 @@ final class HouseRepository
 
     /** properties.* plus the display city. city_place_id replaced properties.city. */
     public const SQL_WITH_CITY = 'SELECT p.*, ' . self::CITY_LABEL_SQL . ' AS city FROM properties p ' . self::JOIN_CITY_SQL;
+
+    /** Two-int advisory lock namespace: sync vs sync and feed removal. Bookings do not take it. */
+    public const SYNC_ADVISORY_NS = 48001403;
+    public const FEED_SLOTS = 5;
+    private const ADD_SLOT_ATTEMPTS = 5;
+    /** The 16th consecutive failure stops the feed (next_sync_at = infinity). */
+    public const FAIL_STOP = 16;
+    /** Added to a scheduled next_sync_at so a restart does not sync every feed at once. */
+    public const JITTER_MAX_SECONDS = 300;
+    public const PERMANENT_FEED_ERRORS = ['bad_url', 'private_ip', 'http_4xx', 'not_ics', 'too_big'];
+    public const TEMPORARY_FEED_ERRORS = ['timeout', 'dns', 'http_5xx'];
+
+    /**
+     * One due feed, oldest first. 10-minute lease when the account is active, otherwise +1 day.
+     * The worker skips active=false. SKIP LOCKED: two workers cannot claim the same row.
+     */
+    public const CLAIM_DUE_FEED_SQL = <<<'SQL'
+UPDATE calendar_feeds f SET next_sync_at = now() + CASE WHEN c.active THEN interval '10 minutes' ELSE interval '1 day' END
+FROM (SELECT f2.id, (p.status = 'active' AND u.status = 'active') AS active,
+             f2.next_sync_at AS prev_due, f2.last_synced_at
+      FROM calendar_feeds f2
+      JOIN properties p ON p.id = f2.property_id
+      JOIN users u ON u.id = p.user_id
+      WHERE f2.next_sync_at <= now()
+      ORDER BY f2.next_sync_at
+      LIMIT 1
+      FOR UPDATE OF f2 SKIP LOCKED) c
+WHERE f.id = c.id
+RETURNING f.id, f.property_id, f.url, c.active, c.prev_due, c.last_synced_at
+SQL;
 
     public static function insert(array $house): int
     {
@@ -234,11 +265,6 @@ final class HouseRepository
         return $stmt->fetchAll();
     }
 
-    public static function all(): array
-    {
-        return db()->query(self::SQL_WITH_CITY . " WHERE p.status = 'active' ORDER BY p.id ASC")->fetchAll();
-    }
-
     public static function inactivate(int $id, int $userId, string $at): array
     {
         return self::synced($id, static function () use ($id, $userId, $at): array {
@@ -331,13 +357,6 @@ final class HouseRepository
         return $rows;
     }
 
-    public static function blockedDays(int $propertyId): array
-    {
-        $stmt = db()->prepare('SELECT day, origin FROM calendar_days WHERE property_id = ? AND blocked = 1 ORDER BY day');
-        $stmt->execute([$propertyId]);
-        return $stmt->fetchAll();
-    }
-
     public static function upsertDay(int $propertyId, string $day, int $blocked, ?int $price, ?int $minNights = null): void
     {
         db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, price, min_nights) VALUES (?, ?, ?, ?, ?)
@@ -406,41 +425,24 @@ final class HouseRepository
         return self::nightAudit([...$updated, ...$inserted]);
     }
 
-    public static function blockDay(int $propertyId, string $day, string $origin = 'sync'): void
-    {
-        db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin) VALUES (?, ?, 1, NULL, NULL, ?)
-            ON CONFLICT(property_id, day) DO UPDATE SET blocked = 1, origin = excluded.origin')
-            ->execute([$propertyId, $day, $origin]);
-    }
-
-    public static function tagOriginIfEmpty(int $propertyId, string $day, string $origin): void
-    {
-        db()->prepare("UPDATE calendar_days SET origin = ? WHERE property_id = ? AND day = ? AND blocked = 1 AND (origin IS NULL OR origin = '')")
-            ->execute([$origin, $propertyId, $day]);
-    }
-
     /**
-     * Feeds para exibição/API: só campos seguros e URL mascarada (esquema + host + ••••).
-     * A URL real pode conter token; para sincronizar use feedsWithUrl().
+     * Owner list: masked URL (scheme + host + ••••), stopped, and last_error.
+     * The code is the coarse class the screen translates. The raw URL stays in the table.
      */
     public static function feeds(int $propertyId): array
     {
-        $stmt = db()->prepare('SELECT id, property_id, title, url, last_status, last_synced_at FROM calendar_feeds WHERE property_id = ? ORDER BY id');
+        $stmt = db()->prepare("SELECT id, property_id, title, url, last_status, last_synced_at, last_error, fail_count,
+            next_sync_at = 'infinity' AS stopped
+            FROM calendar_feeds WHERE property_id = ? ORDER BY id");
         $stmt->execute([$propertyId]);
         $rows = [];
         foreach ($stmt->fetchAll() as $row) {
             $row['url'] = self::maskFeedUrl((string) $row['url']);
+            $row['fail_count'] = (int) $row['fail_count'];
+            $row['stopped'] = self::pgBool($row['stopped']);
             $rows[] = $row;
         }
         return $rows;
-    }
-
-    /** Uso interno (sincronização/comparação): inclui a URL real. Nunca devolver ao cliente. */
-    public static function feedsWithUrl(int $propertyId): array
-    {
-        $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE property_id = ? ORDER BY id');
-        $stmt->execute([$propertyId]);
-        return $stmt->fetchAll();
     }
 
     /** https://www.airbnb.com/calendar/ical/123.ics?s=TOKEN -> https://www.airbnb.com/•••• */
@@ -454,16 +456,6 @@ final class HouseRepository
         return (is_string($scheme) ? strtolower($scheme) : 'https') . '://' . strtolower($host) . '/••••';
     }
 
-    public static function feedsForActiveAccounts(): array
-    {
-        return db()->query("SELECT f.id, f.property_id, f.url, f.last_status, f.last_synced_at
-            FROM calendar_feeds f
-            JOIN properties p ON p.id = f.property_id
-            JOIN users o ON o.id = p.user_id
-            WHERE o.status = 'active' AND p.status = 'active'
-            ORDER BY f.property_id, f.id")->fetchAll();
-    }
-
     public static function addFeed(int $propertyId, int $userId, string $url, string $title): string|array
     {
         if (!self::findByUser($userId, $propertyId)) {
@@ -474,6 +466,9 @@ final class HouseRepository
         if ($title === '' || $titleLen > 40) {
             return 'title';
         }
+        if (!CalendarSync::isHttpsUrl($url)) {
+            return 'url';
+        }
         $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url = ?');
         $exists->execute([$propertyId, $url]);
         if ($exists->fetchColumn()) {
@@ -481,40 +476,54 @@ final class HouseRepository
         }
         $stmt = db()->prepare('SELECT COUNT(*) FROM calendar_feeds WHERE property_id = ?');
         $stmt->execute([$propertyId]);
-        if ((int) $stmt->fetchColumn() >= 5) {
+        if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
             return 'limit';
         }
-        $created = ReturningWrite::insert('calendar_feeds', [
-            'property_id' => $propertyId,
-            'url' => $url,
-            'title' => $title,
-        ], ['id', 'url', 'title']);
-        if ($created === []) {
-            return 'duplicate';
+        $row = self::takeFreeSlot($propertyId, $url, $title);
+        if ($row !== null) {
+            return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
         }
-        return ['feed' => $created[0]['new'], 'link' => self::syncExternalUrl($propertyId, $userId)];
+        $exists->execute([$propertyId, $url]);
+        return $exists->fetchColumn() ? 'duplicate' : 'limit';
     }
 
+    /**
+     * Deletes the feed and frees only the nights it holds. Other feeds of the property become due.
+     * One transaction, advisory lock first. Returns the night pairs for the audit.
+     *
+     * @return array{feed: ?array, link: array, nights: array}
+     */
     public static function removeFeed(int $propertyId, int $userId, int $feedId): array
     {
-        $deleted = ReturningWrite::remove('calendar_feeds', 'id = ? AND property_id = ?', [$feedId, $propertyId], ['id', 'url', 'title']);
-        if ($deleted === []) {
-            // Feed inexistente: não toca em properties (antes gravava external_ical_url NULL -> '' e audit_hold).
-            return ['feed' => null, 'link' => []];
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
+            $deleted = ReturningWrite::remove('calendar_feeds', 'id = ? AND property_id = ?', [$feedId, $propertyId], ['id', 'url', 'title']);
+            if ($deleted === []) {
+                $pdo->rollBack();
+                return ['feed' => null, 'link' => [], 'nights' => []];
+            }
+            $nights = ReturningWrite::update(
+                'calendar_days',
+                ['blocked' => 0, 'origin' => '', 'feed_id' => null],
+                'property_id = ? AND feed_id = ?',
+                [$propertyId, $feedId],
+                ['property_id', 'day'],
+                ['day', 'blocked', 'price', 'min_nights', 'origin']
+            );
+            $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now()
+                WHERE property_id = ? AND next_sync_at > now() AND next_sync_at < 'infinity'")
+                ->execute([$propertyId]);
+            $link = self::syncExternalUrl($propertyId, $userId);
+            $pdo->commit();
+            return ['feed' => $deleted[0]['old'], 'link' => $link, 'nights' => $nights];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
-        return ['feed' => $deleted[0]['old'] ?? null, 'link' => self::syncExternalUrl($propertyId, $userId)];
-    }
-
-    public static function releaseImported(int $propertyId): array
-    {
-        return ReturningWrite::update(
-            'calendar_days',
-            ['blocked' => 0, 'origin' => ''],
-            "property_id = ? AND origin IN ('sync', 'reserva')",
-            [$propertyId],
-            ['property_id', 'day'],
-            ['day', 'blocked', 'price', 'min_nights', 'origin']
-        );
     }
 
     public static function syncExternalUrl(int $propertyId, int $userId): array
@@ -535,23 +544,154 @@ final class HouseRepository
         ]];
     }
 
-    /** Marca o feed para a próxima sincronização do cron, sem alterar last_synced_at. */
-    public static function markFeedPending(int $id): void
+    /** Owner re-save / retry: due now, failure counters cleared. Not called when the owner unblocks a night. */
+    public static function markFeedPending(int $propertyId, int $feedId): void
     {
-        db()->prepare("UPDATE calendar_feeds SET last_status = 'PENDENTE' WHERE id = ?")->execute([$id]);
+        db()->prepare("UPDATE calendar_feeds SET next_sync_at = now(), fail_count = 0, last_error = NULL, last_status = 'PENDENTE'
+            WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
     }
 
-    public static function markFeed(int $id, string $status, string $at): void
+    /**
+     * @return array{id: int, property_id: int, url: string, active: bool, prev_due: ?string, last_synced_at: ?string}|null
+     */
+    public static function claimDueFeed(): ?array
     {
-        db()->prepare('UPDATE calendar_feeds SET last_status = ?, last_synced_at = ? WHERE id = ?')->execute([$status, $at, $id]);
-    }
-
-    public static function findFeed(int $propertyId, int $feedId): ?array
-    {
-        $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ?');
-        $stmt->execute([$feedId, $propertyId]);
+        $stmt = db()->prepare(self::CLAIM_DUE_FEED_SQL);
+        $stmt->execute();
         $row = $stmt->fetch();
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+        return [
+            'id' => (int) $row['id'],
+            'property_id' => (int) $row['property_id'],
+            'url' => (string) $row['url'],
+            'active' => self::pgBool($row['active']),
+            'prev_due' => $row['prev_due'] !== null ? (string) $row['prev_due'] : null,
+            'last_synced_at' => $row['last_synced_at'] !== null ? (string) $row['last_synced_at'] : null,
+        ];
+    }
+
+    /**
+     * Diff-import one feed. Unchanged nights are not written. The first holder keeps a night.
+     * Null when the feed was removed after the claim (caller rolls nothing else back).
+     *
+     * @param list<string> $nights
+     * @param list<string> $origins
+     * @return array{freed: int, written: int}|null
+     */
+    public static function importFeed(int $propertyId, int $feedId, array $nights, array $origins, int $jitterSeconds): ?array
+    {
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
+            $check = $pdo->prepare('SELECT 1 FROM calendar_feeds WHERE id = ? AND property_id = ? FOR KEY SHARE');
+            $check->execute([$feedId, $propertyId]);
+            if ($check->fetchColumn() === false) {
+                $pdo->rollBack();
+                return null;
+            }
+            $today = date('Y-m-d');
+            $free = $pdo->prepare("UPDATE calendar_days SET blocked = 0, origin = '', feed_id = NULL
+                WHERE property_id = ? AND feed_id = ? AND day >= ? AND day <> ALL (CAST(? AS date[]))");
+            $free->execute([$propertyId, $feedId, $today, self::pgDateArray($nights)]);
+            $freed = $free->rowCount();
+            $ins = $pdo->prepare('INSERT INTO calendar_days AS c (property_id, day, blocked, origin, feed_id)
+                SELECT ?, n.day, 1, n.origin, ? FROM unnest(CAST(? AS date[]), CAST(? AS text[])) AS n(day, origin)
+                LEFT JOIN calendar_days o ON o.property_id = ? AND o.day = n.day
+                WHERE o.day IS NULL OR o.blocked = 0 OR (o.feed_id = ? AND o.origin <> n.origin)
+                ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = EXCLUDED.origin, feed_id = EXCLUDED.feed_id
+                WHERE c.blocked = 0 OR (c.feed_id = EXCLUDED.feed_id AND c.origin <> EXCLUDED.origin)');
+            $ins->execute([
+                $propertyId,
+                $feedId,
+                self::pgDateArray($nights),
+                self::pgTextArray($origins),
+                $propertyId,
+                $feedId,
+            ]);
+            $written = $ins->rowCount();
+            if ($freed > 0) {
+                $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now()
+                    WHERE property_id = ? AND id <> ? AND next_sync_at > now() AND next_sync_at < 'infinity'")
+                    ->execute([$propertyId, $feedId]);
+            }
+            $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '30 minutes' + (? * interval '1 second'),
+                fail_count = 0, last_error = NULL, last_status = 'OK', last_synced_at = now()
+                WHERE id = ?")->execute([$jitterSeconds, $feedId]);
+            $pdo->commit();
+            return ['freed' => $freed, 'written' => $written];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * @return array{fail_count: int, stopped: bool}
+     */
+    public static function recordFeedFailure(int $feedId, string $code, int $jitterSeconds): array
+    {
+        if (in_array($code, self::PERMANENT_FEED_ERRORS, true)) {
+            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
+                next_sync_at = 'infinity' WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
+            $params = [$code, $feedId];
+        } else {
+            $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
+                next_sync_at = CASE WHEN fail_count + 1 >= " . self::FAIL_STOP . " THEN 'infinity'
+                    ELSE now() + interval '30 minutes' * LEAST(power(2, fail_count), 12) + (? * interval '1 second') END
+                WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
+            $params = [$code, $jitterSeconds, $feedId];
+        }
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: ['fail_count' => 0, 'stopped' => false];
+        return ['fail_count' => (int) $row['fail_count'], 'stopped' => self::pgBool($row['stopped'])];
+    }
+
+    /** @param list<string> $days */
+    private static function pgDateArray(array $days): string
+    {
+        return '{' . implode(',', $days) . '}';
+    }
+
+    /** @param list<string> $origins */
+    private static function pgTextArray(array $origins): string
+    {
+        return '{' . implode(',', $origins) . '}';
+    }
+
+    private static function pgBool(mixed $value): bool
+    {
+        return $value === true || $value === 't' || $value === '1' || $value === 1;
+    }
+
+    /** @return array{id: int|string, url: string, title: string}|null */
+    private static function takeFreeSlot(int $propertyId, string $url, string $title): ?array
+    {
+        for ($attempt = 0; $attempt < self::ADD_SLOT_ATTEMPTS; $attempt++) {
+            $row = self::insertFeedSlot($propertyId, $url, $title);
+            if ($row !== null) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
+    private static function insertFeedSlot(int $propertyId, string $url, string $title): ?array
+    {
+        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, title)
+            SELECT ?, s.slot, ?, ?
+            FROM (SELECT min(g)::smallint AS slot FROM generate_series(1, ' . self::FEED_SLOTS . ') g
+                  WHERE NOT EXISTS (SELECT 1 FROM calendar_feeds f WHERE f.property_id = ? AND f.slot = g)) s
+            WHERE s.slot IS NOT NULL
+            ON CONFLICT DO NOTHING
+            RETURNING id, url, title';
+        $rows = ReturningWrite::query($sql, [$propertyId, $url, $title, $propertyId]);
+        return $rows[0] ?? null;
     }
 
     public static function addReview(int $propertyId, string $author, int $score, string $comment): void

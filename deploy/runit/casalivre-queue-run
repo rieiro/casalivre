@@ -1,0 +1,44 @@
+#!/bin/sh
+# One PHP worker. The service directory name picks the queue:
+# casalivre-mail-worker, or casalivre-image-worker-N.
+# Install (Void), with the other helpers:
+#   sudo install -m 0755 deploy/runit/casalivre-alert deploy/runit/casalivre-resolve \
+#     deploy/runit/casalivre-svlogd deploy/runit/casalivre-finish \
+#     deploy/runit/casalivre-daily deploy/runit/casalivre-queue-run /usr/local/sbin/
+# Copy deploy/runit/casalivre-mail-worker and deploy/runit/casalivre-image-worker
+# to /etc/sv/ under the service name (image: one copy per worker, casalivre-image-worker-1..N).
+# Optional ./conf (mode 0640, no secrets; the app reads .env):
+#   APP_DIR=/srv/casalivre  APP_USER=casalivre  PHP_BIN=/usr/bin/php
+#   VALKEY_MAIL_USER=cl_mail  VALKEY_MAIL_PASSWORD_FILE=/etc/casalivre/valkey-mail.secret
+#   VALKEY_IMAGE_USER=cl_image  VALKEY_IMAGE_PASSWORD_FILE=/etc/casalivre/valkey-image.secret
+# stdout and stderr go to the log service (svlogd). A line containing ALERT is
+# paged from there. A non-zero exit is paged by ./finish; runit then restarts
+# this process. The worker already sleeps 5-30s before exit on a lost DB or missing WebP.
+# zend.exception_ignore_args: a stack trace must not include argument values (the script sets it too).
+# memory_limit=256M: one image decode of 25 megapixels is about 100-125 MB.
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+PHP_BIN="${PHP_BIN:-php}"
+name=$(basename "$(pwd)")
+case $name in
+  *mail*)
+    queue=mail
+    VALKEY_USER="${VALKEY_MAIL_USER:-cl_mail}"
+    VALKEY_PASSWORD_FILE="${VALKEY_MAIL_PASSWORD_FILE:-/etc/casalivre/valkey-mail.secret}"
+    ;;
+  *image*)
+    queue=image
+    VALKEY_USER="${VALKEY_IMAGE_USER:-cl_image}"
+    VALKEY_PASSWORD_FILE="${VALKEY_IMAGE_PASSWORD_FILE:-/etc/casalivre/valkey-image.secret}"
+    ;;
+  *)
+    echo "queue-worker: ALERT unknown service $name" >&2
+    exit 1
+    ;;
+esac
+export VALKEY_USER VALKEY_PASSWORD_FILE
+cd "$APP_DIR" || exit 1
+exec chpst -u "$APP_USER" "$PHP_BIN" -d zend.exception_ignore_args=1 -d memory_limit=256M scripts/queue-worker.php "$queue"
+exit 1

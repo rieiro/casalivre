@@ -13,9 +13,17 @@ $scripts = [
     "$root/casalivre-finish",
     "$root/casalivre-svlogd",
     "$root/casalivre-daily",
-    "$root/casalivre-queue-worker/run",
-    "$root/casalivre-queue-worker/finish",
-    "$root/casalivre-queue-worker/log/run",
+    "$root/casalivre-queue-run",
+    "$root/casalivre-calendar-run",
+    "$root/casalivre-mail-worker/run",
+    "$root/casalivre-mail-worker/finish",
+    "$root/casalivre-mail-worker/log/run",
+    "$root/casalivre-image-worker/run",
+    "$root/casalivre-image-worker/finish",
+    "$root/casalivre-image-worker/log/run",
+    "$root/casalivre-calendar-worker/run",
+    "$root/casalivre-calendar-worker/finish",
+    "$root/casalivre-calendar-worker/log/run",
     "$root/casalivre-log-retention/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
@@ -31,23 +39,37 @@ foreach ($scripts as $path) {
     exec('sh -n ' . escapeshellarg($path) . ' 2>&1', $syntaxOut, $syntaxCode);
     t_eq(0, $syntaxCode, "$rel: sh -n");
 }
-$workerRun = (string) file_get_contents("$root/casalivre-queue-worker/run");
+$workerRun = (string) file_get_contents("$root/casalivre-queue-run");
 t_ok(str_contains($workerRun, 'exec 2>&1') && str_contains($workerRun, 'exec chpst -u') && str_contains($workerRun, 'scripts/queue-worker.php'), 'queue worker: chpst, stderr merged, queue-worker.php');
 t_ok(str_contains($workerRun, '-d zend.exception_ignore_args=1'), 'queue worker php does not keep exception arguments');
+t_ok(str_contains($workerRun, '-d memory_limit=256M'), 'queue worker php memory_limit is 256M');
+t_ok(str_contains($workerRun, 'queue-worker.php "$queue"'), 'queue worker passes mail or image from the service name');
 t_ok(!str_contains($workerRun, '|| echo'), 'queue worker run does not swallow the exit code');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/finish"), (string) file_get_contents("$root/casalivre-image-worker/finish"), 'mail and image finish scripts match');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/log/run"), (string) file_get_contents("$root/casalivre-image-worker/log/run"), 'mail and image log scripts match');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/finish"), (string) file_get_contents("$root/casalivre-calendar-worker/finish"), 'calendar finish matches the queue workers');
+t_eq((string) file_get_contents("$root/casalivre-mail-worker/log/run"), (string) file_get_contents("$root/casalivre-calendar-worker/log/run"), 'calendar log script matches the queue workers');
+$calRun = (string) file_get_contents("$root/casalivre-calendar-run");
+t_ok(str_contains($calRun, 'exec chpst -u') && str_contains($calRun, 'scripts/calendar-worker.php'), 'calendar worker: chpst and calendar-worker.php');
+t_ok(str_contains($calRun, '-d zend.exception_ignore_args=1') && str_contains($calRun, '-d memory_limit=256M'), 'calendar worker php: ignore args, memory_limit 256M');
+t_ok(!str_contains($calRun, 'VALKEY'), 'calendar worker run has no Valkey env');
 $daily = (string) file_get_contents("$root/casalivre-daily");
 t_ok(!preg_match('/\|\|\s*echo/', $daily) && str_contains($daily, 'exit "$status"') && str_contains($daily, 'sleep 86400'), 'daily helper: failure exits, success sleeps 24h');
 $retentionRun = (string) file_get_contents("$root/casalivre-log-retention/run");
 t_ok(str_contains($retentionRun, 'casalivre-resolve') && str_contains($retentionRun, 'casalivre-daily') && str_contains($retentionRun, 'scripts/log-retention.php'), 'log-retention runs through the daily helper');
 t_ok(!preg_match('/\|\|\s*echo/', $retentionRun), 'log-retention run does not swallow the exit code');
-t_ok(str_contains((string) file_get_contents("$root/casalivre-queue-worker/finish"), 'casalivre-queue-worker 0'), 'queue worker finish does not delay the restart');
+t_ok(str_contains((string) file_get_contents("$root/casalivre-mail-worker/finish"), 'casalivre-finish "$name" 0'), 'queue worker finish does not delay the restart');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-log-retention/finish"), 'casalivre-log-retention 86400'), 'log-retention finish waits a day after a failure');
 $rankRun = (string) file_get_contents("$root/casalivre-rank-verify/run");
 t_ok(str_contains($rankRun, 'casalivre-resolve') && str_contains($rankRun, 'casalivre-daily') && str_contains($rankRun, 'scripts/rank-verify.php'), 'rank-verify runs through the daily helper');
 t_ok(str_contains((string) file_get_contents("$root/casalivre-rank-verify/finish"), 'casalivre-rank-verify 86400'), 'rank-verify finish waits a day after a failure');
 $wrappers = [
-    "$root/casalivre-queue-worker/finish",
-    "$root/casalivre-queue-worker/log/run",
+    "$root/casalivre-mail-worker/finish",
+    "$root/casalivre-mail-worker/log/run",
+    "$root/casalivre-image-worker/finish",
+    "$root/casalivre-image-worker/log/run",
+    "$root/casalivre-calendar-worker/finish",
+    "$root/casalivre-calendar-worker/log/run",
     "$root/casalivre-log-retention/finish",
     "$root/casalivre-log-retention/log/run",
     "$root/casalivre-rank-verify/finish",
@@ -224,15 +246,15 @@ t_ok(str_contains((string) file_get_contents("$tmp/page.out"), 'casalivre-log-re
 t_eq(0, $code, 'clean exit: finish exits 0');
 t_ok(!is_file("$tmp/alerts.log"), 'clean exit is not paged');
 
-[$code] = $finish("$root/casalivre-queue-worker/finish", '-1 15');
+[$code] = $run('timeout 5 ./finish -1 15', "$root/casalivre-mail-worker", []);
 t_eq(0, $code, 'SIGTERM finish exits 0');
 t_ok(!is_file("$tmp/alerts.log"), 'SIGTERM (sv down/restart) is not paged');
 
-[$code] = $finish("$root/casalivre-queue-worker/finish", '-1 143');
+[$code] = $run('timeout 5 ./finish -1 143', "$root/casalivre-mail-worker", []);
 t_eq(0, $code, 'SIGTERM with core bit exits 0');
 t_ok(!is_file("$tmp/alerts.log"), 'signal 143 is still SIGTERM and is not paged');
 
-[$code] = $finish("$root/casalivre-queue-worker/finish", '-1 9');
+[$code] = $run('timeout 5 ./finish -1 9', "$root/casalivre-mail-worker", []);
 t_eq(0, $code, 'SIGKILL finish exits 0');
 t_ok(str_contains((string) file_get_contents("$tmp/alerts.log"), 'ALERT process died from signal 9'), 'SIGKILL is paged');
 
@@ -250,7 +272,7 @@ t_ok(microtime(true) - $t0 < 3, 'failed log-retention returns without the 24h sl
 t_ok(str_contains($out . $err, 'ALERT saude x: critical'), 'stderr is merged onto the log stream');
 t_ok(!str_contains($out . $err, 'falhou'), 'the old swallow message is gone');
 
-[$code] = $run('timeout 5 ./run', "$root/casalivre-queue-worker", [
+[$code] = $run('timeout 5 ./run', "$root/casalivre-mail-worker", [
     'APP_DIR' => $app,
     'APP_USER' => trim((string) shell_exec('id -un')),
     'PHP_BIN' => "$tmp/bin/php-exit3",
@@ -269,7 +291,7 @@ $resetPages();
 $t0 = microtime(true);
 [$code, $out, $err] = $run(
     'timeout 5 ./run',
-    "$root/casalivre-queue-worker/log",
+    "$root/casalivre-mail-worker/log",
     [
         'LOG_DIR' => $logDir,
         'LOG_USER' => $user,
@@ -290,5 +312,28 @@ t_ok(str_contains($current, 'hello') && str_contains($current, 'ALERT DB connect
 $paged = (string) file_get_contents("$tmp/alerts.log");
 t_ok(str_contains($paged, 'ALERT DB connection lost') && !str_contains($paged, 'hello'), 'only the ALERT line is paged');
 t_eq(1, substr_count((string) file_get_contents("$tmp/page.out"), "\n"), 'one page for one ALERT line');
+
+echo "dev worker reads the service directory before cd\n";
+$svc = $tmp . '/casalivre-image-worker-1';
+$repo = $tmp . '/pr246';
+$runDir = $tmp . '/run';
+mkdir($svc, 0700);
+mkdir($repo, 0700);
+mkdir($runDir, 0700);
+$sock = stream_socket_server('unix://' . $runDir . '/valkey.sock', $errno, $errstr);
+t_ok(is_resource($sock), 'name test has a socket (' . $errstr . ')');
+file_put_contents($tmp . '/bin/php8.4', "#!/bin/sh\nprintf '%s\\n' \"\$*\" > " . escapeshellarg($tmp . '/php-args') . "\nexit 0\n");
+chmod($tmp . '/bin/php8.4', 0755);
+[$code, $out, $err] = $run(
+    '/bin/sh ' . escapeshellarg(CL_ROOT . '/ops/dev-env/queue-worker-run'),
+    $svc,
+    ['CL_REPO' => $repo, 'CL_RUN' => $runDir, 'CL_HOME' => $tmp]
+);
+$args = (string) @file_get_contents($tmp . '/php-args');
+t_eq(0, $code, 'image service exits 0 (' . trim($out . $err) . ')');
+t_ok(str_contains($args, 'queue-worker.php image') && !str_contains($err . $out, 'unknown service'), 'queue is image, not the repo folder (' . $args . ' ' . trim($err) . ')');
+if (is_resource($sock)) {
+    fclose($sock);
+}
 
 t_done();

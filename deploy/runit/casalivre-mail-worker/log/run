@@ -1,0 +1,3 @@
+#!/bin/sh
+name=$(basename "$(dirname "$(pwd)")")
+exec "${CASALIVRE_RESOLVE:-/usr/local/sbin/casalivre-resolve}" casalivre-svlogd "$name" "/var/log/casalivre/$name"

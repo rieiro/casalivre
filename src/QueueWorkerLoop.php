@@ -11,11 +11,11 @@ require_once __DIR__ . '/PhotoFail.php';
 require_once __DIR__ . '/ActivityLog.php';
 
 /**
- * One iteration of the long-running scripts/queue-worker.php: one mail batch and, when $image is given, one image batch.
+ * One batch of one long-running worker (scripts/queue-worker.php mail|image).
  * The worker never exits, so file-backed per-process caches are refreshed first when their file changed
  * (WorkerCaches::refreshIfChanged); GrupoResolvedor's entries expire by TTL.
  * The worker never reconnects to the DB in-process (Db keeps one shared connection, and the SQL queues hold it):
- * each tick pings it first (Db::ping) and a lost connection propagates, so scripts/queue-worker.php exits non-zero
+ * each batch pings it first (Db::ping) and a lost connection propagates, so scripts/queue-worker.php exits non-zero
  * and runit restarts it with a fresh connection (Arquitetura #142).
  * Valkey outages (RedisException) stay in this process: one ALERT, then the same pause helper, reconnecting every second.
  * A lost DB and any other exception share one ALERT writer and one backoff-then-exit rule.
@@ -28,9 +28,11 @@ final class QueueWorkerLoop
     /** Pause (s) between reconnects while Valkey is down. The worker stays up. */
     public const VALKEY_RETRY_SECONDS = 1;
     /**
-     * How often tick() discards photos stuck in processing. $stuckSweptAt starts at 0, so the first tick
-     * after a worker start sweeps immediately, then once per this many seconds. A restart sweeps once.
-     * The age limit stays PhotoRepository::STUCK_AFTER_SECONDS (30 min).
+     * How often an image worker discards photos left in processing.
+     * The sweep runs after a batch that came back short of ImageWorker::DEFAULT_BATCH (nothing more was
+     * waiting). A full batch leaves $stuckSweptAt unchanged and tries again later.
+     * It starts at 0, so the first short batch of a worker start sweeps, then once per this many seconds.
+     * The age limit is PhotoRepository::STUCK_AFTER_SECONDS (30 min).
      */
     public const STUCK_SWEEP_SECONDS = 86400;
     /** Test hooks: replace sleep() and STDERR. */
@@ -41,6 +43,11 @@ final class QueueWorkerLoop
     private static bool $valkeyDown = false;
     private static int $stuckSweptAt = 0;
 
+    public static function hasWebp(): bool
+    {
+        return function_exists('imagewebp') && (gd_info()['WebP Support'] ?? false);
+    }
+
     /**
      * scripts/queue-worker.php on a lost DB connection, before exit(1): one alertable line (ALERT, as log-retention)
      * on STDERR (runit log) and in the PHP error log when one is configured, then a random DB_LOST_SLEEP_MIN-MAX s
@@ -48,7 +55,7 @@ final class QueueWorkerLoop
      */
     public static function dbLost(Throwable $e): int
     {
-        return self::backoffAndExit('DB connection lost (' . $e::class . ')');
+        return self::halt('DB connection lost (' . $e::class . ')');
     }
 
     /**
@@ -57,11 +64,11 @@ final class QueueWorkerLoop
      */
     public static function unexpected(Throwable $e): int
     {
-        return self::backoffAndExit($e::class);
+        return self::halt($e::class);
     }
 
     /**
-     * RedisException while opening the queues or ticking. One ALERT the first time (STDERR and error_log), then
+     * RedisException while opening the queues or running a batch. One ALERT the first time (STDERR and error_log), then
      * a VALKEY_RETRY_SECONDS pause unless $stop. Returns true when --once should exit 1 (no pause).
      */
     public static function valkeyDown(Throwable $e, bool $once, bool $stop): bool
@@ -89,21 +96,50 @@ final class QueueWorkerLoop
         fwrite(self::$stderr ?? STDERR, "queue-worker: Valkey reachable again, resuming\n");
     }
 
-    /** @return array<string, ?array> report per queue ('mail', and 'image' when $image is not null) */
-    public static function tick(MailQueue $mail, ?ImageQueue $image, string $storageDir): array
+    /** One mail batch. The lock keeps a second mail process from running a batch at the same time. */
+    public static function mail(MailQueue $queue, string $storageDir): ?array
+    {
+        self::begin();
+        return MailWorker::run($queue, $storageDir . '/mail-worker.lock');
+    }
+
+    /**
+     * One image batch, then the stuck sweep when it is due and this batch did not fill.
+     * A full batch means jobs may still be waiting, so those photos are not discarded.
+     * The batch runs first either way. No lock: the claim is atomic, so several image workers can run.
+     * Every image worker may sweep; discardStuck is one statement.
+     */
+    public static function image(ImageQueue $queue): ?array
+    {
+        self::begin();
+        $report = ImageWorker::run($queue);
+        $handled = (int) $report['enviados'] + (int) $report['ignorados'] + (int) $report['falhas'];
+        if ($handled < ImageWorker::DEFAULT_BATCH) {
+            $now = time();
+            if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
+                self::$stuckSweptAt = $now;
+                self::sweepStuck();
+            }
+        }
+        return $report;
+    }
+
+    /**
+     * One ALERT line, then the same 5-30 s pause as a lost DB, so runit does not restart every second.
+     * Returns the delay. The caller exits non-zero.
+     */
+    public static function halt(string $what, string $prefix = 'queue-worker'): int
+    {
+        $delay = random_int(self::DB_LOST_SLEEP_MIN, self::DB_LOST_SLEEP_MAX);
+        self::alert($what . ', exiting in ' . $delay . ' s so runit restarts the worker', $prefix);
+        self::pause($delay);
+        return $delay;
+    }
+
+    private static function begin(): void
     {
         Db::ping();
         WorkerCaches::refreshIfChanged();
-        $now = time();
-        if ($now - self::$stuckSweptAt >= self::STUCK_SWEEP_SECONDS) {
-            self::$stuckSweptAt = $now;
-            self::sweepStuck();
-        }
-        $reports = ['mail' => MailWorker::run($mail, $storageDir . '/mail-worker.lock')];
-        if ($image !== null) {
-            $reports['image'] = ImageWorker::run($image, $storageDir . '/image-worker.lock');
-        }
-        return $reports;
     }
 
     /** Mark processing photos older than the limit as failed, delete the original, and log each one. */
@@ -120,21 +156,13 @@ final class QueueWorkerLoop
     }
 
     /** One ALERT line on STDERR (runit) and, when error_log is set, in the PHP error log. Class names only; no message. */
-    private static function alert(string $what): void
+    private static function alert(string $what, string $prefix = 'queue-worker'): void
     {
-        fwrite(self::$stderr ?? STDERR, 'queue-worker: ALERT ' . $what . "\n");
+        fwrite(self::$stderr ?? STDERR, $prefix . ': ALERT ' . $what . "\n");
         if ((string) ini_get('error_log') !== '') {
-            error_log('CasaLivre ALERT: queue worker: ' . $what . '.');
+            $label = $prefix === 'queue-worker' ? 'queue worker' : $prefix;
+            error_log('CasaLivre ALERT: ' . $label . ': ' . $what . '.');
         }
-    }
-
-    /** Shared exit rule for a lost DB and any other exception: ALERT, sleep 5-30 s, caller exits 1. */
-    private static function backoffAndExit(string $what): int
-    {
-        $delay = random_int(self::DB_LOST_SLEEP_MIN, self::DB_LOST_SLEEP_MAX);
-        self::alert($what . ', exiting in ' . $delay . ' s so runit restarts the worker');
-        self::pause($delay);
-        return $delay;
     }
 
     private static function pause(int $seconds): void

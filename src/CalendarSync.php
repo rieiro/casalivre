@@ -4,124 +4,19 @@ declare(strict_types=1);
 
 final class CalendarSync
 {
-    public static function run(): array
-    {
-        $feeds = HouseRepository::feedsForActiveAccounts();
-        $blockedByProperty = [];
-        $ok = 0;
-        $nok = 0;
-        $lines = [];
-        foreach ($feeds as $feed) {
-            $propertyId = (int) $feed['property_id'];
-            if (!isset($blockedByProperty[$propertyId])) {
-                $blockedByProperty[$propertyId] = [];
-                foreach (HouseRepository::blockedDays($propertyId) as $row) {
-                    $blockedByProperty[$propertyId][$row['day']] = (string) ($row['origin'] ?? '');
-                }
-            }
-            $body = self::fetch((string) $feed['url']);
-            $now = date('Y-m-d H:i:s');
-            if ($body === null) {
-                HouseRepository::markFeed((int) $feed['id'], 'NOK', $now);
-                $nok++;
-                $lines[] = "NOK  imóvel $propertyId  " . self::logRef((string) $feed['url']);
-                if (function_exists('activity')) {
-                    activity(ActivityLog::CALENDAR_SYNC, [
-                        'imovel_id' => $propertyId,
-                        'url' => self::logRef((string) $feed['url']),
-                        'resultado' => 'nok',
-                    ]);
-                }
-                continue;
-            }
-            $written = import_ics($propertyId, $body, $blockedByProperty[$propertyId]);
-            HouseRepository::markFeed((int) $feed['id'], 'OK', $now);
-            $ok++;
-            $lines[] = "OK   imóvel $propertyId  novas=$written  " . self::logRef((string) $feed['url']);
-            if (function_exists('activity')) {
-                activity(ActivityLog::CALENDAR_SYNC, [
-                    'imovel_id' => $propertyId,
-                    'url' => self::logRef((string) $feed['url']),
-                    'novas' => $written,
-                    'resultado' => 'ok',
-                ]);
-            }
-        }
-        $summary = 'Sincronização de calendários: ' . count($feeds) . " links, $ok OK, $nok NOK";
-        $log = dirname(__DIR__) . '/storage/logs/calendar-sync.log';
-        $dir = dirname($log);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-        file_put_contents($log, date('c') . ' ' . $summary . "\n" . implode("\n", $lines) . "\n", FILE_APPEND);
-        return ['feeds' => count($feeds), 'ok' => $ok, 'nok' => $nok, 'lines' => $lines, 'summary' => $summary];
-    }
-
-    /**
-     * Remove noites além do horizonte de cada imóvel ativo (antes era feito no GET /calendario).
-     * Chamado pelo cron scripts/sync-calendars.php.
-     */
-    public static function trimHorizon(): int
-    {
-        $total = 0;
-        foreach (HouseRepository::all() as $property) {
-            $removed = HouseRepository::clearBlockedAfter((int) $property['id'], max_calendar_day($property));
-            if ($removed === []) {
-                continue;
-            }
-            $total += count($removed);
-            if (function_exists('activity') && class_exists('ActivityLog')) {
-                $audit = HouseRepository::nightAudit($removed);
-                activity(ActivityLog::CALENDAR_UPDATE, ['imovel_id' => (int) $property['id'], 'motivo' => 'limite'], $audit['anterior'], ['estado' => 'removida']);
-            }
-        }
-        return $total;
-    }
-
     /** Tamanho máximo aceito para um feed .ics (bytes). */
     public const MAX_BYTES = 2 * 1024 * 1024;
+    /** One VEVENT above this fails the feed (too_big). It is not skipped. */
+    public const MAX_EVENT_BYTES = 1024 * 1024;
+    /** Events above this fail the feed (too_big). */
+    public const MAX_EVENTS = 2000;
+    /** Feed URL cap. An unbounded URL must be a validation error, never an HTTP 500. */
+    public const MAX_URL_LENGTH = 2048;
     /** Número máximo de redirecionamentos, cada um revalidado. */
     public const MAX_REDIRECTS = 3;
-
-    /** Orçamento total (s) da ressincronização síncrona feita no DELETE de um feed. */
-    public const RESYNC_BUDGET_SECONDS = 15.0;
-    /** Timeout máximo (s) por feed durante a ressincronização síncrona. */
-    public const RESYNC_FEED_TIMEOUT = 6;
-
-    /**
-     * Ressincroniza os feeds de um imóvel (usado após excluir um feed,
-     * depois de releaseImported). Respeita um orçamento total de tempo: feeds
-     * que não couberem são marcados como PENDENTE e ficam para o cron
-     * (scripts/sync-calendars.php sincroniza todos os feeds).
-     *
-     * @return array{ok: int, nok: int, pendentes: int}
-     */
-    public static function resyncProperty(int $propertyId, float $budget = self::RESYNC_BUDGET_SECONDS): array
-    {
-        $deadline = microtime(true) + $budget;
-        $ok = 0;
-        $nok = 0;
-        $pending = 0;
-        foreach (HouseRepository::feedsWithUrl($propertyId) as $feed) {
-            $remaining = (int) floor($deadline - microtime(true));
-            if ($remaining < 2) {
-                HouseRepository::markFeedPending((int) $feed['id']);
-                $pending++;
-                continue;
-            }
-            $body = self::fetch((string) $feed['url'], min(self::RESYNC_FEED_TIMEOUT, $remaining));
-            $now = date('Y-m-d H:i:s');
-            if ($body === null) {
-                HouseRepository::markFeed((int) $feed['id'], 'NOK', $now);
-                $nok++;
-                continue;
-            }
-            import_ics($propertyId, $body);
-            HouseRepository::markFeed((int) $feed['id'], 'OK', $now);
-            $ok++;
-        }
-        return ['ok' => $ok, 'nok' => $nok, 'pendentes' => $pending];
-    }
+    /** Total fetch budget (seconds). Connect stays at CONNECT_TIMEOUT. */
+    public const FETCH_TIMEOUT = 20;
+    public const CONNECT_TIMEOUT = 5;
 
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
     public static function logRef(?string $url): ?string
@@ -143,87 +38,129 @@ final class CalendarSync
     }
 
     /**
-     * Regra única de URL de feed (cadastro em ICalImport e download em fetch): só https:// com host, sem espaços nem
-     * caracteres de controle; o esquema é comparado sem diferenciar maiúsculas.
+     * Regra única de URL de feed (cadastro e download): só https:// na porta 443, com host,
+     * sem userinfo, sem espaços nem controle, no máximo MAX_URL_LENGTH. O esquema não diferencia maiúsculas.
      */
     public static function isHttpsUrl(string $url): bool
     {
-        if (preg_match('/[\s\x00-\x1f\x7f]/', $url)) {
+        if (strlen($url) > self::MAX_URL_LENGTH || preg_match('/[\s\x00-\x1f\x7f]/', $url)) {
             return false;
         }
         $parts = parse_url($url);
-        return is_array($parts)
-            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+        if (!is_array($parts) || isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+        if (isset($parts['port']) && (int) $parts['port'] !== 443) {
+            return false;
+        }
+        return strtolower((string) ($parts['scheme'] ?? '')) === 'https'
             && (string) ($parts['host'] ?? '') !== '';
     }
 
     /**
      * Baixa um feed iCal externo com proteção contra SSRF:
-     * - só https (isHttpsUrl, a mesma regra do cadastro em ICalImport), sem credenciais na URL;
-     * - host resolvido uma única vez e fixado com CURLOPT_RESOLVE (evita DNS rebinding);
+     * - só https na porta 443 (isHttpsUrl), sem credenciais na URL;
+     * - host resolvido uma única vez e fixado com CURLOPT_RESOLVE (evita DNS rebinding entre a checagem e o connect);
      * - recusa IPs privados, loopback, link-local, reservados e CGNAT;
      * - redirecionamentos seguidos manualmente e revalidados a cada salto;
      * - corpo limitado a MAX_BYTES.
+     *
+     * @return array{body: string, http: int}|array{error: string, http: int}
      */
-    public static function fetch(string $url, int $timeout = 20): ?string
+    public static function fetch(string $url, int $timeout = self::FETCH_TIMEOUT): array
     {
-        // Só https, inclusive para feeds antigos gravados com http (sem exceção; integridade contra MITM).
         if (!self::isHttpsUrl($url)) {
-            return null;
+            return ['error' => 'bad_url', 'http' => 0];
         }
         if (function_exists('exported_calendar_body')) {
             $local = exported_calendar_body($url);
             if (is_string($local) && $local !== '') {
-                return $local;
+                return self::acceptBody($local, 200);
             }
         }
         if (!function_exists('curl_init')) {
-            return null;
+            return ['error' => 'http_5xx', 'http' => 0];
         }
         $current = $url;
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
             $target = self::resolveTarget($current);
-            if ($target === null) {
-                return null;
+            if (isset($target['error'])) {
+                return ['error' => $target['error'], 'http' => 0];
             }
             $result = self::request($current, $target, $timeout);
-            if ($result === null) {
-                return null;
+            if (isset($result['error'])) {
+                return $result;
             }
             [$code, $body, $location] = $result;
             if ($code >= 300 && $code < 400) {
-                if ($location === '') {
-                    return null;
+                if ($location === '' || $hop === self::MAX_REDIRECTS) {
+                    return ['error' => 'bad_url', 'http' => $code];
                 }
                 $current = $location;
                 continue;
             }
-            if ($code >= 200 && $code < 300 && str_contains($body, 'BEGIN:VCALENDAR')) {
-                return $body;
-            }
-            return null;
+            return self::classify($code, $body);
         }
-        return null;
+        return ['error' => 'bad_url', 'http' => 0];
     }
 
     /**
-     * @return array{host: string, port: int, ip: string}|null
+     * HTTP status to a feed result. 2xx goes through acceptBody (size and BEGIN:VCALENDAR).
+     *
+     * @return array{body: string, http: int}|array{error: string, http: int}
      */
-    public static function resolveTarget(string $url): ?array
+    public static function classify(int $code, string $body): array
     {
+        if ($code === 429 || $code >= 500) {
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        if ($code >= 400) {
+            return ['error' => 'http_4xx', 'http' => $code];
+        }
+        if ($code >= 200 && $code < 300) {
+            return self::acceptBody($body, $code);
+        }
+        return ['error' => 'http_5xx', 'http' => $code];
+    }
+
+    /**
+     * @return array{body: string, http: int}|array{error: string, http: int}
+     */
+    public static function acceptBody(string $body, int $http): array
+    {
+        if (strlen($body) > self::MAX_BYTES) {
+            return ['error' => 'too_big', 'http' => $http];
+        }
+        if (!str_contains($body, 'BEGIN:VCALENDAR')) {
+            return ['error' => 'not_ics', 'http' => $http];
+        }
+        return ['body' => $body, 'http' => $http];
+    }
+
+    /**
+     * @return array{host: string, port: int, ip: string}|array{error: string}
+     */
+    public static function resolveTarget(string $url): array
+    {
+        if (strlen($url) > self::MAX_URL_LENGTH) {
+            return ['error' => 'bad_url'];
+        }
         $parts = parse_url($url);
         if (!is_array($parts)) {
-            return null;
+            return ['error' => 'bad_url'];
         }
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $host = strtolower(trim((string) ($parts['host'] ?? ''), '[]'));
         if ($scheme !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass'])) {
-            return null;
+            return ['error' => 'bad_url'];
+        }
+        if (isset($parts['port']) && (int) $parts['port'] !== 443) {
+            return ['error' => 'bad_url'];
         }
         if ($host === 'localhost' || str_ends_with($host, '.localhost')) {
-            return null;
+            return ['error' => 'private_ip'];
         }
-        $port = (int) ($parts['port'] ?? 443);
+        $port = 443;
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             $ips = [$host];
         } else {
@@ -245,12 +182,11 @@ final class CalendarSync
             }
         }
         if ($ips === []) {
-            return null;
+            return ['error' => 'dns'];
         }
-        // Conservador: se qualquer IP do host for interno, recusa.
         foreach ($ips as $ip) {
             if (!self::isPublicIp($ip)) {
-                return null;
+                return ['error' => 'private_ip'];
             }
         }
         return ['host' => $host, 'port' => $port, 'ip' => $ips[0]];
@@ -315,10 +251,12 @@ final class CalendarSync
     }
 
     /**
+     * Connects only to $target['ip'] (CURLOPT_RESOLVE), the address already checked by resolveTarget.
+     *
      * @param array{host: string, port: int, ip: string} $target
-     * @return array{0: int, 1: string, 2: string}|null
+     * @return array{0: int, 1: string, 2: string}|array{error: string, http: int}
      */
-    private static function request(string $url, array $target, int $timeout = 20): ?array
+    private static function request(string $url, array $target, int $timeout = self::FETCH_TIMEOUT): array
     {
         $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
         $buffer = '';
@@ -329,14 +267,14 @@ final class CalendarSync
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_RESOLVE => [$target['host'] . ':' . $target['port'] . ':' . $ip],
             CURLOPT_TIMEOUT => max(1, $timeout),
-            CURLOPT_CONNECTTIMEOUT => min(5, max(1, $timeout)),
+            CURLOPT_CONNECTTIMEOUT => min(self::CONNECT_TIMEOUT, max(1, $timeout)),
             CURLOPT_USERAGENT => 'CasaLivre/1.0',
             CURLOPT_HTTPHEADER => ['Accept: text/calendar, text/plain, */*'],
             CURLOPT_NOPROXY => '*',
             CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig): int {
                 if (strlen($buffer) + strlen($chunk) > self::MAX_BYTES) {
                     $tooBig = true;
-                    return 0; // aborta a transferência
+                    return 0;
                 }
                 $buffer .= $chunk;
                 return strlen($chunk);
@@ -353,14 +291,25 @@ final class CalendarSync
         curl_setopt_array($ch, $options);
         $ok = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($ch);
         $primaryIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
         $location = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: '');
-        if ($ok === false || $tooBig) {
-            return null;
+        if ($tooBig) {
+            return ['error' => 'too_big', 'http' => $code];
         }
-        // Defesa extra: o IP efetivamente conectado precisa ser público.
-        if ($primaryIp !== '' && !self::isPublicIp($primaryIp)) {
-            return null;
+        if ($ok === false) {
+            if ($errno === CURLE_COULDNT_RESOLVE_HOST) {
+                return ['error' => 'dns', 'http' => 0];
+            }
+            if ($errno === CURLE_OPERATION_TIMEDOUT || $errno === CURLE_COULDNT_CONNECT) {
+                return ['error' => 'timeout', 'http' => 0];
+            }
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        $pinned = @inet_pton($target['ip']);
+        $connected = $primaryIp === '' ? $pinned : @inet_pton($primaryIp);
+        if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !self::isPublicIp($primaryIp))) {
+            return ['error' => 'private_ip', 'http' => $code];
         }
         return [$code, $buffer, $location];
     }

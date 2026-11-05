@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Base genérica das filas de trabalho (e-mail, imagens). A requisição só enfileira; um worker por cron
+ * Base genérica das filas de trabalho (e-mail, imagens). A requisição só enfileira; o worker runit
  * (QueueWorker) reserva, processa e confirma (ack) ou devolve com erro (fail, com backoff).
  */
 interface JobQueue

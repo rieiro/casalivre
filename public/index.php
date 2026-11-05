@@ -819,8 +819,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Aviso de uma ação anterior (flash na sessão: exclusão de feed na web, ações do calendário pela API/JS).
     $flash = CalendarFlash::take();
-    // GET é somente leitura: a limpeza das noites além do horizonte acontece no POST
-    // (CalendarSave), no import_ics e no cron scripts/sync-calendars.php.
+    // GET é somente leitura. A limpeza das noites além do horizonte acontece no POST (CalendarSave).
     view('calendar', [
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
@@ -915,7 +914,6 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
         CalendarFlash::set((string) $res->mensagem, 'error');
         redirect('/imoveis/' . $m[1] . '/calendario');
     }
-    CalendarSync::resyncProperty($propertyId);
     CalendarFlash::set(t('cal.feed_removed'), 'ok');
     redirect('/imoveis/' . $m[1] . '/calendario');
 }

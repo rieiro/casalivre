@@ -21,7 +21,7 @@ if in_env "$child" /bin/sh -c "cat '$CL_HOME/admin/valkey-admin.secret' || cat '
 fi
 echo "  ok   cl_admin secret not readable inside the env"
 
-in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && exec php8.4 -r '
+in_env "$child" /bin/sh -c ". '$CL_HOME/etc/dev-env.env' && export VALKEY_MAIL_PASSWORD_FILE='$CL_HOME/etc/valkey-mail.secret' VALKEY_IMAGE_PASSWORD_FILE='$CL_HOME/etc/valkey-image.secret' && exec php8.4 -r '
 \$fail = 0;
 \$c = function (?string \$user, ?string \$pass) {
 	\$r = new Redis();
@@ -62,6 +62,25 @@ foreach (\$want as \$name => [\$exp, \$f]) {
 	\$got = \$try(\$f);
 	\$match = \$got === \$exp || (\$exp === \"falhou\" && \$got === \"NOPERM\");
 	echo (\$match ? \"  ok   \" : \"  FALHA \"), \"cl_app \$name: \$got (esperado \$exp)\", PHP_EOL;
+	\$fail |= (int) !\$match;
+}
+\$side = function (string \$user, string \$file) use (\$c) {
+	return \$c(\$user, trim((string) file_get_contents(\$file)));
+};
+\$mail = \$side('cl_mail', (string) getenv('VALKEY_MAIL_PASSWORD_FILE'));
+\$image = \$side('cl_image', (string) getenv('VALKEY_IMAGE_PASSWORD_FILE'));
+\$own = [
+	['cl_mail incr cl:q:mail:seq', 'ok', fn () => \$mail->incr('cl:q:mail:seq') !== false && \$mail->del('cl:q:mail:seq') !== false],
+	['cl_mail incr cl:q:image:seq', 'NOPERM', fn () => \$mail->rawCommand('INCR', 'cl:q:image:seq')],
+	['cl_mail hlen cl:q:mail:x', 'NOPERM', fn () => \$mail->rawCommand('HLEN', 'cl:q:mail:x')],
+	['cl_image incr cl:q:image:seq', 'ok', fn () => \$image->incr('cl:q:image:seq') !== false && \$image->del('cl:q:image:seq') !== false],
+	['cl_image incr cl:q:mail:seq', 'NOPERM', fn () => \$image->rawCommand('INCR', 'cl:q:mail:seq')],
+	['cl_image get cl:rl:x', 'NOPERM', fn () => \$image->rawCommand('GET', 'cl:rl:x')],
+];
+foreach (\$own as [\$name, \$exp, \$f]) {
+	\$got = \$try(\$f);
+	\$match = \$got === \$exp;
+	echo (\$match ? \"  ok   \" : \"  FALHA \"), \$name, \": \$got (esperado \$exp)\", PHP_EOL;
 	\$fail |= (int) !\$match;
 }
 exit(\$fail);

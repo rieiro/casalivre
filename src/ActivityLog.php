@@ -72,6 +72,8 @@ final class ActivityLog
     public const VALKEY_UNAVAILABLE = 48;
     /** A processing photo older than the worker limit was discarded (Queue-A). Admin, like PHOTO_DELETE. */
     public const PHOTO_STUCK = 49;
+    /** A calendar feed stopped (permanent error, or the 16th consecutive failure). Admin. */
+    public const CALENDAR_FEED_FAIL = 50;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -123,6 +125,7 @@ final class ActivityLog
         self::ACTIVITY_LOG_READ => 'Leitura do log de atividades (ops, função DEFINER)',
         self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
         self::PHOTO_STUCK => 'Foto em processamento descartada (tempo esgotado)',
+        self::CALENDAR_FEED_FAIL => 'Falha permanente na sincronização de calendário externo',
     ];
 
     public const ADMIN = 'admin';
@@ -154,6 +157,7 @@ final class ActivityLog
         self::GROUP_DOMAIN_UNVERIFIED => self::SECURITY, self::ACTIVITY_LOG_READ => self::ADMIN,
         self::VALKEY_UNAVAILABLE => self::SECURITY,
         self::PHOTO_STUCK => self::ADMIN,
+        self::CALENDAR_FEED_FAIL => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -477,6 +481,7 @@ final class ActivityLog
         self::CALENDAR_FEED_REMOVE => ['feed_id'],
         self::CALENDAR_MIN_NIGHTS => ['inicio', 'fim', 'minimo_noites'],
         self::CALENDAR_SYNC => ['url', 'novas'],
+        self::CALENDAR_FEED_FAIL => ['feed_id'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 

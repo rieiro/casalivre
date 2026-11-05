@@ -67,7 +67,11 @@ final class SearchService
         }
         try {
             return Db::transactional(db(), static function () use ($query, $host, $after, $out): array {
+                // The idx_ls_* INCLUDE lists let a neighborhood scan pick Gather Merge
+                // (largest SP neighborhood 2.0 ms -> 11.9 ms; 1.5 ms with parallel off).
+                // Those workers also compete for the 4 cores under load.
                 db()->exec("SET LOCAL statement_timeout = '" . self::STATEMENT_TIMEOUT_MS . "ms'");
+                db()->exec('SET LOCAL max_parallel_workers_per_gather = 0');
                 return self::listed($query, $host, $after, $out);
             });
         } catch (PDOException $e) {
@@ -94,8 +98,8 @@ final class SearchService
         if ($groupId === false) {
             return $out;
         }
-        // Reviews are 1..10, so a score above 10 matches nothing. Skip the listing queries.
-        if ($query->scoreMin > 10) {
+        // Reviews are 1..10, and the property form caps guests at 999. Above either, nothing matches.
+        if ($query->scoreMin > 10 || $query->hospedes > 999) {
             $out['total_aprox'] = 0;
             return $out;
         }
@@ -107,6 +111,12 @@ final class SearchService
         $radiusKm = self::radiusKm($place, $query->raio);
         $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
         $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin);
+        // The count is the listing query. A batch would only add the keyset, so it is skipped.
+        // iteracoes stays 1: 0 would look like the search never ran (unresolved text, or a score/guest cap).
+        if ($out['total_aprox'] === 0) {
+            $out['iteracoes'] = 1;
+            return $out;
+        }
 
         $known = Amenities::keys();
         $wanted = array_values(array_filter(
