@@ -27,22 +27,11 @@ $iso = static fn (int $days): string => date('Y-m-d', strtotime(date('Y-m-d') . 
 $cal = static fn (string $events): string => "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//evil//EN\r\n" . $events . "END:VCALENDAR\r\n";
 $ev = static fn (string $start, string $end = '', string $extra = ''): string => "BEGIN:VEVENT\r\nUID:" . bin2hex(random_bytes(6))
     . "@evil\r\nDTSTART;VALUE=DATE:$start\r\n" . ($end !== '' ? "DTEND;VALUE=DATE:$end\r\n" : '') . $extra . "SUMMARY:Reserved\r\nEND:VEVENT\r\n";
-$blockedOf = static function (int $propertyId): array {
-    $days = [];
-    foreach (HouseRepository::calendarDays($propertyId) as $row) {
-        if ((int) $row['blocked'] !== 1) {
-            continue;
-        }
-        $days[substr((string) $row['day'], 0, 10)] = (string) $row['origin'];
-    }
-    ksort($days);
-    return $days;
-};
 
 $bystander = t_seed_owner();
 db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, origin) VALUES (?, ?, 1, 'sync')")
     ->execute([(int) $bystander['house_id'], $iso(3)]);
-$bystanderDays = $blockedOf((int) $bystander['house_id']);
+$bystanderDays = t_blocked_days((int) $bystander['house_id']);
 
 /**
  * Parses $body. On success, applies it with importFeed and checks the rows match.
@@ -50,7 +39,7 @@ $bystanderDays = $blockedOf((int) $bystander['house_id']);
  *
  * @return array{0:int,1:array<string,string>,2:float,3:string,4:int,5:?string}
  */
-$run = static function (string $body, ?int $propertyId = null, bool $apply = true) use ($blockedOf): array {
+$run = static function (string $body, ?int $propertyId = null, bool $apply = true): array {
     $propertyId ??= (int) t_seed_owner()['house_id'];
     $t = microtime(true);
     $err = '';
@@ -80,7 +69,7 @@ $run = static function (string $body, ?int $propertyId = null, bool $apply = tru
                     $err = 'addFeed ' . (is_string($created) ? $created : 'failed');
                 } else {
                     HouseRepository::importFeed($propertyId, (int) $created['feed']['id'], $parsed['nights'], $parsed['origins'], 0);
-                    $stored = $blockedOf($propertyId);
+                    $stored = t_blocked_days($propertyId);
                     if ($stored !== $days) {
                         $err = 'stored ' . count($stored) . ' nights, import_ics returned ' . count($days);
                     }
@@ -172,7 +161,7 @@ $wrote = is_array($created)
     ? HouseRepository::importFeed($p, (int) $created['feed']['id'], $parsed['nights'], $parsed['origins'], 0)
     : null;
 t_eq(0, $wrote['written'] ?? -1, 'an existing reservation is not overwritten by a feed');
-t_eq('reserva', $blockedOf($p)[$iso(17)] ?? '', 'the reservation origin stays');
+t_eq('reserva', t_blocked_days($p)[$iso(17)] ?? '', 'the reservation origin stays');
 $r = $run($cal("BEGIN:VEVENT\r\nUID:casalivre-$p-1\r\nDTSTART:{$ymd(18)}\r\nEND:VEVENT\r\n"), $p, false);
 t_eq(['', 0], [$r[3], $r[0]], 'own exported UID is skipped');
 $r = $run($cal("BEGIN:VEVENT\r\nDESCRIPTION:moved from DTSTART:{$ymd(25)}\r\nDTSTART:{$ymd(19)}\r\nEND:VEVENT\r\n"));
@@ -189,7 +178,7 @@ $check('JSON/HTML error page', $run('<html><body>{"error":"BEGIN:VCALENDAR"}</bo
 $check('empty body', $run(''), 0);
 
 echo "bystander property untouched\n";
-t_eq($bystanderDays, $blockedOf((int) $bystander['house_id']), 'the other property keeps exactly its own blocked day');
+t_eq($bystanderDays, t_blocked_days((int) $bystander['house_id']), 'the other property keeps exactly its own blocked day');
 
 echo "SSRF: fetch refuses before connecting\n";
 $urls = [
@@ -236,25 +225,19 @@ $cases = [
     ['metadata URL', ['external_ical_url' => 'https://169.254.169.254/latest/meta-data/', 'feed_title' => 'meta'], 200],
     ['100 KB URL', ['external_ical_url' => 'https://127.0.0.1/' . bin2hex(random_bytes(50000)), 'feed_title' => 'long'], 422],
 ];
-$serverErrors = [];
 foreach ($cases as [$label, $payload, $okStatus]) {
     $t = microtime(true);
     $resp = $post($payload);
     echo sprintf("  %-46s HTTP %d %6.3fs\n", $label, $resp['status'], microtime(true) - $t);
     t_eq($okStatus, $resp['status'], $label);
-    if ($resp['status'] >= 500) {
-        $serverErrors[] = $label;
-    }
     if ($label === 'loopback URL + client ics_body') {
         $json = json_decode($resp['body'], true) ?: [];
         t_eq(0, $json['importadas'] ?? null, 'client ics_body imports nothing');
     }
 }
-t_eq([], $serverErrors, 'no 500 for bad import input');
-t_eq([], $blockedOf((int) $owner['house_id']), 'nothing blocked by saved feeds or by the client ics_body');
+t_eq([], t_blocked_days((int) $owner['house_id']), 'nothing blocked by saved feeds or by the client ics_body');
 $feeds = HouseRepository::feeds((int) $owner['house_id']);
 t_eq(2, count($feeds), 'only the loopback and metadata URLs were saved; the 100 KB URL was rejected');
-t_ok(count($feeds) <= HouseRepository::FEED_SLOTS, 'feed limit holds (' . count($feeds) . ')');
 @unlink($jar);
 
 t_done();

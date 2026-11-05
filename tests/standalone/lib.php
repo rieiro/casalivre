@@ -413,3 +413,22 @@ function t_login(string $base, string $jar, string $email, string $password): st
     preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m);
     return $m[1] ?? $csrf;
 }
+
+/**
+ * Blocked nights for one property: day (Y-m-d) => origin. Unblocked rows are omitted.
+ *
+ * @return array<string, string>
+ */
+function t_blocked_days(int $propertyId): array
+{
+    require_once CL_ROOT . '/src/HouseRepository.php';
+    $days = [];
+    foreach (HouseRepository::calendarDays($propertyId) as $row) {
+        if ((int) $row['blocked'] !== 1) {
+            continue;
+        }
+        $days[substr((string) $row['day'], 0, 10)] = (string) $row['origin'];
+    }
+    ksort($days);
+    return $days;
+}

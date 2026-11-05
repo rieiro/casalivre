@@ -15,17 +15,6 @@ t_temp_db();
 mt_srand(246);
 $today = date('Y-m-d');
 $day = static fn (int $offset): DateTimeImmutable => (new DateTimeImmutable($today))->modify(($offset >= 0 ? '+' : '') . $offset . ' days');
-$blockedOf = static function (int $propertyId): array {
-    $days = [];
-    foreach (HouseRepository::calendarDays($propertyId) as $row) {
-        if ((int) $row['blocked'] !== 1) {
-            continue;
-        }
-        $days[substr((string) $row['day'], 0, 10)] = (string) $row['origin'];
-    }
-    ksort($days);
-    return $days;
-};
 
 /** @return array{parsed: array, seconds: float, peak: float, error: string} */
 $parse = static function (int $propertyId, string $body): array {
@@ -107,14 +96,14 @@ t_ok(is_array($created), 'realistic feed row');
 $feedId = (int) $created['feed']['id'];
 $wrote = HouseRepository::importFeed($pid, $feedId, $r['parsed']['nights'], $r['parsed']['origins'], 0);
 t_eq(count($expected), $wrote['written'] ?? -1, 'importFeed writes each modeled night once');
-t_eq($expected, $blockedOf($pid), 'stored rows match the model');
+t_eq($expected, t_blocked_days($pid), 'stored rows match the model');
 t_ok($r['seconds'] < 20.0, sprintf('under 20 s (%.2f s)', $r['seconds']));
 t_ok($r['peak'] < 128.0, sprintf('peak memory under +128 MB (%.1f MB)', $r['peak']));
 
 echo "re-import is idempotent\n";
 $again = HouseRepository::importFeed($pid, $feedId, $r['parsed']['nights'], $r['parsed']['origins'], 0);
 t_eq(['freed' => 0, 'written' => 0], $again, 'no-op sync writes 0 rows');
-t_eq($expected, $blockedOf($pid), 'rows unchanged');
+t_eq($expected, t_blocked_days($pid), 'rows unchanged');
 $dupes = db()->prepare('SELECT COUNT(*) - COUNT(DISTINCT day) FROM calendar_days WHERE property_id = ?');
 $dupes->execute([$pid]);
 t_eq(0, (int) $dupes->fetchColumn(), 'no duplicate day rows');
@@ -134,7 +123,7 @@ $bomb = "BEGIN:VCALENDAR\n" . str_repeat($one, $copies) . "END:VCALENDAR\n";
 $r = $parse($pid2, $bomb);
 echo $report($copies . ' minimal events', $r, strlen($bomb), count($r['parsed']['nights'] ?? [])) . "\n";
 t_eq(['', 'too_big'], [$r['error'], $r['parsed']['error'] ?? null], 'the bomb fails the feed with too_big');
-t_eq([], $blockedOf($pid2), 'too_big writes nothing');
+t_eq([], t_blocked_days($pid2), 'too_big writes nothing');
 t_ok($r['seconds'] < 10.0, sprintf('under 10 s (%.2f s)', $r['seconds']));
 t_ok($r['peak'] < 256.0, sprintf('peak memory under +256 MB (%.1f MB)', $r['peak']));
 
@@ -146,7 +135,7 @@ $big = substr(str_repeat($big, (int) ceil(20 * 1048576 / strlen($big))), 0, 20 *
 $r = $parse($pid3, $big);
 echo $report('20 MiB', $r, strlen($big), count($r['parsed']['nights'] ?? [])) . "\n";
 t_eq(['', 'too_big'], [$r['error'], $r['parsed']['error'] ?? null], '20 MiB fails the feed with too_big');
-t_eq([], $blockedOf($pid3), 'too_big writes nothing');
+t_eq([], t_blocked_days($pid3), 'too_big writes nothing');
 t_ok($r['seconds'] < 60.0, sprintf('under 60 s (%.2f s)', $r['seconds']));
 t_ok($r['peak'] < 512.0, sprintf('peak memory under +512 MB (%.1f MB)', $r['peak']));
 
