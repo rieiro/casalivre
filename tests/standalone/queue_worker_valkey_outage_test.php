@@ -5,6 +5,11 @@
 // reconnects. The outage is a VALKEY_SOCKET symlink that dangles (Valkey gone) and then points at the dev env's
 // socket (Valkey back). The worker uses VALKEY_QUEUE_NS so it does not reserve the real cl:q:mail. PG only for the
 // rest of the suite; this file needs phpredis and VALKEY_SOCKET.
+// Isolation: the sentinel that proves the worker stays in its namespace sits in a second, decoy namespace, never on the
+// real cl:q:mail:ready. The dev env's live queue workers drain the real key, so a sentinel there was taken by them
+// and the test failed whenever they ran. After Valkey is back, a job pushed to this worker's own cl:q:<ns>:mail:ready
+// must leave that list within 5s, and the same check on a broken key (missing colon) must fail. The test never stops
+// or touches workers it did not start.
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
@@ -116,14 +121,32 @@ t_ok(!str_contains($velog, 'reachable again') && !str_contains($velog, $link), '
 @unlink($errFile);
 
 $sentinel = 'sentinel-' . $ns;
+$decoyNs = 'd' . substr(bin2hex(random_bytes(8)), 0, 16);
+$decoyKey = 'cl:q:' . $decoyNs . ':mail:ready';
+// Same shape as ValkeyJobQueue::key('ready') when VALKEY_QUEUE_NS is $ns (cl:q:<ns>:mail:ready).
+$ownKey = 'cl:q:' . $ns . ':mail:ready';
+// Missing the colon before "mail": not this worker's list and not the real cl:q:mail:ready.
+$brokenKey = 'cl:q:' . $ns . 'mail:ready';
 $realRedis = Valkey::connect();
-$realRedis->lPush('cl:q:mail:ready', $sentinel);
-register_shutdown_function(static function () use ($realRedis, $sentinel): void {
+$realRedis->lPush($decoyKey, $sentinel);
+register_shutdown_function(static function () use ($realRedis, $decoyKey, $brokenKey, $ownKey): void {
     try {
-        $realRedis->lRem('cl:q:mail:ready', $sentinel, 0);
+        $realRedis->del($decoyKey, $brokenKey, $ownKey);
     } catch (Throwable) {
     }
 });
+$consumedWithin = static function (Redis $redis, string $key, string $payload): bool {
+    $redis->lPush($key, $payload);
+    $deadline = microtime(true) + 5.0;
+    do {
+        $left = $redis->lRange($key, 0, -1) ?: [];
+        if (!in_array($payload, $left, true)) {
+            return true;
+        }
+        usleep(50000);
+    } while (microtime(true) < $deadline);
+    return false;
+};
 
 echo "Valkey down: one line, no stack trace, no exit\n";
 $proc = $start([]);
@@ -137,7 +160,7 @@ $elog = (string) file_get_contents($errorLog);
 t_eq(1, substr_count($elog, 'CasaLivre ALERT: queue worker: Valkey unavailable (RedisException), retrying every second.'), 'the same ALERT in error_log');
 t_ok(!str_contains($elog, $dir), 'error_log names no socket path');
 
-echo "Valkey back: one line, the worker resumes, real cl:q:mail untouched\n";
+echo "Valkey back: one line, the worker resumes, other namespaces untouched\n";
 unlink($link);
 symlink($real, $link);
 $back = '';
@@ -148,13 +171,19 @@ for ($i = 0; $i < 60 && !str_contains($back, 'reachable again'); $i++) {
 t_eq(1, substr_count($back, 'queue-worker: Valkey reachable again, resuming'), 'one "reachable again" line after reconnecting');
 t_eq(1, substr_count((string) file_get_contents($errorLog), 'CasaLivre ALERT: queue worker: Valkey unavailable'), 'recovery does not add another error_log ALERT');
 t_eq(true, proc_get_status($proc)['running'], 'still running');
-$left = $realRedis->lRange('cl:q:mail:ready', 0, -1) ?: [];
-t_ok(in_array($sentinel, $left, true), 'worker did not take a job from cl:q:mail');
+$left = $realRedis->lRange($decoyKey, 0, -1) ?: [];
+t_ok(in_array($sentinel, $left, true), 'worker did not take a job outside its namespace');
+echo "namespace: own key is consumed within 5s; a broken key is not\n";
+t_ok($consumedWithin($realRedis, $ownKey, 'own-' . $ns), 'job pushed to cl:q:<ns>:mail:ready is consumed within 5s');
+$brokenPayload = 'broken-' . $ns;
+t_ok($consumedWithin($realRedis, $brokenKey, $brokenPayload) === false, 'broken-key negative variant fails: still queued after 5s');
+t_ok(in_array($brokenPayload, $realRedis->lRange($brokenKey, 0, -1) ?: [], true), 'broken-key payload stayed off the worker list');
+$realRedis->del($brokenKey);
 proc_terminate($proc, 15);
 $status = $wait($proc);
 t_eq([false, 0], [$status['running'], $status['exitcode']], 'SIGTERM: clean exit 0');
-$left = $realRedis->lRange('cl:q:mail:ready', 0, -1) ?: [];
-t_ok(in_array($sentinel, $left, true), 'still on cl:q:mail after the worker stopped');
+$left = $realRedis->lRange($decoyKey, 0, -1) ?: [];
+t_ok(in_array($sentinel, $left, true), 'decoy job still queued after the worker stopped');
 
 echo "--once with Valkey down: one line, exit 1 (no stack trace)\n";
 unlink($link);
@@ -204,5 +233,5 @@ if ($status['running']) {
 }
 proc_close($proc);
 t_eq([false, 1], [$status['running'], $status['exitcode']], 'SIGTERM during the sleep: exit 1');
-$realRedis->lRem('cl:q:mail:ready', $sentinel, 0);
+$realRedis->del($decoyKey);
 t_done();
