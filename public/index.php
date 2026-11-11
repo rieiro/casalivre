@@ -164,12 +164,12 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema'], true)) {
+    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/admin'], true) || str_starts_with($path, '/admin/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -476,6 +476,10 @@ if ($path === '/entrar' && $method === 'POST') {
     $res = LoginAttempt::run($email, (string) ($_POST['password'] ?? ''));
     $res->registrar();
     if ($res->tipo === 'ok') {
+        $loggedUser = current_user();
+        if ($loggedUser && (int) ($loggedUser['is_admin'] ?? 0) === 1) {
+            redirect('/admin');
+        }
         redirect('/painel');
     }
     if ($res->tipo === 'pending') {
@@ -494,6 +498,154 @@ if ($path === '/sair' && $method === 'POST') {
     activity(ActivityLog::LOGOUT);
     unset($_SESSION['user_id']);
     redirect('/');
+}
+
+// Painel Administrativo e Quote Generator
+if ($path === '/admin' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    QuoteRepository::ensureTable();
+    $stmt = db()->query("SELECT p.*, " . HouseRepository::CITY_LABEL_SQL . " AS city FROM properties p LEFT JOIN places c ON c.id = p.city_place_id WHERE p.status = 'active' ORDER BY p.id ASC");
+    $properties = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    view('admin_panel', [
+        'title' => 'Painel Admin · CasaLivre',
+        'user' => $user,
+        'properties' => $properties,
+    ]);
+    return null;
+}
+
+if (preg_match('#^/admin/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteGenerator.php';
+    QuoteRepository::ensureTable();
+
+    $property = HouseRepository::findByPublicHash($m[1]);
+    if (!$property || ($property['status'] ?? 'active') !== 'active') {
+        http_response_code(404);
+        view('message', ['title' => 'Imóvel não encontrado', 'message' => 'O imóvel não existe ou está inativo.']);
+        return null;
+    }
+
+    $error = null;
+    $quote = null;
+    $paymentUrl = null;
+    $whatsappMsg = null;
+
+    if ($method === 'POST') {
+        csrf_check();
+        $checkin = trim((string) ($_POST['checkin'] ?? ''));
+        $checkout = trim((string) ($_POST['checkout'] ?? ''));
+        $taxPercent = max(0, (int) ($_POST['tax_percent'] ?? 0));
+        $specialOfferRaw = trim((string) ($_POST['special_offer'] ?? ''));
+        $specialOffer = ($specialOfferRaw !== '' && is_numeric($specialOfferRaw)) ? (int) $specialOfferRaw : null;
+        $pixKey = trim((string) ($_POST['pix_key'] ?? 'rafaelrieiro@gmail.com')) ?: 'rafaelrieiro@gmail.com';
+
+        if ($checkin === '' || $checkout === '' || $checkin >= $checkout) {
+            $error = 'Por favor, selecione datas válidas (o check-out deve ser posterior ao check-in).';
+        } else {
+            try {
+                $quote = QuoteRepository::create(
+                    propertyId: (int) $property['id'],
+                    checkin: $checkin,
+                    checkout: $checkout,
+                    taxPercent: $taxPercent,
+                    specialOffer: $specialOffer,
+                    pixKey: $pixKey
+                );
+                $appUrl = app_url();
+                $paymentUrl = $appUrl . '/pagamento/' . $quote['quote_hash'];
+                $checkinFmt = format_date($checkin);
+                $checkoutFmt = format_date($checkout);
+                $totalFmt = money((int) $quote['total']);
+                $propTitle = (string) $property['title'];
+                $whatsappMsg = "Olá! Segue o link exclusivo para confirmação e pagamento da sua reserva no CasaLivre ($propTitle):
+$paymentUrl
+
+Período: $checkinFmt a $checkoutFmt ({$quote['nights']} noites)
+Valor total: $totalFmt (Chave Pix: $pixKey)";
+            } catch (InvalidArgumentException $e) {
+                $error = 'Não foi possível gerar a cotação: ' . $e->getMessage();
+            }
+        }
+    }
+
+    view('admin_quote', [
+        'title' => 'Gerar Link de Pagamento · ' . $property['title'],
+        'user' => $user,
+        'property' => $property,
+        'quote' => $quote,
+        'payment_url' => $paymentUrl,
+        'whatsapp_msg' => $whatsappMsg,
+        'error' => $error,
+        'posted' => $_POST,
+    ]);
+    return null;
+}
+
+// Direct Guest Payment Page (Public Side)
+if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/PixPayload.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/PhotoRepository.php';
+
+    QuoteRepository::ensureTable();
+    $quote = QuoteRepository::findByHash($m[1]);
+    if (!$quote) {
+        http_response_code(404);
+        view('message', ['title' => 'Cotação não encontrada', 'message' => 'O link de pagamento informado não existe ou já expirou.']);
+        return null;
+    }
+
+    $property = HouseRepository::find((int) $quote['property_id']);
+    $photos = PhotoRepository::listReady((int) $property['id']);
+    $property['photo'] = $photos[0]['path'] ?? null;
+
+    $pixKey = (string) ($quote['pix_key'] ?: 'rafaelrieiro@gmail.com');
+    $pixPayload = PixPayload::generate(
+        key: $pixKey,
+        name: 'Rafael Rieiro',
+        city: (string) ($property['city'] ?? 'Saquarema'),
+        amount: (float) $quote['total_price'],
+        txid: 'CL' . strtoupper($m[1])
+    );
+
+    $checkinFmt = format_date((string) $quote['checkin']);
+    $checkoutFmt = format_date((string) $quote['checkout']);
+    $totalFmt = money((int) $quote['total_price']);
+    $waText = urlencode("Olá! Acabei de realizar o pagamento Pix no valor de $totalFmt para a reserva do imóvel {$property['title']} ($checkinFmt a $checkoutFmt). Código: {$m[1]}");
+    $waUrl = "https://wa.me/5521999999999?text=$waText";
+
+    view('payment', [
+        'title' => 'Pagamento de Reserva · ' . $property['title'],
+        'quote' => array_merge($quote, ['total' => (int) $quote['total_price']]),
+        'property' => $property,
+        'pix_payload' => $pixPayload,
+        'whatsapp_confirm_url' => $waUrl,
+        'confirmed' => ($quote['status'] === 'confirmed') || isset($_GET['sucesso']),
+    ]);
+    return null;
+}
+
+if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method === 'POST') {
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+
+    QuoteRepository::ensureTable();
+    $ok = QuoteRepository::confirmPayment($m[1]);
+    if (!$ok) {
+        http_response_code(400);
+        view('message', ['title' => 'Erro na confirmação', 'message' => 'Não foi possível confirmar esta reserva.']);
+        return null;
+    }
+
+    activity(ActivityLog::CALENDAR_BLOCK, ['imovel_id' => (int) $m[1], 'motivo' => 'reserva']);
+    redirect('/pagamento/' . $m[1] . '?sucesso=1');
 }
 
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).

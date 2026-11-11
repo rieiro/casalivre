@@ -380,6 +380,8 @@ function handle_api(string $path, string $method): void
             'min_nights' => (int) $house['min_nights'],
             'checkin_time' => $house['checkin_time'],
             'checkout_time' => $house['checkout_time'],
+            'cleaning_fee' => (int) ($house['cleaning_fee'] ?? 0),
+            'blocked_days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($house)),
         ]);
     }
 

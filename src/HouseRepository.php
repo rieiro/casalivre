@@ -343,7 +343,8 @@ SQL;
     public static function exportDays(int $propertyId): array
     {
         $stmt = db()->prepare("SELECT day, blocked, origin FROM calendar_days
-            WHERE property_id = ? AND blocked = 1 AND COALESCE(origin, '') NOT IN ('sync', 'reserva')
+            WHERE property_id = ? AND blocked = 1 -- Updated: 2026-11 - Requirement changed from excluding reserva to exporting direct reservations in iCal feed
+            AND COALESCE(origin, '') != 'sync'
             ORDER BY day");
         $stmt->execute([$propertyId]);
         $rows = [];
