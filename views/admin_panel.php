@@ -2,6 +2,7 @@
     <div class="toolbar">
         <h1>Painel do Administrador</h1>
         <div>
+            <a class="button secondary" href="/admin/reservas">📋 Reservas & Confirmação Pix</a>
             <a class="button" href="/admin/tema">Tema da plataforma</a>
             <a class="button" href="/admin/grupos">Grupos</a>
             <a class="primary" href="/imoveis/novo">Cadastrar Imóvel</a>

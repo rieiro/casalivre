@@ -31,6 +31,7 @@
         <a href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?= e(t('nav.search')) ?></a>
         <?php else: ?>
             <a href="/admin">Painel Admin</a>
+            <a href="/admin/reservas">Reservas & Pix</a>
         <?php endif; ?>
         <?php if (!empty($user)): ?>
             <a href="/painel"><?= e(t('nav.properties')) ?></a>

@@ -334,3 +334,7 @@ body.err-page.err-pad { padding: 0 1rem; }
 body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base) var(--font-sans); background: var(--err-bg); color: var(--ink); }
 .err-shield main { box-sizing: content-box; max-width: 560px; margin: 8vh auto; background: var(--surface); border: 1px solid var(--err-line); border-radius: var(--radius-12); padding: var(--space-28); }
 .err-shield a { color: var(--brand); }
+
+.chip { display: inline-block; padding: var(--space-2) var(--space-8); border-radius: var(--radius-pill); font-size: .8rem; font-weight: 600; background: var(--subtle-bg); border: 1px solid var(--line); }
+.chip.is-confirmed { background: var(--notice-bg); border-color: var(--notice-line); color: var(--ink); }
+.chip.is-pending { background: var(--subtle-bg); border-color: var(--line); color: var(--muted); }

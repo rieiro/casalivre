@@ -516,6 +516,52 @@ if ($path === '/admin' && $method === 'GET') {
     return null;
 }
 
+if ($path === '/admin/reservas' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    QuoteRepository::ensureTable();
+
+    $filter = (string) ($_GET['status'] ?? '');
+    if (!in_array($filter, ['pending', 'confirmed'], true)) {
+        $filter = null;
+    }
+
+    $quotes = QuoteRepository::listAll($filter);
+
+    view('admin_reservations', [
+        'title' => 'Reservas & Confirmação Pix · CasaLivre',
+        'user' => $user,
+        'quotes' => $quotes,
+        'filter' => $filter,
+        'csrf' => csrf_token(),
+        'confirmed' => !empty($_GET['confirmado']),
+        'error' => isset($_GET['erro']) && is_string($_GET['erro']) ? $_GET['erro'] : null,
+    ]);
+    return null;
+}
+
+if (preg_match('#^/admin/reservas/([a-f0-9]{16})/confirmar$#', $path, $m) && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    QuoteRepository::ensureTable();
+
+    $hash = $m[1];
+    try {
+        $ok = QuoteRepository::confirmPayment($hash);
+        if ($ok) {
+            activity(ActivityLog::CALENDAR_BLOCK, ['quote_hash' => $hash, 'motivo' => 'admin_pix_confirmed']);
+            redirect('/admin/reservas?confirmado=1');
+        } else {
+            redirect('/admin/reservas?erro=' . urlencode('Cotação não encontrada.'));
+        }
+    } catch (Throwable $e) {
+        redirect('/admin/reservas?erro=' . urlencode($e->getMessage()));
+    }
+    return null;
+}
+
 if (preg_match('#^/admin/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
     require_once dirname(__DIR__) . '/src/HouseRepository.php';

@@ -166,4 +166,24 @@ final class QuoteRepository
             return true;
         });
     }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function listAll(?string $status = null): array
+    {
+        self::ensureTable();
+        $sql = "SELECT q.*, p.title as property_title, p.public_hash as property_hash
+                FROM quotes q
+                JOIN properties p ON p.id = q.property_id";
+        $params = [];
+        if ($status !== null && $status !== '') {
+            $sql .= " WHERE q.status = ?";
+            $params[] = $status;
+        }
+        $sql .= " ORDER BY q.created_at DESC";
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }

@@ -126,4 +126,55 @@ final class QuoteRepositoryTest extends TestCase
         $this->assertStringContainsString("SUMMARY:Reservado", $ics);
         $this->assertStringContainsString("DTSTART;VALUE=DATE:20270415", $ics);
     }
+
+    public function testListQuotesForAdminManagement(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-06-01",
+            checkout: "2027-06-04",
+            specialOffer: 450
+        );
+
+        $pending = QuoteRepository::listAll();
+        $this->assertNotEmpty($pending);
+        $hashes = array_column($pending, 'quote_hash');
+        $this->assertContains($quote['quote_hash'], $hashes);
+
+        $ok = QuoteRepository::confirmPayment($quote['quote_hash']);
+        $this->assertTrue($ok);
+
+        $confirmed = QuoteRepository::listAll('confirmed');
+        $hashesConfirmed = array_column($confirmed, 'quote_hash');
+        $this->assertContains($quote['quote_hash'], $hashesConfirmed);
+    }
+
+    public function testAdminConfirmReservationAndFilterStatus(): void
+    {
+        $this->assertFalse(QuoteRepository::confirmPayment("nonexistent_hash_123"));
+
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-07-10",
+            checkout: "2027-07-13",
+            specialOffer: 600
+        );
+
+        $pendingList = QuoteRepository::listAll("pending");
+        $this->assertContains($quote["quote_hash"], array_column($pendingList, "quote_hash"));
+
+        $confirmedListBefore = QuoteRepository::listAll("confirmed");
+        $this->assertNotContains($quote["quote_hash"], array_column($confirmedListBefore, "quote_hash"));
+
+        $success = QuoteRepository::confirmPayment($quote["quote_hash"]);
+        $this->assertTrue($success);
+
+        $pendingListAfter = QuoteRepository::listAll("pending");
+        $this->assertNotContains($quote["quote_hash"], array_column($pendingListAfter, "quote_hash"));
+
+        $confirmedListAfter = QuoteRepository::listAll("confirmed");
+        $this->assertContains($quote["quote_hash"], array_column($confirmedListAfter, "quote_hash"));
+    }
 }
