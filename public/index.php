@@ -1159,8 +1159,16 @@ if ($path === '/conta/excluir' && $method === 'POST') {
 }
 
 if ($path === '/painel' && $method === 'GET') {
-    require_user();
-    view('dashboard', ['properties' => [], 'use_api' => true]);
+    $user = require_user();
+    $userId = (int) $user['id'];
+    $quotes = QuoteRepository::listForUser($userId);
+    $pendingQuotes = count(array_filter($quotes, fn($q) => ($q['status'] ?? '') !== 'confirmed' && strtotime((string) $q['expires_at']) >= time()));
+    view('dashboard', [
+        'properties' => [],
+        'use_api' => true,
+        'quotes_count' => count($quotes),
+        'pending_count' => $pendingQuotes,
+    ]);
     return null;
 }
 

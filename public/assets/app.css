@@ -1607,3 +1607,460 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     margin: 0 0 1.5rem;
     line-height: 1.5;
 }
+
+
+/* ==========================================================================
+   PAINEL DO ANFITRIÃO - LUXURY DASHBOARD (MATCHING /RESERVAS & /PAGAMENTO)
+   ========================================================================== */
+.dash-page {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4.5rem;
+}
+
+/* Header Hero */
+.dash-header {
+    background: linear-gradient(135deg, #001f4d 0%, #003580 50%, #004fb3 100%);
+    color: #ffffff;
+    border-radius: 20px;
+    padding: 2.25rem 2rem;
+    margin-bottom: 2.25rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 53, 128, 0.25), 0 8px 10px -6px rgba(0, 53, 128, 0.2);
+}
+
+.dash-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.dash-header-info {
+    flex: 1;
+    min-width: 280px;
+}
+
+.dash-badge-eyebrow {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #93c5fd;
+    background: rgba(255, 255, 255, 0.12);
+    padding: 0.3rem 0.75rem;
+    border-radius: 9999px;
+    margin-bottom: 0.75rem;
+}
+
+.dash-header-title {
+    font-size: 2.15rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    margin: 0 0 0.5rem;
+    color: #ffffff;
+    line-height: 1.2;
+}
+
+.dash-header-desc {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0;
+    max-width: 640px;
+}
+
+/* Quick Actions in Header */
+.dash-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.btn-dash-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #059669;
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 0.75rem 1.35rem;
+    border-radius: 12px;
+    border: none;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+.btn-dash-primary:hover {
+    background: #047857;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(5, 150, 105, 0.45);
+}
+
+.btn-dash-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    text-decoration: none;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+}
+.btn-dash-secondary:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #ffffff !important;
+    transform: translateY(-1px);
+}
+
+.btn-dash-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9) !important;
+    font-weight: 600;
+    font-size: 0.88rem;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+.btn-dash-ghost:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #ffffff !important;
+}
+
+.dash-pill-pending {
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    margin-left: 0.2rem;
+}
+
+/* Stats Bar */
+.dash-stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dash-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 0.85rem 1.15rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+}
+.dash-stat-item.is-clickable:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.dash-stat-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.dash-stat-data {
+    display: flex;
+    flex-direction: column;
+}
+
+.dash-stat-num {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.2;
+}
+
+.dash-stat-label {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 500;
+    margin-top: 0.15rem;
+}
+
+/* Properties Grid */
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 1.75rem;
+}
+
+/* Property Card */
+.dash-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 35, 80, 0.05);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.dash-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 28px -4px rgba(0, 35, 80, 0.12);
+    border-color: #cbd5e1;
+}
+
+.dash-card-media {
+    position: relative;
+    width: 100%;
+    height: 220px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+.dash-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+}
+.dash-card:hover .dash-card-media img {
+    transform: scale(1.03);
+}
+
+.dash-card-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(16, 185, 129, 0.95);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3rem 0.75rem;
+    border-radius: 9999px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.dash-card-price {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0, 35, 80, 0.92);
+    color: #ffffff;
+    font-size: 0.92rem;
+    font-weight: 800;
+    padding: 0.4rem 0.85rem;
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.dash-card-price small {
+    font-size: 0.72rem;
+    font-weight: 400;
+    opacity: 0.9;
+}
+
+.dash-card-body {
+    padding: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.dash-card-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.4rem;
+    line-height: 1.35;
+}
+.dash-card-title a {
+    color: #0f172a;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+.dash-card-title a:hover {
+    color: #003580;
+}
+
+.dash-card-meta {
+    font-size: 0.88rem;
+    color: #64748b;
+    margin: 0 0 0.5rem;
+    font-weight: 500;
+}
+
+.dash-card-date {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin: 0 0 1rem;
+}
+
+/* Actions in Card */
+.dash-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 1.15rem;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+}
+
+.btn-dash-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-dash-action.is-cal {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+    font-weight: 700;
+    flex: 1;
+    justify-content: center;
+}
+.btn-dash-action.is-cal:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1e40af;
+}
+
+.btn-dash-action.is-edit {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+.btn-dash-action.is-edit:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.btn-dash-action.is-view {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #64748b;
+}
+.btn-dash-action.is-view:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.btn-dash-action.is-delete {
+    background: #ffffff;
+    border-color: #fecdd3;
+    color: #e11d48;
+    padding: 0.55rem 0.75rem;
+}
+.btn-dash-action.is-delete:hover {
+    background: #ffe4e6;
+    border-color: #fda4af;
+    color: #be123c;
+}
+
+/* Empty State */
+.dash-empty-box {
+    background: #ffffff;
+    border: 2px dashed #cbd5e1;
+    border-radius: 18px;
+    padding: 3.5rem 2rem;
+    text-align: center;
+    max-width: 580px;
+    margin: 2rem auto;
+}
+.dash-empty-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}
+.dash-empty-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 0.6rem;
+}
+.dash-empty-desc {
+    font-size: 0.95rem;
+    color: #64748b;
+    margin: 0 0 1.75rem;
+    line-height: 1.6;
+}
+
+/* Loading State */
+.dash-loading {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+.dash-loading-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid #e2e8f0;
+    border-top-color: #003580;
+    border-radius: 50%;
+    margin: 0 auto 1.25rem;
+    animation: dashSpin 0.85s linear infinite;
+}
+@keyframes dashSpin {
+    to { transform: rotate(360deg); }
+}
+.dash-loading-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+@media (max-width: 640px) {
+    .dash-header {
+        padding: 1.5rem 1.25rem;
+    }
+    .dash-header-title {
+        font-size: 1.75rem;
+    }
+    .dash-header-actions {
+        width: 100%;
+    }
+    .btn-dash-primary,
+    .btn-dash-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+    .dash-stats-bar {
+        grid-template-columns: 1fr;
+    }
+    .dash-grid {
+        grid-template-columns: 1fr;
+    }
+}
