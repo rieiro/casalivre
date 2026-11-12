@@ -188,12 +188,12 @@
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <div class="gallery">
                 <?php foreach ($photos as $photo): ?>
-                    <div class="photo-tile">
+                    <div class="photo-tile" data-photo-id="<?= (int) $photo['id'] ?>" data-photo-status="<?= e((string) ($photo['status'] ?? 'ready')) ?>">
                         <label class="photo-pick">
                             <input class="photo-check" type="checkbox" name="fotos[]" value="<?= (int) $photo['id'] ?>">
                             <?php $photoStatus = (string) ($photo['status'] ?? 'ready'); ?>
                             <?php if ($photoStatus === 'processing'): ?>
-                                <span class="photo-wait" role="img" aria-label="<?= e(t('form.photo_processing')) ?>"><?= e(t('form.photo_processing')) ?></span>
+                                <span class="photo-wait" role="img" aria-label="<?= e(t('form.photo_processing')) ?>" data-photo-wait><?= e(t('form.photo_processing')) ?></span>
                             <?php elseif ($photoStatus === 'failed'): ?>
                                 <?php $failText = photo_fail_text($photo['fail_reason']); ?>
                                 <span class="photo-wait is-failed" role="img" aria-label="<?= e($failText) ?>"><?= e($failText) ?></span>

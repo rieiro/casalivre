@@ -127,10 +127,16 @@ $feeds = $feeds ?? [];
                                     echo $synced === false ? '—' : max(0, (int) floor((time() - $synced) / 60)) . ' ' . e(t('cal.minutes_ago'));
                                 ?></td>
                                 <td>
-                                    <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= (int) $feed['id'] ?>/excluir">
-                                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                        <button class="danger" type="submit"><?= e(t('cal.remove_feed')) ?></button>
-                                    </form>
+                                    <div class="sync-actions">
+                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= (int) $feed['id'] ?>/sincronizar">
+                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                            <button class="primary" type="submit"><?= e(t('cal.sync_now')) ?></button>
+                                        </form>
+                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= (int) $feed['id'] ?>/excluir">
+                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                            <button class="danger" type="submit"><?= e(t('cal.remove_feed')) ?></button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

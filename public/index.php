@@ -1187,6 +1187,16 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar0', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
+    HouseRepository::markFeedPending($propertyId, (int) $m[2]);
+    CalendarFlash::set(t('cal.sync_requested'), 'ok');
+    redirect('/imoveis/' . $m[1] . '/calendario');
+}
+
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
