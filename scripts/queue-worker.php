@@ -28,12 +28,16 @@ require_once $root . '/src/helpers.php';
 require_once $root . '/src/QueueWorkerLoop.php';
 Db::loadEnv();
 
-$which = $argv[1] ?? '';
-$once = in_array('--once', $argv, true);
-if ($which !== 'mail' && $which !== 'image') {
-    fwrite(STDERR, "usage: php scripts/queue-worker.php mail|image [--once]\n");
+$firstArg = $argv[1] ?? 'all';
+if ($firstArg === '--once') {
+    $which = 'all';
+} elseif (in_array($firstArg, ['mail', 'image', 'all'], true)) {
+    $which = $firstArg;
+} else {
+    fwrite(STDERR, "usage: php scripts/queue-worker.php [mail|image|all] [--once]\n");
     exit(2);
 }
+$once = in_array('--once', $argv, true);
 $stop = false;
 if (function_exists('pcntl_async_signals')) {
     pcntl_async_signals(true);
@@ -41,7 +45,7 @@ if (function_exists('pcntl_async_signals')) {
         $stop = true;
     });
 }
-if ($which === 'mail' && !AppEnv::isDev()) {
+if (($which === 'mail' || $which === 'all') && !AppEnv::isDev()) {
     try {
         Mailer::linkFromAppUrl('http://localhost/');
     } catch (RuntimeException $e) {
@@ -49,27 +53,35 @@ if ($which === 'mail' && !AppEnv::isDev()) {
         exit(2);
     }
 }
-if ($which === 'image' && !QueueWorkerLoop::hasWebp()) {
+if (($which === 'image' || $which === 'all') && !QueueWorkerLoop::hasWebp()) {
     QueueWorkerLoop::halt('GD WebP missing');
     exit(1);
 }
 @mkdir($root . '/storage', 0700, true);
 echo 'queue-worker: ' . $which . ' ' . Queues::driver() . "\n";
-$queue = null;
+$mailQueue = null;
+$imageQueue = null;
 do {
-    $report = null;
     try {
-        if ($which === 'mail') {
-            $queue ??= MailQueues::make();
-            $report = QueueWorkerLoop::mail($queue, $root . '/storage');
-        } else {
-            $queue ??= ImageQueues::make();
-            $report = QueueWorkerLoop::image($queue);
+        if ($which === 'mail' || $which === 'all') {
+            $mailQueue ??= MailQueues::make();
+            $rMail = QueueWorkerLoop::mail($mailQueue, $root . '/storage');
+            if ($rMail !== null && ($rMail['enviados'] + $rMail['ignorados'] + $rMail['falhas']) > 0) {
+                echo 'queue-worker: mail ' . json_encode($rMail) . "\n";
+            }
+        }
+        if ($which === 'image' || $which === 'all') {
+            $imageQueue ??= ImageQueues::make();
+            $rImage = QueueWorkerLoop::image($imageQueue);
+            if ($rImage !== null && ($rImage['enviados'] + $rImage['ignorados'] + $rImage['falhas']) > 0) {
+                echo 'queue-worker: image ' . json_encode($rImage) . "\n";
+            }
         }
         QueueWorkerLoop::valkeyUp();
     } catch (Throwable $e) {
         if ($e instanceof RedisException) {
-            $queue = null;
+            $mailQueue = null;
+            $imageQueue = null;
             if (QueueWorkerLoop::valkeyDown($e, $once, $stop)) {
                 exit(1);
             }
@@ -81,9 +93,6 @@ do {
             QueueWorkerLoop::unexpected($e);
         }
         exit(1);
-    }
-    if ($report !== null && ($report['enviados'] + $report['ignorados'] + $report['falhas']) > 0) {
-        echo 'queue-worker: ' . $which . ' ' . json_encode($report) . "\n";
     }
     if (!$once && !$stop) {
         sleep(1);
