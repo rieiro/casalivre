@@ -93,3 +93,4 @@
     window.addEventListener('popstate', loadResults);
     loadResults();
 })();
+// v2 pagination
