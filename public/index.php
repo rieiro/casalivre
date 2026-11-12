@@ -169,7 +169,7 @@ function head_permitido(string $path): bool
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
+    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -742,6 +742,207 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method 
         ['status' => 'confirmed', 'quote_hash' => $m[1]]
     );
     redirect('/pagamento/' . $m[1] . '?sucesso=1');
+}
+
+// Painel Administrativo Geral (Dashboard & Anotações)
+if ($path === '/admin' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminDashboard.php';
+    $res = AdminDashboard::run($user);
+    view('admin/dashboard', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'dashboard',
+        'layout' => 'admin_layout',
+        'page_title' => 'Dashboard',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/notas' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    $notes = (string) ($_POST['admin_notes_general'] ?? '');
+    Settings::set('admin_notes_general', $notes);
+    redirect('/admin?ok=1');
+    return null;
+}
+
+if ($path === '/admin/configuracoes' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSettingsUpdate.php';
+    if ($method === 'POST') {
+        csrf_check();
+        $res = AdminSettingsUpdate::run($user, $_POST);
+        if ($res->tipo !== 'ok') {
+            $settings = [];
+            foreach (array_keys(Settings::defaults()) as $k) {
+                $settings[$k] = Settings::get($k);
+            }
+            view('admin/configuracoes', [
+                'user' => $user,
+                'settings' => $settings,
+                'active_tab' => 'configuracoes',
+                'layout' => 'admin_layout',
+                'page_title' => 'Technical Parameters & Limits',
+                'ok' => null,
+                'error' => $res->mensagem,
+            ]);
+            return null;
+        }
+        redirect('/admin/configuracoes?ok=1');
+        return null;
+    }
+    $settings = [];
+    foreach (array_keys(Settings::defaults()) as $k) {
+        $settings[$k] = Settings::get($k);
+    }
+    view('admin/configuracoes', [
+        'user' => $user,
+        'settings' => $settings,
+        'active_tab' => 'configuracoes',
+        'layout' => 'admin_layout',
+        'page_title' => 'Technical Parameters & Limits',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]);
+    return null;
+}
+
+if ($path === '/admin/seguranca' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::index($user);
+    view('admin/seguranca', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'seguranca',
+        'layout' => 'admin_layout',
+        'page_title' => 'Security & IP Control',
+        'ok' => isset($_GET['ok']),
+        'error' => $_GET['error'] ?? null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/seguranca/desbloquear' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::unblock($user, (string) ($_POST['ip'] ?? ''));
+    redirect('/admin/seguranca?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+    return null;
+}
+
+if ($path === '/admin/seguranca/bloquear' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::block($user, (string) ($_POST['ip'] ?? ''), (int) ($_POST['minutes'] ?? 60));
+    redirect('/admin/seguranca?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+    return null;
+}
+
+if ($path === '/admin/auditoria/exportar.csv' && $method === 'GET') {
+    $user = require_admin();
+    $code = !empty($_GET['code']) ? (int) $_GET['code'] : null;
+    $class = !empty($_GET['class']) ? (string) $_GET['class'] : null;
+    require_once dirname(__DIR__) . '/src/AdminRepository.php';
+    $logs = AdminRepository::getAuditLogs($code, $class, 5000);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=auditoria_' . date('Y-m-d_His') . '.csv');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $out = fopen('php://output', 'w');
+    // UTF-8 BOM for Excel compatibility
+    fwrite($out, "ï»¿");
+    fputcsv($out, ['ID', 'Timestamp (UTC)', 'Code', 'Action', 'Retention Class', 'Actor', 'Payload', 'Before', 'After']);
+    foreach ($logs as $r) {
+        fputcsv($out, [
+            $r['id'] ?? '',
+            $r['created_at'] ?? '',
+            $r['code'] ?? '',
+            $r['action_label'] ?? '',
+            $r['retention_class'] ?? '',
+            $r['actor_kind'] ?? '',
+            $r['payload'] ?? '',
+            $r['before_value'] ?? '',
+            $r['after_value'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+if ($path === '/admin/auditoria' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminAudit.php';
+    $res = AdminAudit::index($user, $_GET);
+    view('admin/auditoria', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'auditoria',
+        'layout' => 'admin_layout',
+        'page_title' => 'Audit Trail',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/filas' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::index($user);
+    view('admin/filas', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'filas',
+        'layout' => 'admin_layout',
+        'page_title' => 'Background Queues & Daemons',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/filas/reprocessar-imagens' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::retry($user, 'image_queue');
+    redirect('/admin/filas?ok=1');
+    return null;
+}
+
+if ($path === '/admin/filas/reprocessar-emails' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::retry($user, 'mail_queue');
+    redirect('/admin/filas?ok=1');
+    return null;
+}
+
+if ($path === '/admin/traducoes' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminTranslations.php';
+    if ($method === 'POST') {
+        csrf_check();
+        $res = AdminTranslations::update($user, $_POST);
+        redirect('/admin/traducoes?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+        return null;
+    }
+    $res = AdminTranslations::index($user, $_GET);
+    view('admin/traducoes', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'traducoes',
+        'layout' => 'admin_layout',
+        'page_title' => 'Translation Matrix',
+        'ok' => isset($_GET['ok']),
+        'error' => $_GET['error'] ?? null,
+    ]));
+    return null;
 }
 
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).

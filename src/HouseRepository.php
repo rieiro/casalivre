@@ -41,7 +41,7 @@ FROM (SELECT f2.id, (p.status = 'active' AND u.status = 'active') AS active,
       JOIN properties p ON p.id = f2.property_id
       JOIN users u ON u.id = p.user_id
       WHERE f2.next_sync_at <= now()
-      ORDER BY f2.next_sync_at
+      ORDER BY (f2.last_status = 'PENDENTE') DESC, f2.next_sync_at ASC
       LIMIT 1
       FOR UPDATE OF f2 SKIP LOCKED) c
 WHERE f.id = c.id
@@ -566,7 +566,7 @@ SQL;
     /** Owner re-save / retry: due now, failure counters cleared. Not called when the owner unblocks a night. */
     public static function markFeedPending(int $propertyId, int $feedId): void
     {
-        db()->prepare("UPDATE calendar_feeds SET next_sync_at = now(), fail_count = 0, last_error = NULL, last_status = 'PENDENTE'
+        db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 second', fail_count = 0, last_error = NULL, last_status = 'PENDENTE'
             WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
     }
 

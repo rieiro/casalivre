@@ -43,6 +43,7 @@ final class I18n
                 'form.delete_house' => ['Remover este imóvel e as fotos?'],
                 'form.calendar_months_hint' => ['No máximo %s meses, o limite do sistema.'],
                 'amenity.pets' => ['Aceita animais'],
+                'cal.sync_requested' => ['Sincronização agendada com sucesso.'],
             ],
             'en' => [
                 'account.delete_confirm' => ['Deactivate this account? The record stays in the system and only support can restore it.'],
@@ -58,6 +59,7 @@ final class I18n
                 'dash.remove_confirm' => ['Remove this place and its photos?'],
                 'form.delete_house' => ['Remove this place and its photos?'],
                 'form.calendar_months_hint' => ['At most %s months, the system limit.'],
+                'cal.sync_requested' => ['Synchronization requested.'],
             ],
             'es' => [
                 'account.delete_confirm' => ['¿Inactivar esta cuenta? El registro permanece y solo soporte puede reactivarla.'],
@@ -73,6 +75,7 @@ final class I18n
                 'dash.remove_confirm' => ['¿Quitar este alojamiento y las fotos?'],
                 'form.delete_house' => ['¿Quitar este alojamiento y las fotos?'],
                 'form.calendar_months_hint' => ['Como máximo %s meses, el límite del sistema.'],
+                'cal.sync_requested' => ['Sincronización solicitada.'],
             ],
         ];
         foreach ($previous as $lang => $map) {
