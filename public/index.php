@@ -843,6 +843,87 @@ if ($path === '/admin/seguranca/bloquear' && $method === 'POST') {
     return null;
 }
 
+if ($path === '/admin/auditoria/exportar.csv' && $method === 'GET') {
+    $user = require_admin();
+    $code = !empty($_GET['code']) ? (int) $_GET['code'] : null;
+    $class = !empty($_GET['class']) ? (string) $_GET['class'] : null;
+    require_once dirname(__DIR__) . '/src/AdminRepository.php';
+    $logs = AdminRepository::getAuditLogs($code, $class, 5000);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=auditoria_' . date('Y-m-d_His') . '.csv');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $out = fopen('php://output', 'w');
+    // UTF-8 BOM for Excel compatibility
+    fwrite($out, "ï»¿");
+    fputcsv($out, ['ID', 'Data/Hora (UTC)', 'Codigo', 'Acao', 'Classe', 'Ator', 'Payload', 'Antes', 'Depois']);
+    foreach ($logs as $r) {
+        fputcsv($out, [
+            $r['id'] ?? '',
+            $r['created_at'] ?? '',
+            $r['code'] ?? '',
+            $r['action_label'] ?? '',
+            $r['retention_class'] ?? '',
+            $r['actor_kind'] ?? '',
+            $r['payload'] ?? '',
+            $r['before_value'] ?? '',
+            $r['after_value'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+if ($path === '/admin/auditoria' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminAudit.php';
+    $res = AdminAudit::index($user, $_GET);
+    view('admin/auditoria', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'auditoria',
+        'layout' => 'admin_layout',
+        'page_title' => 'Trilha de Auditoria',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/filas' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::index($user);
+    view('admin/filas', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'filas',
+        'layout' => 'admin_layout',
+        'page_title' => 'Filas & Daemons',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/filas/reprocessar-imagens' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::retry($user, 'image_queue');
+    redirect('/admin/filas?ok=1');
+    return null;
+}
+
+if ($path === '/admin/filas/reprocessar-emails' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminQueues.php';
+    $res = AdminQueues::retry($user, 'mail_queue');
+    redirect('/admin/filas?ok=1');
+    return null;
+}
+
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
 if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
