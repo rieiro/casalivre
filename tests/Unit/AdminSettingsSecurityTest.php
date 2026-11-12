@@ -125,8 +125,8 @@ final class AdminSettingsSecurityTest extends TestCase
         include dirname(__DIR__, 2) . "/views/admin/configuracoes.php";
         $configHtml = (string) ob_get_clean();
         $this->assertNotEmpty($configHtml);
-        $this->assertStringContainsString("Parâmetros Técnicos da Plataforma", $configHtml);
-        $this->assertStringContainsString("Qualidade de Compressão WebP", $configHtml);
+        $this->assertStringContainsString("Platform Technical Parameters", $configHtml);
+        $this->assertStringContainsString("WebP Compression Quality", $configHtml);
 
         // Seguranca view
         $resSec = AdminSecurity::index($adminUser);
@@ -136,7 +136,7 @@ final class AdminSettingsSecurityTest extends TestCase
         include dirname(__DIR__, 2) . "/views/admin/seguranca.php";
         $secHtml = (string) ob_get_clean();
         $this->assertNotEmpty($secHtml);
-        $this->assertStringContainsString("Endereços IP Monitorados & Bloqueados", $secHtml);
-        $this->assertStringContainsString("Bloqueio Manual de IP", $secHtml);
+        $this->assertStringContainsString("Monitored & Blocked IP Addresses", $secHtml);
+        $this->assertStringContainsString("Manual IP Block", $secHtml);
     }
 }

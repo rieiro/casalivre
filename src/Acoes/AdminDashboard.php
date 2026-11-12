@@ -12,7 +12,7 @@ final class AdminDashboard
     public static function run(array $actor): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $kpis = AdminRepository::getKpis();

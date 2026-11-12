@@ -14,7 +14,7 @@ final class AdminTranslations
     public static function index(array $actor, array $params = []): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $search = !empty($params["search"]) ? trim((string) $params["search"]) : null;
@@ -48,17 +48,17 @@ final class AdminTranslations
     public static function update(array $actor, array $input): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $tkey = trim((string) ($input["tkey"] ?? ""));
         if ($tkey === "") {
-            return new Resultado("invalido", "Chave de tradução inválida.");
+            return new Resultado("invalido", "Invalid translation key.");
         }
 
         $values = $input["translations"] ?? [];
         if (!is_array($values)) {
-            return new Resultado("invalido", "Formato de traduções inválido.");
+            return new Resultado("invalido", "Invalid translations format.");
         }
 
         foreach (["pt-BR", "en", "es"] as $lang) {
@@ -67,6 +67,6 @@ final class AdminTranslations
             }
         }
 
-        return new Resultado("ok", "Tradução atualizada com sucesso.", ["tkey" => $tkey]);
+        return new Resultado("ok", "Translation updated successfully.", ["tkey" => $tkey]);
     }
 }

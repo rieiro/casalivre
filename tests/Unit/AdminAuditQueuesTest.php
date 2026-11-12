@@ -95,8 +95,8 @@ final class AdminAuditQueuesTest extends TestCase
         include dirname(__DIR__, 2) . "/views/admin/auditoria.php";
         $auditHtml = (string) ob_get_clean();
         $this->assertNotEmpty($auditHtml);
-        $this->assertStringContainsString("Total de Eventos", $auditHtml);
-        $this->assertStringContainsString("Exportar Relatório CSV", $auditHtml);
+        $this->assertStringContainsString("Total Logged Events", $auditHtml);
+        $this->assertStringContainsString("Export CSV Report", $auditHtml);
 
         // Filas view
         $resQueues = AdminQueues::index($adminUser);
@@ -108,7 +108,7 @@ final class AdminAuditQueuesTest extends TestCase
         include dirname(__DIR__, 2) . "/views/admin/filas.php";
         $filasHtml = (string) ob_get_clean();
         $this->assertNotEmpty($filasHtml);
-        $this->assertStringContainsString("Supervisão de Daemons em Background", $filasHtml);
-        $this->assertStringContainsString("Fila de Otimização de Imagens", $filasHtml);
+        $this->assertStringContainsString("Background Daemon Supervision", $filasHtml);
+        $this->assertStringContainsString("Image Optimization Queue", $filasHtml);
     }
 }

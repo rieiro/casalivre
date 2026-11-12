@@ -6,6 +6,60 @@ require_once __DIR__ . "/Db.php";
 
 final class AdminRepository
 {
+    public const ACTION_LABELS_EN = [
+        1 => 'Successful login',
+        2 => 'Failed login attempt',
+        3 => 'User logout',
+        4 => 'Owner account registration',
+        5 => 'Property search query',
+        6 => 'Account profile update',
+        7 => 'Account marked for deletion',
+        8 => 'Property listing created',
+        9 => 'Property listing updated',
+        10 => 'Property listing inactivated',
+        11 => 'Photo batch uploaded',
+        12 => 'Photo deleted',
+        13 => 'Calendar dates updated',
+        14 => 'Calendar dates imported',
+        15 => 'iCal calendar exported',
+        16 => 'Guest review submitted',
+        17 => 'Property detail view',
+        18 => 'Account activation verified',
+        19 => 'Password reset requested',
+        20 => 'Password reset confirmed',
+        21 => 'Login rate limit locked',
+        22 => 'Interface locale changed',
+        23 => 'Nightly price updated',
+        24 => 'Calendar nights blocked',
+        25 => 'Calendar nights unblocked',
+        26 => 'iCal sync feed added',
+        27 => 'iCal sync feed removed',
+        28 => 'Minimum stay nights changed',
+        29 => 'iCal feed synchronized',
+        30 => 'Internal system error',
+        31 => 'Cover photo updated',
+        32 => 'Platform visual theme changed',
+        33 => 'Group created by admin',
+        34 => 'Group settings updated',
+        35 => 'Group domain added',
+        36 => 'Group domain removed',
+        37 => 'Group member role assigned',
+        38 => 'Group member removed',
+        39 => 'Group property invite created',
+        40 => 'Group property invite cancelled',
+        41 => 'Group property invite accepted',
+        42 => 'Group property invite rejected',
+        43 => 'Group property removed',
+        44 => 'Group self-registered',
+        45 => 'Group domain DNS verified',
+        46 => 'Group domain verification lost',
+        47 => 'Audit log viewed',
+        48 => 'Valkey cache unavailable',
+        49 => 'Stuck processing photo discarded',
+        50 => 'Calendar feed failed permanently',
+        51 => 'Booking quote created',
+        52 => 'Booking reservation confirmed',
+    ];
     /** @return array<string, mixed> */
     public static function getKpis(): array
     {
@@ -156,7 +210,7 @@ final class AdminRepository
             $descriptions = db()->query("SELECT code, description FROM activity_actions")->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
             foreach ($rows as &$r) {
                 $code = (int) ($r["code"] ?? 0);
-                $r["action_label"] = $descriptions[$code] ?? ("Ação #" . $code);
+                $r["action_label"] = self::ACTION_LABELS_EN[$code] ?? ("Action #" . $code);
             }
             unset($r);
         } catch (Throwable) {
@@ -175,12 +229,61 @@ final class AdminRepository
             "casalivre-valkey" => false,
         ];
 
+        // 1. Process table scan (/proc)
+        $pids = glob('/proc/[0-9]*/cmdline') ?: [];
+        $lines = [];
+        foreach ($pids as $p) {
+            $c = @file_get_contents($p);
+            if ($c) {
+                $lines[] = str_replace(chr(0), ' ', $c);
+            }
+        }
+        $procCmds = implode(' ', $lines);
+
+        if (str_contains($procCmds, 'queue-worker.php') || str_contains($procCmds, 'runsv casalivre-queue-worker')) {
+            $services['casalivre-queue-worker'] = true;
+        }
+        if (str_contains($procCmds, 'nginx: master') || str_contains($procCmds, 'nginx: worker') || str_contains($procCmds, 'runsv nginx')) {
+            $services['nginx'] = true;
+        }
+        if (str_contains($procCmds, 'php-fpm: master') || str_contains($procCmds, 'php-fpm: pool') || str_contains($procCmds, 'runsv php-fpm')) {
+            $services['php-fpm8.4'] = true;
+        }
+        if (str_contains($procCmds, 'postgres') || str_contains($procCmds, 'runsv postgresql18')) {
+            $services['postgresql18'] = true;
+        }
+        if (str_contains($procCmds, 'valkey-server') || str_contains($procCmds, 'runsv casalivre-valkey')) {
+            $services['casalivre-valkey'] = true;
+        }
+
+        // 2. Functional & socket fallback checks
+        if (!$services['postgresql18']) {
+            try {
+                $st = db()->query('SELECT 1');
+                if ($st && (int) $st->fetchColumn() === 1) {
+                    $services['postgresql18'] = true;
+                }
+            } catch (Throwable) {
+            }
+        }
+
+        if (!$services['casalivre-valkey'] && (file_exists('/run/casalivre-valkey/valkey.sock') || file_exists('/tmp/valkey.sock'))) {
+            $services['casalivre-valkey'] = true;
+        }
+
+        if (!$services['php-fpm8.4'] && (file_exists('/run/php-fpm-casalivre.sock') || PHP_SAPI === 'fpm-fcgi')) {
+            $services['php-fpm8.4'] = true;
+        }
+
+        // 3. Status file check (if permissions allow)
         foreach (array_keys($services) as $svc) {
+            if ($services[$svc]) {
+                continue;
+            }
             $statusFile = "/var/service/" . $svc . "/supervise/status";
             if (is_file($statusFile) && is_readable($statusFile)) {
                 $data = @file_get_contents($statusFile);
                 if (is_string($data) && strlen($data) >= 18) {
-                    // runit 12-byte timestamp + 4-byte pid + 1-byte paused + 1-byte state (1=run, 0=down)
                     $state = ord($data[17] ?? " ");
                     $services[$svc] = ($state === 1);
                 }
@@ -248,7 +351,7 @@ final class AdminRepository
             $descriptions = db()->query('SELECT code, description FROM activity_actions')->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
             foreach ($rows as &$r) {
                 $c = (int) ($r['code'] ?? 0);
-                $r['action_label'] = $descriptions[$c] ?? ('Ação #' . $c);
+                $r['action_label'] = self::ACTION_LABELS_EN[$c] ?? ('Action #' . $c);
             }
             unset($r);
         } catch (Throwable) {

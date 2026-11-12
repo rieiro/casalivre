@@ -14,7 +14,7 @@ final class AdminAudit
     public static function index(array $actor, array $params = []): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $code = !empty($params["code"]) ? (int) $params["code"] : null;
@@ -23,12 +23,7 @@ final class AdminAudit
 
         $logs = AdminRepository::getAuditLogs($code, $class, $limit);
         $metrics = AdminRepository::getAuditMetrics();
-
-        $actions = [];
-        try {
-            $actions = db()->query("SELECT code, description FROM activity_actions ORDER BY code")->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
-        } catch (Throwable) {
-        }
+        $actions = AdminRepository::ACTION_LABELS_EN;
 
         return new Resultado("ok", null, [
             "logs" => $logs,

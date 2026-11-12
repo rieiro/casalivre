@@ -753,7 +753,7 @@ if ($path === '/admin' && $method === 'GET') {
         'user' => $user,
         'active_tab' => 'dashboard',
         'layout' => 'admin_layout',
-        'page_title' => 'Painel Geral',
+        'page_title' => 'Dashboard',
         'ok' => isset($_GET['ok']),
         'error' => null,
     ]));
@@ -785,7 +785,7 @@ if ($path === '/admin/configuracoes' && ($method === 'GET' || $method === 'POST'
                 'settings' => $settings,
                 'active_tab' => 'configuracoes',
                 'layout' => 'admin_layout',
-                'page_title' => 'Parâmetros & Limites',
+                'page_title' => 'Technical Parameters & Limits',
                 'ok' => null,
                 'error' => $res->mensagem,
             ]);
@@ -803,7 +803,7 @@ if ($path === '/admin/configuracoes' && ($method === 'GET' || $method === 'POST'
         'settings' => $settings,
         'active_tab' => 'configuracoes',
         'layout' => 'admin_layout',
-        'page_title' => 'Parâmetros & Limites',
+        'page_title' => 'Technical Parameters & Limits',
         'ok' => isset($_GET['ok']),
         'error' => null,
     ]);
@@ -818,7 +818,7 @@ if ($path === '/admin/seguranca' && $method === 'GET') {
         'user' => $user,
         'active_tab' => 'seguranca',
         'layout' => 'admin_layout',
-        'page_title' => 'Segurança & IPs',
+        'page_title' => 'Security & IP Control',
         'ok' => isset($_GET['ok']),
         'error' => $_GET['error'] ?? null,
     ]));
@@ -858,7 +858,7 @@ if ($path === '/admin/auditoria/exportar.csv' && $method === 'GET') {
     $out = fopen('php://output', 'w');
     // UTF-8 BOM for Excel compatibility
     fwrite($out, "ï»¿");
-    fputcsv($out, ['ID', 'Data/Hora (UTC)', 'Codigo', 'Acao', 'Classe', 'Ator', 'Payload', 'Antes', 'Depois']);
+    fputcsv($out, ['ID', 'Timestamp (UTC)', 'Code', 'Action', 'Retention Class', 'Actor', 'Payload', 'Before', 'After']);
     foreach ($logs as $r) {
         fputcsv($out, [
             $r['id'] ?? '',
@@ -884,7 +884,7 @@ if ($path === '/admin/auditoria' && $method === 'GET') {
         'user' => $user,
         'active_tab' => 'auditoria',
         'layout' => 'admin_layout',
-        'page_title' => 'Trilha de Auditoria',
+        'page_title' => 'Audit Trail',
         'ok' => isset($_GET['ok']),
         'error' => null,
     ]));
@@ -899,7 +899,7 @@ if ($path === '/admin/filas' && $method === 'GET') {
         'user' => $user,
         'active_tab' => 'filas',
         'layout' => 'admin_layout',
-        'page_title' => 'Filas & Daemons',
+        'page_title' => 'Background Queues & Daemons',
         'ok' => isset($_GET['ok']),
         'error' => null,
     ]));
@@ -938,7 +938,7 @@ if ($path === '/admin/traducoes' && ($method === 'GET' || $method === 'POST')) {
         'user' => $user,
         'active_tab' => 'traducoes',
         'layout' => 'admin_layout',
-        'page_title' => 'Matriz de Traduções',
+        'page_title' => 'Translation Matrix',
         'ok' => isset($_GET['ok']),
         'error' => $_GET['error'] ?? null,
     ]));

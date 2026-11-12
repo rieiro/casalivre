@@ -14,7 +14,7 @@ final class AdminSettingsUpdate
     public static function run(array $actor, array $input): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $allowed = Settings::defaults();
@@ -44,11 +44,11 @@ final class AdminSettingsUpdate
                 "results_per_page"
             ], true)) {
                 if (!ctype_digit($val) || (int) $val < 1) {
-                    return new Resultado("invalido", "O campo {$key} deve ser um número inteiro positivo.");
+                    return new Resultado("invalido", "Field {$key} must be a positive integer.");
                 }
             } elseif ($key === "photo_webp_quality") {
                 if (!ctype_digit($val) || (int) $val < 50 || (int) $val > 95) {
-                    return new Resultado("invalido", "A qualidade WebP deve estar entre 50 e 95.");
+                    return new Resultado("invalido", "WebP compression quality must be between 50 and 95.");
                 }
             } elseif ($key === "maintenance_mode") {
                 $val = ($val === "1" || $val === "true") ? "1" : "0";

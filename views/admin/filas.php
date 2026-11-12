@@ -12,7 +12,7 @@
 
 <div class="admin-card" style="margin-bottom: 1.5rem;">
     <div class="admin-card-title">
-        <span>Supervisão de Daemons em Background</span>
+        <span>Background Daemon Supervision</span>
         <span style="font-size: 0.8rem; font-weight: normal; color: var(--admin-text-muted);">Runit /var/service</span>
     </div>
     <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">
@@ -21,7 +21,7 @@
                 <span class="admin-dot <?= $running ? 'admin-dot-ok' : 'admin-dot-danger' ?>"></span>
                 <span style="font-weight: 500;"><?= e($name) ?></span>
                 <span style="font-size: 0.75rem; color: <?= $running ? 'var(--admin-success)' : 'var(--admin-danger)' ?>;">
-                    <?= $running ? 'ATIVO' : 'PARADO' ?>
+                    <?= $running ? 'ONLINE' : 'STOPPED' ?>
                 </span>
             </div>
         <?php endforeach; ?>
@@ -30,15 +30,15 @@
 
 <div class="admin-grid-split">
     <div>
-        <!-- FILA DE IMAGENS -->
+        <!-- IMAGE QUEUE -->
         <div class="admin-card">
             <div class="admin-card-title">
-                <span>🖼️ Fila de Otimização de Imagens (WebP)</span>
+                <span>🖼️ Image Optimization Queue (WebP)</span>
                 <div>
                     <form method="post" action="/admin/filas/reprocessar-imagens" style="display: inline;">
                         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                         <button type="submit" class="admin-btn admin-btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">
-                            🔄 Reprocessar Falhas
+                            🔄 Retry Failed
                         </button>
                     </form>
                 </div>
@@ -50,29 +50,29 @@
                     <div style="font-size: 1.5rem; font-weight: 700;"><?= e((string)($image_queue['stats']['total'] ?? 0)) ?></div>
                 </div>
                 <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: 0.375rem; padding: 0.75rem 1rem; flex: 1;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Pendentes</div>
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Pending</div>
                     <div style="font-size: 1.5rem; font-weight: 700; color: #2563eb;"><?= e((string)($image_queue['stats']['pending'] ?? 0)) ?></div>
                 </div>
                 <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: 0.375rem; padding: 0.75rem 1rem; flex: 1;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Falhas</div>
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Failed</div>
                     <div style="font-size: 1.5rem; font-weight: 700; color: #ef4444;"><?= e((string)($image_queue['stats']['failed'] ?? 0)) ?></div>
                 </div>
             </div>
 
             <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-text-muted); margin-bottom: 0.5rem;">
-                Tarefas Recentes
+                Recent Tasks
             </h4>
             <?php if (empty($image_queue['recent'])): ?>
-                <p style="color: var(--admin-text-muted); font-size: 0.85rem;">Nenhuma tarefa recente na fila de imagens.</p>
+                <p style="color: var(--admin-text-muted); font-size: 0.85rem;">No recent tasks in the image queue.</p>
             <?php else: ?>
                 <table class="admin-table">
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Foto ID</th>
+                            <th>Photo ID</th>
                             <th>Status</th>
-                            <th>Tentativas</th>
-                            <th>Último Erro</th>
+                            <th>Attempts</th>
+                            <th>Last Error</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -101,15 +101,15 @@
             <?php endif; ?>
         </div>
 
-        <!-- FILA DE EMAILS -->
+        <!-- EMAIL QUEUE -->
         <div class="admin-card">
             <div class="admin-card-title">
-                <span>✉️ Fila de Disparo de E-mails (SMTP)</span>
+                <span>✉️ Email Dispatch Queue (SMTP)</span>
                 <div>
                     <form method="post" action="/admin/filas/reprocessar-emails" style="display: inline;">
                         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                         <button type="submit" class="admin-btn admin-btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">
-                            🔄 Reprocessar Falhas
+                            🔄 Retry Failed
                         </button>
                     </form>
                 </div>
@@ -121,29 +121,29 @@
                     <div style="font-size: 1.5rem; font-weight: 700;"><?= e((string)($mail_queue['stats']['total'] ?? 0)) ?></div>
                 </div>
                 <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: 0.375rem; padding: 0.75rem 1rem; flex: 1;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Pendentes</div>
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Pending</div>
                     <div style="font-size: 1.5rem; font-weight: 700; color: #2563eb;"><?= e((string)($mail_queue['stats']['pending'] ?? 0)) ?></div>
                 </div>
                 <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: 0.375rem; padding: 0.75rem 1rem; flex: 1;">
-                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Falhas</div>
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 600;">Failed</div>
                     <div style="font-size: 1.5rem; font-weight: 700; color: #ef4444;"><?= e((string)($mail_queue['stats']['failed'] ?? 0)) ?></div>
                 </div>
             </div>
 
             <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-text-muted); margin-bottom: 0.5rem;">
-                Disparos Recentes
+                Recent Dispatches
             </h4>
             <?php if (empty($mail_queue['recent'])): ?>
-                <p style="color: var(--admin-text-muted); font-size: 0.85rem;">Nenhum e-mail recente na fila.</p>
+                <p style="color: var(--admin-text-muted); font-size: 0.85rem;">No recent emails in queue.</p>
             <?php else: ?>
                 <table class="admin-table">
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Tipo</th>
-                            <th>Destinatário</th>
+                            <th>Type</th>
+                            <th>Recipient</th>
                             <th>Status</th>
-                            <th>Tentativas</th>
+                            <th>Attempts</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -174,16 +174,16 @@
 
     <div>
         <div class="admin-card">
-            <div class="admin-card-title">Execução Manual & Workers</div>
+            <div class="admin-card-title">Manual Execution & Workers</div>
             <p style="font-size: 0.85rem; color: var(--admin-text-muted); line-height: 1.5;">
-                Os workers operam continuamente através do daemon supervisor <code>casalivre-queue-worker</code>.
+                Workers operate continuously under the <code>casalivre-queue-worker</code> supervisor daemon.
             </p>
             <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: 0.375rem; padding: 0.75rem; font-size: 0.8rem; font-family: monospace; margin-bottom: 1rem;">
                 sv status casalivre-queue-worker<br>
                 php scripts/queue-worker.php all --once
             </div>
             <p style="font-size: 0.8rem; color: var(--admin-text-muted);">
-                Use os botões de reprocessamento caso falhas transitórias de conexão tenham esgotado as tentativas.
+                Use retry buttons if transient connection failures have exhausted maximum attempts.
             </p>
         </div>
     </div>

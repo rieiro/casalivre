@@ -97,7 +97,7 @@ final class AdminTranslationsTest extends TestCase
         $html = (string) ob_get_clean();
 
         $this->assertNotEmpty($html);
-        $this->assertStringContainsString("Matriz de Tradução Multi-Idioma", $html);
+        $this->assertStringContainsString("Multi-Language Translation Matrix", $html);
         $this->assertStringContainsString("nav.search", $html);
     }
 }

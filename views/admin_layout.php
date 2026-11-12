@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="<?= e($locale ?? 'pt-BR') ?>">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e($title ?? 'Painel Administrativo - CasaLivre') ?></title>
+    <title><?= e($title ?? 'Administrative Panel - CasaLivre') ?></title>
     <link rel="stylesheet" href="<?= e(asset_url('/assets/app.css')) ?>">
     <?= page_data_script($csrf) ?>
     <style>
@@ -303,84 +303,84 @@
             <span class="admin-badge-env"><?= e(getenv('APP_ENV') ?: 'prod') ?></span>
         </div>
         <ul class="admin-nav">
-            <li class="admin-nav-heading">Visão Geral</li>
+            <li class="admin-nav-heading">Overview</li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'dashboard' ? 'active' : '' ?>" href="/admin">
-                    <span>📊</span> Painel Geral
+                    <span>📊</span> Dashboard
                 </a>
             </li>
 
-            <li class="admin-nav-heading">Técnico & Operações</li>
+            <li class="admin-nav-heading">Technical & Operations</li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'configuracoes' ? 'active' : '' ?>" href="/admin/configuracoes">
-                    <span>⚙️</span> Parâmetros & Limites
+                    <span>⚙️</span> Parameters & Limits
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'seguranca' ? 'active' : '' ?>" href="/admin/seguranca">
-                    <span>🛡️</span> Segurança & IPs
+                    <span>🛡️</span> Security & IPs
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'auditoria' ? 'active' : '' ?>" href="/admin/auditoria">
-                    <span>📜</span> Trilha de Auditoria
+                    <span>📜</span> Audit Trail
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'filas' ? 'active' : '' ?>" href="/admin/filas">
-                    <span>⚡</span> Filas & Daemons
+                    <span>⚡</span> Queues & Daemons
                 </a>
             </li>
 
-            <li class="admin-nav-heading">Plataforma</li>
+            <li class="admin-nav-heading">Platform</li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'grupos' ? 'active' : '' ?>" href="/admin/grupos">
-                    <span>🏢</span> Grupos & Redes
+                    <span>🏢</span> Groups & Networks
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'tema' ? 'active' : '' ?>" href="/admin/tema">
-                    <span>🎨</span> Tema Visual
+                    <span>🎨</span> Visual Theme
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'traducoes' ? 'active' : '' ?>" href="/admin/traducoes">
-                    <span>🌐</span> Traduções & Textos
+                    <span>🌐</span> Translations & Copy
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link" href="/painel">
-                    <span>🏠</span> Meus Imóveis
+                    <span>🏠</span> My Properties
                 </a>
             </li>
             <li class="admin-nav-item">
                 <a class="admin-nav-link" href="/">
-                    <span>🌐</span> Ver Site Público
+                    <span>🌐</span> View Public Site
                 </a>
             </li>
         </ul>
         <div class="admin-sidebar-footer">
-            <div style="margin-bottom: 0.5rem;">Logado: <strong><?= e($user['email'] ?? 'admin') ?></strong></div>
+            <div style="margin-bottom: 0.5rem;">Signed in: <strong><?= e($user['email'] ?? 'admin') ?></strong></div>
             <form method="post" action="/sair" style="display: inline;">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                <button type="submit" style="background: none; border: none; padding: 0; color: #ef4444; cursor: pointer; font-size: 0.8rem;">Encerrar Sessão</button>
+                <button type="submit" style="background: none; border: none; padding: 0; color: #ef4444; cursor: pointer; font-size: 0.8rem;">Log Out</button>
             </form>
         </div>
     </aside>
 
     <div class="admin-main-wrap">
         <header class="admin-topbar">
-            <div class="admin-topbar-title"><?= e($page_title ?? 'Painel de Controle') ?></div>
+            <div class="admin-topbar-title"><?= e($page_title ?? 'Admin Control Panel') ?></div>
             <div class="admin-user-menu">
                 <span class="admin-pill admin-pill-neutral">PostgreSQL 18</span>
                 <span class="admin-pill admin-pill-neutral">PHP <?= e(PHP_VERSION) ?></span>
-                <a href="/" class="admin-btn admin-btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">Site Público ↗</a>
+                <a href="/" class="admin-btn admin-btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">Public Site ↗</a>
             </div>
         </header>
 
         <main class="admin-content">
             <?php if (!empty($ok)): ?>
-                <div class="admin-alert-banner admin-alert-success">✓ Ação executada com sucesso.</div>
+                <div class="admin-alert-banner admin-alert-success">✓ Action completed successfully.</div>
             <?php endif; ?>
             <?php if (!empty($error)): ?>
                 <div class="admin-alert-banner admin-alert-error">⚠️ <?= e($error) ?></div>

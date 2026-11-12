@@ -110,17 +110,17 @@ final class AdminDashboardTest extends TestCase
         $content = (string) ob_get_clean();
 
         $this->assertNotEmpty($content);
-        $this->assertStringContainsString("Estado dos Serviços & Infraestrutura", $content);
-        $this->assertStringContainsString("Imóveis Cadastrados", $content);
+        $this->assertStringContainsString("Services & Infrastructure Status", $content);
+        $this->assertStringContainsString("Registered Properties", $content);
 
         ob_start();
-        $page_title = "Painel Geral";
+        $page_title = "Dashboard";
         $active_tab = "dashboard";
         include dirname(__DIR__, 2) . "/views/admin_layout.php";
         $fullHtml = (string) ob_get_clean();
 
         $this->assertNotEmpty($fullHtml);
         $this->assertStringContainsString("CasaLivre", $fullHtml);
-        $this->assertStringContainsString("Painel Geral", $fullHtml);
+        $this->assertStringContainsString("Dashboard", $fullHtml);
     }
 }

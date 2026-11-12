@@ -12,7 +12,7 @@ final class AdminSecurity
     public static function index(array $actor): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $ips = AdminRepository::getSecurityIps(100);
@@ -23,32 +23,32 @@ final class AdminSecurity
     public static function unblock(array $actor, string $ip): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $cleanIp = trim($ip);
         if ($cleanIp === "" || !filter_var($cleanIp, FILTER_VALIDATE_IP)) {
-            return new Resultado("invalido", "Endereço IP inválido.");
+            return new Resultado("invalido", "Invalid IP address.");
         }
 
         AdminRepository::unblockIp($cleanIp);
-        return new Resultado("ok", "IP desbloqueado com sucesso.", ["ip" => $cleanIp]);
+        return new Resultado("ok", "IP unblocked successfully.", ["ip" => $cleanIp]);
     }
 
     /** @param array<string, mixed> $actor */
     public static function block(array $actor, string $ip, int $minutes = 60): Resultado
     {
         if ((int) ($actor["is_admin"] ?? 0) !== 1 || ($actor["status"] ?? "") !== "active") {
-            return new Resultado("forbidden", "Acesso restrito a administradores.");
+            return new Resultado("forbidden", "Access restricted to administrators.");
         }
 
         $cleanIp = trim($ip);
         if ($cleanIp === "" || !filter_var($cleanIp, FILTER_VALIDATE_IP)) {
-            return new Resultado("invalido", "Endereço IP inválido.");
+            return new Resultado("invalido", "Invalid IP address.");
         }
 
         $duration = max(1, min(525600, $minutes));
         AdminRepository::blockIp($cleanIp, $duration);
-        return new Resultado("ok", "IP bloqueado com sucesso.", ["ip" => $cleanIp, "minutes" => $duration]);
+        return new Resultado("ok", "IP blocked successfully.", ["ip" => $cleanIp, "minutes" => $duration]);
     }
 }
