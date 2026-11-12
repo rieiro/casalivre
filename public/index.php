@@ -769,6 +769,80 @@ if ($path === '/admin/notas' && $method === 'POST') {
     return null;
 }
 
+if ($path === '/admin/configuracoes' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSettingsUpdate.php';
+    if ($method === 'POST') {
+        csrf_check();
+        $res = AdminSettingsUpdate::run($user, $_POST);
+        if ($res->tipo !== 'ok') {
+            $settings = [];
+            foreach (array_keys(Settings::defaults()) as $k) {
+                $settings[$k] = Settings::get($k);
+            }
+            view('admin/configuracoes', [
+                'user' => $user,
+                'settings' => $settings,
+                'active_tab' => 'configuracoes',
+                'layout' => 'admin_layout',
+                'page_title' => 'Parâmetros & Limites',
+                'ok' => null,
+                'error' => $res->mensagem,
+            ]);
+            return null;
+        }
+        redirect('/admin/configuracoes?ok=1');
+        return null;
+    }
+    $settings = [];
+    foreach (array_keys(Settings::defaults()) as $k) {
+        $settings[$k] = Settings::get($k);
+    }
+    view('admin/configuracoes', [
+        'user' => $user,
+        'settings' => $settings,
+        'active_tab' => 'configuracoes',
+        'layout' => 'admin_layout',
+        'page_title' => 'Parâmetros & Limites',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]);
+    return null;
+}
+
+if ($path === '/admin/seguranca' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::index($user);
+    view('admin/seguranca', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'seguranca',
+        'layout' => 'admin_layout',
+        'page_title' => 'Segurança & IPs',
+        'ok' => isset($_GET['ok']),
+        'error' => $_GET['error'] ?? null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/seguranca/desbloquear' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::unblock($user, (string) ($_POST['ip'] ?? ''));
+    redirect('/admin/seguranca?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+    return null;
+}
+
+if ($path === '/admin/seguranca/bloquear' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminSecurity.php';
+    $res = AdminSecurity::block($user, (string) ($_POST['ip'] ?? ''), (int) ($_POST['minutes'] ?? 60));
+    redirect('/admin/seguranca?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+    return null;
+}
+
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
 if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
