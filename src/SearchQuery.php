@@ -28,6 +28,7 @@ final class SearchQuery
         public readonly array $amenidades,
         public readonly ?string $grupo,
         public readonly string $sort,
+        public readonly int $pagina = 1,
     ) {
     }
 
@@ -55,6 +56,7 @@ final class SearchQuery
             $amenidades,
             $grupo,
             self::sortOf($request['sort'] ?? null),
+            max(1, (int) ($request['pagina'] ?? $request['page'] ?? 1)),
         );
     }
 
@@ -107,6 +109,7 @@ final class SearchQuery
             'preco_max' => $this->precoMax,
             'score_min' => $this->scoreMin,
             'amenidades' => $this->amenidades,
+            'pagina' => $this->pagina,
         ];
         if ($this->localId > 0) {
             unset($filters['localidade']);

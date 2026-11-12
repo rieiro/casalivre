@@ -106,17 +106,23 @@ $options ??= [];
                 ?>
                 <h1><?= e($placeLabel !== '' ? $placeLabel . ': ' : '') ?><?= $resultTotal ?> <?= e(t('home.found')) ?></h1>
                 <?php include __DIR__ . '/result_cards.php'; ?>
+                <?php
+                $pageFilters = $filters;
+                unset($pageFilters['pagina']);
+                $pagerQuery = search_query($pageFilters);
+                $pagerPrefix = $pagerQuery !== '' ? $pagerQuery . '&' : '';
+                ?>
                 <?php if ($pageCount > 1): ?>
                     <nav class="pager" aria-label="<?= e(t('home.pages')) ?>">
-                        <?php if ($page > 1): ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $page - 1 ?>"><?= e(t('home.prev_page')) ?></a><?php endif; ?>
+                        <?php if ($page > 1): ?><a href="<?= e($base) ?>/busca?<?= e($pagerPrefix) ?>pagina=<?= $page - 1 ?>"><?= e(t('home.prev_page')) ?></a><?php endif; ?>
                         <?php
                         $from = max(1, $page - 2);
                         $to = min($pageCount, $page + 2);
                         for ($i = $from; $i <= $to; $i++):
                         ?>
-                            <?php if ($i === $page): ?><span class="is-on"><?= $i ?></span><?php else: ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $i ?>"><?= $i ?></a><?php endif; ?>
+                            <?php if ($i === $page): ?><span class="is-on"><?= $i ?></span><?php else: ?><a href="<?= e($base) ?>/busca?<?= e($pagerPrefix) ?>pagina=<?= $i ?>"><?= $i ?></a><?php endif; ?>
                         <?php endfor; ?>
-                        <?php if ($page < $pageCount): ?><a href="<?= e($base) ?>/busca?<?= e($query) ?>&pagina=<?= $page + 1 ?>"><?= e(t('home.next_page')) ?></a><?php endif; ?>
+                        <?php if ($page < $pageCount): ?><a href="<?= e($base) ?>/busca?<?= e($pagerPrefix) ?>pagina=<?= $page + 1 ?>"><?= e(t('home.next_page')) ?></a><?php endif; ?>
                     </nav>
                 <?php endif; ?>
             <?php endif; ?>

@@ -55,6 +55,10 @@ final class SearchService
             'facets' => $query->searched() ? Amenities::keys() : [],
             'next_cursor' => null,
             'total_aprox' => null,
+            'page' => $query->pagina,
+            'per_page' => self::PAGE_SIZE,
+            'total' => 0,
+            'total_pages' => 1,
             'unresolved' => false,
             'resolution' => null,
             'options' => [],
@@ -111,6 +115,15 @@ final class SearchService
         $radiusKm = self::radiusKm($place, $query->raio);
         $bbox = $radiusKm > 0 ? SearchSql::bbox((float) $place['lat'], (float) $place['lng'], $radiusKm) : null;
         $out['total_aprox'] = SearchSql::totalAprox($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin);
+        $total = is_int($out['total_aprox'])
+            ? $out['total_aprox']
+            : ($out['total_aprox'] === '100+'
+                ? SearchSql::totalCount($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $query->scoreMin)
+                : 0);
+        $out['total'] = $total;
+        $out['total_pages'] = max(1, (int) ceil($total / self::PAGE_SIZE));
+        $out['page'] = $query->pagina;
+        $out['per_page'] = self::PAGE_SIZE;
         // The count is the listing query. A batch would only add the keyset, so it is skipped.
         // iteracoes stays 1: 0 would look like the search never ran (unresolved text, or a score/guest cap).
         if ($out['total_aprox'] === 0) {
@@ -123,14 +136,20 @@ final class SearchService
             $query->amenidades,
             static fn (string $key): bool => in_array($key, $known, true)
         ));
+        $targetPage = max(1, $query->pagina);
+        $targetOffset = ($targetPage - 1) * self::PAGE_SIZE;
+        $hasPhpFilters = $radiusKm > 0 || $query->precoMin > 0 || $query->precoMax > 0 || $wanted !== [];
         $page = [];
         $column = SearchSql::sortColumn($query->sort);
         $hasMore = true;
         $read = 0;
         $queries = 0;
+        $skip = $hasPhpFilters ? $targetOffset : 0;
+        $initialOffset = (!$hasPhpFilters && $after === null) ? $targetOffset : 0;
         while (count($page) < self::PAGE_SIZE && $queries < self::MAX_QUERIES && $hasMore) {
             $queries++;
-            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1, $query->scoreMin, $query->sort);
+            $offsetToUse = ($queries === 1) ? $initialOffset : 0;
+            $fetched = SearchSql::batch($place, $groupId, $query->hospedes, $bbox, $checkin, $checkout, $after, self::BATCH_SIZE + 1, $query->scoreMin, $query->sort, $offsetToUse);
             $hasMore = count($fetched) > self::BATCH_SIZE;
             if ($hasMore) {
                 array_pop($fetched);
@@ -147,6 +166,10 @@ final class SearchService
                 $after = ['key' => (int) $property[$column], 'id' => $id];
                 $kept = self::keep($property, $query, $nights, $place, $calendars[$id] ?? [], $wanted, $radiusKm);
                 if ($kept === null) {
+                    continue;
+                }
+                if ($skip > 0) {
+                    $skip--;
                     continue;
                 }
                 $kept['photo'] = $photos[$id] ?? null;

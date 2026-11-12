@@ -333,6 +333,10 @@ function handle_api(string $path, string $method): void
             'filters' => $filters,
             'next_cursor' => $result['next_cursor'],
             'total_aprox' => $result['total_aprox'],
+            'page' => $result['page'] ?? $query->pagina,
+            'per_page' => $result['per_page'] ?? SearchService::PAGE_SIZE,
+            'total' => $result['total'] ?? (is_int($result['total_aprox']) ? $result['total_aprox'] : count($items)),
+            'total_pages' => $result['total_pages'] ?? 1,
         ];
         if ($result['unresolved']) {
             $payload['unresolved'] = true;

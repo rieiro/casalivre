@@ -227,21 +227,22 @@ final class SearchSql
      * @param array{key:int,id:int}|null $after
      * @return list<array>
      */
-    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort): array
+    public static function batch(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, ?array $after, int $limit, float $scoreMin, string $sort, int $offset = 0): array
     {
         $order = self::orderBy($sort);
+        $offsetSql = $offset > 0 ? ' OFFSET ' . $offset : '';
         if ($bbox !== null && $groupId !== null) {
             [$inner, $outer, $params] = self::groupParts($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
             $from = '(SELECT s.id, s.rank_base, s.rating_rank FROM g JOIN listing_search s ON s.id = g.id WHERE ' . $inner
                 . ' ORDER BY ' . $order . self::joinPage()
-                . ' WHERE ' . $outer . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+                . ' WHERE ' . $outer . ' ORDER BY ' . $order . ' LIMIT ' . $limit . $offsetSql;
             return self::rows(self::GROUP_CTE . self::pageSql($from), $params);
         }
         $propertyFilter = self::hasPropertyFilter($place, $groupId, $checkin, $checkout);
         if ($propertyFilter && $bbox === null) {
             [$where, $params] = self::where($place, $groupId, $guests, $bbox, $checkin, $checkout, $after, $scoreMin, $sort);
             $from = self::JOIN_LISTING . ' ' . HouseRepository::JOIN_CITY_SQL
-                . ' WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+                . ' WHERE ' . $where . ' ORDER BY ' . $order . ' LIMIT ' . $limit . $offsetSql;
             return self::rows(self::pageSql($from), $params);
         }
         // id, rank_base and rating_rank are in idx_ls_place_* and idx_ls_geo. s.* would read lat/lng
@@ -251,14 +252,14 @@ final class SearchSql
         $sub = '(SELECT s.id, s.rank_base, s.rating_rank FROM listing_search s WHERE ' . $where . ' ORDER BY ' . $order;
         if (!$propertyFilter) {
             // p.status is outside the inner LIMIT: a stale listing_search row is not returned. It can only shorten that page.
-            $from = $sub . ' LIMIT ' . $limit . self::joinPage()
+            $from = $sub . ' LIMIT ' . $limit . $offsetSql . self::joinPage()
                 . ' WHERE ' . self::outerWhere('')
                 . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
             return self::rows(self::pageSql($from), $params);
         }
         [$propertyWhere, $propertyParams] = self::propertyFilters($place, $groupId, $checkin, $checkout);
         array_push($params, ...$propertyParams);
-        $from = $sub . self::joinPage() . ' WHERE ' . self::outerWhere($propertyWhere) . ' ORDER BY ' . $order . ' LIMIT ' . $limit;
+        $from = $sub . self::joinPage() . ' WHERE ' . self::outerWhere($propertyWhere) . ' ORDER BY ' . $order . ' LIMIT ' . $limit . $offsetSql;
         return self::rows(self::pageSql($from), $params);
     }
 
@@ -271,6 +272,24 @@ final class SearchSql
      * @param array{id:int,type:string,parent_id?:int|null} $place
      * @param array{s:float,n:float,w:float,e:float}|null $bbox
      */
+    public static function totalCount(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): int
+    {
+        if ($bbox !== null && $groupId !== null) {
+            [$inner, $outer, $params] = self::groupParts($place, $groupId, $guests, $bbox, $checkin, $checkout, null, $scoreMin, SearchQuery::SORT_RELEVANCE);
+            $sql = self::GROUP_CTE . 'SELECT COUNT(*) FROM g JOIN listing_search s ON s.id = g.id JOIN properties p ON p.id = s.id WHERE '
+                . $inner . ' AND ' . $outer;
+        } elseif (!self::hasPropertyFilter($place, $groupId, $checkin, $checkout)) {
+            [$where, $params] = self::listingFilters($place, $guests, $bbox, $scoreMin);
+            $sql = 'SELECT COUNT(*) FROM listing_search s WHERE ' . $where;
+        } else {
+            [$where, $params] = self::filters($place, $groupId, $guests, $bbox, $checkin, $checkout, $scoreMin);
+            $sql = 'SELECT COUNT(*) FROM ' . self::JOIN_LISTING . ' WHERE ' . $where;
+        }
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
+    }
+
     public static function totalAprox(array $place, ?int $groupId, int $guests, ?array $bbox, ?string $checkin, ?string $checkout, float $scoreMin): int|string
     {
         if ($bbox !== null && $groupId !== null) {
