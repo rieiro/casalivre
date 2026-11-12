@@ -558,6 +558,15 @@ function handle_api(string $path, string $method): void
         json_out(200, ['ok' => true, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
+    // Sincronizar feed iCal agora
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        HouseRepository::markFeedPending((int) $property['id'], (int) $m[2]);
+        CalendarFlash::set(t('cal.sync_requested'), 'ok');
+        json_out(200, ['ok' => true, 'message' => t('cal.sync_requested'), 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+    }
+
     // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.
     if (preg_match('#^/api/ical/([a-f0-9]{32})(\.ics)?$#', $path, $m) && $method === 'GET') {
         $house = HouseRepository::findByIcalHash($m[1]);

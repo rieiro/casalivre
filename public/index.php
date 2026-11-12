@@ -1171,7 +1171,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     return null;
 }
 
-if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $method === 'POST') {
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m)) {
+    if ($method === 'GET') {
+        redirect('/imoveis/' . $m[1] . '/calendario');
+    }
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
@@ -1184,6 +1187,19 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
         redirect('/imoveis/' . $m[1] . '/calendario');
     }
     CalendarFlash::set(t('cal.feed_removed'), 'ok');
+    redirect('/imoveis/' . $m[1] . '/calendario');
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar$#', $path, $m)) {
+    if ($method === 'GET') {
+        redirect('/imoveis/' . $m[1] . '/calendario');
+    }
+    $user = require_user();
+    csrf_check();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
+    HouseRepository::markFeedPending($propertyId, (int) $m[2]);
+    CalendarFlash::set(t('cal.sync_requested'), 'ok');
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
