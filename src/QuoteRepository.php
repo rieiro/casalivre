@@ -174,16 +174,13 @@ final class QuoteRepository
     /**
      * @return list<array<string, mixed>>
      */
-    /**
-     * @return list<array<string, mixed>>
-     */
     public static function listForUser(int $userId, ?string $status = null): array
     {
         self::ensureTable();
         $sql = "SELECT q.*, p.title as property_title, p.public_hash as property_hash
                 FROM quotes q
                 JOIN properties p ON p.id = q.property_id
-                WHERE (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \x27gestor\x27))";
+                WHERE (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor'))";
         $params = [$userId, $userId];
         if ($status !== null && $status !== "") {
             $sql .= " AND q.status = ?";
