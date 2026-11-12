@@ -477,7 +477,7 @@ SQL;
 
     public static function addFeed(int $propertyId, int $userId, string $url, string $title): string|array
     {
-        if (!self::findByUser($userId, $propertyId)) {
+        if (!self::findManageable($userId, $propertyId)) {
             return 'missing';
         }
         $title = trim($title);
@@ -551,8 +551,8 @@ SQL;
         $sql = 'UPDATE ' . ReturningWrite::q('properties')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('external_ical_url', " . ReturningWrite::q('external_ical_url') . '), '
             . ReturningWrite::q('external_ical_url') . " = COALESCE((SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id LIMIT 1), '')"
-            . ' WHERE id = ? AND user_id = ? RETURNING ' . ReturningWrite::q('audit_hold') . ', ' . ReturningWrite::q('external_ical_url');
-        $rows = ReturningWrite::query($sql, [$propertyId, $propertyId, $userId]);
+            . ' WHERE id = ? AND (user_id = ? OR group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \'gestor\')) RETURNING ' . ReturningWrite::q('audit_hold') . ', ' . ReturningWrite::q('external_ical_url');
+        $rows = ReturningWrite::query($sql, [$propertyId, $propertyId, $userId, $userId]);
         if ($rows === []) {
             return [];
         }

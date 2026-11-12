@@ -940,7 +940,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') 
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     $updated = HouseService::update((int) $user['id'], $propertyId, $_POST);
     if (isset($updated['error'])) {
-        $property = HouseRepository::findByUser((int) $user['id'], $propertyId);
+        $property = HouseRepository::findManageable((int) $user['id'], $propertyId);
         view('property_form', [
             'error' => $updated['error'],
             'property' => $property,
@@ -979,7 +979,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
     $res->registrar();
     // Erro (nada salvo: erros.fotos) ou aviso (parcial) na tela de edição, como a capa.
@@ -995,7 +995,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::deleteIds($propertyId, array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
         PhotoStorage::deletePhotoFiles($photo);
@@ -1013,7 +1013,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::delete($propertyId, (int) $m[2]);
     if ($removed['old']) {
         PhotoStorage::deletePhotoFiles($removed['old']);
@@ -1118,7 +1118,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path, $m) && $met
 if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Regra, validação (valor bruto, só https) e logs em ICalImport (iguais aos da API); aqui só a tela.
     $res = ICalImport::run($property, (int) $user['id'], $_POST['external_ical_url'] ?? null, $_POST['feed_title'] ?? null);
     $res->registrar();
@@ -1138,7 +1138,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2]);
     $res->registrar();
     if ($res->tipo === 'nao_encontrado') {
@@ -1154,7 +1154,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Validação em CoverSet (exatamente uma foto do imóvel); o erro aparece na tela de edição.
     $res = CoverSet::run($propertyId, (array) ($_POST['fotos'] ?? []));
     $res->registrar();
@@ -1168,7 +1168,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Valor bruto da rota (só dígitos pela regex): CoverSet valida (InteiroBruto) e confere o dono.
     $res = CoverSet::run($propertyId, [$m[2]]);
     $res->registrar();
