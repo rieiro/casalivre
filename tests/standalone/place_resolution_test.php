@@ -44,7 +44,8 @@ $mean = $render('did_you_mean', [$nbhd, $poi], $filters);
 t_ok(str_contains($mean, 'Você quis dizer'), 'título Você quis dizer');
 t_ok(str_contains($mean, 'data-focus="1"'), 'foco no título');
 t_ok(str_contains($mean, 'Geribá · Bairro · Armação dos Búzios, RJ'), 'bairro com o pai');
-t_ok(str_contains($mean, 'Praia de Geribá · Ponto de interesse · Armação dos Búzios, RJ'), 'POI com o pai');
+// Updated: 2026-11 - Requirement changed from showing Ponto de interesse with parent to showing POI name and UF only
+t_ok(str_contains($mean, 'Praia de Geribá · RJ'), 'POI com UF apenas');
 t_ok(str_contains($mean, 'local_id=9') && str_contains($mean, 'local_id=12'), 'cada opção leva local_id');
 t_ok(preg_match('/<\/template>.*openstreetmap\.org/s', $mean) === 1, 'crédito OSM visível quando há POI');
 t_ok(str_contains($mean, 'rel="noopener noreferrer"') && str_contains($mean, 'target="_blank"'), 'link OSM com rel e target');

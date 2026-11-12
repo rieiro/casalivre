@@ -61,9 +61,9 @@ SQL;
             $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
             $stmt = db()->prepare('INSERT INTO properties (
                 user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
-                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, status');
+                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, pix_key, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, pix_key, status');
             $stmt->execute([
                 $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
                 $house['address'], $house['cep'] ?? '', $house['street'] ?? '', $house['address_number'] ?? '', $house['address_complement'] ?? '',
@@ -71,7 +71,7 @@ SQL;
                 $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
                 self::calendarMonths($house),
                 max(0, (int) ($house['cleaning_fee'] ?? 0)),
-                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, date('Y-m-d H:i:s'),
+                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, (string) ($house['pix_key'] ?? ''), date('Y-m-d H:i:s'),
             ]);
             $row = $stmt->fetch();
             $row['city'] = self::cityText($placeId);
@@ -177,10 +177,11 @@ SQL;
                 'bbq' => $house['bbq'],
                 'garage' => $house['garage'],
                 'amenities' => $house['amenities'] ?? '{}',
-            ], 'id = ? AND user_id = ?', [$id, $userId], ['id'], [
+                'pix_key' => (string) ($house['pix_key'] ?? ''),
+            ], 'id = ? AND (user_id = ? OR group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \'gestor\'))', [$id, $userId, $userId], ['id'], [
                 'title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee',
                 'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
-                'pool', 'bbq', 'garage', 'amenities', 'status',
+                'pool', 'bbq', 'garage', 'amenities', 'pix_key', 'status',
             ]));
         });
     }
@@ -260,9 +261,26 @@ SQL;
 
     public static function listByUser(int $userId): array
     {
-        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.user_id = ? AND p.status = 'active' ORDER BY p.id DESC");
-        $stmt->execute([$userId]);
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')) AND p.status = 'active' ORDER BY p.id DESC");
+        $stmt->execute([$userId, $userId]);
         return $stmt->fetchAll();
+    }
+
+    public static function findManageable(int $userId, int $id): ?array
+    {
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')) AND COALESCE(NULLIF(p.status, ''), 'active') = 'active'");
+        $stmt->execute([$id, $userId, $userId]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public static function findManageableOrFail(int $userId, int $id): array
+    {
+        $row = self::findManageable($userId, $id);
+        if (!$row) {
+            throw ImovelNaoEncontrado::dono();
+        }
+        return $row;
     }
 
     public static function inactivate(int $id, int $userId, string $at): array
@@ -343,7 +361,8 @@ SQL;
     public static function exportDays(int $propertyId): array
     {
         $stmt = db()->prepare("SELECT day, blocked, origin FROM calendar_days
-            WHERE property_id = ? AND blocked = 1 AND COALESCE(origin, '') NOT IN ('sync', 'reserva')
+            WHERE property_id = ? AND blocked = 1 -- Updated: 2026-11 - Requirement changed from excluding reserva to exporting direct reservations in iCal feed
+            AND COALESCE(origin, '') != 'sync'
             ORDER BY day");
         $stmt->execute([$propertyId]);
         $rows = [];
@@ -458,7 +477,7 @@ SQL;
 
     public static function addFeed(int $propertyId, int $userId, string $url, string $title): string|array
     {
-        if (!self::findByUser($userId, $propertyId)) {
+        if (!self::findManageable($userId, $propertyId)) {
             return 'missing';
         }
         $title = trim($title);
@@ -532,8 +551,8 @@ SQL;
         $sql = 'UPDATE ' . ReturningWrite::q('properties')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('external_ical_url', " . ReturningWrite::q('external_ical_url') . '), '
             . ReturningWrite::q('external_ical_url') . " = COALESCE((SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id LIMIT 1), '')"
-            . ' WHERE id = ? AND user_id = ? RETURNING ' . ReturningWrite::q('audit_hold') . ', ' . ReturningWrite::q('external_ical_url');
-        $rows = ReturningWrite::query($sql, [$propertyId, $propertyId, $userId]);
+            . ' WHERE id = ? AND (user_id = ? OR group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \'gestor\')) RETURNING ' . ReturningWrite::q('audit_hold') . ', ' . ReturningWrite::q('external_ical_url');
+        $rows = ReturningWrite::query($sql, [$propertyId, $propertyId, $userId, $userId]);
         if ($rows === []) {
             return [];
         }

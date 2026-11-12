@@ -164,12 +164,12 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema'], true)) {
+    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -182,7 +182,7 @@ function casa_privado(string $path, string $method): bool
     if (preg_match('#^/imoveis/[a-f0-9]{16}$#', $path) === 1 && $method !== 'GET') {
         return true;
     }
-    if (preg_match('#^/imoveis/[a-f0-9]{16}/(editar|fotos|calendario|ical|excluir)(/|$)#', $path) === 1) {
+    if (preg_match('#^/imoveis/[a-f0-9]{16}/(editar|fotos|calendario|cotacao|ical|excluir)(/|$)#', $path) === 1) {
         return true;
     }
     if (str_starts_with($path, '/api/users/eu')) {
@@ -496,6 +496,254 @@ if ($path === '/sair' && $method === 'POST') {
     redirect('/');
 }
 
+// Reservas & Confirmação Pix (Gestor / Dono / Admin)
+if (($path === '/reservas' || $path === '/admin/reservas') && $method === 'GET') {
+    $user = require_user();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    QuoteRepository::ensureTable();
+
+    $filter = (string) ($_GET['status'] ?? '');
+    if (!in_array($filter, ['pending', 'confirmed'], true)) {
+        $filter = null;
+    }
+
+    $quotes = (int) ($user['is_admin'] ?? 0) === 1
+        ? QuoteRepository::listAll($filter)
+        : QuoteRepository::listForUser((int) $user['id'], $filter);
+
+    view('reservations', [
+        'title' => t('res.title') . ' · CasaLivre',
+        'user' => $user,
+        'quotes' => $quotes,
+        'filter' => $filter,
+        'csrf' => csrf_token(),
+        'confirmed' => !empty($_GET['confirmado']),
+        'error' => isset($_GET['erro']) && is_string($_GET['erro']) ? $_GET['erro'] : null,
+    ]);
+    return null;
+}
+
+if ((preg_match('#^/reservas/([a-f0-9]{16})/confirmar$#', $path, $m) || preg_match('#^/admin/reservas/([a-f0-9]{16})/confirmar$#', $path, $m)) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    QuoteRepository::ensureTable();
+
+    $hash = $m[1];
+    $quote = QuoteRepository::findByHash($hash);
+    if (!$quote) {
+        redirect('/reservas?erro=' . urlencode('Cotação não encontrada.'));
+    }
+    if ((int) ($user['is_admin'] ?? 0) !== 1) {
+        $prop = HouseRepository::findManageable((int) $user['id'], (int) $quote['property_id']);
+        if (!$prop) {
+            redirect('/reservas?erro=' . urlencode('Sem permissão para confirmar esta reserva.'));
+        }
+    }
+
+    try {
+        $ok = QuoteRepository::confirmPayment($hash);
+        if ($ok) {
+            activity(
+                ActivityLog::RESERVATION_CONFIRM,
+                [
+                    'imovel_id' => (int) $quote['property_id'],
+                    'checkin' => (string) $quote['checkin'],
+                    'checkout' => (string) $quote['checkout'],
+                    'total' => (int) $quote['total_price'],
+                    'motivo' => 'admin_confirmado',
+                ],
+                ['status' => 'pending'],
+                ['status' => 'confirmed', 'quote_hash' => $hash]
+            );
+            redirect('/reservas?confirmado=1');
+        } else {
+            redirect('/reservas?erro=' . urlencode('Cotação não encontrada.'));
+        }
+    } catch (Throwable $e) {
+        redirect('/reservas?erro=' . urlencode($e->getMessage()));
+    }
+    return null;
+}
+
+// Cotação e Gerador de Link de Pagamento (Gestor / Dono)
+if (preg_match('#^/admin/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m)) {
+    redirect('/imoveis/' . $m[1] . '/cotacao' . (!empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : ''));
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method === 'GET' || $method === 'POST')) {
+    $user = require_user();
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteGenerator.php';
+    QuoteRepository::ensureTable();
+
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+
+    $error = null;
+    $quote = null;
+    $paymentUrl = null;
+    $whatsappMsg = null;
+
+    $checkin = trim((string) ($_POST['checkin'] ?? ($_GET['checkin'] ?? '')));
+    $checkout = trim((string) ($_POST['checkout'] ?? ($_GET['checkout'] ?? '')));
+
+    if ($method === 'POST') {
+        csrf_check();
+        $taxPercent = max(0, min(100, (int) ($_POST['tax_percent'] ?? 0)));
+        $specialOfferRaw = trim((string) ($_POST['special_offer'] ?? ''));
+        $specialOffer = ($specialOfferRaw !== '' && is_numeric($specialOfferRaw)) ? (int) $specialOfferRaw : null;
+        $pixKey = trim((string) ($property['pix_key'] ?? '')) ?: 'rafaelrieiro@gmail.com';
+
+        if ($checkin === '' || $checkout === '' || $checkin >= $checkout) {
+            $error = 'Por favor, selecione datas válidas (o check-out deve ser posterior ao check-in).';
+        } else {
+            try {
+                $quote = QuoteRepository::create(
+                    propertyId: (int) $property['id'],
+                    checkin: $checkin,
+                    checkout: $checkout,
+                    taxPercent: $taxPercent,
+                    specialOffer: $specialOffer,
+                    pixKey: $pixKey
+                );
+                $appUrl = app_url();
+                $paymentUrl = $appUrl . '/pagamento/' . $quote['quote_hash'];
+                $checkinFmt = format_date($checkin);
+                $checkoutFmt = format_date($checkout);
+                $totalFmt = money((int) $quote['total']);
+                $propTitle = (string) $property['title'];
+                $whatsappMsg = "Olá! Segue o link exclusivo para confirmação e pagamento da sua reserva no CasaLivre ($propTitle):
+$paymentUrl
+
+Período: $checkinFmt a $checkoutFmt ({$quote['nights']} noites)
+Valor total: $totalFmt (Chave Pix: $pixKey)";
+                activity(
+                    ActivityLog::QUOTE_CREATE,
+                    [
+                        'imovel_id' => (int) $property['id'],
+                        'checkin' => $checkin,
+                        'checkout' => $checkout,
+                        'total' => (int) $quote['total'],
+                        'pix_key' => $pixKey,
+                    ],
+                    null,
+                    [
+                        'quote_hash' => (string) $quote['quote_hash'],
+                        'status' => 'pending',
+                        'total_price' => (int) $quote['total'],
+                    ]
+                );
+            } catch (InvalidArgumentException $e) {
+                $error = 'Não foi possível gerar a cotação: ' . $e->getMessage();
+            }
+        }
+    } else {
+        if ($checkin !== '' && $checkout !== '' && $checkin < $checkout) {
+            $avail = QuoteRepository::checkAvailability((int) $property['id'], $checkin, $checkout);
+            if (!$avail['available']) {
+                $error = 'Data indisponível no calendário: ' . $avail['conflict_date'];
+            }
+        }
+    }
+
+    view('quote', [
+        'title' => t('quote.title') . ' · ' . $property['title'],
+        'user' => $user,
+        'property' => $property,
+        'quote' => $quote,
+        'payment_url' => $paymentUrl,
+        'whatsapp_msg' => $whatsappMsg,
+        'error' => $error,
+        'posted' => $_POST,
+        'checkin' => $checkin,
+        'checkout' => $checkout,
+        'csrf' => csrf_token(),
+    ]);
+    return null;
+}
+
+// Direct Guest Payment Page (Public Side)
+if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/PixPayload.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/PhotoRepository.php';
+
+    QuoteRepository::ensureTable();
+    $quote = QuoteRepository::findByHash($m[1]);
+    if (!$quote) {
+        http_response_code(404);
+        view('message', ['title' => 'Cotação não encontrada', 'message' => 'O link de pagamento informado não existe ou já expirou.']);
+        return null;
+    }
+
+    $property = HouseRepository::find((int) $quote['property_id']);
+    $photos = PhotoRepository::listReady((int) $property['id']);
+    $property['photo'] = $photos[0]['path'] ?? null;
+
+    $pixKey = (string) ($quote['pix_key'] ?: 'rafaelrieiro@gmail.com');
+    $pixPayload = PixPayload::generate(
+        key: $pixKey,
+        name: 'Rafael Rieiro',
+        city: (string) ($property['city'] ?? 'Saquarema'),
+        amount: (float) $quote['total_price'],
+        txid: 'CL' . strtoupper($m[1])
+    );
+
+    $checkinFmt = format_date((string) $quote['checkin']);
+    $checkoutFmt = format_date((string) $quote['checkout']);
+    $totalFmt = money((int) $quote['total_price']);
+    $waText = urlencode("Olá! Acabei de realizar o pagamento Pix no valor de $totalFmt para a reserva do imóvel {$property['title']} ($checkinFmt a $checkoutFmt). Código: {$m[1]}");
+    $waUrl = "https://wa.me/5521999999999?text=$waText";
+
+    view('payment', [
+        'title' => 'Pagamento de Reserva · ' . $property['title'],
+        'quote' => array_merge($quote, ['total' => (int) $quote['total_price']]),
+        'property' => $property,
+        'pix_payload' => $pixPayload,
+        'whatsapp_confirm_url' => $waUrl,
+        'confirmed' => ($quote['status'] === 'confirmed') || isset($_GET['sucesso']),
+        'csrf' => csrf_token(),
+    ]);
+    return null;
+}
+
+if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method === 'POST') {
+    csrf_check();
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+
+    QuoteRepository::ensureTable();
+    $quote = QuoteRepository::findByHash($m[1]);
+    if (!$quote) {
+        http_response_code(404);
+        view('message', ['title' => 'Erro na confirmação', 'message' => 'Cotação não encontrada.']);
+        return null;
+    }
+    $ok = QuoteRepository::confirmPayment($m[1]);
+    if (!$ok) {
+        http_response_code(400);
+        view('message', ['title' => 'Erro na confirmação', 'message' => 'Não foi possível confirmar esta reserva.']);
+        return null;
+    }
+
+    activity(
+        ActivityLog::RESERVATION_CONFIRM,
+        [
+            'imovel_id' => (int) $quote['property_id'],
+            'checkin' => (string) $quote['checkin'],
+            'checkout' => (string) $quote['checkout'],
+            'total' => (int) $quote['total_price'],
+            'motivo' => 'guest_pix',
+        ],
+        ['status' => 'pending'],
+        ['status' => 'confirmed', 'quote_hash' => $m[1]]
+    );
+    redirect('/pagamento/' . $m[1] . '?sucesso=1');
+}
+
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
 if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
@@ -729,7 +977,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') 
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
     $updated = HouseService::update((int) $user['id'], $propertyId, $_POST);
     if (isset($updated['error'])) {
-        $property = HouseRepository::findByUser((int) $user['id'], $propertyId);
+        $property = HouseRepository::findManageable((int) $user['id'], $propertyId);
         view('property_form', [
             'error' => $updated['error'],
             'property' => $property,
@@ -752,7 +1000,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/excluir$#', $path, $m) && $method === 
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/editar$#', $path, $m) && $method === 'GET') {
     $user = require_user();
-    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     view('property_form', [
         'error' => null,
         'upload_notice' => $_SESSION['upload_notice'] ?? null,
@@ -768,7 +1016,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
     $res->registrar();
     // Erro (nada salvo: erros.fotos) ou aviso (parcial) na tela de edição, como a capa.
@@ -784,7 +1032,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::deleteIds($propertyId, array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
         PhotoStorage::deletePhotoFiles($photo);
@@ -802,7 +1050,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::delete($propertyId, (int) $m[2]);
     if ($removed['old']) {
         PhotoStorage::deletePhotoFiles($removed['old']);
@@ -816,7 +1064,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
     $user = require_user();
-    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Aviso de uma ação anterior (flash na sessão: exclusão de feed na web, ações do calendário pela API/JS).
     $flash = CalendarFlash::take();
     // GET é somente leitura. A limpeza das noites além do horizonte acontece no POST (CalendarSave).
@@ -834,7 +1082,28 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+
+    if (($_POST['acao'] ?? '') === 'cotacao') {
+        require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+        QuoteRepository::ensureTable();
+        $start = parse_date((string) ($_POST['inicio'] ?? ''));
+        $end = parse_date((string) ($_POST['fim'] ?? '')) ?? $start;
+        if ($start === null || $end === null) {
+            CalendarFlash::set(t('cal.need_range'), 'error');
+            redirect('/imoveis/' . $m[1] . '/calendario');
+        }
+        if ($end < $start) {
+            [$start, $end] = [$end, $start];
+        }
+        $checkout = (new DateTimeImmutable($end))->modify('+1 day')->format('Y-m-d');
+        $avail = QuoteRepository::checkAvailability((int) $property['id'], $start, $checkout);
+        if (!$avail['available']) {
+            CalendarFlash::set('Data indisponível: ' . $avail['conflict_date'], 'error');
+            redirect('/imoveis/' . $m[1] . '/calendario');
+        }
+        redirect('/imoveis/' . $m[1] . '/cotacao?checkin=' . urlencode($start) . '&checkout=' . urlencode($checkout));
+    }
     $res = CalendarSave::run($property, $_POST);
     $res->registrar();
     $message = $res->mensagem;
@@ -886,7 +1155,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path, $m) && $met
 if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $property = HouseRepository::findByUserOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Regra, validação (valor bruto, só https) e logs em ICalImport (iguais aos da API); aqui só a tela.
     $res = ICalImport::run($property, (int) $user['id'], $_POST['external_ical_url'] ?? null, $_POST['feed_title'] ?? null);
     $res->registrar();
@@ -906,7 +1175,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m) && $
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2]);
     $res->registrar();
     if ($res->tipo === 'nao_encontrado') {
@@ -922,7 +1191,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Validação em CoverSet (exatamente uma foto do imóvel); o erro aparece na tela de edição.
     $res = CoverSet::run($propertyId, (array) ($_POST['fotos'] ?? []));
     $res->registrar();
@@ -936,7 +1205,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $me
     $user = require_user();
     csrf_check();
     $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
-    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Valor bruto da rota (só dígitos pela regex): CoverSet valida (InteiroBruto) e confere o dono.
     $res = CoverSet::run($propertyId, [$m[2]]);
     $res->registrar();

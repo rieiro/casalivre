@@ -19,6 +19,23 @@
     let anchor = null;
     let complete = false;
     const saveButton = document.querySelector('[data-cal-save]');
+    const quoteButton = document.querySelector('[data-cal-quote]');
+    const blockButton = document.querySelector('[data-cal-block]');
+    const openButton = document.querySelector('[data-cal-open]');
+    if (quoteButton) {
+        quoteButton.addEventListener('click', () => {
+            let acao = form ? form.querySelector('input[name="acao"]') : null;
+            if (!acao && form) {
+                acao = document.createElement('input');
+                acao.type = 'hidden';
+                acao.name = 'acao';
+                form.appendChild(acao);
+            }
+            if (acao) {
+                acao.value = 'cotacao';
+            }
+        });
+    }
     function resetEdited() {
         if (!saveButton) {
             return;
@@ -53,9 +70,14 @@
         let openCount = 0;
         let systemCount = 0;
         let importedCount = 0;
+        let hasDisabled = false;
         buttons.forEach((button) => {
             const day = button.getAttribute('data-cal-day');
-            if (button.disabled || day < first || day > last) {
+            if (day < first || day > last) {
+                return;
+            }
+            if (button.disabled) {
+                hasDisabled = true;
                 return;
             }
             const origin = button.getAttribute('data-origin') || '';
@@ -67,8 +89,6 @@
                 openCount++;
             }
         });
-        const blockButton = document.querySelector('[data-cal-block]');
-        const openButton = document.querySelector('[data-cal-open]');
         const locked = importedCount > 0;
         if (blockButton) {
             blockButton.disabled = locked || openCount === 0;
@@ -78,19 +98,26 @@
             openButton.disabled = locked || systemCount === 0;
             openButton.classList.toggle('is-off', locked || systemCount === 0);
         }
-        if (price) {
-            const chosenDays = buttons.filter((button) => {
-                const day = button.getAttribute('data-cal-day');
-                return !button.disabled && day >= first && day <= last;
-            });
-            const prices = chosenDays.map((button) => button.getAttribute('data-price') || '');
-            const same = prices.length > 0 && prices.every((value) => value === prices[0]);
-            price.value = same ? prices[0] : '';
+        if (quoteButton) {
+            const quoteReady = !hasDisabled && !locked && openCount > 0 && systemCount === 0 && importedCount === 0;
+            quoteButton.disabled = !quoteReady;
+            if (quoteReady) {
+                quoteButton.removeAttribute('disabled');
+                quoteButton.classList.remove('is-off');
+            } else {
+                quoteButton.setAttribute('disabled', 'disabled');
+                quoteButton.classList.add('is-off');
+            }
         }
         const chosenDays = buttons.filter((button) => {
             const day = button.getAttribute('data-cal-day');
             return !button.disabled && day >= first && day <= last;
         });
+        if (price) {
+            const prices = chosenDays.map((button) => button.getAttribute('data-price') || '');
+            const same = prices.length > 0 && prices.every((value) => value === prices[0]);
+            price.value = same ? prices[0] : '';
+        }
         if (minInput) {
             const mins = chosenDays.map((button) => button.getAttribute('data-min') || '');
             const sameMin = mins.length > 0 && mins.every((value) => value === mins[0]);

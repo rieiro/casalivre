@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS properties (
     inactivated_at TIMESTAMP,
     audit_hold TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    pix_key TEXT NOT NULL DEFAULT '',
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
