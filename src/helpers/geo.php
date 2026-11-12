@@ -35,6 +35,9 @@ function place_option_text(array $option): string
     if (($option['type'] ?? '') === 'city') {
         return $option['name'] . ' · ' . $where;
     }
+    if (($option['type'] ?? '') === 'poi') {
+        return $option['name'] . ' · ' . $option['uf'];
+    }
     return $option['name'] . ' · ' . t('place.type_' . $option['type']) . ' · ' . $where;
 }
 

@@ -261,4 +261,20 @@ final class QuoteRepositoryTest extends TestCase
         $result = api_owned_property(["id" => $managerId], $prop["public_hash"]);
         $this->assertSame((int) $prop["id"], (int) $result["id"]);
     }
+
+    public function testPlaceOptionTextHidesPontoDeInteresseForPoi(): void
+    {
+        require_once dirname(__DIR__, 2) . "/src/I18n.php";
+        require_once dirname(__DIR__, 2) . "/src/helpers/geo.php";
+        $poiOption = [
+            "id" => 71607,
+            "name" => "Praia de Botafogo",
+            "type" => "poi",
+            "uf" => "RJ",
+            "parent" => "Rio de Janeiro",
+        ];
+        $text = place_option_text($poiOption);
+        $this->assertStringNotContainsString("Ponto de interesse", $text);
+        $this->assertSame("Praia de Botafogo · RJ", $text);
+    }
 }
