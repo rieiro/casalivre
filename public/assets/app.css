@@ -15,7 +15,7 @@
     --cal-blocked: #f8d7da;
     --cal-booked: #c5d8f5;
     --cal-sync: #ffe0b2;
-    --cal-prereserva: #e9d5ff;
+    --cal-prereserva: #166534;
     --danger: #9b1c1c;
     --danger-bg: #fde8e8;
     --danger-bg-soft: #fbeaea;
@@ -273,7 +273,9 @@ footer { padding: var(--space-16); }
 .cal-day.sistema, .cal-day.blocked { background: var(--cal-blocked); }
 .cal-day.sync { background: var(--cal-sync); }
 .cal-day.reserva { background: var(--cal-booked); }
-.cal-day.prereserva, .cal-day.pre-reserva { background: var(--cal-prereserva); }
+.cal-day.prereserva, .cal-day.pre-reserva { background: var(--cal-prereserva); color: #fff; border-color: #14532d; }
+.cal-day.prereserva .cal-corner, .cal-day.prereserva .cal-main, .cal-day.pre-reserva .cal-corner, .cal-day.pre-reserva .cal-main { color: #fff; }
+.cal-board[data-cal-mode="price"] .cal-day.prereserva .cal-main, .cal-board[data-cal-mode="price"] .cal-day.pre-reserva .cal-main, .cal-board[data-cal-mode="min"] .cal-day.prereserva .cal-main, .cal-board[data-cal-mode="min"] .cal-day.pre-reserva .cal-main { color: #fff; }
 .cal-legend { display: flex; flex-wrap: wrap; gap: var(--space-12) var(--space-18); list-style: none; padding: 0; margin: 0 0 var(--space-16); }
 .cal-legend li { display: flex; align-items: center; gap: var(--space-8); }
 .swatch { width: 18px; height: 18px; border-radius: var(--radius-4); border: 1px solid var(--line); display: inline-block; }
@@ -281,7 +283,7 @@ footer { padding: var(--space-16); }
 .swatch.sistema { background: var(--cal-blocked); }
 .swatch.sync { background: var(--cal-sync); }
 .swatch.reserva { background: var(--cal-booked); }
-.swatch.prereserva, .swatch.pre-reserva { background: var(--cal-prereserva); }
+.swatch.prereserva, .swatch.pre-reserva { background: var(--cal-prereserva); border-color: #14532d; }
 .cal-day.picked { outline: 2px solid var(--brand); }
 .cal-day:disabled { color: var(--disabled); cursor: default; }
 .sync-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); margin-top: var(--space-18); align-items: start; }
