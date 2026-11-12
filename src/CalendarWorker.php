@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/ActivityLog.php';
+require_once __DIR__ . '/helpers.php';
+
 /**
  * One calendar-sync process. Claims one due feed, fetches outside any transaction, then imports
  * in one transaction. A lost database pauses and exits 1 (QueueWorkerLoop::halt) so runit restarts it.
