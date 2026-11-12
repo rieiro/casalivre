@@ -137,7 +137,27 @@ final class QuoteRepository
                                WHERE q.quote_hash = ?");
         $stmt->execute([$hash]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+        $nights = (int) ($row["nights"] ?? 0);
+        $nightlyPrice = (int) ($row["nightly_price"] ?? 0);
+        $cleaningFee = (int) ($row["cleaning_fee"] ?? 0);
+        $taxes = (int) ($row["taxes"] ?? 0);
+        $totalPrice = (int) ($row["total_price"] ?? 0);
+        $subtotal = $nights * $nightlyPrice;
+
+        return array_merge($row, [
+            "nights" => $nights,
+            "nightly_price" => $nightlyPrice,
+            "subtotal" => $subtotal,
+            "cleaning" => $cleaningFee,
+            "cleaning_fee" => $cleaningFee,
+            "taxes" => $taxes,
+            "total" => $totalPrice,
+            "total_price" => $totalPrice,
+            "special_offer" => (isset($row["special_offer"]) && $row["special_offer"] !== null) ? (int) $row["special_offer"] : null,
+        ]);
     }
 
     public static function confirmPayment(string $hash): bool
