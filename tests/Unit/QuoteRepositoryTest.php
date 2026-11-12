@@ -277,4 +277,29 @@ final class QuoteRepositoryTest extends TestCase
         $this->assertStringNotContainsString("Ponto de interesse", $text);
         $this->assertSame("Praia de Botafogo · RJ", $text);
     }
+    public function testFindByHashReturnsSubtotalCleaningAndTaxesNormalized(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $this->pdo->prepare("UPDATE properties SET nightly_price = 25000, cleaning_fee = 15000 WHERE id = ?")->execute([$propId]);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-04-10",
+            checkout: "2027-04-13",
+            taxPercent: 10
+        );
+
+        $found = QuoteRepository::findByHash($quote["quote_hash"]);
+        $this->assertNotNull($found);
+        $this->assertArrayHasKey("subtotal", $found);
+        $this->assertSame(75000, $found["subtotal"]);
+        $this->assertSame(25000, $found["nightly_price"]);
+        $this->assertSame(15000, $found["cleaning"]);
+        $this->assertSame(15000, $found["cleaning_fee"]);
+        $this->assertSame(7500, $found["taxes"]);
+        $this->assertSame(97500, $found["total"]);
+        $this->assertSame(97500, $found["total_price"]);
+    }
 }

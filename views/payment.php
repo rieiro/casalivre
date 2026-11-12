@@ -40,10 +40,10 @@
                 <div class="breakdown mt-12">
                     <p><strong>Check-in:</strong> <?= e(format_date((string) $quote["checkin"])) ?></p>
                     <p><strong>Check-out:</strong> <?= e(format_date((string) $quote["checkout"])) ?></p>
-                    <p><strong>Duração:</strong> <?= (int) $quote["nights"] ?> <?= (int) $quote["nights"] === 1 ? "noite" : "noites" ?></p>
+                    <p><strong>Duração:</strong> <?= (int) $quote["nights"] ?> <?= (int) $quote["nights"] === 1 ? "noite" : "noites" ?><?php if (!empty($quote["nightly_price"])): ?> (<?= money((int) $quote["nightly_price"]) ?> / noite)<?php endif; ?></p>
                     <hr>
-                    <p>Subtotal diárias: <?= money((int) $quote["subtotal"]) ?></p>
-                    <p>Taxa de limpeza: <?= money((int) $quote["cleaning"]) ?></p>
+                    <p>Subtotal diárias: <?= money((int) ($quote["subtotal"] ?? ((int) $quote["nights"] * (int) ($quote["nightly_price"] ?? 0)))) ?></p>
+                    <p>Taxa de limpeza: <?= money((int) ($quote["cleaning"] ?? ($quote["cleaning_fee"] ?? 0))) ?></p>
                     <?php if (!empty($quote["taxes"])): ?>
                         <p>Taxas: <?= money((int) $quote["taxes"]) ?></p>
                     <?php endif; ?>
