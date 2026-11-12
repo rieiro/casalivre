@@ -447,7 +447,7 @@ return [
         'page.missing' => 'Página não encontrada',
         'page.missing_body' => 'O endereço não existe.',
         'page.not_found_house' => 'Este anúncio não existe.',
-    ],        'cal.generate_quote' => 'Gerar link de pagamento',
+        'cal.generate_quote' => 'Gerar link de pagamento',
         'form.pix_key' => 'Chave Pix para recebimento',
         'quote.title' => 'Gerar Link de Pagamento Imediato',
         'quote.back_cal' => 'Voltar ao Calendário',
@@ -477,6 +477,7 @@ return [
         'res.confirmed' => 'Confirmada',
         'res.pending' => 'Pendente',
         'res.empty' => 'Nenhuma reserva encontrada.',
+    ],
 
     'en' => [
         'nav.search' => 'Search',
@@ -922,7 +923,7 @@ return [
         'page.missing' => 'Page not found',
         'page.missing_body' => 'This address does not exist.',
         'page.not_found_house' => 'This listing does not exist.',
-    ],        'cal.generate_quote' => 'Generate payment link',
+        'cal.generate_quote' => 'Generate payment link',
         'form.pix_key' => 'Pix key for payments',
         'quote.title' => 'Generate Immediate Payment Link',
         'quote.back_cal' => 'Back to Calendar',
@@ -952,6 +953,7 @@ return [
         'res.confirmed' => 'Confirmed',
         'res.pending' => 'Pending',
         'res.empty' => 'No reservations found.',
+    ],
 
     'es' => [
         'nav.search' => 'Buscar',
@@ -1396,7 +1398,8 @@ return [
         'place.type_region' => 'Región',
         'page.missing' => 'Página no encontrada',
         'page.missing_body' => 'La dirección no existe.',
-        'page.not_found_house' => 'Este anuncio no existe.',        'cal.generate_quote' => 'Generar enlace de pago',
+        'page.not_found_house' => 'Este anuncio no existe.',
+        'cal.generate_quote' => 'Generar enlace de pago',
         'form.pix_key' => 'Clave Pix para cobros',
         'quote.title' => 'Generar Enlace de Pago Inmediato',
         'quote.back_cal' => 'Volver al Calendario',

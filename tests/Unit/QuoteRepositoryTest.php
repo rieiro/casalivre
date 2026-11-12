@@ -228,4 +228,19 @@ final class QuoteRepositoryTest extends TestCase
         $nbhdText = place_option_text($nbhdOption);
         $this->assertStringContainsString('Bairro', $nbhdText);
     }
+
+    public function testQuoteGeneratorCalendarTranslations(): void
+    {
+        require_once dirname(__DIR__, 2) . "/src/I18n.php";
+        I18n::clearCache();
+        $_SESSION["locale"] = "pt-BR";
+        $this->assertSame("Gerar link de pagamento", I18n::t("cal.generate_quote"));
+
+        $_SESSION["locale"] = "en";
+        $this->assertSame("Generate payment link", I18n::t("cal.generate_quote"));
+
+        $_SESSION["locale"] = "es";
+        $this->assertSame("Generar enlace de pago", I18n::t("cal.generate_quote"));
+        unset($_SESSION["locale"]);
+    }
 }

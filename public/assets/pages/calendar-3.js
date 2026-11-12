@@ -36,12 +36,15 @@
     const calForm = document.querySelector('[data-cal-form]');
     if (calForm) {
         calForm.addEventListener('submit', async function (ev) {
-            ev.preventDefault();
             const btn = ev.submitter;
             const data = Object.fromEntries(new FormData(calForm).entries());
             if (btn && btn.name === 'acao') {
                 data.acao = btn.value;
             }
+            if (data.acao === 'cotacao') {
+                return;
+            }
+            ev.preventDefault();
             try {
                 await CL.api('/api/imoveis/' + ref + '/calendario', { method: 'POST', body: data, error: 'Erro ao salvar calendário' });
                 // Recarrega para refletir as mudanças no grid

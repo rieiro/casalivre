@@ -53,9 +53,14 @@
         let openCount = 0;
         let systemCount = 0;
         let importedCount = 0;
+        let hasDisabled = false;
         buttons.forEach((button) => {
             const day = button.getAttribute('data-cal-day');
-            if (button.disabled || day < first || day > last) {
+            if (day < first || day > last) {
+                return;
+            }
+            if (button.disabled) {
+                hasDisabled = true;
                 return;
             }
             const origin = button.getAttribute('data-origin') || '';
@@ -80,7 +85,7 @@
             openButton.classList.toggle('is-off', locked || systemCount === 0);
         }
         if (quoteButton) {
-            const quoteReady = !locked && openCount > 0 && systemCount === 0 && importedCount === 0;
+            const quoteReady = !hasDisabled && !locked && openCount > 0 && systemCount === 0 && importedCount === 0;
             quoteButton.disabled = !quoteReady;
             quoteButton.classList.toggle('is-off', !quoteReady);
         }
