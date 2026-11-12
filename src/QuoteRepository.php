@@ -30,6 +30,9 @@ final class QuoteRepository
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_hash ON quotes (quote_hash)");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_property ON quotes (property_id)");
         db()->exec("ALTER TABLE properties ADD COLUMN IF NOT EXISTS pix_key TEXT NOT NULL DEFAULT ''");
+        if (class_exists('ActivityLog')) {
+            ActivityLog::seedActions(db());
+        }
     }
 
     /**

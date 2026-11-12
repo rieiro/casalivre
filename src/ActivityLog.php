@@ -74,6 +74,10 @@ final class ActivityLog
     public const PHOTO_STUCK = 49;
     /** A calendar feed stopped (permanent error, or the 16th consecutive failure). Admin. */
     public const CALENDAR_FEED_FAIL = 50;
+    /** Criação de cotação de reserva (Host/Gestor). Admin. */
+    public const QUOTE_CREATE = 51;
+    /** Confirmação de reserva de cotação (Hóspede/Admin). Admin. */
+    public const RESERVATION_CONFIRM = 52;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -126,6 +130,8 @@ final class ActivityLog
         self::VALKEY_UNAVAILABLE => 'Limitador de requisições sem Valkey (falha fechada ou aberta)',
         self::PHOTO_STUCK => 'Foto em processamento descartada (tempo esgotado)',
         self::CALENDAR_FEED_FAIL => 'Falha permanente na sincronização de calendário externo',
+        self::QUOTE_CREATE => 'Criação de cotação de reserva',
+        self::RESERVATION_CONFIRM => 'Confirmação de reserva de cotação',
     ];
 
     public const ADMIN = 'admin';
@@ -158,6 +164,8 @@ final class ActivityLog
         self::VALKEY_UNAVAILABLE => self::SECURITY,
         self::PHOTO_STUCK => self::ADMIN,
         self::CALENDAR_FEED_FAIL => self::ADMIN,
+        self::QUOTE_CREATE => self::ADMIN,
+        self::RESERVATION_CONFIRM => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -482,6 +490,8 @@ final class ActivityLog
         self::CALENDAR_MIN_NIGHTS => ['inicio', 'fim', 'minimo_noites'],
         self::CALENDAR_SYNC => ['url', 'novas'],
         self::CALENDAR_FEED_FAIL => ['feed_id'],
+        self::QUOTE_CREATE => ['checkin', 'checkout', 'total', 'pix_key'],
+        self::RESERVATION_CONFIRM => ['checkin', 'checkout', 'total', 'motivo'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 
@@ -498,6 +508,7 @@ final class ActivityLog
         'is_primary', 'sort_order', 'capa', 'fotos', 'feed', 'link', 'url', 'external_ical_url', 'last_status',
         'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados', 'tema',
         'grupo', 'nome', 'papel', 'dominio',
+        'quote_hash', 'total_price', 'tax_percent', 'special_offer',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

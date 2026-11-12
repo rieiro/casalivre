@@ -545,7 +545,18 @@ if ((preg_match('#^/reservas/([a-f0-9]{16})/confirmar$#', $path, $m) || preg_mat
     try {
         $ok = QuoteRepository::confirmPayment($hash);
         if ($ok) {
-            activity(ActivityLog::CALENDAR_BLOCK, ['imovel_id' => (int) $quote['property_id'], 'motivo' => 'pix_confirmado']);
+            activity(
+                ActivityLog::RESERVATION_CONFIRM,
+                [
+                    'imovel_id' => (int) $quote['property_id'],
+                    'checkin' => (string) $quote['checkin'],
+                    'checkout' => (string) $quote['checkout'],
+                    'total' => (int) $quote['total_price'],
+                    'motivo' => 'admin_confirmado',
+                ],
+                ['status' => 'pending'],
+                ['status' => 'confirmed', 'quote_hash' => $hash]
+            );
             redirect('/reservas?confirmado=1');
         } else {
             redirect('/reservas?erro=' . urlencode('Cotação não encontrada.'));
@@ -608,7 +619,22 @@ $paymentUrl
 
 Período: $checkinFmt a $checkoutFmt ({$quote['nights']} noites)
 Valor total: $totalFmt (Chave Pix: $pixKey)";
-                activity(ActivityLog::CALENDAR_BLOCK, ['imovel_id' => (int) $property['id'], 'motivo' => 'cotacao_gerada']);
+                activity(
+                    ActivityLog::QUOTE_CREATE,
+                    [
+                        'imovel_id' => (int) $property['id'],
+                        'checkin' => $checkin,
+                        'checkout' => $checkout,
+                        'total' => (int) $quote['total'],
+                        'pix_key' => $pixKey,
+                    ],
+                    null,
+                    [
+                        'quote_hash' => (string) $quote['quote_hash'],
+                        'status' => 'pending',
+                        'total_price' => (int) $quote['total'],
+                    ]
+                );
             } catch (InvalidArgumentException $e) {
                 $error = 'Não foi possível gerar a cotação: ' . $e->getMessage();
             }
@@ -703,7 +729,18 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method 
         return null;
     }
 
-    activity(ActivityLog::CALENDAR_BLOCK, ['imovel_id' => (int) $quote['property_id'], 'motivo' => 'reserva']);
+    activity(
+        ActivityLog::RESERVATION_CONFIRM,
+        [
+            'imovel_id' => (int) $quote['property_id'],
+            'checkin' => (string) $quote['checkin'],
+            'checkout' => (string) $quote['checkout'],
+            'total' => (int) $quote['total_price'],
+            'motivo' => 'guest_pix',
+        ],
+        ['status' => 'pending'],
+        ['status' => 'confirmed', 'quote_hash' => $m[1]]
+    );
     redirect('/pagamento/' . $m[1] . '?sucesso=1');
 }
 
