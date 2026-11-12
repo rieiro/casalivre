@@ -81,7 +81,7 @@
                 return;
             }
             const origin = button.getAttribute('data-origin') || '';
-            if (origin === 'sync' || origin === 'reserva') {
+            if (origin === 'sync' || origin === 'reserva' || origin === 'pre-reserva' || origin === 'prereserva') {
                 importedCount++;
             } else if (origin === 'sistema') {
                 systemCount++;

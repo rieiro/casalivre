@@ -311,6 +311,10 @@ SQL;
 
     public static function calendarDays(int $propertyId): array
     {
+        if (class_exists('QuoteRepository', false) || file_exists(__DIR__ . '/QuoteRepository.php')) {
+            require_once __DIR__ . '/QuoteRepository.php';
+            QuoteRepository::cleanupExpired($propertyId);
+        }
         $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? ORDER BY day');
         $stmt->execute([$propertyId]);
         return $stmt->fetchAll();
@@ -319,6 +323,10 @@ SQL;
     /** Leitura do calendário até o horizonte permitido, sem escrever no banco. */
     public static function calendarDaysUntil(int $propertyId, string $maxDay): array
     {
+        if (class_exists('QuoteRepository', false) || file_exists(__DIR__ . '/QuoteRepository.php')) {
+            require_once __DIR__ . '/QuoteRepository.php';
+            QuoteRepository::cleanupExpired($propertyId);
+        }
         $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? AND day <= ? ORDER BY day');
         $stmt->execute([$propertyId, $maxDay]);
         return $stmt->fetchAll();
@@ -363,6 +371,7 @@ SQL;
         $stmt = db()->prepare("SELECT day, blocked, origin FROM calendar_days
             WHERE property_id = ? AND blocked = 1 -- Updated: 2026-11 - Requirement changed from excluding reserva to exporting direct reservations in iCal feed
             AND COALESCE(origin, '') != 'sync'
+            AND COALESCE(origin, '') != 'pre-reserva'
             ORDER BY day");
         $stmt->execute([$propertyId]);
         $rows = [];
@@ -389,7 +398,7 @@ SQL;
         $where = 'property_id = ? AND day >= ? AND day <= ?';
         $params = [$propertyId, $start, $end];
         if ($guard) {
-            $where .= " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva'))";
+            $where .= " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva', 'pre-reserva'))";
             array_push($params, $propertyId, $start, $end);
         }
         $values = $action === 'preco'
@@ -762,7 +771,7 @@ SQL;
     {
         $series = "WITH RECURSIVE days(day) AS (SELECT CAST(? AS date) UNION ALL SELECT CAST(day + 1 AS date) FROM days WHERE day < CAST(? AS date))"; // calendar_days.day é DATE
         $guardSql = $guard
-            ? " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva'))"
+            ? " AND NOT EXISTS (SELECT 1 FROM calendar_days locked WHERE locked.property_id = ? AND locked.day >= ? AND locked.day <= ? AND locked.origin IN ('sync', 'reserva', 'pre-reserva'))"
             : '';
         $sql = $series . ' INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin) SELECT ?, days.day, ?, ?, ?, ? FROM days WHERE NOT EXISTS (SELECT 1 FROM calendar_days have WHERE have.property_id = ? AND have.day = days.day)' . $guardSql . ' RETURNING day, blocked, price, min_nights, origin';
         $params = [$start, $end, $propertyId, $blocked, $price, $minNights, $origin, $propertyId];

@@ -302,4 +302,114 @@ final class QuoteRepositoryTest extends TestCase
         $this->assertSame(97500, $found["total"]);
         $this->assertSame(97500, $found["total_price"]);
     }
+
+    public function testPreReservationBlocksCalendarDaysWithOriginPreReserva(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-08-10",
+            checkout: "2027-08-13"
+        );
+
+        $stmt = $this->pdo->prepare("SELECT day, blocked, origin FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? ORDER BY day");
+        $stmt->execute([$propId, "2027-08-10", "2027-08-13"]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->assertCount(3, $rows);
+        $this->assertSame("pre-reserva", $rows[0]["origin"]);
+        $this->assertSame(1, (int) $rows[0]["blocked"]);
+        $this->assertSame("pre-reserva", $rows[1]["origin"]);
+        $this->assertSame(1, (int) $rows[1]["blocked"]);
+        $this->assertSame("pre-reserva", $rows[2]["origin"]);
+        $this->assertSame(1, (int) $rows[2]["blocked"]);
+
+        $avail = QuoteRepository::checkAvailability($propId, "2027-08-11", "2027-08-12");
+        $this->assertFalse($avail["available"]);
+        $this->assertSame("2027-08-11", $avail["conflict_date"]);
+    }
+
+    public function testExpiredPreReservationReleasesCalendarDays(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-08-20",
+            checkout: "2027-08-22"
+        );
+
+        $this->pdo->prepare("UPDATE quotes SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE quote_hash = ?")
+            ->execute([$quote["quote_hash"]]);
+
+        $avail = QuoteRepository::checkAvailability($propId, "2027-08-20", "2027-08-22");
+        $this->assertTrue($avail["available"]);
+        $this->assertNull($avail["conflict_date"]);
+
+        $stmt = $this->pdo->prepare("SELECT day, blocked, origin FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? ORDER BY day");
+        $stmt->execute([$propId, "2027-08-20", "2027-08-22"]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($rows as $row) {
+            $this->assertSame(0, (int) $row["blocked"]);
+            $this->assertSame("", (string) $row["origin"]);
+        }
+    }
+
+    public function testConfirmPaymentTransitionsPreReservaToReserva(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-08-25",
+            checkout: "2027-08-27"
+        );
+
+        $ok = QuoteRepository::confirmPayment($quote["quote_hash"]);
+        $this->assertTrue($ok);
+
+        $stmt = $this->pdo->prepare("SELECT day, blocked, origin FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? ORDER BY day");
+        $stmt->execute([$propId, "2027-08-25", "2027-08-27"]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame("reserva", $rows[0]["origin"]);
+        $this->assertSame(1, (int) $rows[0]["blocked"]);
+        $this->assertSame("reserva", $rows[1]["origin"]);
+        $this->assertSame(1, (int) $rows[1]["blocked"]);
+    }
+
+    public function testCalendarDaysUntilExposesPreReservaAndCleansExpired(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-09-01",
+            checkout: "2027-09-03"
+        );
+
+        $days = HouseRepository::calendarDaysUntil($propId, "2027-09-05");
+        $dayMap = array_column($days, null, "day");
+
+        $this->assertArrayHasKey("2027-09-01", $dayMap);
+        $this->assertSame("pre-reserva", $dayMap["2027-09-01"]["origin"]);
+        $this->assertSame(1, (int) $dayMap["2027-09-01"]["blocked"]);
+
+        $this->pdo->prepare("UPDATE quotes SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE quote_hash = ?")
+            ->execute([$quote["quote_hash"]]);
+
+        $daysAfter = HouseRepository::calendarDaysUntil($propId, "2027-09-05");
+        $dayMapAfter = array_column($daysAfter, null, "day");
+
+        $this->assertArrayHasKey("2027-09-01", $dayMapAfter);
+        $this->assertSame("", (string) $dayMapAfter["2027-09-01"]["origin"]);
+        $this->assertSame(0, (int) $dayMapAfter["2027-09-01"]["blocked"]);
+    }
 }

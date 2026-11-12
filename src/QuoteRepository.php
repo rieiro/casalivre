@@ -35,14 +35,60 @@ final class QuoteRepository
         }
     }
 
+    public static function cleanupExpired(?int $propertyId = null): void
+    {
+        self::ensureTable();
+        $check = $propertyId !== null
+            ? db()->prepare("SELECT 1 FROM quotes WHERE property_id = ? AND status = 'pending' AND expires_at < CURRENT_TIMESTAMP LIMIT 1")
+            : db()->query("SELECT 1 FROM quotes WHERE status = 'pending' AND expires_at < CURRENT_TIMESTAMP LIMIT 1");
+        if ($propertyId !== null) {
+            $check->execute([$propertyId]);
+        }
+        if (!$check->fetchColumn()) {
+            return;
+        }
+
+        if ($propertyId !== null) {
+            $stmt = db()->prepare("UPDATE quotes SET status = 'expired' WHERE property_id = ? AND status = 'pending' AND expires_at < CURRENT_TIMESTAMP");
+            $stmt->execute([$propertyId]);
+        } else {
+            db()->exec("UPDATE quotes SET status = 'expired' WHERE status = 'pending' AND expires_at < CURRENT_TIMESTAMP");
+        }
+
+        $sql = "UPDATE calendar_days c
+                SET blocked = 0, origin = ''
+                WHERE c.origin = 'pre-reserva'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM quotes q
+                      WHERE q.property_id = c.property_id
+                        AND q.status = 'pending'
+                        AND q.expires_at >= CURRENT_TIMESTAMP
+                        AND q.checkin <= c.day
+                        AND c.day < q.checkout
+                  )";
+        if ($propertyId !== null) {
+            $sql .= " AND c.property_id = ?";
+            $stmt = db()->prepare($sql);
+            $stmt->execute([$propertyId]);
+        } else {
+            db()->exec($sql);
+        }
+    }
+
     /**
      * @return array{available: bool, conflict_date: ?string}
      */
-    public static function checkAvailability(int $propertyId, string $checkin, string $checkout): array
+    public static function checkAvailability(int $propertyId, string $checkin, string $checkout, ?string $forQuoteHash = null): array
     {
         self::ensureTable();
-        $stmt = db()->prepare("SELECT day FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? AND blocked = 1 LIMIT 1");
-        $stmt->execute([$propertyId, $checkin, $checkout]);
+        self::cleanupExpired($propertyId);
+        if ($forQuoteHash !== null) {
+            $stmt = db()->prepare("SELECT day FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? AND blocked = 1 AND origin != 'pre-reserva' LIMIT 1");
+            $stmt->execute([$propertyId, $checkin, $checkout]);
+        } else {
+            $stmt = db()->prepare("SELECT day FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? AND blocked = 1 LIMIT 1");
+            $stmt->execute([$propertyId, $checkin, $checkout]);
+        }
         $conflict = $stmt->fetchColumn();
         if ($conflict !== false && $conflict !== null) {
             return ["available" => false, "conflict_date" => (string) $conflict];
@@ -93,26 +139,41 @@ final class QuoteRepository
         $hash = bin2hex(random_bytes(8));
         $expiresAt = (new DateTimeImmutable("+30 minutes"))->format("Y-m-d H:i:s");
 
-        $stmt = db()->prepare("INSERT INTO quotes (
-            quote_hash, property_id, checkin, checkout, nights, nightly_price,
-            cleaning_fee, taxes, special_offer, total_price, status, pix_key, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id");
-        $stmt->execute([
-            $hash,
-            $propertyId,
-            $checkin,
-            $checkout,
-            $nights,
-            (int) $property["nightly_price"],
-            $calc["cleaning"],
-            $calc["taxes"],
-            $calc["special_offer"],
-            $calc["total"],
-            $pixKey,
-            $expiresAt,
-        ]);
+        return Db::transactional(db(), static function () use (
+            $hash, $propertyId, $checkin, $checkout, $nights, $property, $calc, $pixKey, $expiresAt
+        ): array {
+            $stmt = db()->prepare("INSERT INTO quotes (
+                quote_hash, property_id, checkin, checkout, nights, nightly_price,
+                cleaning_fee, taxes, special_offer, total_price, status, pix_key, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id");
+            $stmt->execute([
+                $hash,
+                $propertyId,
+                $checkin,
+                $checkout,
+                $nights,
+                (int) $property["nightly_price"],
+                $calc["cleaning"],
+                $calc["taxes"],
+                $calc["special_offer"],
+                $calc["total"],
+                $pixKey,
+                $expiresAt,
+            ]);
+            $id = (int) $stmt->fetchColumn();
 
-        return array_merge($calc, [
+            $cursor = new DateTimeImmutable($checkin);
+            $end = new DateTimeImmutable($checkout);
+            $ins = db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin)
+                                  VALUES (?, ?, 1, ?, 1, 'pre-reserva')
+                                  ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'pre-reserva'");
+            while ($cursor < $end) {
+                $dayIso = $cursor->format("Y-m-d");
+                $ins->execute([$propertyId, $dayIso, (int) $property["nightly_price"]]);
+                $cursor = $cursor->modify("+1 day");
+            }
+
+            return array_merge($calc, [
             "id" => (int) $stmt->fetchColumn(),
             "quote_hash" => $hash,
             "property_id" => $propertyId,
@@ -123,7 +184,8 @@ final class QuoteRepository
             "pix_key" => $pixKey,
             "expires_at" => $expiresAt,
             "status" => "pending",
-        ]);
+            ]);
+        });
     }
 
     public static function findByHash(string $hash): ?array
@@ -163,6 +225,7 @@ final class QuoteRepository
     public static function confirmPayment(string $hash): bool
     {
         self::ensureTable();
+        self::cleanupExpired();
         $quote = self::findByHash($hash);
         if (!$quote) {
             return false;
@@ -170,9 +233,12 @@ final class QuoteRepository
         if ($quote["status"] === "confirmed") {
             return true;
         }
+        if ($quote["status"] === "expired") {
+            return false;
+        }
 
         return Db::transactional(db(), static function () use ($quote, $hash): bool {
-            $avail = self::checkAvailability((int) $quote["property_id"], (string) $quote["checkin"], (string) $quote["checkout"]);
+            $avail = self::checkAvailability((int) $quote["property_id"], (string) $quote["checkin"], (string) $quote["checkout"], $hash);
             if (!$avail["available"]) {
                 throw new RuntimeException("Data conflitante ao confirmar pagamento.");
             }

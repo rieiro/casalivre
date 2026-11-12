@@ -20,6 +20,7 @@ $feeds = $feeds ?? [];
                 <li><span class="swatch sistema"></span> <?= e(t('cal.legend_system')) ?></li>
                 <li><span class="swatch sync"></span> <?= e(t('cal.legend_sync')) ?></li>
                 <li><span class="swatch reserva"></span> <?= e(t('cal.legend_booking')) ?></li>
+                <li><span class="swatch prereserva"></span> <?= e(t('cal.legend_prereserva')) ?></li>
             </ul>
             <?php
             $weekdays = match (current_locale()) {
