@@ -500,6 +500,7 @@ if ($path === '/sair' && $method === 'POST') {
 if (($path === '/reservas' || $path === '/admin/reservas') && $method === 'GET') {
     $user = require_user();
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    require_once dirname(__DIR__) . '/src/PhotoRepository.php';
     QuoteRepository::ensureTable();
 
     $filter = (string) ($_GET['status'] ?? '');
@@ -507,15 +508,41 @@ if (($path === '/reservas' || $path === '/admin/reservas') && $method === 'GET')
         $filter = null;
     }
 
-    $quotes = (int) ($user['is_admin'] ?? 0) === 1
-        ? QuoteRepository::listAll($filter)
-        : QuoteRepository::listForUser((int) $user['id'], $filter);
+    $allQuotes = (int) ($user['is_admin'] ?? 0) === 1
+        ? QuoteRepository::listAll()
+        : QuoteRepository::listForUser((int) $user['id']);
+
+    $totalCount = count($allQuotes);
+    $pendingCount = 0;
+    $confirmedCount = 0;
+    foreach ($allQuotes as $item) {
+        if (($item['status'] ?? '') === 'confirmed') {
+            $confirmedCount++;
+        } else {
+            $pendingCount++;
+        }
+    }
+
+    $quotes = match ($filter) {
+        'pending' => array_values(array_filter($allQuotes, fn($q) => ($q['status'] ?? '') !== 'confirmed')),
+        'confirmed' => array_values(array_filter($allQuotes, fn($q) => ($q['status'] ?? '') === 'confirmed')),
+        default => $allQuotes,
+    };
+
+    $propIds = array_column($quotes, 'property_id');
+    $photos = PhotoRepository::primaryPaths($propIds);
 
     view('reservations', [
         'title' => t('res.title') . ' · CasaLivre',
         'user' => $user,
         'quotes' => $quotes,
+        'photos' => $photos,
         'filter' => $filter,
+        'counts' => [
+            'total' => $totalCount,
+            'pending' => $pendingCount,
+            'confirmed' => $confirmedCount,
+        ],
         'csrf' => csrf_token(),
         'confirmed' => !empty($_GET['confirmado']),
         'error' => isset($_GET['erro']) && is_string($_GET['erro']) ? $_GET['erro'] : null,

@@ -1122,3 +1122,488 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .font-mono { font-family: monospace; }
 .text-slate-800 { color: #1e293b; }
 .text-slate-500 { color: #64748b; }
+
+
+/* ==========================================================================
+   Painel de Reservas & Confirmação Pix (Gestor / Dono)
+   Visual luxuoso, limpo e profissional (estilo Airbnb / Booking)
+   ========================================================================== */
+
+.res-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+}
+
+.res-header {
+    background: linear-gradient(135deg, #001a40 0%, #003580 50%, #002255 100%);
+    border-radius: 16px;
+    padding: 2rem 2.25rem;
+    color: #fff;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0, 53, 128, 0.15);
+}
+
+.res-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.res-back-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.res-header-title {
+    font-size: 1.85rem;
+    font-weight: 800;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    color: #fff;
+}
+
+.res-header-desc {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0 0 1.5rem;
+    max-width: 780px;
+    line-height: 1.5;
+}
+
+.res-filter-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.res-filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.15rem;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    transition: all 0.2s;
+}
+.res-filter-pill:hover {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+.res-filter-pill.is-active {
+    background: #fff;
+    color: #003580;
+    border-color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.res-pill-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgba(0, 0, 0, 0.2);
+    color: #fff;
+}
+.res-filter-pill.is-active .res-pill-count {
+    background: #003580;
+    color: #fff;
+}
+
+/* Success & Error Banners */
+.res-alert-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-left: 5px solid #059669;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    color: #065f46;
+}
+
+.res-alert-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 5px solid #dc2626;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    color: #991b1b;
+}
+
+/* Card List */
+.res-card-list {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.res-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.res-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 53, 128, 0.08);
+}
+
+/* Card Header */
+.res-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+}
+
+.res-prop-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.res-prop-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    object-fit: cover;
+    background: #e2e8f0;
+    flex-shrink: 0;
+    border: 1px solid #cbd5e1;
+}
+
+.res-prop-thumb-fallback {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    background: #e0f2fe;
+    color: #0369a1;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.res-prop-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+.res-prop-title a {
+    color: inherit;
+    text-decoration: none;
+}
+.res-prop-title a:hover {
+    color: #003580;
+    text-decoration: underline;
+}
+
+.res-prop-code {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 0.15rem;
+}
+
+/* Status Badges */
+.res-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.res-status-badge.is-confirmed {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.res-status-badge.is-pending {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+.res-status-badge.is-expired {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+}
+
+.res-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+    animation: resPulse 1.8s infinite;
+}
+@keyframes resPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+/* Card Body Grid */
+.res-card-body {
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 1.5rem;
+    align-items: center;
+}
+@media (max-width: 768px) {
+    .res-card-body { grid-template-columns: 1fr; }
+}
+
+/* Dates */
+.res-dates {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+}
+.res-date-col {
+    display: flex;
+    flex-direction: column;
+}
+.res-date-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.2rem;
+}
+.res-date-val {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+.res-date-arrow {
+    font-size: 1.25rem;
+    color: #94a3b8;
+}
+.res-nights-pill {
+    margin-left: auto;
+    background: #e2e8f0;
+    color: #334155;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* Price Box */
+.res-price {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+@media (max-width: 768px) {
+    .res-price { align-items: flex-start; }
+}
+.res-price-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.2rem;
+}
+.res-price-val {
+    font-size: 1.65rem;
+    font-weight: 800;
+    color: #003580;
+    line-height: 1;
+    margin-bottom: 0.4rem;
+}
+.res-breakdown-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #64748b;
+}
+.res-tag {
+    background: #f1f5f9;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* Metadata Bar */
+.res-card-meta {
+    padding: 0.75rem 1.5rem;
+    background: #fcfdfd;
+    border-top: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+.res-card-meta strong {
+    color: #334155;
+}
+
+/* Actions */
+.res-card-actions {
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    background: #fff;
+}
+.btn-res-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #059669;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.7rem 1.35rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+    transition: background 0.2s, transform 0.1s;
+}
+.btn-res-confirm:hover {
+    background: #047857;
+    color: #fff;
+    transform: translateY(-1px);
+}
+.btn-res-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fff;
+    color: #003580;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 0.7rem 1.15rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.btn-res-link:hover {
+    border-color: #003580;
+    background: #f0f7ff;
+    color: #003580;
+}
+.btn-res-whatsapp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #25d366;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.7rem 1.15rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+.btn-res-whatsapp:hover {
+    background: #1ebc59;
+    color: #fff;
+}
+.btn-res-calendar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #003580;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.7rem 1.25rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+.btn-res-calendar:hover {
+    background: #002255;
+    color: #fff;
+}
+.btn-res-voucher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 0.7rem 1.15rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.btn-res-voucher:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+/* Empty State */
+.res-empty-box {
+    background: #fff;
+    border: 2px dashed #cbd5e1;
+    border-radius: 16px;
+    padding: 3.5rem 2rem;
+    text-align: center;
+    max-width: 600px;
+    margin: 2rem auto;
+}
+.res-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+.res-empty-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.5rem;
+}
+.res-empty-desc {
+    font-size: 0.92rem;
+    color: #64748b;
+    margin: 0 0 1.5rem;
+    line-height: 1.5;
+}
