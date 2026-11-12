@@ -11,22 +11,17 @@
 ?>
 
 <!-- BACKGROUND DAEMON SUPERVISION -->
-<div class="admin-card" style="margin-bottom: 1.5rem;">
+<div class="admin-card">
     <div class="admin-card-title">
-        <div style="display: flex; align-items: center; gap: 0.6rem;">
-            <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #eff6ff; color: #2563eb; font-size: 0.95rem;">⚡</span>
-            <span>Background Daemon Supervision</span>
-        </div>
-        <span style="font-size: 0.8rem; font-weight: 500; color: var(--admin-text-muted); background: #f8fafc; padding: 0.25rem 0.65rem; border-radius: 9999px; border: 1px solid var(--admin-border);">
-            Runit /var/service
-        </span>
+        <span>⚡ Background Daemon Supervision</span>
+        <span class="admin-card-tag">Runit /var/service</span>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
+    <div class="admin-daemon-list">
         <?php foreach ($services as $name => $running): ?>
-            <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.85rem; background: #ffffff; border: 1px solid <?= $running ? '#bbf7d0' : '#fecaca' ?>; border-radius: var(--admin-radius-sm); font-size: 0.85rem; box-shadow: var(--admin-shadow-sm);">
+            <div class="admin-daemon-badge <?= $running ? 'admin-daemon-online' : 'admin-daemon-stopped' ?>">
                 <span class="admin-dot <?= $running ? 'admin-dot-ok' : 'admin-dot-danger' ?>"></span>
-                <span style="font-weight: 600; font-family: ui-monospace, monospace; color: #1e293b;"><?= e($name) ?></span>
-                <span style="font-size: 0.72rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; background: <?= $running ? '#dcfce7' : '#fee2e2' ?>; color: <?= $running ? '#166534' : '#991b1b' ?>;">
+                <span class="admin-daemon-name"><?= e($name) ?></span>
+                <span class="<?= $running ? 'admin-daemon-state-online' : 'admin-daemon-state-stopped' ?>">
                     <?= $running ? 'ONLINE' : 'STOPPED' ?>
                 </span>
             </div>
@@ -39,12 +34,9 @@
         <!-- IMAGE QUEUE -->
         <div class="admin-card">
             <div class="admin-card-title">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>🖼️</span>
-                    <span>Image Optimization Queue (WebP)</span>
-                </div>
+                <span>🖼️ Image Optimization Queue (WebP)</span>
                 <div>
-                    <form method="post" action="/admin/filas/reprocessar-imagens" style="display: inline; margin: 0;">
+                    <form method="post" action="/admin/filas/reprocessar-imagens">
                         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                         <button type="submit" class="admin-btn admin-btn-secondary admin-btn-sm">
                             🔄 Retry Failed
@@ -53,26 +45,26 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 1rem; margin-bottom: 1.25rem;">
-                <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 700; letter-spacing: 0.05em;">Total</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #0f172a; margin-top: 0.2rem;"><?= e((string)($image_queue['stats']['total'] ?? 0)) ?></div>
+            <div class="admin-queue-stats">
+                <div class="admin-queue-box admin-queue-box-total">
+                    <div class="admin-queue-label">Total</div>
+                    <div class="admin-queue-num"><?= e((string)($image_queue['stats']['total'] ?? 0)) ?></div>
                 </div>
-                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: #1e40af; font-weight: 700; letter-spacing: 0.05em;">Pending</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #2563eb; margin-top: 0.2rem;"><?= e((string)($image_queue['stats']['pending'] ?? 0)) ?></div>
+                <div class="admin-queue-box admin-queue-box-pending">
+                    <div class="admin-queue-label">Pending</div>
+                    <div class="admin-queue-num"><?= e((string)($image_queue['stats']['pending'] ?? 0)) ?></div>
                 </div>
-                <div style="background: <?= ($image_queue['stats']['failed'] ?? 0) > 0 ? '#fef2f2' : '#f8fafc' ?>; border: 1px solid <?= ($image_queue['stats']['failed'] ?? 0) > 0 ? '#fecaca' : 'var(--admin-border)' ?>; border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: <?= ($image_queue['stats']['failed'] ?? 0) > 0 ? '#991b1b' : 'var(--admin-text-muted)' ?>; font-weight: 700; letter-spacing: 0.05em;">Failed</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: <?= ($image_queue['stats']['failed'] ?? 0) > 0 ? '#ef4444' : '#64748b' ?>; margin-top: 0.2rem;"><?= e((string)($image_queue['stats']['failed'] ?? 0)) ?></div>
+                <div class="admin-queue-box <?= ($image_queue['stats']['failed'] ?? 0) > 0 ? 'admin-queue-box-failed' : 'admin-queue-box-failed-clean' ?>">
+                    <div class="admin-queue-label">Failed</div>
+                    <div class="admin-queue-num"><?= e((string)($image_queue['stats']['failed'] ?? 0)) ?></div>
                 </div>
             </div>
 
-            <h4 style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--admin-text-muted); margin-bottom: 0.65rem; font-weight: 700;">
-                Recent Tasks
+            <h4 class="admin-form-section-title">
+                <span>Recent Tasks</span>
             </h4>
             <?php if (empty($image_queue['recent'])): ?>
-                <div style="text-align: center; padding: 2rem 1rem; color: var(--admin-text-muted); background: #f8fafc; border-radius: var(--admin-radius-sm); border: 1px solid var(--admin-border);">
+                <div class="admin-empty-state">
                     No recent tasks in the image queue.
                 </div>
             <?php else: ?>
@@ -91,7 +83,7 @@
                             <?php foreach ($image_queue['recent'] as $item): ?>
                                 <tr>
                                     <td><strong class="admin-code">#<?= e((string)($item['id'] ?? '')) ?></strong></td>
-                                    <td style="font-size: 0.8rem; font-family: ui-monospace, monospace;"><?= e((string)($item['photo_id'] ?? '')) ?></td>
+                                    <td><span class="admin-code"><?= e((string)($item['photo_id'] ?? '')) ?></span></td>
                                     <td>
                                         <?php
                                             $st = (string)($item['status'] ?? '');
@@ -104,8 +96,8 @@
                                         ?>
                                         <span class="admin-pill <?= $pill ?>"><?= e($st) ?></span>
                                     </td>
-                                    <td><span style="font-weight: 600;"><?= e((string)($item['attempts'] ?? 0)) ?></span></td>
-                                    <td style="font-size: 0.75rem; color: #ef4444; font-family: ui-monospace, monospace;"><?= e(substr((string)($item['last_error'] ?? '-'), 0, 40)) ?></td>
+                                    <td><span class="admin-label"><?= e((string)($item['attempts'] ?? 0)) ?></span></td>
+                                    <td><span class="admin-code"><?= e(substr((string)($item['last_error'] ?? '-'), 0, 40)) ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -117,12 +109,9 @@
         <!-- EMAIL QUEUE -->
         <div class="admin-card">
             <div class="admin-card-title">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>✉️</span>
-                    <span>Email Dispatch Queue (SMTP)</span>
-                </div>
+                <span>✉️ Email Dispatch Queue (SMTP)</span>
                 <div>
-                    <form method="post" action="/admin/filas/reprocessar-emails" style="display: inline; margin: 0;">
+                    <form method="post" action="/admin/filas/reprocessar-emails">
                         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                         <button type="submit" class="admin-btn admin-btn-secondary admin-btn-sm">
                             🔄 Retry Failed
@@ -131,26 +120,26 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 1rem; margin-bottom: 1.25rem;">
-                <div style="background: #f8fafc; border: 1px solid var(--admin-border); border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--admin-text-muted); font-weight: 700; letter-spacing: 0.05em;">Total</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #0f172a; margin-top: 0.2rem;"><?= e((string)($mail_queue['stats']['total'] ?? 0)) ?></div>
+            <div class="admin-queue-stats">
+                <div class="admin-queue-box admin-queue-box-total">
+                    <div class="admin-queue-label">Total</div>
+                    <div class="admin-queue-num"><?= e((string)($mail_queue['stats']['total'] ?? 0)) ?></div>
                 </div>
-                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: #1e40af; font-weight: 700; letter-spacing: 0.05em;">Pending</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #2563eb; margin-top: 0.2rem;"><?= e((string)($mail_queue['stats']['pending'] ?? 0)) ?></div>
+                <div class="admin-queue-box admin-queue-box-pending">
+                    <div class="admin-queue-label">Pending</div>
+                    <div class="admin-queue-num"><?= e((string)($mail_queue['stats']['pending'] ?? 0)) ?></div>
                 </div>
-                <div style="background: <?= ($mail_queue['stats']['failed'] ?? 0) > 0 ? '#fef2f2' : '#f8fafc' ?>; border: 1px solid <?= ($mail_queue['stats']['failed'] ?? 0) > 0 ? '#fecaca' : 'var(--admin-border)' ?>; border-radius: var(--admin-radius-sm); padding: 0.85rem 1.15rem; flex: 1;">
-                    <div style="font-size: 0.72rem; text-transform: uppercase; color: <?= ($mail_queue['stats']['failed'] ?? 0) > 0 ? '#991b1b' : 'var(--admin-text-muted)' ?>; font-weight: 700; letter-spacing: 0.05em;">Failed</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: <?= ($mail_queue['stats']['failed'] ?? 0) > 0 ? '#ef4444' : '#64748b' ?>; margin-top: 0.2rem;"><?= e((string)($mail_queue['stats']['failed'] ?? 0)) ?></div>
+                <div class="admin-queue-box <?= ($mail_queue['stats']['failed'] ?? 0) > 0 ? 'admin-queue-box-failed' : 'admin-queue-box-failed-clean' ?>">
+                    <div class="admin-queue-label">Failed</div>
+                    <div class="admin-queue-num"><?= e((string)($mail_queue['stats']['failed'] ?? 0)) ?></div>
                 </div>
             </div>
 
-            <h4 style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--admin-text-muted); margin-bottom: 0.65rem; font-weight: 700;">
-                Recent Dispatches
+            <h4 class="admin-form-section-title">
+                <span>Recent Dispatches</span>
             </h4>
             <?php if (empty($mail_queue['recent'])): ?>
-                <div style="text-align: center; padding: 2rem 1rem; color: var(--admin-text-muted); background: #f8fafc; border-radius: var(--admin-radius-sm); border: 1px solid var(--admin-border);">
+                <div class="admin-empty-state">
                     No recent emails in queue.
                 </div>
             <?php else: ?>
@@ -170,7 +159,7 @@
                                 <tr>
                                     <td><strong class="admin-code">#<?= e((string)($item['id'] ?? '')) ?></strong></td>
                                     <td><span class="admin-code"><?= e((string)($item['type'] ?? '')) ?></span></td>
-                                    <td style="font-size: 0.8rem; font-family: ui-monospace, monospace;"><?= e((string)($item['recipient'] ?? '')) ?></td>
+                                    <td><span class="admin-sysinfo-val"><?= e((string)($item['recipient'] ?? '')) ?></span></td>
                                     <td>
                                         <?php
                                             $mst = (string)($item['status'] ?? '');
@@ -182,7 +171,7 @@
                                         ?>
                                         <span class="admin-pill <?= $mpill ?>"><?= e($mst) ?></span>
                                     </td>
-                                    <td><span style="font-weight: 600;"><?= e((string)($item['attempts'] ?? 0)) ?></span></td>
+                                    <td><span class="admin-label"><?= e((string)($item['attempts'] ?? 0)) ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -196,21 +185,18 @@
     <div>
         <div class="admin-card">
             <div class="admin-card-title">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>⚙️</span>
-                    <span>Manual Execution & Workers</span>
-                </div>
+                <span>⚙️ Manual Execution & Workers</span>
             </div>
-            <p style="font-size: 0.85rem; color: var(--admin-text-muted); line-height: 1.5; margin-top: 0;">
+            <p class="admin-hint">
                 Workers operate continuously under the <code>casalivre-queue-worker</code> supervisor daemon.
             </p>
-            <div style="background: #0f172a; color: #f8fafc; border-radius: var(--admin-radius-sm); padding: 0.85rem; font-size: 0.78rem; font-family: ui-monospace, monospace; line-height: 1.6; margin-bottom: 1rem;">
-                <span style="color: #64748b;"># Check status</span><br>
-                <span style="color: #38bdf8;">sv status</span> casalivre-queue-worker<br><br>
-                <span style="color: #64748b;"># Process pending tasks once</span><br>
-                <span style="color: #38bdf8;">php</span> scripts/queue-worker.php all --once
+            <div class="admin-cli-box">
+                <span class="admin-cli-comment"># Check status</span><br>
+                <span class="admin-cli-cmd">sv status</span> casalivre-queue-worker<br><br>
+                <span class="admin-cli-comment"># Process pending tasks once</span><br>
+                <span class="admin-cli-cmd">php</span> scripts/queue-worker.php all --once
             </div>
-            <p style="font-size: 0.8rem; color: var(--admin-text-muted); line-height: 1.5; margin-bottom: 0;">
+            <p class="admin-hint">
                 Use retry buttons if transient connection failures have exhausted maximum attempts.
             </p>
         </div>
