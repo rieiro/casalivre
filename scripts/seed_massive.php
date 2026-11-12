@@ -140,6 +140,51 @@ foreach ($cities as $index => $city) {
 db()->exec('UPDATE properties SET rating_sum = COALESCE((SELECT SUM(score) FROM reviews r WHERE r.property_id = properties.id), 0), rating_count = (SELECT COUNT(*) FROM reviews r WHERE r.property_id = properties.id)');
 ListingSearch::rewriteAll();
 
+// Garante conta de manager (gestor) para testes de cotação e grupos
+$mgrEmail = 'manager@casalivre.test';
+$mgrPassword = 'Casa#Manager123';
+$mgrStmt = db()->prepare("SELECT id FROM users WHERE email = ?");
+$mgrStmt->execute([$mgrEmail]);
+$mgrId = $mgrStmt->fetchColumn();
+if (!$mgrId) {
+    $mgrId = UserRepository::insert([
+        'name' => 'Gestor Imobiliária',
+        'cpf' => '10000000002',
+        'address' => 'Av. Central, 100',
+        'cep' => '28990-000',
+        'street' => 'Av. Central',
+        'address_number' => '100',
+        'address_complement' => '',
+        'phone' => '22999887766',
+        'email' => $mgrEmail,
+        'password_hash' => password_make($mgrPassword),
+        'status' => 'active',
+        'activated_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+$group = db()->query("SELECT id, slug FROM groups ORDER BY id LIMIT 1")->fetch();
+if (!$group) {
+    db()->exec("INSERT INTO groups (slug, name, theme) VALUES ('grupo-de-teste', 'Grupo Teste', 'contraste')");
+    $group = db()->query("SELECT id, slug FROM groups WHERE slug = 'grupo-de-teste'")->fetch();
+}
+if ($group && $mgrId) {
+    $gid = (int) $group['id'];
+    db()->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'gestor') ON CONFLICT (group_id, user_id) DO UPDATE SET role = 'gestor'")->execute([$gid, (int) $mgrId]);
+    db()->exec("UPDATE properties SET group_id = $gid WHERE group_id IS NULL AND id IN (SELECT id FROM properties WHERE group_id IS NULL LIMIT 3)");
+}
+
+$lines[] = '==================================================';
+$lines[] = 'CONTAS FIXAS DE TESTE (HOST E MANAGER):';
+$lines[] = '1. Host:';
+$lines[] = '   email: massa001@casalivre.test';
+$lines[] = '   senha: Casa#001x9';
+$lines[] = '2. Manager:';
+$lines[] = '   email: manager@casalivre.test';
+$lines[] = '   senha: Casa#Manager123';
+$lines[] = '   grupo: ' . ($group ? $group['slug'] : 'nenhum') . ' (papel: gestor)';
+$lines[] = '==================================================';
+$lines[] = '';
+
 $report = implode("\n", $lines);
 file_put_contents($root . '/storage/seed-massive.txt', $report);
 echo "Salvo em storage/seed-massive.txt\n";
