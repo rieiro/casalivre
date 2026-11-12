@@ -42,4 +42,15 @@ if ($novo !== $atual) {
     file_put_contents($tmp, $novo);
     rename($tmp, AssetManifest::file());
 }
+foreach ($manifesto as $rel => $hash) {
+    $abs = AssetManifest::publicDir() . $rel;
+    $gz = $abs . '.gz';
+    if (is_file($gz)) {
+        file_put_contents($gz, gzencode((string) file_get_contents($abs), 9));
+    }
+}
+$manifestGz = AssetManifest::file() . '.gz';
+if (is_file($manifestGz)) {
+    file_put_contents($manifestGz, gzencode((string) file_get_contents(AssetManifest::file()), 9));
+}
 echo 'manifest.json: ' . count($manifesto) . " arquivos\n";

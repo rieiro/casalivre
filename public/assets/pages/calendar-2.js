@@ -19,6 +19,23 @@
     let anchor = null;
     let complete = false;
     const saveButton = document.querySelector('[data-cal-save]');
+    const quoteButton = document.querySelector('[data-cal-quote]');
+    const blockButton = document.querySelector('[data-cal-block]');
+    const openButton = document.querySelector('[data-cal-open]');
+    if (quoteButton) {
+        quoteButton.addEventListener('click', () => {
+            let acao = form ? form.querySelector('input[name="acao"]') : null;
+            if (!acao && form) {
+                acao = document.createElement('input');
+                acao.type = 'hidden';
+                acao.name = 'acao';
+                form.appendChild(acao);
+            }
+            if (acao) {
+                acao.value = 'cotacao';
+            }
+        });
+    }
     function resetEdited() {
         if (!saveButton) {
             return;
@@ -72,9 +89,6 @@
                 openCount++;
             }
         });
-        const blockButton = document.querySelector('[data-cal-block]');
-        const openButton = document.querySelector('[data-cal-open]');
-        const quoteButton = document.querySelector('[data-cal-quote]');
         const locked = importedCount > 0;
         if (blockButton) {
             blockButton.disabled = locked || openCount === 0;
