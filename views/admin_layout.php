@@ -344,6 +344,11 @@
                 </a>
             </li>
             <li class="admin-nav-item">
+                <a class="admin-nav-link <?= ($active_tab ?? '') === 'traducoes' ? 'active' : '' ?>" href="/admin/traducoes">
+                    <span>🌐</span> Traduções & Textos
+                </a>
+            </li>
+            <li class="admin-nav-item">
                 <a class="admin-nav-link" href="/painel">
                     <span>🏠</span> Meus Imóveis
                 </a>

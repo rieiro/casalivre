@@ -924,6 +924,27 @@ if ($path === '/admin/filas/reprocessar-emails' && $method === 'POST') {
     return null;
 }
 
+if ($path === '/admin/traducoes' && ($method === 'GET' || $method === 'POST')) {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminTranslations.php';
+    if ($method === 'POST') {
+        csrf_check();
+        $res = AdminTranslations::update($user, $_POST);
+        redirect('/admin/traducoes?' . ($res->tipo === 'ok' ? 'ok=1' : 'error=' . urlencode((string) $res->mensagem)));
+        return null;
+    }
+    $res = AdminTranslations::index($user, $_GET);
+    view('admin/traducoes', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'traducoes',
+        'layout' => 'admin_layout',
+        'page_title' => 'Matriz de Traduções',
+        'ok' => isset($_GET['ok']),
+        'error' => $_GET['error'] ?? null,
+    ]));
+    return null;
+}
+
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).
 if ($path === '/admin/tema' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
