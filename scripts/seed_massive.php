@@ -57,7 +57,7 @@ $ddds = ['11', '21', '31', '41', '48', '51', '61', '71', '81', '85'];
 $lines = [
     'Carga massiva em ' . date('d/m/Y H:i'),
     MASSIVE_CITIES . ' cidades, ' . MASSIVE_HOUSES . ' imóveis por usuário.',
-    'Datas pares bloqueadas de ' . $today->format('d/m/Y') . ' até ' . $last->format('d/m/Y') . ' (' . count($evenDays) . ' dias).',
+    'Calendário aberto (sem bloqueio de datas para testes de cotação).',
     '9 avaliações por imóvel.',
     '',
 ];
@@ -126,9 +126,7 @@ foreach ($cities as $index => $city) {
             throw new RuntimeException('Não foi possível enfileirar a foto de capa.');
         }
         massive_reviews($review, $houseId);
-        foreach ($evenDays as $iso) {
-            $block->execute([$houseId, $iso]);
-        }
+        // Calendário aberto (não bloqueia datas para facilitar testes de cotação)
     }
     $pdo->commit();
     $lines[] = sprintf('%03d. %s', $n, $city['label']);

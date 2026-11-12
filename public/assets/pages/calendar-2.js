@@ -69,6 +69,7 @@
         });
         const blockButton = document.querySelector('[data-cal-block]');
         const openButton = document.querySelector('[data-cal-open]');
+        const quoteButton = document.querySelector('[data-cal-quote]');
         const locked = importedCount > 0;
         if (blockButton) {
             blockButton.disabled = locked || openCount === 0;
@@ -77,6 +78,11 @@
         if (openButton) {
             openButton.disabled = locked || systemCount === 0;
             openButton.classList.toggle('is-off', locked || systemCount === 0);
+        }
+        if (quoteButton) {
+            const quoteReady = !locked && openCount > 0 && systemCount === 0 && importedCount === 0;
+            quoteButton.disabled = !quoteReady;
+            quoteButton.classList.toggle('is-off', !quoteReady);
         }
         if (price) {
             const chosenDays = buttons.filter((button) => {

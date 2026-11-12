@@ -177,4 +177,55 @@ final class QuoteRepositoryTest extends TestCase
         $confirmedListAfter = QuoteRepository::listAll("confirmed");
         $this->assertContains($quote["quote_hash"], array_column($confirmedListAfter, "quote_hash"));
     }
+
+    public function testQuoteUsesPropertyPixKeyByDefault(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $this->pdo->prepare("UPDATE properties SET pix_key = 'custom.pix@casalivre.test' WHERE id = ?")->execute([$propId]);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-08-01",
+            checkout: "2027-08-03"
+        );
+
+        $this->assertSame("custom.pix@casalivre.test", $quote["pix_key"]);
+        $found = QuoteRepository::findByHash($quote["quote_hash"]);
+        $this->assertSame("custom.pix@casalivre.test", $found["pix_key"]);
+    }
+
+    public function testListForUserFiltersByOwnerOrGroupManager(): void
+    {
+        $prop = $this->pdo->query("SELECT id, user_id FROM properties LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $propId = (int) $prop["id"];
+        $ownerId = (int) $prop["user_id"];
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-08-10",
+            checkout: "2027-08-12"
+        );
+
+        $ownerQuotes = QuoteRepository::listForUser($ownerId);
+        $this->assertContains($quote["quote_hash"], array_column($ownerQuotes, "quote_hash"));
+
+        $otherUserQuotes = QuoteRepository::listForUser(99999999);
+        $this->assertNotContains($quote["quote_hash"], array_column($otherUserQuotes, "quote_hash"));
+    }
+
+    public function testPlaceOptionTextHidesCidadeForCity(): void
+    {
+        require_once dirname(__DIR__, 2) . "/src/I18n.php";
+        require_once dirname(__DIR__, 2) . "/src/helpers/geo.php";
+        $cityOption = ['id' => 10, 'name' => 'Aldeias Altas', 'type' => 'city', 'uf' => 'MA'];
+        $text = place_option_text($cityOption);
+        $this->assertSame('Aldeias Altas · MA', $text);
+        $this->assertStringNotContainsString('Cidade', $text);
+
+        $nbhdOption = ['id' => 20, 'name' => 'Centro', 'type' => 'neighborhood', 'uf' => 'MA', 'parent' => 'Aldeias Altas'];
+        $nbhdText = place_option_text($nbhdOption);
+        $this->assertStringContainsString('Bairro', $nbhdText);
+    }
 }

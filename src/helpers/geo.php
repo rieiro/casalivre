@@ -32,6 +32,9 @@ function osm_attribution_template(): void
 function place_option_text(array $option): string
 {
     $where = isset($option['parent']) ? $option['parent'] . ', ' . $option['uf'] : $option['uf'];
+    if (($option['type'] ?? '') === 'city') {
+        return $option['name'] . ' · ' . $where;
+    }
     return $option['name'] . ' · ' . t('place.type_' . $option['type']) . ' · ' . $where;
 }
 

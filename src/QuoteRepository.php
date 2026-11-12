@@ -29,6 +29,7 @@ final class QuoteRepository
         )");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_hash ON quotes (quote_hash)");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_property ON quotes (property_id)");
+        db()->exec("ALTER TABLE properties ADD COLUMN IF NOT EXISTS pix_key TEXT NOT NULL DEFAULT ''");
     }
 
     /**
@@ -66,6 +67,9 @@ final class QuoteRepository
         $property = HouseRepository::find($propertyId);
         if (!$property) {
             throw new InvalidArgumentException("Imóvel não encontrado: {$propertyId}");
+        }
+        if ($pixKey === "rafaelrieiro@gmail.com" && !empty($property["pix_key"])) {
+            $pixKey = (string) $property["pix_key"];
         }
 
         $d1 = new DateTimeImmutable($checkin);
@@ -170,6 +174,27 @@ final class QuoteRepository
     /**
      * @return list<array<string, mixed>>
      */
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function listForUser(int $userId, ?string $status = null): array
+    {
+        self::ensureTable();
+        $sql = "SELECT q.*, p.title as property_title, p.public_hash as property_hash
+                FROM quotes q
+                JOIN properties p ON p.id = q.property_id
+                WHERE (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \x27gestor\x27))";
+        $params = [$userId, $userId];
+        if ($status !== null && $status !== "") {
+            $sql .= " AND q.status = ?";
+            $params[] = $status;
+        }
+        $sql .= " ORDER BY q.created_at DESC";
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public static function listAll(?string $status = null): array
     {
         self::ensureTable();

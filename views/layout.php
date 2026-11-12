@@ -27,13 +27,13 @@
     <input id="nav-toggle" class="nav-toggle" type="checkbox">
     <label class="nav-toggle-label" for="nav-toggle"><?= e(t('nav.menu')) ?></label>
     <nav>
-        <?php if (empty($user['is_admin'])): ?>
         <a href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?= e(t('nav.search')) ?></a>
-        <?php else: ?>
-            <a href="/admin">Painel Admin</a>
-            <a href="/admin/reservas">Reservas & Pix</a>
+        <?php if (!empty($user['is_admin'])): ?>
+            <a href="/admin/grupos">Grupos</a>
+            <a href="/admin/tema">Tema</a>
         <?php endif; ?>
         <?php if (!empty($user)): ?>
+            <a href="/reservas"><?= e(t('res.title')) ?></a>
             <a href="/painel"><?= e(t('nav.properties')) ?></a>
             <a href="/conta"><?= e(t('nav.account')) ?></a>
             <form method="post" action="/sair">

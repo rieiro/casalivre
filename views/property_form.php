@@ -114,6 +114,7 @@
             <label><?= e(t('form.price')) ?> <input name="nightly_price" required inputmode="decimal" placeholder="R$ 0,00" data-money value="<?= e($priceValue) ?>"></label>
         </div>
         <label><?= e(t('form.cleaning')) ?> <input name="cleaning_fee" inputmode="decimal" placeholder="R$ 0,00" data-money value="<?= e($cleaningValue) ?>"></label>
+        <label><?= e(t('form.pix_key')) ?> <input name="pix_key" maxlength="100" placeholder="ex: email, cpf, telefone ou chave aleatória" value="<?= e((string) ($posted['pix_key'] ?? ($current['pix_key'] ?? ''))) ?>"></label>
         <div class="row">
             <label><?= e(t('form.checkin')) ?> <input type="time" name="checkin_time" value="<?= e($property['checkin_time'] ?? '15:00') ?>"></label>
             <label><?= e(t('form.checkout')) ?> <input type="time" name="checkout_time" value="<?= e($property['checkout_time'] ?? '11:00') ?>"></label>

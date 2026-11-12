@@ -130,6 +130,7 @@ final class HouseService
             'bbq' => !empty($amenities['bbq']) ? 1 : 0,
             'garage' => !empty($amenities['garage']) ? 1 : 0,
             'amenities' => json_encode($amenities, JSON_UNESCAPED_UNICODE),
+            'pix_key' => trim((string) ($input['pix_key'] ?? ($current['pix_key'] ?? ''))),
         ];
     }
 
@@ -145,11 +146,11 @@ final class HouseService
 
     public static function update(int $userId, int $id, array $input): array
     {
-        $current = HouseRepository::findByUser($userId, $id);
+        $current = HouseRepository::findManageable($userId, $id);
         if (!$current) {
             return ['error' => t('err.house_missing')];
         }
-        $fields = self::fromInput($userId, $input, $current);
+        $fields = self::fromInput((int) $current['user_id'], $input, $current);
         if (isset($fields['error'])) {
             return $fields;
         }
@@ -172,6 +173,7 @@ final class HouseService
     public static function previous(array $current): array
     {
         return [
+            'pix_key' => (string) ($current['pix_key'] ?? ''),
             'titulo' => (string) ($current['title'] ?? ''),
             'descricao' => (string) ($current['description'] ?? ''),
             'cidade' => (string) ($current['city'] ?? ''),
