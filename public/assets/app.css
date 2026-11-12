@@ -339,3 +339,781 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .chip { display: inline-block; padding: var(--space-2) var(--space-8); border-radius: var(--radius-pill); font-size: .8rem; font-weight: 600; background: var(--subtle-bg); border: 1px solid var(--line); }
 .chip.is-confirmed { background: var(--notice-bg); border-color: var(--notice-line); color: var(--ink); }
 .chip.is-pending { background: var(--subtle-bg); border-color: var(--line); color: var(--muted); }
+
+
+/* ==========================================================================
+   Landing Page de Pagamento Pix (Hóspede / Reserva Direta)
+   Design ultra-confiável, luxuoso e responsivo (estilo Airbnb Luxe / Booking Premium)
+   ========================================================================== */
+
+.payment-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+}
+
+/* Banner Superior de Confiança & Urgência Elegante */
+.payment-trust-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    background: linear-gradient(135deg, #0a2540 0%, #003580 100%);
+    color: #fff;
+    padding: 1rem 1.5rem;
+    border-radius: 14px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 15px rgba(0, 53, 128, 0.15);
+}
+
+.payment-trust-info {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    font-size: 0.95rem;
+}
+
+.payment-trust-shield {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.payment-hold-timer-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.payment-hold-timer-box.is-urgent {
+    background: rgba(220, 38, 38, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fecaca;
+}
+
+.payment-hold-timer-box.is-expired {
+    background: rgba(100, 116, 139, 0.3);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #cbd5e1;
+}
+
+.payment-pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    animation: pulse-green 2s infinite;
+}
+
+.payment-hold-timer-box.is-urgent .payment-pulse-dot {
+    background: #ef4444;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+}
+
+@keyframes pulse-green {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Grid Principal em 2 Colunas */
+.payment-grid {
+    display: grid;
+    grid-template-columns: 1fr 430px;
+    gap: 2.25rem;
+    align-items: start;
+}
+
+@media (max-width: 980px) {
+    .payment-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+}
+
+/* Coluna Esquerda: Showcase do Imóvel */
+.payment-prop-showcase {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Galeria de Fotos em Mosaico */
+.payment-photo-mosaic {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #e2e8f0;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+}
+
+.payment-photo-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 6px;
+    height: 380px;
+}
+
+.payment-photo-grid.is-single {
+    grid-template-columns: 1fr;
+    height: 380px;
+}
+
+.payment-photo-main {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+}
+
+.payment-photo-main img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+}
+
+.payment-photo-main:hover img {
+    transform: scale(1.02);
+}
+
+.payment-photo-side {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 6px;
+    height: 100%;
+}
+
+.payment-photo-thumb {
+    height: 100%;
+    overflow: hidden;
+}
+
+.payment-photo-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+}
+
+.payment-photo-thumb:hover img {
+    transform: scale(1.04);
+}
+
+.payment-photo-badge {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+/* Card de Informações do Imóvel */
+.payment-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.75rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+}
+
+.payment-prop-eyebrow {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #003580;
+    margin-bottom: 0.35rem;
+}
+
+.payment-prop-title {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+    margin: 0 0 0.5rem;
+}
+
+.payment-prop-location {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    color: #64748b;
+    margin-bottom: 1.25rem;
+}
+
+/* Specs Ribbon */
+.payment-specs-ribbon {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding: 1rem 0;
+    border-top: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 1.25rem;
+}
+
+.payment-spec-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.payment-section-subheading {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 1.25rem 0 0.65rem;
+}
+
+.payment-amenities-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.payment-amenity-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    background: #f1f5f9;
+    border-radius: 6px;
+    font-size: 0.84rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.payment-description-text {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: #475569;
+    margin: 0;
+}
+
+/* Caixa de Garantia & Confiança Direta */
+.payment-guarantee-box {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    padding: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+}
+
+.payment-guarantee-item {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.payment-guarantee-item .icon {
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+
+.payment-guarantee-item strong {
+    display: block;
+    font-size: 0.88rem;
+    color: #065f46;
+    margin-bottom: 0.15rem;
+}
+
+.payment-guarantee-item span {
+    font-size: 0.82rem;
+    color: #047857;
+    line-height: 1.4;
+}
+
+/* ==========================================================================
+   Coluna Direita (Sticky): Resumo da Estadia & Pagamento Pix
+   ========================================================================== */
+.payment-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    position: sticky;
+    top: 1.5rem;
+}
+
+/* Resumo da Estadia */
+.payment-summary-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+.payment-card-heading {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.payment-pill-nights {
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #475569;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+/* Bloco Duplo de Datas */
+.payment-dates-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.payment-date-block {
+    text-align: left;
+}
+
+.payment-date-block:last-child {
+    text-align: right;
+}
+
+.payment-date-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 0.2rem;
+}
+
+.payment-date-val {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.payment-date-arrow {
+    color: #94a3b8;
+    font-size: 1.1rem;
+}
+
+/* Breakdown de Preços */
+.payment-breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    font-size: 0.92rem;
+    color: #475569;
+    padding-bottom: 1rem;
+    border-bottom: 1px dashed #cbd5e1;
+    margin-bottom: 1rem;
+}
+
+.payment-breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.payment-highlight-offer {
+    color: #059669;
+    font-weight: 600;
+}
+
+.payment-tag-free {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #059669;
+    background: #dcfce7;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.payment-total-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.35rem;
+}
+
+.payment-total-label {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.payment-total-amount {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #003580;
+}
+
+.payment-total-sub {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.35;
+}
+
+/* Card de Pagamento Pix */
+.payment-pix-card {
+    background: #fff;
+    border: 2px solid #32bcad;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(50, 188, 173, 0.15);
+}
+
+.payment-pix-header {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 1rem;
+}
+
+.payment-pix-badge {
+    background: #32bcad;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.payment-pix-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.payment-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #475569;
+    margin-bottom: 1rem;
+}
+
+.payment-step-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.payment-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background: #e6fffa;
+    color: #0d9488;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.payment-key-details {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.85rem;
+}
+
+/* Área do Código Pix */
+.payment-code-wrapper {
+    margin-bottom: 0.75rem;
+}
+
+.payment-pix-textarea {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.65rem;
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: #334155;
+    resize: none;
+    line-height: 1.35;
+    outline: none;
+    box-sizing: border-box;
+    margin-top: 0.35rem;
+}
+
+.payment-pix-textarea:focus {
+    border-color: #32bcad;
+    box-shadow: 0 0 0 3px rgba(50, 188, 173, 0.2);
+}
+
+.btn-copy-pix {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: #003580;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 53, 128, 0.2);
+}
+
+.btn-copy-pix:hover {
+    background: #00224f;
+    transform: translateY(-1px);
+}
+
+.btn-copy-pix.is-copied {
+    background: #059669;
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+}
+
+.payment-copy-feedback {
+    min-height: 1.25rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #059669;
+    text-align: center;
+    margin-top: 0.4rem;
+}
+
+/* Botão WhatsApp */
+.btn-whatsapp-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: #25d366;
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    margin-top: 0.75rem;
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.2);
+}
+
+.btn-whatsapp-confirm:hover {
+    background: #1ebc59;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+/* Botão Autoconfirmação */
+.btn-self-confirm {
+    width: 100%;
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.65rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 0.5rem;
+}
+
+.btn-self-confirm:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #1e293b;
+}
+
+/* Badges de Segurança Inferiores */
+.payment-security-footer {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.76rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.payment-security-footer-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* ==========================================================================
+   Tela de Sucesso / Confirmação Garantida
+   ========================================================================== */
+.payment-confirmed-card {
+    max-width: 680px;
+    margin: 2rem auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 2.5rem;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+    text-align: center;
+}
+
+.payment-confirmed-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    background: #dcfce7;
+    color: #059669;
+    border-radius: 50%;
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+}
+
+.payment-confirmed-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 0.5rem;
+}
+
+.payment-confirmed-sub {
+    font-size: 1rem;
+    color: #475569;
+    margin-bottom: 1.5rem;
+}
+
+.payment-voucher-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.5rem;
+    text-align: left;
+    margin-bottom: 1.5rem;
+}
+
+.payment-voucher-heading {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #003580;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.payment-voucher-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+
+@media (max-width: 600px) {
+    .payment-voucher-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.payment-total-paid {
+    display: block;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #059669;
+}
+
+.payment-badge-settled {
+    color: #059669;
+    font-weight: 600;
+}
+
+.payment-confirmed-desc {
+    font-size: 0.9rem;
+    color: #64748b;
+    line-height: 1.5;
+    margin-bottom: 1.75rem;
+}
+
+.payment-actions-center {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.btn-outline-back {
+    display: inline-block;
+    padding: 0.75rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    color: #334155;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.btn-outline-back:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+/* Helpers Tipográficos Utilitários */
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-white-80 { color: rgba(255, 255, 255, 0.85); margin: 0; }
+.font-bold { font-weight: 700; }
+.font-mono { font-family: monospace; }
+.text-slate-800 { color: #1e293b; }
+.text-slate-500 { color: #64748b; }

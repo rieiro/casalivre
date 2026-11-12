@@ -702,6 +702,7 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET')
         'title' => 'Pagamento de Reserva · ' . $property['title'],
         'quote' => array_merge($quote, ['total' => (int) $quote['total_price']]),
         'property' => $property,
+        'photos' => $photos,
         'pix_payload' => $pixPayload,
         'whatsapp_confirm_url' => $waUrl,
         'confirmed' => ($quote['status'] === 'confirmed') || isset($_GET['sucesso']),
