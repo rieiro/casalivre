@@ -662,6 +662,17 @@ SQL;
 
 function fold(string $value): string
 {
+    if (str_contains($value, "&")) {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, "UTF-8");
+    }
+    $value = strtr($value, [
+        "\u{2019}" => "'",
+        "\u{2018}" => "'",
+        "\u{02BC}" => "'",
+        "\u{02BB}" => "'",
+        "\u{00B4}" => "'",
+        "\x60" => "'",
+    ]);
     $value = mb_strtolower(trim($value));
     $map = [
         'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a',

@@ -42,8 +42,12 @@ final class SearchQuery
         $grupo = array_key_exists('grupo', $request)
             ? (is_string($request['grupo']) ? $request['grupo'] : '')
             : null;
+        $localidade = trim((string) ($request['localidade'] ?? ''));
+        if (str_contains($localidade, '&')) {
+            $localidade = html_entity_decode($localidade, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
         return new self(
-            trim((string) ($request['localidade'] ?? '')),
+            $localidade,
             self::readLocalId($request),
             (string) ($request['checkin'] ?? ''),
             (string) ($request['checkout'] ?? ''),
