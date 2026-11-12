@@ -169,7 +169,7 @@ function head_permitido(string $path): bool
 
 function casa_privado(string $path, string $method): bool
 {
-    if (in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
+    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -742,6 +742,31 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method 
         ['status' => 'confirmed', 'quote_hash' => $m[1]]
     );
     redirect('/pagamento/' . $m[1] . '?sucesso=1');
+}
+
+// Painel Administrativo Geral (Dashboard & Anotações)
+if ($path === '/admin' && $method === 'GET') {
+    $user = require_admin();
+    require_once dirname(__DIR__) . '/src/Acoes/AdminDashboard.php';
+    $res = AdminDashboard::run($user);
+    view('admin/dashboard', array_merge($res->dados ?? [], [
+        'user' => $user,
+        'active_tab' => 'dashboard',
+        'layout' => 'admin_layout',
+        'page_title' => 'Painel Geral',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]));
+    return null;
+}
+
+if ($path === '/admin/notas' && $method === 'POST') {
+    $user = require_admin();
+    csrf_check();
+    $notes = (string) ($_POST['admin_notes_general'] ?? '');
+    Settings::set('admin_notes_general', $notes);
+    redirect('/admin?ok=1');
+    return null;
 }
 
 // Tema da plataforma (Etapa 2): só admin (users.is_admin = 1); troca por POST com CSRF (regra em ThemeSet).

@@ -29,6 +29,7 @@
     <nav>
         <a href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?= e(t('nav.search')) ?></a>
         <?php if (!empty($user['is_admin'])): ?>
+            <a href="/admin">Admin</a>
             <a href="/admin/grupos">Grupos</a>
             <a href="/admin/tema">Tema</a>
         <?php endif; ?>

@@ -29,6 +29,13 @@ final class Settings
             'rank_c' => ['5', 'Bayesian prior weight C for rating_rank (ADR 001 §12.3).'],
             'rank_m' => ['9', 'Bayesian prior mean m for rating_rank, on the 1..10 review scale.'],
             'rank_w_rating' => ['35', 'Weight of the rating factor in rank_base, out of 100.'],
+            'calendar_sync_interval_min' => ['30', 'Intervalo em minutos entre sincronizações automáticas de cada feed iCal.'],
+            'calendar_sync_fail_stop' => ['16', 'Número de falhas consecutivas antes de desativar permanentemente o feed.'],
+            'calendar_fetch_timeout_sec' => ['20', 'Tempo limite em segundos para download de feed iCal externo.'],
+            'photo_webp_quality' => ['80', 'Qualidade de compressão das fotos WebP geradas (60 a 95).'],
+            'quote_hold_minutes' => ['30', 'Minutos de validade do link de cotação e retenção temporária das datas.'],
+            'maintenance_mode' => ['0', 'Modo de manutenção da plataforma (0 = desativado, 1 = ativado).'],
+            'admin_notes_general' => ['', 'Bloco de notas administrativas compartilhadas entre administradores.'],
         ];
         $defaults['rank_applied'] = [
             self::fingerprint(static fn (string $key): string => $defaults[$key][0]),
