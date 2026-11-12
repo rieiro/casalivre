@@ -559,7 +559,7 @@ function handle_api(string $path, string $method): void
     }
 
     // Sincronizar feed iCal agora
-    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar0', $path, $m) && $method === 'POST') {
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
         $property = api_owned_property($user, $m[1]);
         HouseRepository::markFeedPending((int) $property['id'], (int) $m[2]);
