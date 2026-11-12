@@ -243,4 +243,22 @@ final class QuoteRepositoryTest extends TestCase
         $this->assertSame("Generar enlace de pago", I18n::t("cal.generate_quote"));
         unset($_SESSION["locale"]);
     }
+
+    public function testApiOwnedPropertyAllowsManager(): void
+    {
+        require_once dirname(__DIR__, 2) . "/src/Api.php";
+        $prop = $this->pdo->query("SELECT id, user_id, public_hash FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($prop);
+        $ownerId = (int) $prop["user_id"];
+
+        $managerId = (int) $this->pdo->query("SELECT id FROM users WHERE id != " . $ownerId . " LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $managerId);
+
+        $groupId = (int) $this->pdo->query("INSERT INTO groups (name, slug, theme, created_at) VALUES ('Test Group', 'test-group-' || substr(md5(random()::text), 1, 8), 'padrao', CURRENT_TIMESTAMP) RETURNING id")->fetchColumn();
+        $this->pdo->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'gestor')")->execute([$groupId, $managerId]);
+        $this->pdo->prepare("UPDATE properties SET group_id = ? WHERE id = ?")->execute([$groupId, (int) $prop["id"]]);
+
+        $result = api_owned_property(["id" => $managerId], $prop["public_hash"]);
+        $this->assertSame((int) $prop["id"], (int) $result["id"]);
+    }
 }

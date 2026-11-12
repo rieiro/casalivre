@@ -36,12 +36,12 @@
     const calForm = document.querySelector('[data-cal-form]');
     if (calForm) {
         calForm.addEventListener('submit', async function (ev) {
-            const btn = ev.submitter;
+            const btn = ev.submitter || document.activeElement;
             const data = Object.fromEntries(new FormData(calForm).entries());
             if (btn && btn.name === 'acao') {
                 data.acao = btn.value;
             }
-            if (data.acao === 'cotacao') {
+            if (data.acao === 'cotacao' || (btn && btn.hasAttribute && btn.hasAttribute('data-cal-quote'))) {
                 return;
             }
             ev.preventDefault();

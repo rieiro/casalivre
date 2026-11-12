@@ -87,21 +87,23 @@
         if (quoteButton) {
             const quoteReady = !hasDisabled && !locked && openCount > 0 && systemCount === 0 && importedCount === 0;
             quoteButton.disabled = !quoteReady;
-            quoteButton.classList.toggle('is-off', !quoteReady);
-        }
-        if (price) {
-            const chosenDays = buttons.filter((button) => {
-                const day = button.getAttribute('data-cal-day');
-                return !button.disabled && day >= first && day <= last;
-            });
-            const prices = chosenDays.map((button) => button.getAttribute('data-price') || '');
-            const same = prices.length > 0 && prices.every((value) => value === prices[0]);
-            price.value = same ? prices[0] : '';
+            if (quoteReady) {
+                quoteButton.removeAttribute('disabled');
+                quoteButton.classList.remove('is-off');
+            } else {
+                quoteButton.setAttribute('disabled', 'disabled');
+                quoteButton.classList.add('is-off');
+            }
         }
         const chosenDays = buttons.filter((button) => {
             const day = button.getAttribute('data-cal-day');
             return !button.disabled && day >= first && day <= last;
         });
+        if (price) {
+            const prices = chosenDays.map((button) => button.getAttribute('data-price') || '');
+            const same = prices.length > 0 && prices.every((value) => value === prices[0]);
+            price.value = same ? prices[0] : '';
+        }
         if (minInput) {
             const mins = chosenDays.map((button) => button.getAttribute('data-min') || '');
             const sameMin = mins.length > 0 && mins.every((value) => value === mins[0]);

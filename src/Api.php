@@ -31,11 +31,14 @@ function api_require_user(?array $user): array
 function api_owned_property(array $user, string $hash): array
 {
     $found = HouseRepository::findByPublicHash($hash);
-    $property = $found ? HouseRepository::findByUser((int) $user['id'], (int) $found['id']) : null;
-    if (!$property) {
+    if (!$found) {
         api_error(404, 'Imóvel não encontrado.');
     }
-    return $property;
+    try {
+        return HouseRepository::findManageableOrFail((int) $user['id'], (int) $found['id']);
+    } catch (Throwable) {
+        api_error(404, 'Imóvel não encontrado.');
+    }
 }
 
 function api_body(): array
