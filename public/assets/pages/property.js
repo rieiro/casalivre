@@ -277,7 +277,7 @@
                             )
                         ) : null
                     ),
-                    el("p", { className: "price", style: "display:none;" }, quoteText),
+                    el("p", { className: "price", hidden: true }, quoteText),
                     el("a", { className: "btn-dash-primary prop-view-cta-btn", href: "#review-form" },
                         "Reservar esta acomodação"
                     ),
@@ -312,7 +312,8 @@
                 content
             );
         })
-        .catch(() => {
-            box.replaceChildren(el("p", { className: "muted" }, "Imóvel não encontrado."));
+        .catch((err) => {
+            console.error("Erro ao renderizar detalhes do imóvel:", err);
+            box.replaceChildren(el("p", { className: "muted" }, (err && err.status === 404) ? "Imóvel não encontrado." : "Imóvel indisponível no momento."));
         });
 })();
