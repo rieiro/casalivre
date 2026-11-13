@@ -26,18 +26,35 @@
             }
         }
     });
-    document.getElementById('delete-account').addEventListener('submit', async function (ev) {
-        ev.preventDefault();
-        if (!confirm(CL.data().deleteConfirm)) return;
-        try {
-            await CL.api('/api/users/eu', { method: 'DELETE', error: 'Erro ao excluir conta' });
-            window.location.href = '/';
-        } catch (e) {
-            if (window.CL && typeof window.CL.toast === 'function') {
-                CL.toast('error', 'Erro ao excluir conta', e.message || 'Não foi possível excluir a conta.');
-            } else {
-                console.error(e.message);
+    const deleteForm = document.getElementById('delete-account');
+    if (deleteForm) {
+        deleteForm.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            const ok = window.CL && typeof window.CL.confirm === 'function'
+                ? await window.CL.confirm({
+                    title: 'Excluir conta definitivamente?',
+                    message: (CL.data() && CL.data().deleteConfirm) || 'Tem certeza que deseja excluir sua conta permanentemente? Esta ação desativará seu perfil e anúncios.',
+                    confirmText: 'Sim, excluir minha conta',
+                    cancelText: 'Cancelar',
+                    danger: true
+                })
+                : true;
+
+            if (!ok) return;
+
+            try {
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('info', 'Excluindo conta...', 'Processando cancelamento do cadastro.');
+                }
+                await CL.api('/api/users/eu', { method: 'DELETE', error: 'Erro ao excluir conta' });
+                window.location.href = '/';
+            } catch (e) {
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('error', 'Erro ao excluir conta', e.message || 'Não foi possível excluir a conta.');
+                } else {
+                    console.error(e.message);
+                }
             }
-        }
-    });
+        });
+    }
 })();

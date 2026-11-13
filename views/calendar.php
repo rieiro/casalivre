@@ -20,7 +20,7 @@ $feeds = $feeds ?? [];
             $rawTone = (string) ($message_tone ?? 'ok');
             $tone = in_array($rawTone, ['error', 'warning', 'info'], true) ? $rawTone : 'ok';
         ?>
-            <p class="alert <?= e($tone) ?>" data-flash-alert data-flash-tone="<?= e($tone) ?>"><?= e($msg) ?></p>
+            <div hidden data-flash-alert data-flash-tone="<?= e($tone) ?>"><?= e($msg) ?></div>
         <?php endforeach; ?>
     <?php endif; ?>
     <div class="cal-board">
