@@ -404,6 +404,8 @@ function handle_api(string $path, string $method): void
                 'photo' => PhotoRepository::primaryPath((int) $item['id']),
                 'status' => $item['status'] ?? 'active',
                 'nightly_price' => (int) $item['nightly_price'],
+                'max_guests' => (int) ($item['max_guests'] ?? 0),
+                'created_at' => (string) ($item['created_at'] ?? ''),
             ];
         }
         json_out(200, ['items' => $items]);
