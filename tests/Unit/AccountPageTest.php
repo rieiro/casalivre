@@ -81,4 +81,19 @@ final class AccountPageTest extends TestCase
         $this->assertStringContainsString('name="address_number"', $html);
         $this->assertStringContainsString('rafael@casalivre.test', $html);
     }
+
+    public function testAccountPageUsesLuxuryToastNotification(): void
+    {
+        $safeDom = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/safe-dom.js');
+        $accountJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/account.js');
+
+        // safe-dom.js must provide CL.toast utility
+        $this->assertStringContainsString('toast(type, title, message)', $safeDom);
+        $this->assertStringContainsString('prop-toast', $safeDom);
+
+        // account.js must invoke CL.toast for save confirmation and errors
+        $this->assertStringContainsString("CL.toast('success'", $accountJs);
+        $this->assertStringContainsString("CL.toast('error'", $accountJs);
+        $this->assertStringNotContainsString("alert(e.message)", $accountJs);
+    }
 }

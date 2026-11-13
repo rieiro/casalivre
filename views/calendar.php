@@ -12,7 +12,17 @@ $feeds = $feeds ?? [];
 ?>
 <section class="wrap">
     <h1><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>
-    <?php if ($message): ?><p class="alert <?= ($message_tone ?? 'ok') === 'error' ? 'error' : 'ok' ?>"><?= e($message) ?></p><?php endif; ?>
+    <?php if ($message): ?>
+        <?php
+        $messages = is_array($message) ? $message : array_filter(array_map('trim', explode("
+", (string) $message)));
+        foreach ($messages as $msg):
+            $rawTone = (string) ($message_tone ?? 'ok');
+            $tone = in_array($rawTone, ['error', 'warning', 'info'], true) ? $rawTone : 'ok';
+        ?>
+            <p class="alert <?= e($tone) ?>" data-flash-alert data-flash-tone="<?= e($tone) ?>"><?= e($msg) ?></p>
+        <?php endforeach; ?>
+    <?php endif; ?>
     <div class="cal-board">
         <div class="cal-months">
             <ul class="cal-legend">
