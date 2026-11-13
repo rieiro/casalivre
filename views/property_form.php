@@ -28,11 +28,11 @@ $calendarMonthsValue = (string) ($posted['calendar_months'] ?? ($storedMonths >=
 $selectedAmenities = Amenities::selected(is_array($property ?? null) ? $property : null);
 if (is_array($posted['amenity'] ?? null) || array_key_exists('noise_from', $posted)) {
     $selectedAmenities = Amenities::fromInput($posted);
-    $selectedAmenities['noise_from'] = (string) ($posted['noise_from'] ?? '');
-    $selectedAmenities['noise_until'] = (string) ($posted['noise_until'] ?? '');
+    $selectedAmenities['noise_from'] = (string) ($posted['noise_from'] ?? '22:00');
+    $selectedAmenities['noise_until'] = (string) ($posted['noise_until'] ?? '07:00');
 }
-$noiseFrom = Amenities::clock((string) ($selectedAmenities['noise_from'] ?? '')) ?? '08:00';
-$noiseUntil = Amenities::clock((string) ($selectedAmenities['noise_until'] ?? '')) ?? '22:00';
+$noiseFrom = Amenities::clock((string) ($selectedAmenities['noise_from'] ?? '')) ?? '22:00';
+$noiseUntil = Amenities::clock((string) ($selectedAmenities['noise_until'] ?? '')) ?? '07:00';
 $roomLayout = Rooms::forForm($posted, $current ?: null);
 
 $latValue = array_key_exists('lat', $posted) ? (string) $posted['lat'] : (isset($current['lat']) ? (string) (float) $current['lat'] : '');
@@ -316,23 +316,26 @@ if ($latValue === '' && $lngValue === '') {
                             <div class="amenity-grid prop-amenity-grid">
                                 <?php foreach ($keys as $key): ?>
                                     <?php if ($key === 'noise'): ?>
-                                        <div class="amenity-noise prop-amenity-noise">
-                                            <label class="prop-checkbox-label">
-                                                <input type="checkbox" name="amenity[noise]" value="1" data-noise <?= !empty($selectedAmenities['noise']) ? 'checked' : '' ?>>
-                                                <span><?= e(t('amenity.noise')) ?></span>
-                                            </label>
-                                            <div class="noise-hours prop-noise-hours" data-noise-hours <?= empty($selectedAmenities['noise']) ? 'hidden' : '' ?>>
-                                                <div class="prop-form-grid-2">
-                                                    <div>
-                                                        <label class="prop-form-label"><?= e(t('amenity.noise_from')) ?></label>
-                                                        <input class="prop-form-input" type="time" name="noise_from" value="<?= e($noiseFrom) ?>">
+                                        <div class="amenity-noise prop-noise-integrated-card <?= !empty($selectedAmenities['noise']) ? 'is-active' : '' ?>" data-noise-card>
+                                            <div class="prop-noise-integrated-body">
+                                                <label class="prop-noise-toggle-header">
+                                                    <input type="checkbox" name="amenity[noise]" value="1" data-noise <?= !empty($selectedAmenities['noise']) ? 'checked' : '' ?>>
+                                                    <div class="prop-noise-title-group">
+                                                        <strong class="prop-noise-title"><?= e(t('amenity.noise')) ?></strong>
+                                                        <span class="prop-noise-desc"><?= e(t('amenity.noise_hint')) ?></span>
                                                     </div>
-                                                    <div>
-                                                        <label class="prop-form-label"><?= e(t('amenity.noise_until')) ?></label>
-                                                        <input class="prop-form-input" type="time" name="noise_until" value="<?= e($noiseUntil) ?>">
+                                                </label>
+                                                <div class="prop-noise-time-container" data-noise-hours <?= empty($selectedAmenities['noise']) ? 'hidden' : '' ?>>
+                                                    <div class="prop-noise-time-field">
+                                                        <label class="prop-noise-label" for="field-noise-from"><?= e(t('amenity.noise_from')) ?></label>
+                                                        <input id="field-noise-from" class="prop-form-input prop-noise-input" type="time" name="noise_from" value="<?= e($noiseFrom) ?>">
+                                                    </div>
+                                                    <span class="prop-noise-sep" aria-hidden="true">às</span>
+                                                    <div class="prop-noise-time-field">
+                                                        <label class="prop-noise-label" for="field-noise-until"><?= e(t('amenity.noise_until')) ?></label>
+                                                        <input id="field-noise-until" class="prop-form-input prop-noise-input" type="time" name="noise_until" value="<?= e($noiseUntil) ?>">
                                                     </div>
                                                 </div>
-                                                <p class="prop-form-hint"><?= e(t('amenity.noise_hint')) ?></p>
                                             </div>
                                         </div>
                                     <?php else: ?>

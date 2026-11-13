@@ -237,4 +237,75 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString("fileInput.addEventListener('change'", $js);
         $this->assertStringNotContainsString("alert('Falha de conexão ao enviar fotos')", $js);
     }
+
+    public function testPropertyFormRendersIntegratedNoiseCardWithDefaultValues(): void
+    {
+        ob_start();
+        try {
+            $property = null;
+            $error = null;
+            $posted = [];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Must have integrated noise card element
+        $this->assertStringContainsString('prop-noise-integrated-card', $html);
+        $this->assertStringContainsString('data-noise-card', $html);
+
+        // Default values: checked, 22:00 and 07:00
+        $this->assertStringContainsString('name="amenity[noise]" value="1" data-noise checked', $html);
+        $this->assertStringContainsString('name="noise_from" value="22:00"', $html);
+        $this->assertStringContainsString('name="noise_until" value="07:00"', $html);
+    }
+
+    public function testHouseServiceAcceptsOvernightQuietHours22To07(): void
+    {
+        require_once dirname(__DIR__, 2) . '/src/HouseService.php';
+
+        $cepRow = $this->pdo->query("SELECT cep FROM ceps WHERE street != '' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($cepRow);
+
+        $input = [
+            'title' => 'Casa Silêncio',
+            'description' => 'Ambiente tranquilo familiar.',
+            'cep' => $cepRow['cep'],
+            'address_number' => '10',
+            'max_guests' => '2',
+            'nightly_price' => '200',
+            'bedrooms' => '1',
+            'beds' => '1',
+            'amenity' => ['noise' => '1'],
+            'noise_from' => '22:00',
+            'noise_until' => '07:00',
+        ];
+
+        $res = HouseService::fromInput(1, $input);
+        $this->assertArrayNotHasKey('error', $res);
+        $amenities = json_decode((string) $res['amenities'], true);
+        $this->assertSame(1, $amenities['noise']);
+        $this->assertSame('22:00', $amenities['noise_from']);
+        $this->assertSame('07:00', $amenities['noise_until']);
+    }
+
+    public function testAmenitiesSelectedDefaultsNoiseToOnWith22And07(): void
+    {
+        require_once dirname(__DIR__, 2) . '/src/Amenities.php';
+
+        $defaults = Amenities::selected(null);
+        $this->assertSame(1, $defaults['noise'] ?? null);
+        $this->assertSame('22:00', $defaults['noise_from'] ?? null);
+        $this->assertSame('07:00', $defaults['noise_until'] ?? null);
+
+        $emptyProperty = ['amenities' => '{}'];
+        $propDefaults = Amenities::selected($emptyProperty);
+        $this->assertSame(1, $propDefaults['noise'] ?? null);
+        $this->assertSame('22:00', $propDefaults['noise_from'] ?? null);
+        $this->assertSame('07:00', $propDefaults['noise_until'] ?? null);
+    }
 }
