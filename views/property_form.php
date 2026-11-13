@@ -392,7 +392,7 @@ if ($latValue === '' && $lngValue === '') {
                             </label>
                         </div>
                         <p class="error" data-upload-error hidden></p>
-                        <button class="btn-dash-primary mt-12" type="submit"><?= e(t('form.add_photos')) ?></button>
+                        <noscript><button class="btn-dash-primary mt-12" type="submit"><?= e(t('form.add_photos')) ?></button></noscript>
                     <?php endif; ?>
                 </form>
 
