@@ -2908,3 +2908,453 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
         align-items: stretch;
     }
 }
+
+
+/* ==========================================================================
+   GERADOR DE COTAÇÃO (/imoveis/{hash}/cotacao) - LUXURY STYLE
+   ========================================================================== */
+.quote-page {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 5rem;
+}
+
+/* Header Hero */
+.quote-header {
+    background: linear-gradient(135deg, #001f4d 0%, #003580 50%, #004fb3 100%);
+    color: #ffffff;
+    border-radius: 20px;
+    padding: 2.25rem 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 53, 128, 0.25), 0 8px 10px -6px rgba(0, 53, 128, 0.2);
+}
+
+.quote-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #93c5fd;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 1.25rem;
+    transition: color 0.2s ease;
+}
+.quote-back-link:hover {
+    color: #ffffff;
+}
+
+.quote-header-content {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Property Summary in Header */
+.quote-prop-summary {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    flex-wrap: wrap;
+}
+
+.quote-prop-icon {
+    font-size: 2rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.quote-prop-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+    min-width: 200px;
+}
+
+.quote-prop-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.quote-prop-city {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.quote-prop-rates {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.quote-rate-pill {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+}
+
+/* Alert */
+.quote-alert {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+    border-radius: 14px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.95rem;
+}
+
+/* Success Card */
+.quote-success-card {
+    background: #ffffff;
+    border: 2px solid #a7f3d0;
+    border-radius: 18px;
+    box-shadow: 0 10px 25px -5px rgba(5, 150, 105, 0.15);
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.quote-success-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.quote-success-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 0.95rem;
+    font-weight: 800;
+    padding: 0.4rem 0.9rem;
+    border-radius: 9999px;
+    border: 1px solid #a7f3d0;
+}
+
+.quote-timer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #fffbeb;
+    color: #b45309;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.35rem 0.85rem;
+    border-radius: 9999px;
+    border: 1px solid #fde68a;
+}
+
+.quote-success-desc {
+    font-size: 0.95rem;
+    color: #334155;
+    line-height: 1.6;
+    margin: 0 0 1.5rem;
+}
+
+.quote-link-box {
+    margin-bottom: 1.5rem;
+}
+
+.quote-link-label {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.45rem;
+}
+
+.quote-link-input {
+    width: 100%;
+    border: 2px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    font-family: monospace;
+    color: #003580;
+    background: #f8fafc;
+    font-weight: 600;
+    box-sizing: border-box;
+}
+
+/* Breakdown inside Success */
+.quote-breakdown-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.quote-dates-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.quote-date-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.quote-date-lbl {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.2rem;
+}
+
+.quote-date-val {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.quote-nights-pill {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0.4rem 0.9rem;
+    border-radius: 9999px;
+}
+
+.quote-calc-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.quote-calc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.92rem;
+    color: #475569;
+}
+
+.quote-special-row {
+    color: #059669;
+    font-weight: 600;
+}
+
+.quote-calc-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 2px dashed #cbd5e1;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.quote-total-price {
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: #003580;
+}
+
+.quote-share-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.quote-copy-status {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #059669;
+    margin: 0.85rem 0 0;
+    min-height: 1.25rem;
+}
+
+/* Form Card */
+.quote-form-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    box-shadow: 0 4px 16px rgba(0, 35, 80, 0.04);
+    overflow: hidden;
+}
+
+.quote-form-card-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 1.75rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
+}
+
+.quote-form-card-icon {
+    font-size: 1.85rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.quote-form-card-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.25rem;
+    line-height: 1.25;
+}
+
+.quote-form-card-subtitle {
+    font-size: 0.88rem;
+    color: #64748b;
+    margin: 0;
+}
+
+.quote-form-card-body {
+    padding: 1.75rem;
+}
+
+.quote-verified-box {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.quote-verified-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.quote-verified-label {
+    color: #166534;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.quote-verified-rates {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.88rem;
+    color: #166534;
+    margin: 0.5rem 0;
+    flex-wrap: wrap;
+}
+
+.quote-pix-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: #15803d;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+.quote-pix-info code {
+    background: #dcfce7;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.quote-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.quote-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.quote-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.45rem;
+}
+
+.quote-input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    color: #0f172a;
+    background: #ffffff;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+.quote-input:focus {
+    border-color: #003580;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 53, 128, 0.12);
+}
+
+.quote-submit-bar {
+    margin-top: 0.5rem;
+}
+.quote-submit-btn {
+    font-size: 1.05rem;
+    padding: 0.9rem 2.25rem;
+    border-radius: 14px;
+    width: 100%;
+    justify-content: center;
+}
+
+@media (max-width: 640px) {
+    .quote-header {
+        padding: 1.5rem 1.25rem;
+    }
+    .quote-prop-summary {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .quote-form-card-head {
+        padding: 1.25rem;
+    }
+    .quote-form-card-body {
+        padding: 1.25rem;
+    }
+    .quote-dates-strip {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .quote-share-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    .quote-share-actions .btn-res-whatsapp,
+    .quote-share-actions .btn-res-link {
+        width: 100%;
+        justify-content: center;
+    }
+}
