@@ -41,12 +41,14 @@
         const features = [];
         (items || []).forEach(function (item) {
             const id = String(item && item.id || '');
-            if (!/^[a-f0-9]{16}$/.test(id) || !validCoord(item.lat, item.lng)) {
+            const lat = Number(item && (item.lat !== undefined && item.lat !== null ? item.lat : (item.latitude !== undefined ? item.latitude : NaN)));
+            const lng = Number(item && (item.lng !== undefined && item.lng !== null ? item.lng : (item.long !== undefined && item.long !== null ? item.long : (item.longitude !== undefined ? item.longitude : NaN))));
+            if (!/^[a-f0-9]{16}$/.test(id) || !validCoord(lat, lng)) {
                 return;
             }
             features.push({
                 type: 'Feature',
-                geometry: { type: 'Point', coordinates: [item.lng, item.lat] },
+                geometry: { type: 'Point', coordinates: [lng, lat] },
                 properties: {
                     id: id,
                     title: String(item.title || ''),
