@@ -288,6 +288,34 @@ final class SearchService
         $property['score'] = $score;
         return $property;
     }
+
+    /**
+     * Formata os imóveis encontrados para a API de busca e posicionamento no mapa.
+     * Utiliza lat,long reais do imóvel.
+     *
+     * @param list<array> $results
+     * @return list<array>
+     */
+    public static function formatMapItems(array $results): array
+    {
+        return array_map(static function (array $item): array {
+            $lat = isset($item['lat']) && $item['lat'] !== null ? (float) $item['lat'] : null;
+            $lng = isset($item['lng']) && $item['lng'] !== null ? (float) $item['lng'] : null;
+            return [
+                'id' => property_ref($item),
+                'title' => $item['title'],
+                'city' => $item['city'],
+                'nightly_price' => (int) $item['nightly_price'],
+                'photo' => $item['photo'] ?? null,
+                'score' => $item['score'] ?? null,
+                'quote' => $item['quote'] ?? null,
+                'distance_km' => isset($item['distance_km']) ? (int) $item['distance_km'] : null,
+                'lat' => $lat,
+                'lng' => $lng,
+                'long' => $lng,
+            ];
+        }, $results);
+    }
 }
 
 /** The listing query exceeded statement_timeout. The API answers 503. */
