@@ -4,11 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../PhotoFail.php';
 
-function primary_photo(int $propertyId): ?string
-{
-    return PhotoRepository::primaryPath($propertyId);
-}
-
 function photo_fail_text(string $reason): string
 {
     $key = match ($reason) {
