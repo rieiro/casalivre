@@ -34,7 +34,19 @@ if (is_array($posted['amenity'] ?? null) || array_key_exists('noise_from', $post
 $noiseFrom = Amenities::clock((string) ($selectedAmenities['noise_from'] ?? '')) ?? '08:00';
 $noiseUntil = Amenities::clock((string) ($selectedAmenities['noise_until'] ?? '')) ?? '22:00';
 $roomLayout = Rooms::forForm($posted, $current ?: null);
+
+$latValue = array_key_exists('lat', $posted) ? (string) $posted['lat'] : (isset($current['lat']) ? (string) (float) $current['lat'] : '');
+$lngValue = array_key_exists('lng', $posted) ? (string) $posted['lng'] : (isset($current['lng']) ? (string) (float) $current['lng'] : '');
+$cityParts = explode(',', $cityValue);
+$cityKnown = $cityValue !== '' && count($cityParts) >= 2 ? CityRepository::exactCity(trim($cityParts[0]), trim($cityParts[1])) : null;
+$initialCityLat = isset($cityKnown['lat']) ? (string) (float) $cityKnown['lat'] : '-27.5954';
+$initialCityLng = isset($cityKnown['lng']) ? (string) (float) $cityKnown['lng'] : '-48.5480';
+if ($latValue === '' && $lngValue === '') {
+    $latValue = $initialCityLat;
+    $lngValue = $initialCityLng;
+}
 ?>
+<link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">
 <section class="prop-form-page wrap">
     <!-- Header Hero Luxury -->
     <div class="prop-form-header">
@@ -126,6 +138,33 @@ $roomLayout = Rooms::forForm($posted, $current ?: null);
                     </div>
                 </div>
                 <p class="prop-form-hint" data-cep-status><?= e(t('auth.cep_hint')) ?></p>
+
+                <!-- Localização Exata no Mapa -->
+                <div class="prop-pinpoint-map-section">
+                    <div class="prop-pinpoint-header">
+                        <div>
+                            <span class="prop-pinpoint-title">Localização Exata no Mapa</span>
+                            <p class="prop-form-hint">Arraste o pin ou clique no mapa para posicionar a localização exata do seu imóvel. Apenas a localização aproximada será exibida nas buscas públicas para segurança.</p>
+                        </div>
+                        <div class="prop-pinpoint-badge" id="pinpoint-coords-badge">
+                            <span>Lat: <strong id="pinpoint-lat-disp"><?= e($latValue !== '' ? number_format((float) $latValue, 5, '.', '') : '-') ?></strong></span>
+                            <span>Lng: <strong id="pinpoint-lng-disp"><?= e($lngValue !== '' ? number_format((float) $lngValue, 5, '.', '') : '-') ?></strong></span>
+                        </div>
+                    </div>
+                    <input type="hidden" name="lat" id="field-lat" value="<?= e($latValue) ?>">
+                    <input type="hidden" name="lng" id="field-lng" value="<?= e($lngValue) ?>">
+                    <div id="property-pinpoint-map" class="property-pinpoint-map"
+                         data-tiles="/tiles/brasil.pmtiles"
+                         data-style="<?= e(asset_url(Theme::mapStylePath())) ?>"
+                         data-worker="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl-csp-worker.js')) ?>"
+                         data-lat="<?= e($latValue) ?>"
+                         data-lng="<?= e($lngValue) ?>"
+                         data-city="<?= e($cityValue) ?>"
+                         data-city-lat="<?= e($initialCityLat) ?>"
+                         data-city-lng="<?= e($initialCityLng) ?>"
+                         aria-label="Mapa para ajuste fino da localização do imóvel">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -416,5 +455,7 @@ $roomLayout = Rooms::forForm($posted, $current ?: null);
         </div>
     <?php endif; ?>
 </section>
+<script src="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl-csp.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/vendor/pmtiles/pmtiles.js')) ?>"></script>
 <script src="<?= e(asset_url('/assets/form-data.js')) ?>"></script>
 <script src="<?= e(asset_url('/assets/pages/property-form.js')) ?>"></script>

@@ -1,6 +1,6 @@
 {
     "/assets/admin.css": "a84c64528dda",
-    "/assets/app.css": "971af9236f1a",
+    "/assets/app.css": "9c6b1ad7152c",
     "/assets/app.js": "57fb4aa8df77",
     "/assets/form-data.js": "98c0e28cf323",
     "/assets/map/sprites/light.json": "bfac76cf7ed5",
@@ -17,7 +17,7 @@
     "/assets/pages/password-forgot.js": "8183cb623e91",
     "/assets/pages/password-reset.js": "b0cfc2e39e77",
     "/assets/pages/payment.js": "22cee35ad673",
-    "/assets/pages/property-form.js": "69a2b56d7fb1",
+    "/assets/pages/property-form.js": "ec15a886816d",
     "/assets/pages/property.js": "30ec25f6b96e",
     "/assets/pages/quote-admin.js": "a415689c863c",
     "/assets/pages/register.js": "bf38027d06b0",

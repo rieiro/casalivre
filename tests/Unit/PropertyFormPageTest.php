@@ -97,4 +97,90 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('prop-form-danger-zone', $html);
         $this->assertStringContainsString($prop['title'], $html);
     }
+
+    public function testPropertyFormRendersMapPinpointSectionAndInputs(): void
+    {
+        ob_start();
+        try {
+            $property = null;
+            $error = null;
+            $posted = [];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Section & container
+        $this->assertStringContainsString('prop-pinpoint-map-section', $html);
+        $this->assertStringContainsString('id="property-pinpoint-map"', $html);
+
+        // Inputs for lat and lng
+        $this->assertStringContainsString('name="lat"', $html);
+        $this->assertStringContainsString('name="lng"', $html);
+        $this->assertStringContainsString('id="field-lat"', $html);
+        $this->assertStringContainsString('id="field-lng"', $html);
+
+        // MapLibre and PMTiles dependencies
+        $this->assertStringContainsString('maplibre-gl.css', $html);
+        $this->assertStringContainsString('maplibre-gl-csp.js', $html);
+        $this->assertStringContainsString('pmtiles.js', $html);
+    }
+
+    public function testPropertyFormEditModePrePopulatesExactCoordinates(): void
+    {
+        $prop = $this->pdo->query("SELECT * FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($prop);
+
+        ob_start();
+        try {
+            $property = $prop;
+            $error = null;
+            $posted = [];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        $expectedLat = (string) (float) $prop['lat'];
+        $expectedLng = (string) (float) $prop['lng'];
+
+        $this->assertStringContainsString('value="' . $expectedLat . '"', $html);
+        $this->assertStringContainsString('value="' . $expectedLng . '"', $html);
+        $this->assertStringContainsString('data-lat="' . $expectedLat . '"', $html);
+        $this->assertStringContainsString('data-lng="' . $expectedLng . '"', $html);
+    }
+
+    public function testHouseServiceFromInputStoresExactCustomPinpointedCoordinates(): void
+    {
+        require_once dirname(__DIR__, 2) . '/src/HouseService.php';
+
+        $cepRow = $this->pdo->query("SELECT cep FROM ceps WHERE street != '' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($cepRow);
+
+        $input = [
+            'title' => 'Chalé da Colina',
+            'description' => 'Chalé charmoso com vista para o vale.',
+            'cep' => $cepRow['cep'],
+            'address_number' => '120',
+            'max_guests' => '4',
+            'nightly_price' => '350',
+            'bedrooms' => '2',
+            'beds' => '2',
+            'lat' => '-27.581234',
+            'lng' => '-48.512345',
+        ];
+
+        $res = HouseService::fromInput(1, $input);
+        $this->assertArrayNotHasKey('error', $res);
+        $this->assertEqualsWithDelta(-27.581234, $res['lat'], 0.000001);
+        $this->assertEqualsWithDelta(-48.512345, $res['lng'], 0.000001);
+    }
 }
