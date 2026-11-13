@@ -44,6 +44,7 @@ final class I18n
                 'form.calendar_months_hint' => ['No máximo %s meses, o limite do sistema.'],
                 'amenity.pets' => ['Aceita animais'],
                 'cal.sync_requested' => ['Sincronização agendada com sucesso.'],
+                'amenity.noise_hint' => ['Horário em que é permitido fazer barulho. Exemplo: 08:00 às 22:00.'],
             ],
             'en' => [
                 'account.delete_confirm' => ['Deactivate this account? The record stays in the system and only support can restore it.'],
@@ -60,6 +61,7 @@ final class I18n
                 'form.delete_house' => ['Remove this place and its photos?'],
                 'form.calendar_months_hint' => ['At most %s months, the system limit.'],
                 'cal.sync_requested' => ['Synchronization requested.'],
+                'amenity.noise_hint' => ['Hours when noise is allowed. Example: 08:00 to 22:00.'],
             ],
             'es' => [
                 'account.delete_confirm' => ['¿Inactivar esta cuenta? El registro permanece y solo soporte puede reactivarla.'],
@@ -76,6 +78,7 @@ final class I18n
                 'form.delete_house' => ['¿Quitar este alojamiento y las fotos?'],
                 'form.calendar_months_hint' => ['Como máximo %s meses, el límite del sistema.'],
                 'cal.sync_requested' => ['Sincronización solicitada.'],
+                'amenity.noise_hint' => ['Horario en el que se puede hacer ruido. Ejemplo: 08:00 a 22:00.'],
             ],
         ];
         foreach ($previous as $lang => $map) {

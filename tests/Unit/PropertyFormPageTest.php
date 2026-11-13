@@ -308,4 +308,12 @@ final class PropertyFormPageTest extends TestCase
         $this->assertSame('22:00', $propDefaults['noise_from'] ?? null);
         $this->assertSame('07:00', $propDefaults['noise_until'] ?? null);
     }
+
+    public function testNoiseHintDefinesPeriodWhereNoiseIsNotAllowed(): void
+    {
+        $hintPt = t('amenity.noise_hint');
+        $this->assertStringContainsString('não é permitido fazer barulho', $hintPt);
+        $this->assertStringContainsString('22:00', $hintPt);
+        $this->assertStringContainsString('07:00', $hintPt);
+    }
 }
