@@ -2,11 +2,6 @@
 
 declare(strict_types=1);
 
-function password_is_weak(string $password): bool
-{
-    return PasswordPolicy::isWeak($password);
-}
-
 function password_make(string $password): string
 {
     return PasswordPolicy::hash($password);
@@ -24,42 +19,9 @@ function expire_user_session(): void
     }
 }
 
-function account_previous(array $user): array
-{
-    return [
-        'nome' => (string) ($user['name'] ?? ''),
-        'email' => (string) ($user['email'] ?? ''),
-        'telefone' => (string) ($user['phone'] ?? ''),
-        'cep' => (string) ($user['cep'] ?? ''),
-        'endereco' => (string) ($user['address'] ?? ''),
-        'estado' => (string) ($user['status'] ?? 'active'),
-    ];
-}
-
 function password_phrase(string $key): string
 {
     return sprintf(t($key), max(1, PasswordPolicy::$minLength));
-}
-
-function password_error(string $password, ?string $confirm = null): ?string
-{
-    $problem = PasswordPolicy::problem($password, $confirm);
-    return match ($problem) {
-        'short' => password_phrase('err.password_short'),
-        'mismatch' => t('err.password_mismatch'),
-        'weak' => password_phrase('err.password_weak'),
-        default => null,
-    };
-}
-
-function phone_digits(string $raw): string
-{
-    return PhoneNumber::digits($raw);
-}
-
-function phone_is_valid(string $raw): bool
-{
-    return PhoneNumber::isValid($raw);
 }
 
 function csrf_check(): void

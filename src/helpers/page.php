@@ -12,12 +12,6 @@ function summary_from(string $description, int $maxWords = 45): string
     return implode(' ', $words);
 }
 
-function word_count(string $text): int
-{
-    $words = preg_split('/\s+/u', trim($text)) ?: [];
-    return count(array_filter($words, static fn ($w) => $w !== ''));
-}
-
 /**
  * Dados do servidor para os scripts da página (CSP sem script inline): bloco JSON não executável,
  * lido por CL.data() em /assets/safe-dom.js.

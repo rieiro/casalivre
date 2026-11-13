@@ -25,11 +25,6 @@ function date_pattern(): string
     return current_locale() === 'en' ? 'm/d/Y' : 'd/m/Y';
 }
 
-function date_placeholder(): string
-{
-    return current_locale() === 'en' ? 'mm/dd/yyyy' : 'dd/mm/aaaa';
-}
-
 function format_date(?string $value): string
 {
     if ($value === null || trim($value) === '') {

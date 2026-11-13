@@ -29,11 +29,6 @@ function app_url(): string
     throw new RuntimeException('APP_URL não configurada: obrigatória fora de APP_ENV=dev/local (links de e-mail e .ics).');
 }
 
-function base_url(): string
-{
-    return app_url();
-}
-
 function request_base(): string
 {
     return app_url();
