@@ -175,35 +175,7 @@ $amenityIcons = [
                     </ul>
                 </div>
 
-                <!-- Reviews & Evaluation Card -->
-                <div class="prop-view-card" id="review-card">
-                    <div class="prop-view-reviews-head">
-                        <div>
-                            <h2 class="prop-view-card-title">Avaliação da estadia</h2>
-                            <p class="prop-view-card-subtitle">Deixe seu relato para ajudar outros hóspedes e valorizar a hospitalidade do anfitrião.</p>
-                        </div>
-                        <?php if ($score !== null): ?>
-                            <span class="prop-view-score-badge big">★ <?= number_format((float) $score, 1, ',', '.') ?> / 10</span>
-                        <?php endif; ?>
-                    </div>
 
-                    <form class="prop-view-review-form" id="review-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/avaliar">
-                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                        <input type="hidden" name="volta" value="<?= e($backUrl) ?>">
-                        <div class="prop-view-review-fields">
-                            <label>Seu nome
-                                <input name="author" class="prop-form-input" required placeholder="Ex: Mariana Costa">
-                            </label>
-                            <label>Nota (1 a 10)
-                                <input type="number" name="score" min="1" max="10" class="prop-form-input" required placeholder="10">
-                            </label>
-                        </div>
-                        <label>Seu comentário sobre o imóvel
-                            <textarea name="comment" class="prop-form-input" rows="3" placeholder="Conte os pontos altos da sua estadia..."></textarea>
-                        </label>
-                        <button class="btn-dash-primary prop-view-btn-submit" type="submit">Publicar avaliação</button>
-                    </form>
-                </div>
             </div>
 
             <!-- Right Column: Sticky Booking Card -->
@@ -251,7 +223,7 @@ $amenityIcons = [
 
                     <p class="price" style="display:none;"><?= $quote ? money((int) $quote['nightly']) . ' a diária no período (' . (int) $quote['nights'] . ' noites, total ' . money((int) $quote['total']) . ')' . (!empty($quote['cleaning']) ? ', ' . t('form.cleaning') . ' ' . money((int) $quote['cleaning']) : '') : 'Diária base ' . money((int) $property['nightly_price']) . ((int) ($property['cleaning_fee'] ?? 0) > 0 ? ', ' . t('form.cleaning') . ' ' . money((int) $property['cleaning_fee']) : '') ?></p>
 
-                    <a class="btn-dash-primary prop-view-cta-btn" href="#review-form">
+                    <a class="btn-dash-primary prop-view-cta-btn" href="#property-calendar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         <span>Reservar esta acomodação</span>
                     </a>
