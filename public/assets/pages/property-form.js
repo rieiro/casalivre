@@ -132,10 +132,24 @@
         function updateCoords(lat, lng) {
             currentLat = lat;
             currentLng = lng;
-            if (fieldLat) fieldLat.value = lat.toFixed(6);
-            if (fieldLng) fieldLng.value = lng.toFixed(6);
+            if (fieldLat) {
+                fieldLat.value = lat.toFixed(6);
+                fieldLat.dispatchEvent(new Event('input', { bubbles: true }));
+                fieldLat.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            if (fieldLng) {
+                fieldLng.value = lng.toFixed(6);
+                fieldLng.dispatchEvent(new Event('input', { bubbles: true }));
+                fieldLng.dispatchEvent(new Event('change', { bubbles: true }));
+            }
             if (dispLat) dispLat.textContent = lat.toFixed(5);
             if (dispLng) dispLng.textContent = lng.toFixed(5);
+
+            const saveBtn = form.querySelector('[data-save-house]');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('is-off');
+            }
         }
 
         if (!window.maplibregl || !window.pmtiles) {
