@@ -92,6 +92,16 @@ final class HouseService
             $lat = (float) $current['lat'];
             $lng = (float) $current['lng'];
         }
+        $rawLat = $input['lat'] ?? ($input['latitude'] ?? null);
+        $rawLng = $input['lng'] ?? ($input['long'] ?? ($input['longitude'] ?? null));
+        if ($rawLat !== null && $rawLat !== '' && $rawLng !== null && $rawLng !== '' && is_numeric($rawLat) && is_numeric($rawLng)) {
+            $inputLat = (float) $rawLat;
+            $inputLng = (float) $rawLng;
+            if ($inputLat >= -90.0 && $inputLat <= 90.0 && $inputLng >= -180.0 && $inputLng <= 180.0 && ($inputLat !== 0.0 || $inputLng !== 0.0)) {
+                $lat = $inputLat;
+                $lng = $inputLng;
+            }
+        }
         $amenities = Amenities::fromInput($input);
         if (!empty($amenities['noise'])) {
             $noiseFrom = Amenities::clock((string) ($input['noise_from'] ?? ''));

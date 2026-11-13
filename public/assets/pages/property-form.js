@@ -116,6 +116,91 @@
         }
     }
 
+    // --- 3. Pinpoint Map Location ---
+    function setupPinpointMap() {
+        const mapBox = document.getElementById('property-pinpoint-map');
+        if (!mapBox) return;
+
+        const fieldLat = document.getElementById('field-lat');
+        const fieldLng = document.getElementById('field-lng');
+        const dispLat = document.getElementById('pinpoint-lat-disp');
+        const dispLng = document.getElementById('pinpoint-lng-disp');
+
+        let currentLat = parseFloat(mapBox.dataset.lat || (fieldLat && fieldLat.value) || mapBox.dataset.cityLat || '-27.5954');
+        let currentLng = parseFloat(mapBox.dataset.lng || (fieldLng && fieldLng.value) || mapBox.dataset.cityLng || '-48.5480');
+
+        function updateCoords(lat, lng) {
+            currentLat = lat;
+            currentLng = lng;
+            if (fieldLat) fieldLat.value = lat.toFixed(6);
+            if (fieldLng) fieldLng.value = lng.toFixed(6);
+            if (dispLat) dispLat.textContent = lat.toFixed(5);
+            if (dispLng) dispLng.textContent = lng.toFixed(5);
+        }
+
+        if (!window.maplibregl || !window.pmtiles) {
+            return;
+        }
+
+        try {
+            maplibregl.setWorkerUrl(mapBox.dataset.worker);
+            const protocol = new pmtiles.Protocol();
+            maplibregl.addProtocol('pmtiles', protocol.tile);
+
+            const origin = window.location.origin;
+            const styleUrl = mapBox.dataset.style ? new URL(mapBox.dataset.style, origin).href : null;
+
+            const map = new maplibregl.Map({
+                container: 'property-pinpoint-map',
+                style: styleUrl,
+                center: [currentLng, currentLat],
+                zoom: 14,
+                attributionControl: false
+            });
+
+            map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+            const marker = new maplibregl.Marker({ draggable: true, color: '#047857' })
+                .setLngLat([currentLng, currentLat])
+                .addTo(map);
+
+            marker.on('dragend', function () {
+                const lngLat = marker.getLngLat();
+                updateCoords(lngLat.lat, lngLat.lng);
+            });
+
+            map.on('click', function (e) {
+                marker.setLngLat(e.lngLat);
+                updateCoords(e.lngLat.lat, e.lngLat.lng);
+            });
+
+            const cepInput = form.querySelector('[data-cep]');
+            if (cepInput) {
+                let lastCep = cepInput.value.replace(/\D/g, '');
+                cepInput.addEventListener('change', async function () {
+                    const digits = cepInput.value.replace(/\D/g, '').slice(0, 8);
+                    if (digits.length === 8 && digits !== lastCep) {
+                        lastCep = digits;
+                        try {
+                            const res = await fetch('/api/ceps?q=' + digits);
+                            const json = await res.json();
+                            if (json && json.lat && json.lng) {
+                                const newLat = parseFloat(json.lat);
+                                const newLng = parseFloat(json.lng);
+                                marker.setLngLat([newLng, newLat]);
+                                map.flyTo({ center: [newLng, newLat], zoom: 14 });
+                                updateCoords(newLat, newLng);
+                            }
+                        } catch (_) {}
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error initializing pinpoint map:', e);
+        }
+    }
+    setupPinpointMap();
+
     const uploadForm = document.querySelector('form[data-upload-limit]');
     if (uploadForm) {
         const fileInput = uploadForm.querySelector('input[type="file"]');

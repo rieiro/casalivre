@@ -114,6 +114,8 @@ function api_public_house(array $house): array
         'garage' => (int) $house['garage'],
         'criado_em' => br_date((string) ($house['created_at'] ?? '')),
         'foto' => PhotoRepository::primaryPath((int) $house['id']),
+        'lat' => isset($house['lat']) ? (float) $house['lat'] : null,
+        'lng' => isset($house['lng']) ? (float) $house['lng'] : null,
     ];
 }
 
@@ -193,6 +195,8 @@ function handle_api(string $path, string $method): void
             'city' => $row['city'],
             'uf' => $row['uf'],
             'city_label' => $known['label'] ?? ($row['city'] . ', ' . $row['uf']),
+            'lat' => isset($known['lat']) ? (float) $known['lat'] : null,
+            'lng' => isset($known['lng']) ? (float) $known['lng'] : null,
         ]);
     }
     if (!$user && preg_match('#^/api/(users/eu|casas)#', $path)) {
