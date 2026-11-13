@@ -44,6 +44,9 @@ final class Amenities
                 $selected[$key] = 1;
             }
         }
+        if (is_array($input['amenity'] ?? null) && empty($posted['noise'])) {
+            $selected['noise'] = 0;
+        }
         return $selected;
     }
 
@@ -55,6 +58,11 @@ final class Amenities
             if (!empty($property[$key])) {
                 $selected[$key] = 1;
             }
+        }
+        if (!array_key_exists('noise', $selected)) {
+            $selected['noise'] = 1;
+            $selected['noise_from'] = $selected['noise_from'] ?? '22:00';
+            $selected['noise_until'] = $selected['noise_until'] ?? '07:00';
         }
         return $selected;
     }

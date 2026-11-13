@@ -104,9 +104,9 @@ final class HouseService
         }
         $amenities = Amenities::fromInput($input);
         if (!empty($amenities['noise'])) {
-            $noiseFrom = Amenities::clock((string) ($input['noise_from'] ?? ''));
-            $noiseUntil = Amenities::clock((string) ($input['noise_until'] ?? ''));
-            if ($noiseFrom === null || $noiseUntil === null || $noiseFrom >= $noiseUntil) {
+            $noiseFrom = Amenities::clock((string) ($input['noise_from'] ?? '22:00')) ?? '22:00';
+            $noiseUntil = Amenities::clock((string) ($input['noise_until'] ?? '07:00')) ?? '07:00';
+            if ($noiseFrom === $noiseUntil) {
                 return ['error' => t('err.noise')];
             }
             $amenities['noise_from'] = $noiseFrom;
