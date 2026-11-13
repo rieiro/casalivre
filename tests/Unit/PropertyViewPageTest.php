@@ -114,4 +114,20 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('prop-view-amenities', $html);
         $this->assertStringContainsString('Lei do Silêncio', $html);
     }
+
+    public function testPropertyScriptBuildsLuxuryLandingLayout(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property.js');
+        $api = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Api.php');
+
+        // Api must expose noise hours for quiet rules
+        $this->assertStringContainsString("'noise_from' =>", $api);
+        $this->assertStringContainsString("'noise_until' =>", $api);
+
+        // property.js must construct luxury landing page elements
+        $this->assertStringContainsString('prop-view-mosaic', $js);
+        $this->assertStringContainsString('prop-view-booking-card', $js);
+        $this->assertStringContainsString('prop-view-amenities', $js);
+        $this->assertStringContainsString('Lei do Silêncio', $js);
+    }
 }

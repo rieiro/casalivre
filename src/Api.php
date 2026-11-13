@@ -375,6 +375,8 @@ function handle_api(string $path, string $method): void
             'checkin_time' => $house['checkin_time'],
             'checkout_time' => $house['checkout_time'],
             'cleaning_fee' => (int) ($house['cleaning_fee'] ?? 0),
+            'noise_from' => $selected['noise_from'] ?? '22:00',
+            'noise_until' => $selected['noise_until'] ?? '07:00',
             'blocked_days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($house)),
         ]);
     }
