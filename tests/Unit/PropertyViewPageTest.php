@@ -230,4 +230,21 @@ final class PropertyViewPageTest extends TestCase
         $indexPhp = (string) file_get_contents(dirname(__DIR__, 2) . '/public/index.php');
         $this->assertStringContainsString('/reservar', $indexPhp);
     }
+
+                public function testNoiseHoursAreExcludedFromAmenitiesShowcaseButKeptInPropertyForm(): void
+    {
+        // 1. Api must exclude noise_from and noise_until from the amenities list
+        $api = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Api.php');
+        $this->assertStringContainsString('!in_array($k, [\'noise\', \'noise_from\', \'noise_until\'], true)', $api);
+
+        // 2. property.js must filter out noise_from and noise_until from amenity elements
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property.js');
+        $this->assertStringContainsString('key !== "noise_from"', $js);
+        $this->assertStringContainsString('key !== "noise_until"', $js);
+
+        // 3. property_form.php must retain inputs for noise_from and noise_until
+        $form = (string) file_get_contents(dirname(__DIR__, 2) . '/views/property_form.php');
+        $this->assertStringContainsString('name="noise_from"', $form);
+        $this->assertStringContainsString('name="noise_until"', $form);
+    }
 }

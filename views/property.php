@@ -145,7 +145,7 @@ $amenityIcons = [
                         <?php
                         $hasAnyAmenity = false;
                         foreach (Amenities::keys() as $k):
-                            if ($k === 'noise' || empty($selectedAmenities[$k])) continue;
+                            if (in_array($k, ['noise', 'noise_from', 'noise_until'], true) || empty($selectedAmenities[$k])) continue;
                             $hasAnyAmenity = true;
                             $icon = $amenityIcons[$k] ?? '✓';
                         ?>

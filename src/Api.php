@@ -349,7 +349,10 @@ function handle_api(string $path, string $method): void
         // O srcset sai do path (photo_srcset_attr / safe-dom.js).
         $photos = api_public_photos(PhotoRepository::listReady($id));
         $selected = Amenities::selected($house);
-        $amenities = array_keys(array_filter($selected));
+        $amenities = array_values(array_filter(
+            array_keys(array_filter($selected)),
+            static fn ($k) => !in_array($k, ['noise', 'noise_from', 'noise_until'], true)
+        ));
         activity(ActivityLog::PROPERTY_VIEW, [
             'imovel_id' => $id,
             'cidade' => $house['city'],

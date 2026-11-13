@@ -128,7 +128,7 @@
             };
 
             const amenityElements = (data.amenities || [])
-                .filter((key) => key !== "noise")
+                .filter((key) => key !== "noise" && key !== "noise_from" && key !== "noise_until")
                 .map((key) => {
                     const label = amenityLabels[key] || key;
                     const icon = amenityIcons[key] || "✓";
