@@ -227,6 +227,26 @@ CREATE INDEX IF NOT EXISTS idx_properties_group ON properties(group_id);
 CREATE INDEX IF NOT EXISTS idx_photos_cover ON photos(property_id, is_primary, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_reviews_property ON reviews(property_id);
 
+CREATE TABLE IF NOT EXISTS quotes (
+    id SERIAL PRIMARY KEY,
+    quote_hash VARCHAR(32) UNIQUE NOT NULL,
+    property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    checkin DATE NOT NULL,
+    checkout DATE NOT NULL,
+    nights INTEGER NOT NULL,
+    nightly_price INTEGER NOT NULL,
+    cleaning_fee INTEGER NOT NULL,
+    taxes INTEGER NOT NULL,
+    special_offer INTEGER,
+    total_price INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    pix_key VARCHAR(100) NOT NULL DEFAULT 'rafaelrieiro@gmail.com',
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_quotes_hash ON quotes (quote_hash);
+CREATE INDEX IF NOT EXISTS idx_quotes_property ON quotes (property_id);
+
 -- Papéis no grupo: gestor (convida/remove imóveis) ou membro (só vê). Membros e domínios só pelo admin.
 CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,

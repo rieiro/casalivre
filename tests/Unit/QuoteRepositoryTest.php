@@ -412,4 +412,35 @@ final class QuoteRepositoryTest extends TestCase
         $this->assertSame("", (string) $dayMapAfter["2027-09-01"]["origin"]);
         $this->assertSame(0, (int) $dayMapAfter["2027-09-01"]["blocked"]);
     }
+
+    public function testEnsureTableHasInMemoryGuard(): void
+    {
+        $ref = new ReflectionProperty(QuoteRepository::class, 'ensured');
+        $this->assertTrue($ref->isPrivate());
+        $this->assertTrue($ref->isStatic());
+    }
+
+    public function testCreateQuoteBatchesMultiDayPreReservations(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $quote = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-10-01",
+            checkout: "2027-10-08",
+            specialOffer: 1500
+        );
+
+        $this->assertSame(7, $quote["nights"]);
+        $stmt = $this->pdo->prepare("SELECT day, blocked, origin FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? ORDER BY day");
+        $stmt->execute([$propId, "2027-10-01", "2027-10-08"]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->assertCount(7, $rows);
+        foreach ($rows as $r) {
+            $this->assertSame("pre-reserva", $r["origin"]);
+            $this->assertSame(1, (int) $r["blocked"]);
+        }
+    }
 }

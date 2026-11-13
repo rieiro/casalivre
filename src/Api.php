@@ -395,13 +395,16 @@ function handle_api(string $path, string $method): void
     if ($path === '/api/painel' && $method === 'GET') {
         $user = api_require_user($user);
         $properties = HouseRepository::listByUser((int) $user['id']);
+        $propIds = array_column($properties, 'id');
+        $photos = PhotoRepository::primaryPaths($propIds);
         $items = [];
         foreach ($properties as $item) {
+            $id = (int) $item['id'];
             $items[] = [
                 'id' => property_ref($item),
                 'title' => $item['title'],
                 'city' => $item['city'],
-                'photo' => PhotoRepository::primaryPath((int) $item['id']),
+                'photo' => $photos[$id] ?? null,
                 'status' => $item['status'] ?? 'active',
                 'nightly_price' => (int) $item['nightly_price'],
                 'max_guests' => (int) ($item['max_guests'] ?? 0),

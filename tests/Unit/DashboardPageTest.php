@@ -109,4 +109,11 @@ final class DashboardPageTest extends TestCase
         $this->assertStringContainsString("require_once dirname(__DIR__) . '/src/QuoteRepository.php';", $content);
         $this->assertStringContainsString("require_once __DIR__ . '/../src/QuoteRepository.php';", $content);
     }
+
+    public function testApiPainelUsesPrimaryPathsBatching(): void
+    {
+        $apiContent = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Api.php');
+        $this->assertStringContainsString('PhotoRepository::primaryPaths($propIds)', $apiContent);
+        $this->assertStringContainsString('\'photo\' => $photos[$id] ?? null,', $apiContent);
+    }
 }
