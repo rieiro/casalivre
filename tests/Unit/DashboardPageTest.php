@@ -103,4 +103,10 @@ final class DashboardPageTest extends TestCase
         $this->assertStringContainsString('dash-empty-box', $html);
         $this->assertStringContainsString('/imoveis/novo', $html);
     }
+    public function testIndexPhpRequiresQuoteRepositoryForPainel(): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 2) . '/public/index.php');
+        $this->assertStringContainsString("require_once dirname(__DIR__) . '/src/QuoteRepository.php';", $content);
+        $this->assertStringContainsString("require_once __DIR__ . '/../src/QuoteRepository.php';", $content);
+    }
 }

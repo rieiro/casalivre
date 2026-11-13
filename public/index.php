@@ -18,6 +18,7 @@ AccountFlow::$enqueue = static function (string $type, string $email): bool {
 };
 require_once __DIR__ . '/../src/HouseRepository.php';
 require_once __DIR__ . '/../src/PhotoRepository.php';
+require_once __DIR__ . '/../src/QuoteRepository.php';
 require_once __DIR__ . '/../src/PhotoStorage.php';
 require_once __DIR__ . '/../src/helpers.php';
 require_once __DIR__ . '/../src/SearchService.php';
@@ -1159,6 +1160,7 @@ if ($path === '/conta/excluir' && $method === 'POST') {
 }
 
 if ($path === '/painel' && $method === 'GET') {
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     $user = require_user();
     $userId = (int) $user['id'];
     $quotes = QuoteRepository::listForUser($userId);
