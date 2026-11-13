@@ -176,4 +176,58 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringNotContainsString('review-form', $js);
         $this->assertStringNotContainsString('review-card', $js);
     }
+
+    public function testPropertyBookingCardHasInteractiveDoubleMonthCalendarAndReservationForm(): void
+    {
+        $property = [
+            'id' => 1,
+            'user_id' => 1,
+            'title' => 'Casa Beira-Mar',
+            'description' => 'Descrição completa',
+            'city' => 'Florianópolis',
+            'bedrooms' => 3,
+            'beds' => 4,
+            'rooms' => 4,
+            'max_guests' => 6,
+            'nightly_price' => 50000,
+            'cleaning_fee' => 15000,
+            'checkin_time' => '15:00:00',
+            'checkout_time' => '11:00:00',
+            'min_nights' => 2,
+            'amenities' => '{}',
+            'public_hash' => 'abcdef0123456789',
+            'rating_count' => 5,
+            'rating_sum' => 48,
+            'status' => 'active',
+        ];
+        $photos = [];
+        $score = 9.6;
+        $quote = null;
+        $use_api = false;
+        $csrf = 'test_csrf_token';
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . '/views/property.php';
+        } finally {
+            $html = (string) ob_get_clean();
+        }
+
+        // View booking card must contain double month calendar container and reservation action
+        $this->assertStringContainsString('prop-view-double-cal', $html);
+        $this->assertStringContainsString('action="/imoveis/abcdef0123456789/reservar"', $html);
+        $this->assertStringContainsString('id="btn-confirm-booking"', $html);
+
+        // property.js must provide dual month navigation and blocked dates handling
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property.js');
+        $this->assertStringContainsString('prop-view-double-cal', $js);
+        $this->assertStringContainsString('cal-day-blocked', $js);
+        $this->assertStringContainsString('btnPrev', $js);
+        $this->assertStringContainsString('btnNext', $js);
+        $this->assertStringContainsString('/reservar', $js);
+
+        // index.php must define the /reservar reservation endpoint
+        $indexPhp = (string) file_get_contents(dirname(__DIR__, 2) . '/public/index.php');
+        $this->assertStringContainsString('/reservar', $indexPhp);
+    }
 }

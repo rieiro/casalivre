@@ -381,6 +381,43 @@ function handle_api(string $path, string $method): void
         ]);
     }
 
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method === 'POST') {
+        require_once __DIR__ . '/HouseRepository.php';
+        require_once __DIR__ . '/QuoteRepository.php';
+        QuoteRepository::ensureTable();
+
+        $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
+        if (!$property || ($property['status'] ?? 'active') !== 'active') {
+            json_out(404, ['error' => 'Imóvel não encontrado']);
+            return;
+        }
+
+        $body = json_decode((string) file_get_contents('php://input'), true) ?: $_POST;
+        $checkin = trim((string) ($body['checkin'] ?? ''));
+        $checkout = trim((string) ($body['checkout'] ?? ''));
+
+        if ($checkin === '' || $checkout === '' || $checkin >= $checkout) {
+            json_out(422, ['error' => 'Selecione datas válidas para a reserva.']);
+            return;
+        }
+
+        try {
+            $quote = QuoteRepository::create(
+                propertyId: (int) $property['id'],
+                checkin: $checkin,
+                checkout: $checkout,
+                pixKey: (string) ($property['pix_key'] ?? 'rafaelrieiro@gmail.com')
+            );
+            json_out(200, [
+                'ok' => true,
+                'quote_hash' => $quote['quote_hash'],
+                'redirect' => '/pagamento/' . $quote['quote_hash']
+            ]);
+        } catch (\Throwable $e) {
+            json_out(422, ['error' => $e->getMessage()]);
+        }
+    }
+
     if ($path === '/api/painel' && $method === 'GET') {
         $user = api_require_user($user);
         $properties = HouseRepository::listByUser((int) $user['id']);

@@ -22,7 +22,7 @@ final class SomenteVitrine
     public const MAX_QUERY = 2048;
 
     private const WEB_GET = '#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|g(?:/.*)?|ical/[a-f0-9]{32}|tiles/brasil\.pmtiles)?$#';
-    private const WEB_POST = '#^/(?:idioma|imoveis/[a-f0-9]{16}/avaliar)$#';
+    private const WEB_POST = '#^/(?:idioma|imoveis/[a-f0-9]{16}/(?:avaliar|reservar))$#';
     private const API_GET = '#^/api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}|ical/[a-f0-9]{32}(?:\.ics)?)$#';
 
     /**

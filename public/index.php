@@ -1502,6 +1502,45 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
     redirect('/imoveis/' . $m[1] . ($back !== '/' ? '?' . http_build_query(['volta' => $back]) : ''));
 }
 
+if (preg_match('#^/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method === 'POST') {
+    csrf_check();
+    [$noGrupo, $noHost] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
+    if ($noGrupo && $noHost === null) {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
+    require_once dirname(__DIR__) . '/src/HouseRepository.php';
+    require_once dirname(__DIR__) . '/src/QuoteRepository.php';
+    QuoteRepository::ensureTable();
+
+    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
+    if (!$property || ($property['status'] ?? 'active') !== 'active') {
+        http_response_code(404);
+        view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este imóvel não está disponível.']);
+        return null;
+    }
+
+    $checkin = trim((string) ($_POST['checkin'] ?? ''));
+    $checkout = trim((string) ($_POST['checkout'] ?? ''));
+
+    if ($checkin === '' || $checkout === '' || $checkin >= $checkout) {
+        redirect('/imoveis/' . $m[1] . '?erro=' . urlencode('Por favor, selecione datas válidas para a reserva.'));
+    }
+
+    try {
+        $quote = QuoteRepository::create(
+            propertyId: (int) $property['id'],
+            checkin: $checkin,
+            checkout: $checkout,
+            pixKey: (string) ($property['pix_key'] ?? 'rafaelrieiro@gmail.com')
+        );
+        redirect('/pagamento/' . $quote['quote_hash']);
+    } catch (\Throwable $e) {
+        redirect('/imoveis/' . $m[1] . '?erro=' . urlencode($e->getMessage()));
+    }
+}
+
 http_response_code(404);
 view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
 return null;

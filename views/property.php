@@ -191,42 +191,78 @@ $amenityIcons = [
                         <?php endif; ?>
                     </div>
 
-                    <div class="prop-view-card-details">
-                        <div class="prop-view-card-row">
-                            <span>Check-in</span>
-                            <strong>a partir das <?= e(format_time((string) $property['checkin_time'])) ?></strong>
+                    <div class="prop-view-date-inputs">
+                        <div class="prop-view-date-box active">
+                            <span class="prop-view-date-label">Check-in</span>
+                            <span class="prop-view-date-val" id="display-checkin">Selecione</span>
                         </div>
-                        <div class="prop-view-card-row">
-                            <span>Check-out</span>
-                            <strong>até <?= e(format_time((string) $property['checkout_time'])) ?></strong>
+                        <div class="prop-view-date-box">
+                            <span class="prop-view-date-label">Check-out</span>
+                            <span class="prop-view-date-val" id="display-checkout">Selecione</span>
                         </div>
-                        <div class="prop-view-card-row">
-                            <span>Estadia mínima</span>
-                            <strong><?= (int) $property['min_nights'] ?> <?= e(t('stay.night_one')) ?></strong>
-                        </div>
-                        <?php if ($cleaningFee > 0): ?>
-                            <div class="prop-view-card-row">
-                                <span>Taxa de limpeza</span>
-                                <strong>R$ <?= money_input($cleaningFee) ?></strong>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if ($quote): ?>
-                            <div class="prop-view-card-total-box">
-                                <div class="prop-view-card-row total">
-                                    <span>Total (<?= (int) $quote['nights'] ?> noites)</span>
-                                    <strong>R$ <?= money_input((int) $quote['total']) ?></strong>
-                                </div>
-                            </div>
-                        <?php endif; ?>
                     </div>
 
-                    <p class="price" style="display:none;"><?= $quote ? money((int) $quote['nightly']) . ' a diária no período (' . (int) $quote['nights'] . ' noites, total ' . money((int) $quote['total']) . ')' . (!empty($quote['cleaning']) ? ', ' . t('form.cleaning') . ' ' . money((int) $quote['cleaning']) : '') : 'Diária base ' . money((int) $property['nightly_price']) . ((int) ($property['cleaning_fee'] ?? 0) > 0 ? ', ' . t('form.cleaning') . ' ' . money((int) $property['cleaning_fee']) : '') ?></p>
+                    <div class="prop-view-cal-header">
+                        <span class="prop-view-cal-title">Selecione as datas</span>
+                        <div class="prop-view-cal-nav">
+                            <button class="prop-view-cal-nav-btn" type="button" id="cal-nav-prev" disabled title="Mês anterior">‹</button>
+                            <button class="prop-view-cal-nav-btn" type="button" id="cal-nav-next" title="Próximo mês">›</button>
+                        </div>
+                    </div>
 
-                    <a class="btn-dash-primary prop-view-cta-btn" href="#property-calendar">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        <span>Reservar esta acomodação</span>
-                    </a>
+                    <div class="prop-view-double-cal" id="booking-double-cal">
+                        <div class="cal-month-box">
+                            <h4>Mês 1</h4>
+                            <div class="cal-mini-weekdays"><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span></div>
+                            <div class="cal-mini-grid"></div>
+                        </div>
+                        <div class="cal-month-box">
+                            <h4>Mês 2</h4>
+                            <div class="cal-mini-weekdays"><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span></div>
+                            <div class="cal-mini-grid"></div>
+                        </div>
+                    </div>
+
+                    <div class="prop-view-cal-legend">
+                        <div class="prop-view-cal-legend-item"><span class="prop-view-cal-legend-dot avail"></span><span>Disponível</span></div>
+                        <div class="prop-view-cal-legend-item"><span class="prop-view-cal-legend-dot blocked"></span><span>Bloqueado</span></div>
+                        <div class="prop-view-cal-legend-item"><span class="prop-view-cal-legend-dot selected"></span><span>Selecionado</span></div>
+                    </div>
+
+                    <form class="prop-view-booking-form mt-16" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/reservar">
+                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                        <input type="hidden" name="checkin" id="booking-checkin" value="">
+                        <input type="hidden" name="checkout" id="booking-checkout" value="">
+                        <input type="hidden" name="volta" value="<?= e($backUrl) ?>">
+
+                        <div class="prop-view-card-details">
+                            <div class="prop-view-card-row">
+                                <span>Check-in</span>
+                                <strong>a partir das <?= e(format_time((string) $property['checkin_time'])) ?></strong>
+                            </div>
+                            <div class="prop-view-card-row">
+                                <span>Check-out</span>
+                                <strong>até <?= e(format_time((string) $property['checkout_time'])) ?></strong>
+                            </div>
+                            <div class="prop-view-card-row">
+                                <span>Estadia mínima</span>
+                                <strong><?= (int) $property['min_nights'] ?> <?= e(t('stay.night_one')) ?></strong>
+                            </div>
+                            <?php if ($cleaningFee > 0): ?>
+                                <div class="prop-view-card-row">
+                                    <span>Taxa de limpeza</span>
+                                    <strong>R$ <?= money_input($cleaningFee) ?></strong>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <p class="price" style="display:none;"><?= $quote ? money((int) $quote['nightly']) . ' a diária no período (' . (int) $quote['nights'] . ' noites, total ' . money((int) $quote['total']) . ')' . (!empty($quote['cleaning']) ? ', ' . t('form.cleaning') . ' ' . money((int) $quote['cleaning']) : '') : 'Diária base ' . money((int) $property['nightly_price']) . ((int) ($property['cleaning_fee'] ?? 0) > 0 ? ', ' . t('form.cleaning') . ' ' . money((int) $property['cleaning_fee']) : '') ?></p>
+
+                        <button class="btn-dash-primary prop-view-cta-btn" id="btn-confirm-booking" type="submit">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+                            <span>Confirmar reserva</span>
+                        </button>
+                    </form>
 
                     <div class="prop-view-card-trust">
                         <div class="prop-view-trust-item">
@@ -248,6 +284,6 @@ $amenityIcons = [
     <?php endif; ?>
 </section>
 <?php if (!empty($use_api)): ?>
-<?php page_data(['hash' => $hash ?? '']); ?>
+<?php page_data(['hash' => $hash ?? '', 'csrf' => $csrf ?? '']); ?>
 <script src="<?= e(asset_url('/assets/pages/property.js')) ?>"></script>
 <?php endif; ?>
