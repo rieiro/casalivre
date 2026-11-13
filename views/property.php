@@ -7,26 +7,7 @@ $nightPrice = (int) ($quote['nightly'] ?? $property['nightly_price']);
 $cleaningFee = (int) ($property['cleaning_fee'] ?? 0);
 $backUrl = safe_search_return((string) ($_GET['volta'] ?? ''));
 
-$amenityIcons = [
-    'wifi' => '📶',
-    'pool' => '🏊',
-    'bbq' => '🥩',
-    'ac' => '❄️',
-    'garage' => '🚗',
-    'sea_view' => '🌊',
-    'kitchen' => '🍳',
-    'tv' => '📺',
-    'washer' => '🧺',
-    'workspace' => '💻',
-    'balcony' => '🌅',
-    'garden' => '🌳',
-    'pets' => '🐾',
-    'elevator' => '🛗',
-    'hot_tub' => '🛁',
-    'sauna' => '🧖',
-    'fireplace' => '🔥',
-    'heating' => '♨️',
-];
+$amenityIcons = Amenities::ICONS;
 ?>
 <section class="wrap prop-view-page" id="property-detail">
     <?php if (!empty($use_api)): ?>
@@ -147,7 +128,7 @@ $amenityIcons = [
                         foreach (Amenities::keys() as $k):
                             if (in_array($k, ['noise', 'noise_from', 'noise_until'], true) || empty($selectedAmenities[$k])) continue;
                             $hasAnyAmenity = true;
-                            $icon = $amenityIcons[$k] ?? '✓';
+                            $icon = Amenities::icon($k);
                         ?>
                             <div class="prop-view-amenity-pill">
                                 <span class="prop-view-amenity-icon" aria-hidden="true"><?= $icon ?></span>

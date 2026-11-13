@@ -247,4 +247,32 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('name="noise_from"', $form);
         $this->assertStringContainsString('name="noise_until"', $form);
     }
+    public function testAllAmenitiesHavePortugueseTranslationsAndIconsInViewPage(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property.js');
+        $this->assertStringContainsString('clothesline: "Varal para secar roupas"', $js);
+        $this->assertStringContainsString('extinguisher: "Extintor de incêndio"', $js);
+        $this->assertStringContainsString('safe: "Cofre"', $js);
+        $this->assertStringContainsString('bbq_tools: "Utensílios para churrasco"', $js);
+        $this->assertStringContainsString('baking_pan: "Assadeira"', $js);
+        $this->assertStringContainsString('parties: "Permitido realizar festas"', $js);
+
+        // Icons in property.js
+        $this->assertStringContainsString('extinguisher: "🧯"', $js);
+        $this->assertStringContainsString('safe: "🔒"', $js);
+        $this->assertStringContainsString('clothesline: "👕"', $js);
+
+        // Views/property.php and Amenities must provide icons
+        require_once dirname(__DIR__, 2) . '/src/Amenities.php';
+        $this->assertTrue(method_exists(Amenities::class, 'icon'));
+        $this->assertSame('🧯', Amenities::icon('extinguisher'));
+        $this->assertSame('🔒', Amenities::icon('safe'));
+        $this->assertSame('👕', Amenities::icon('clothesline'));
+
+        foreach (Amenities::keys() as $key) {
+            $this->assertArrayHasKey($key, Amenities::ICONS, "Amenity icon missing for {$key}");
+            $this->assertNotEmpty(Amenities::icon($key));
+            $this->assertStringContainsString("{$key}: \"", $js, "Amenity missing in property.js for {$key}");
+        }
+    }
 }
