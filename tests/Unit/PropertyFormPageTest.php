@@ -192,4 +192,21 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString("fieldLat.dispatchEvent(new Event('change', { bubbles: true }));", $js);
         $this->assertStringContainsString("fieldLng.dispatchEvent(new Event('change', { bubbles: true }));", $js);
     }
+
+    public function testPropertyFormUsesLuxuryToastNotificationInsteadOfBlockingAlert(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+
+        // Must not use raw blocking window alert
+        $this->assertStringNotContainsString("alert('Imóvel atualizado')", $js);
+
+        // Must implement luxury toast notification
+        $this->assertStringContainsString("showToast", $js);
+        $this->assertStringContainsString("prop-toast", $js);
+
+        // CSS must have luxury toast styling
+        $this->assertStringContainsString(".prop-toast", $css);
+        $this->assertStringContainsString(".prop-toast-success", $css);
+    }
 }

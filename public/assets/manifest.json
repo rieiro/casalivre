@@ -1,7 +1,7 @@
 {
     "/assets/admin.css": "a84c64528dda",
-    "/assets/app.css": "9c6b1ad7152c",
-    "/assets/app.js": "57fb4aa8df77",
+    "/assets/app.css": "4b37ac3711be",
+    "/assets/app.js": "d09f03ee17bd",
     "/assets/form-data.js": "98c0e28cf323",
     "/assets/map/sprites/light.json": "bfac76cf7ed5",
     "/assets/map/sprites/light@2x.json": "1fb5b123fbe3",
@@ -17,7 +17,7 @@
     "/assets/pages/password-forgot.js": "8183cb623e91",
     "/assets/pages/password-reset.js": "b0cfc2e39e77",
     "/assets/pages/payment.js": "22cee35ad673",
-    "/assets/pages/property-form.js": "127db90f37da",
+    "/assets/pages/property-form.js": "0890245420bf",
     "/assets/pages/property.js": "30ec25f6b96e",
     "/assets/pages/quote-admin.js": "a415689c863c",
     "/assets/pages/register.js": "bf38027d06b0",

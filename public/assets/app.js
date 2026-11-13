@@ -522,7 +522,7 @@ document.querySelectorAll('[data-save-house]').forEach((button) => {
         }
         return field.name + ':' + field.value;
     }).join('\n');
-    const initial = read();
+    let initial = read();
     const sync = () => {
         const dirty = read() !== initial;
         button.disabled = !dirty;
@@ -530,6 +530,10 @@ document.querySelectorAll('[data-save-house]').forEach((button) => {
     };
     form.addEventListener('input', sync);
     form.addEventListener('change', sync);
+    form.addEventListener('form-saved', () => {
+        initial = read();
+        sync();
+    });
     sync();
 });
 
