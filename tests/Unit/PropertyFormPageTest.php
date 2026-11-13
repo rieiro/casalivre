@@ -183,4 +183,13 @@ final class PropertyFormPageTest extends TestCase
         $this->assertEqualsWithDelta(-27.581234, $res['lat'], 0.000001);
         $this->assertEqualsWithDelta(-48.512345, $res['lng'], 0.000001);
     }
+
+    public function testPropertyFormJsDispatchesInputEventsOnCoordChange(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringContainsString("fieldLat.dispatchEvent(new Event('input', { bubbles: true }));", $js);
+        $this->assertStringContainsString("fieldLng.dispatchEvent(new Event('input', { bubbles: true }));", $js);
+        $this->assertStringContainsString("fieldLat.dispatchEvent(new Event('change', { bubbles: true }));", $js);
+        $this->assertStringContainsString("fieldLng.dispatchEvent(new Event('change', { bubbles: true }));", $js);
+    }
 }
