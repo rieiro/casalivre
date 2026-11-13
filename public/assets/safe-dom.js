@@ -197,6 +197,87 @@ window.CL = {
         toastEl.classList.add('is-visible');
         return toastEl;
     },
+    confirm(opts) {
+        return new Promise((resolve) => {
+            const options = typeof opts === 'string' ? { message: opts } : (opts || {});
+            const title = options.title || 'Confirmação';
+            const message = options.message || 'Tem certeza que deseja prosseguir?';
+            const confirmText = options.confirmText || 'Confirmar';
+            const cancelText = options.cancelText || 'Cancelar';
+            const isDanger = options.danger !== false;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'cl-modal-overlay';
+            overlay.setAttribute('role', 'alertdialog');
+            overlay.setAttribute('aria-modal', 'true');
+            overlay.setAttribute('aria-label', title);
+
+            const card = document.createElement('div');
+            card.className = 'cl-modal-card';
+
+            const iconWrap = document.createElement('div');
+            iconWrap.className = 'cl-modal-icon' + (isDanger ? ' cl-modal-icon-danger' : '');
+            iconWrap.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
+            const titleEl = document.createElement('h3');
+            titleEl.className = 'cl-modal-title';
+            titleEl.textContent = title;
+
+            const msgEl = document.createElement('p');
+            msgEl.className = 'cl-modal-message';
+            msgEl.textContent = message;
+
+            const actions = document.createElement('div');
+            actions.className = 'cl-modal-actions';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'cl-modal-btn cl-modal-btn-cancel';
+            cancelBtn.textContent = cancelText;
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = 'cl-modal-btn ' + (isDanger ? 'cl-modal-btn-danger' : 'cl-modal-btn-confirm');
+            confirmBtn.textContent = confirmText;
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(confirmBtn);
+
+            card.appendChild(iconWrap);
+            card.appendChild(titleEl);
+            card.appendChild(msgEl);
+            card.appendChild(actions);
+            overlay.appendChild(card);
+
+            const cleanup = (result) => {
+                window.removeEventListener('keydown', onKeyDown);
+                overlay.classList.remove('is-visible');
+                setTimeout(() => {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    resolve(result);
+                }, 200);
+            };
+
+            const onKeyDown = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cleanup(false);
+                }
+            };
+
+            cancelBtn.addEventListener('click', () => cleanup(false));
+            confirmBtn.addEventListener('click', () => cleanup(true));
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) cleanup(false);
+            });
+            window.addEventListener('keydown', onKeyDown);
+
+            document.body.appendChild(overlay);
+            void overlay.offsetWidth;
+            overlay.classList.add('is-visible');
+            confirmBtn.focus();
+        });
+    },
     safeHref(href) {
         const h = String(href || '');
         // Só caminho relativo ao site: "/x". Recusa "//host" e "/\\host" (o navegador trata \\ como /) e

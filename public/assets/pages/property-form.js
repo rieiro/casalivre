@@ -357,4 +357,27 @@
             }
         });
     }
+
+    const deletePropForm = document.querySelector('form[action*="/excluir"]:not([action*="/fotos/"])');
+    if (deletePropForm) {
+        deletePropForm.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            const confirmed = window.CL && typeof window.CL.confirm === 'function'
+                ? await window.CL.confirm({
+                    title: 'Inativar este imóvel?',
+                    message: deletePropForm.dataset.confirmSubmit || 'O imóvel deixará de aparecer nas buscas e na vitrine. Deseja realmente inativar?',
+                    confirmText: 'Sim, inativar imóvel',
+                    cancelText: 'Cancelar',
+                    danger: true
+                })
+                : true;
+
+            if (confirmed) {
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    window.CL.toast('info', 'Inativando imóvel...', 'Redirecionando para o painel.');
+                }
+                deletePropForm.submit();
+            }
+        });
+    }
 })();
