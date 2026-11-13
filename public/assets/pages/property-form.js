@@ -15,6 +15,15 @@
             alert(form.dataset.scriptError || 'Erro ao carregar a página. Recarregue e tente de novo.');
             return;
         }
+        const submitBtn = form.querySelector('[data-save-house]');
+        const submitSpan = submitBtn ? submitBtn.querySelector('span') : null;
+        const origText = submitSpan ? submitSpan.textContent : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-off');
+            if (submitSpan) submitSpan.textContent = 'Salvando...';
+        }
+
         const data = window.CasaLivreForm.toObject(form);
         const url = editing ? '/api/casas/' + encodeURIComponent(hash) : '/api/casas';
         try {
@@ -23,15 +32,62 @@
             if (!editing) {
                 window.location.href = '/imoveis/' + encodeURIComponent(newHash) + '/editar';
             } else {
-                alert('Imóvel atualizado');
-                window.location.reload();
+                if (submitSpan) submitSpan.textContent = origText;
+                form.dispatchEvent(new CustomEvent('form-saved', { bubbles: true }));
+                showToast('success', 'Imóvel atualizado com sucesso', 'Todas as alterações foram salvas.');
             }
         } catch (e) {
-            alert(e.message);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('is-off');
+                if (submitSpan) submitSpan.textContent = origText;
+            }
+            showToast('error', 'Erro ao salvar imóvel', e.message || 'Verifique as informações e tente novamente.');
         }
     });
 
     if (!editing || !hash) return;
+
+    function showToast(type, title, message) {
+        let container = document.getElementById('prop-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'prop-toast-container';
+            container.className = 'prop-toast-container';
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'prop-toast prop-toast-' + type;
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+        const iconSvg = type === 'success'
+            ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
+            : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+        toast.innerHTML = '<div class="prop-toast-icon">' + iconSvg + '</div>' +
+            '<div class="prop-toast-body">' +
+            '<strong class="prop-toast-title">' + title + '</strong>' +
+            (message ? '<p class="prop-toast-desc">' + message + '</p>' : '') +
+            '</div>' +
+            '<button type="button" class="prop-toast-close" aria-label="Fechar notificação">✕</button>';
+
+        const closeBtn = toast.querySelector('.prop-toast-close');
+        const dismiss = () => {
+            toast.classList.add('is-hiding');
+            setTimeout(() => {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 300);
+        };
+
+        if (closeBtn) closeBtn.addEventListener('click', dismiss);
+        setTimeout(dismiss, 4000);
+
+        container.appendChild(toast);
+        void toast.offsetWidth;
+        toast.classList.add('is-visible');
+    }
 
     // --- 1. Auto-polling: resolve fotos em processamento sem precisar de F5 ---
     function setupPhotoPoller() {
