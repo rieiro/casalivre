@@ -126,8 +126,8 @@ t_ok(!str_contains((string) @file_get_contents($sessFile), 'user_id'), 'sessão 
 echo "front: avaliação pelo formulário web (a API de escrita dá 404 no domínio do grupo)\n";
 $js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/property.js');
 t_ok(!str_contains($js, "/avaliar', { method: 'POST'") && !preg_match("#CL\.api\([^)]*/avaliar#", $js), 'property.js não posta avaliação na API');
-t_ok(str_contains($js, "method: 'post', action: '/imoveis/' + encodeURIComponent(hash) + '/avaliar'"), 'property.js usa POST nativo em /imoveis/<h>/avaliar');
-t_ok(str_contains($js, "name: '_csrf', value: String(page.csrf || '')"), 'property.js envia o _csrf da página');
+// Updated: 2026-11 - Requirement changed from review form on property page to removing stay reviews from /imoveis/{}
+t_ok(!str_contains($js, 'id: "review-form"') && !str_contains($js, 'Avaliação da estadia'), 'property.js não exibe formulário de avaliação da estadia na vitrine');
 foreach (["/imoveis/$h", "/g/imob/imoveis/$h"] as $p) {
     $r = $req('GET', $p, $dom);
     t_ok(preg_match('/"csrf":"[^"]+"/', $r['body']) === 1, "$p no domínio do grupo: page_data com csrf para o form");

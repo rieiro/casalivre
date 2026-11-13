@@ -130,4 +130,50 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('prop-view-amenities', $js);
         $this->assertStringContainsString('Lei do Silêncio', $js);
     }
+
+    public function testPropertyViewDoesNotContainReviewOfStays(): void
+    {
+        $property = [
+            'id' => 1,
+            'user_id' => 1,
+            'title' => 'Casa Teste',
+            'description' => 'Descrição',
+            'city' => 'Florianópolis',
+            'bedrooms' => 2,
+            'beds' => 2,
+            'rooms' => 3,
+            'max_guests' => 4,
+            'nightly_price' => 20000,
+            'cleaning_fee' => 5000,
+            'checkin_time' => '14:00:00',
+            'checkout_time' => '11:00:00',
+            'min_nights' => 1,
+            'amenities' => '{}',
+            'public_hash' => 'abcdef0123456789',
+            'rating_count' => 0,
+            'rating_sum' => 0,
+            'status' => 'active',
+        ];
+        $photos = [];
+        $score = null;
+        $quote = null;
+        $use_api = false;
+        $csrf = 'token';
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . '/views/property.php';
+        } finally {
+            $html = (string) ob_get_clean();
+        }
+
+        $this->assertStringNotContainsString('Avaliação da estadia', $html);
+        $this->assertStringNotContainsString('id="review-form"', $html);
+        $this->assertStringNotContainsString('id="review-card"', $html);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property.js');
+        $this->assertStringNotContainsString('Avaliação da estadia', $js);
+        $this->assertStringNotContainsString('review-form', $js);
+        $this->assertStringNotContainsString('review-card', $js);
+    }
 }

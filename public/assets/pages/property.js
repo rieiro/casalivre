@@ -211,36 +211,14 @@
                 el("ul", { className: "prop-view-rules-list" }, ...rulesList)
             );
 
-            // 9. Review Evaluation Form Card
-            const reviewCard = el("div", { className: "prop-view-card", id: "review-card" },
-                el("div", { className: "prop-view-reviews-head" },
-                    el("div", {},
-                        el("h2", { className: "prop-view-card-title" }, "Avaliação da estadia"),
-                        el("p", { className: "prop-view-card-subtitle" }, "Deixe seu relato para ajudar outros hóspedes e valorizar a hospitalidade do anfitrião.")
-                    ),
-                    data.score ? el("span", { className: "prop-view-score-badge big" }, "★ " + Number(data.score).toFixed(1).replace(".", ",") + " / 10") : null
-                ),
-                el("form", { className: "prop-view-review-form", id: "review-form", method: "post", action: "/imoveis/" + encodeURIComponent(hash) + "/avaliar" },
-                    el("input", { type: "hidden", name: "_csrf", value: String(page.csrf || "") }),
-                    el("input", { type: "hidden", name: "volta", value: backUrl }),
-                    el("div", { className: "prop-view-review-fields" },
-                        el("label", {}, "Seu nome ", el("input", { name: "author", className: "prop-form-input", required: true, placeholder: "Ex: Mariana Costa" })),
-                        el("label", {}, "Nota (1 a 10) ", el("input", { type: "number", name: "score", min: "1", max: "10", className: "prop-form-input", required: true, placeholder: "10" }))
-                    ),
-                    el("label", {}, "Seu comentário sobre o imóvel ", el("textarea", { name: "comment", rows: "3", className: "prop-form-input", placeholder: "Conte os pontos altos da sua estadia..." })),
-                    el("button", { className: "btn-dash-primary prop-view-btn-submit", type: "submit" }, "Publicar avaliação")
-                )
-            );
-
-            // 10. Left Main Column
+            // 9. Left Main Column
             const mainCol = el("div", { className: "prop-view-main-col" },
                 hostCard,
                 perksBar,
                 descriptionCard,
                 amenitiesBox,
                 calendarBox,
-                rulesCard,
-                reviewCard
+                rulesCard
             );
 
             // 11. Right Sticky Sidebar (Booking Card)
@@ -278,7 +256,7 @@
                         ) : null
                     ),
                     el("p", { className: "price", hidden: true }, quoteText),
-                    el("a", { className: "btn-dash-primary prop-view-cta-btn", href: "#review-form" },
+                    el("a", { className: "btn-dash-primary prop-view-cta-btn", href: "#property-calendar" },
                         "Reservar esta acomodação"
                     ),
                     el("div", { className: "prop-view-card-trust" },
