@@ -8,8 +8,14 @@ require_once __DIR__ . "/HouseRepository.php";
 
 final class QuoteRepository
 {
+    private static bool $ensured = false;
+
     public static function ensureTable(): void
     {
+        if (self::$ensured) {
+            return;
+        }
+        self::$ensured = true;
         db()->exec("CREATE TABLE IF NOT EXISTS quotes (
             id SERIAL PRIMARY KEY,
             quote_hash VARCHAR(32) UNIQUE NOT NULL,
@@ -29,10 +35,6 @@ final class QuoteRepository
         )");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_hash ON quotes (quote_hash)");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_property ON quotes (property_id)");
-        db()->exec("ALTER TABLE properties ADD COLUMN IF NOT EXISTS pix_key TEXT NOT NULL DEFAULT ''");
-        if (class_exists('ActivityLog')) {
-            ActivityLog::seedActions(db());
-        }
     }
 
     public static function cleanupExpired(?int $propertyId = null): void
@@ -164,13 +166,25 @@ final class QuoteRepository
 
             $cursor = new DateTimeImmutable($checkin);
             $end = new DateTimeImmutable($checkout);
-            $ins = db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin)
-                                  VALUES (?, ?, 1, ?, 1, 'pre-reserva')
-                                  ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'pre-reserva'");
+            $days = [];
             while ($cursor < $end) {
-                $dayIso = $cursor->format("Y-m-d");
-                $ins->execute([$propertyId, $dayIso, (int) $property["nightly_price"]]);
+                $days[] = $cursor->format("Y-m-d");
                 $cursor = $cursor->modify("+1 day");
+            }
+            if ($days !== []) {
+                $placeholders = [];
+                $params = [];
+                foreach ($days as $d) {
+                    $placeholders[] = "(?, ?, 1, ?, 1, 'pre-reserva')";
+                    $params[] = $propertyId;
+                    $params[] = $d;
+                    $params[] = (int) $property["nightly_price"];
+                }
+                $sql = "INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin)
+                        VALUES " . implode(", ", $placeholders) . "
+                        ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'pre-reserva'";
+                $ins = db()->prepare($sql);
+                $ins->execute($params);
             }
 
             return array_merge($calc, [
