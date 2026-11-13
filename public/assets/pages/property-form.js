@@ -276,6 +276,15 @@
         const fileInput = uploadForm.querySelector('input[type="file"]');
         const submitBtn = uploadForm.querySelector('button[type="submit"]');
 
+        // Automatically trigger upload as soon as user selects photos in the file dialog
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                if (fileInput.files && fileInput.files.length > 0) {
+                    uploadForm.requestSubmit();
+                }
+            });
+        }
+
         uploadForm.addEventListener('submit', async function (ev) {
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
                 return;
@@ -287,6 +296,17 @@
                 submitBtn.textContent = 'Enviando...';
             }
 
+            const dropLabel = uploadForm.querySelector('.prop-upload-label');
+            const dropTitle = uploadForm.querySelector('.prop-upload-title');
+            const dropInfo = uploadForm.querySelector('.prop-upload-info');
+            const origTitle = dropTitle ? dropTitle.textContent : '';
+            const origInfo = dropInfo ? dropInfo.textContent : '';
+
+            const rawFiles = Array.from(fileInput.files);
+            if (dropLabel) dropLabel.classList.add('is-uploading');
+            if (dropTitle) dropTitle.textContent = 'Enviando ' + rawFiles.length + ' foto(s)...';
+            if (dropInfo) dropInfo.textContent = 'Otimizando e enviando imagens, por favor aguarde...';
+
             try {
                 const formData = new FormData();
                 const csrfInput = uploadForm.querySelector('input[name="_csrf"]');
@@ -294,7 +314,6 @@
                     formData.append('_csrf', csrfInput.value);
                 }
 
-                const rawFiles = Array.from(fileInput.files);
                 for (let i = 0; i < rawFiles.length; i++) {
                     const scaled = await downscalePhoto(rawFiles[i]);
                     formData.append('fotos[]', scaled);
@@ -310,17 +329,24 @@
                 });
 
                 if (res.ok) {
-                    window.location.reload();
+                    showToast('success', 'Fotos enviadas!', 'Suas fotos foram salvas com sucesso.');
+                    setTimeout(() => window.location.reload(), 600);
                 } else {
                     const data = await res.json().catch(() => ({}));
-                    alert(data.error || 'Erro ao enviar fotos');
+                    showToast('error', 'Erro ao enviar fotos', data.error || 'Não foi possível salvar as fotos enviadas.');
+                    if (dropLabel) dropLabel.classList.remove('is-uploading');
+                    if (dropTitle) dropTitle.textContent = origTitle;
+                    if (dropInfo) dropInfo.textContent = origInfo;
                     if (submitBtn) {
                         submitBtn.disabled = false;
                         submitBtn.textContent = originalBtnText;
                     }
                 }
             } catch (err) {
-                alert('Falha de conexão ao enviar fotos');
+                showToast('error', 'Falha de conexão', 'Não foi possível enviar as fotos. Verifique sua conexão.');
+                if (dropLabel) dropLabel.classList.remove('is-uploading');
+                if (dropTitle) dropTitle.textContent = origTitle;
+                if (dropInfo) dropInfo.textContent = origInfo;
                 if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.textContent = originalBtnText;

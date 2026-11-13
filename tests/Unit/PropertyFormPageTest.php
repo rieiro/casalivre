@@ -209,4 +209,32 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString(".prop-toast", $css);
         $this->assertStringContainsString(".prop-toast-success", $css);
     }
+
+    public function testPhotoUploadAutoSubmitsOnChangeAndRemovesObsoleteButton(): void
+    {
+        $prop = $this->pdo->query("SELECT * FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($prop);
+
+        ob_start();
+        try {
+            $property = $prop;
+            $error = null;
+            $posted = [];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // The obsolete submit button must be wrapped in noscript for fallback only
+        $this->assertStringContainsString('<noscript><button class="btn-dash-primary mt-12" type="submit">', $html);
+
+        // JavaScript must auto-submit when user chooses photos in dialog
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringContainsString("fileInput.addEventListener('change'", $js);
+        $this->assertStringNotContainsString("alert('Falha de conexão ao enviar fotos')", $js);
+    }
 }

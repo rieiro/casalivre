@@ -3533,3 +3533,11 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
         max-width: none;
     }
 }
+
+.prop-upload-label.is-uploading {
+    pointer-events: none;
+    opacity: 0.8;
+    cursor: wait;
+    border-color: #059669;
+    background: #f0fdf4;
+}
