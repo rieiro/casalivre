@@ -116,4 +116,36 @@ final class DashboardPageTest extends TestCase
         $this->assertStringContainsString('PhotoRepository::primaryPaths($propIds)', $apiContent);
         $this->assertStringContainsString('\'photo\' => $photos[$id] ?? null,', $apiContent);
     }
+
+    public function testPanelPropertiesListDoesNotContainDeleteButton(): void
+    {
+        $properties = [
+            [
+                'id' => 1,
+                'public_hash' => 'abcdef0123456789',
+                'title' => 'Casa Teste',
+                'city' => 'Florianópolis',
+                'nightly_price' => 30000,
+                'max_guests' => 4,
+                'photo' => null,
+                'status' => 'active',
+                'created_at' => '2026-01-01 12:00:00',
+            ]
+        ];
+
+        ob_start();
+        $use_api = false;
+        $quotes_count = 0;
+        $pending_count = 0;
+        $csrf = 'csrf_token_test';
+        require dirname(__DIR__, 2) . '/views/dashboard.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringNotContainsString('/excluir', $html);
+        $this->assertStringNotContainsString('is-delete', $html);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/dashboard.js');
+        $this->assertStringNotContainsString('is-delete', $js);
+        $this->assertStringNotContainsString('btnDelete', $js);
+    }
 }
