@@ -49,6 +49,9 @@
     if (!editing || !hash) return;
 
     function showToast(type, title, message) {
+        if (window.CL && typeof window.CL.toast === 'function') {
+            return window.CL.toast(type, title, message);
+        }
         let container = document.getElementById('prop-toast-container');
         if (!container) {
             container = document.createElement('div');

@@ -90,6 +90,113 @@ window.CL = {
         }
         return data;
     },
+    toast(type, title, message) {
+        let container = document.getElementById('prop-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'prop-toast-container';
+            container.className = 'prop-toast-container cl-toast-container';
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+        }
+
+        const toastEl = document.createElement('div');
+        toastEl.className = 'prop-toast prop-toast-' + type;
+        toastEl.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'prop-toast-icon';
+        const svgNs = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNs, 'svg');
+        svg.setAttribute('width', '20');
+        svg.setAttribute('height', '20');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('aria-hidden', 'true');
+        if (type === 'success') {
+            svg.setAttribute('stroke-width', '2.5');
+            const p1 = document.createElementNS(svgNs, 'path');
+            p1.setAttribute('d', 'M22 11.08V12a10 10 0 1 1-5.93-9.14');
+            const p2 = document.createElementNS(svgNs, 'polyline');
+            p2.setAttribute('points', '22 4 12 14.01 9 11.01');
+            svg.appendChild(p1);
+            svg.appendChild(p2);
+        } else if (type === 'warning') {
+            svg.setAttribute('stroke-width', '2.2');
+            const p = document.createElementNS(svgNs, 'path');
+            p.setAttribute('d', 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z');
+            const l1 = document.createElementNS(svgNs, 'line');
+            l1.setAttribute('x1', '12'); l1.setAttribute('y1', '9'); l1.setAttribute('x2', '12'); l1.setAttribute('y2', '13');
+            const l2 = document.createElementNS(svgNs, 'line');
+            l2.setAttribute('x1', '12'); l2.setAttribute('y1', '17'); l2.setAttribute('x2', '12.01'); l2.setAttribute('y2', '17');
+            svg.appendChild(p);
+            svg.appendChild(l1);
+            svg.appendChild(l2);
+        } else if (type === 'info') {
+            svg.setAttribute('stroke-width', '2.2');
+            const c = document.createElementNS(svgNs, 'circle');
+            c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+            const l1 = document.createElementNS(svgNs, 'line');
+            l1.setAttribute('x1', '12'); l1.setAttribute('y1', '16'); l1.setAttribute('x2', '12'); l1.setAttribute('y2', '12');
+            const l2 = document.createElementNS(svgNs, 'line');
+            l2.setAttribute('x1', '12'); l2.setAttribute('y1', '8'); l2.setAttribute('x2', '12.01'); l2.setAttribute('y2', '8');
+            svg.appendChild(c);
+            svg.appendChild(l1);
+            svg.appendChild(l2);
+        } else {
+            svg.setAttribute('stroke-width', '2.2');
+            const c = document.createElementNS(svgNs, 'circle');
+            c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+            const l1 = document.createElementNS(svgNs, 'line');
+            l1.setAttribute('x1', '12'); l1.setAttribute('y1', '8'); l1.setAttribute('x2', '12'); l1.setAttribute('y2', '12');
+            const l2 = document.createElementNS(svgNs, 'line');
+            l2.setAttribute('x1', '12'); l2.setAttribute('y1', '16'); l2.setAttribute('x2', '12.01'); l2.setAttribute('y2', '16');
+            svg.appendChild(c);
+            svg.appendChild(l1);
+            svg.appendChild(l2);
+        }
+        iconWrap.appendChild(svg);
+
+        const bodyWrap = document.createElement('div');
+        bodyWrap.className = 'prop-toast-body';
+        const titleNode = document.createElement('strong');
+        titleNode.className = 'prop-toast-title';
+        titleNode.textContent = title;
+        bodyWrap.appendChild(titleNode);
+
+        if (message) {
+            const descNode = document.createElement('p');
+            descNode.className = 'prop-toast-desc';
+            descNode.textContent = message;
+            bodyWrap.appendChild(descNode);
+        }
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'prop-toast-close';
+        closeBtn.setAttribute('aria-label', 'Fechar notificação');
+        closeBtn.textContent = '✕';
+
+        const dismiss = () => {
+            toastEl.classList.add('is-hiding');
+            setTimeout(() => {
+                if (toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+            }, 300);
+        };
+
+        closeBtn.addEventListener('click', dismiss);
+        setTimeout(dismiss, 4000);
+
+        toastEl.appendChild(iconWrap);
+        toastEl.appendChild(bodyWrap);
+        toastEl.appendChild(closeBtn);
+
+        container.appendChild(toastEl);
+        void toastEl.offsetWidth;
+        toastEl.classList.add('is-visible');
+        return toastEl;
+    },
     safeHref(href) {
         const h = String(href || '');
         // Só caminho relativo ao site: "/x". Recusa "//host" e "/\\host" (o navegador trata \\ como /) e

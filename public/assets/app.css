@@ -3477,6 +3477,24 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     background: #fef2f2;
 }
 
+.prop-toast-warning {
+    border-left: 5px solid #d97706;
+}
+
+.prop-toast-warning .prop-toast-icon {
+    color: #d97706;
+    background: #fef3c7;
+}
+
+.prop-toast-info {
+    border-left: 5px solid #2563eb;
+}
+
+.prop-toast-info .prop-toast-icon {
+    color: #2563eb;
+    background: #eff6ff;
+}
+
 .prop-toast-icon {
     display: flex;
     align-items: center;
