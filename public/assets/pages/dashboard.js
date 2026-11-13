@@ -5,16 +5,6 @@
     const box = document.getElementById('painel-list');
     if (!box) return;
 
-    async function remove(hash) {
-        if (!confirm(page.confirm || 'Inativar este imóvel?')) return;
-        try {
-            await CL.api('/api/casas/' + encodeURIComponent(hash), { method: 'DELETE', error: 'Erro ao remover' });
-            load();
-        } catch (e) {
-            alert(e.message);
-        }
-    }
-
     function render(items) {
         const statCount = document.getElementById('stat-props-count');
         if (statCount) statCount.textContent = String(items.length);
@@ -58,10 +48,7 @@
             const btnEdit = el('a', { className: 'btn-dash-action is-edit', href: '/imoveis/' + ref + '/editar' }, '✏️ ' + (page.edit || 'Editar'));
             const btnView = el('a', { className: 'btn-dash-action is-view', href: '/imoveis/' + ref }, '👁️ ' + (page.view || 'Ver'));
 
-            const btnDelete = el('button', { className: 'btn-dash-action is-delete', type: 'button', title: page.remove || 'Remover' }, '🗑️');
-            btnDelete.addEventListener('click', () => remove(hash));
-
-            const actions = el('div', { className: 'dash-card-actions' }, btnCal, btnEdit, btnView, btnDelete);
+            const actions = el('div', { className: 'dash-card-actions' }, btnCal, btnEdit, btnView);
 
             const body = el('div', { className: 'dash-card-body body' }, title, meta, actions);
 
