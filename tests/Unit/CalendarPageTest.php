@@ -364,4 +364,39 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString("desktop.matches ? viewMode : 'day'", $js);
         $this->assertStringContainsString("const mode = viewMode;", $js);
     }
+
+    public function testCalendarViewIncludesCleaningFeeAsTaxes(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Casa Teste",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+            "cleaning_fee" => 213,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Must pass cleaning fee on form dataset
+        $this->assertStringContainsString('data-cleaning-fee="213"', $html);
+
+        // JS must use cleaningFee in taxes calculation
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/calendar-2.js");
+        $this->assertStringContainsString("cleaningFee", $js);
+        $this->assertStringContainsString("form.dataset.cleaningFee", $js);
+    }
 }
