@@ -166,4 +166,52 @@ final class QuotePageTest extends TestCase
         $this->assertSame(800, (int) $created['subtotal']);
         $this->assertSame(800 + (int) ($property['cleaning_fee'] ?? 0), (int) $created['total']);
     }
+
+    public function testQuotePageUsesCurrentRequestHostForPaymentLink(): void
+    {
+        $_SERVER['HTTP_HOST'] = '192.168.0.115';
+        $this->assertSame('http://192.168.0.115', request_base());
+
+        $property = [
+            'id' => 1,
+            'public_hash' => 'abc123def4567890',
+            'title' => 'Chalé da Serra',
+            'city' => 'Urubici',
+            'nightly_price' => 350,
+            'cleaning_fee' => 100,
+            'pix_key' => 'chale@casalivre.test',
+        ];
+
+        $quote = [
+            'quote_hash' => 'hashquote1234567',
+            'checkin' => '2027-05-10',
+            'checkout' => '2027-05-13',
+            'nights' => 3,
+            'subtotal' => 1050,
+            'cleaning' => 100,
+            'taxes' => 0,
+            'special_offer' => null,
+            'total' => 1150,
+        ];
+
+        $payment_url = request_base() . '/pagamento/' . $quote['quote_hash'];
+
+        ob_start();
+        try {
+            $error = null;
+            $whatsapp_msg = 'Mensagem de teste';
+            $posted = [];
+            $checkin = '2027-05-10';
+            $checkout = '2027-05-13';
+            $csrf = 'csrf_token_test';
+            require dirname(__DIR__, 2) . '/views/quote.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        $this->assertStringContainsString('http://192.168.0.115/pagamento/hashquote1234567', $html);
+        $this->assertStringContainsString('href="/pagamento/hashquote1234567"', $html);
+    }
 }
