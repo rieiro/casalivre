@@ -101,4 +101,54 @@ final class CalendarPageTest extends TestCase
         $this->assertStringContainsString('data-flash-alert', $calendarJs);
         $this->assertStringContainsString('CL.toast', $calendarJs);
     }
+public function testCalendarViewRendersSideBySidePriceAndMinNightsWithShortenedLabels(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Casa Teste",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Must have .cal-fields container wrapping the side-by-side inputs
+        $this->assertStringContainsString("class=\"cal-fields\"", $html);
+
+        // Price input must come BEFORE min_nights input (night price on left, min nights on right)
+        $pricePos = strpos($html, "name=\"price\"");
+        $minNightsPos = strpos($html, "name=\"min_nights\"");
+        $this->assertNotFalse($pricePos, "price input must exist");
+        $this->assertNotFalse($minNightsPos, "min_nights input must exist");
+        $this->assertLessThan($minNightsPos, $pricePos, "night price must appear before min nights");
+
+        // Shortened labels & placeholders for calendar screen
+        $this->assertSame("Diária", t("cal.price"));
+        $this->assertSame("base", t("cal.price_hint"));
+        $this->assertSame("Mín. noites", t("cal.min_nights"));
+        $this->assertSame("Mín. de %s", t("cal.min_from"));
+        $this->assertSame("Mín. %s a %s", t("cal.min_range"));
+
+        // form.min_nights must remain unchanged for other screens
+        $this->assertSame("Mínimo de noites", t("form.min_nights"));
+
+        // Rendered view must use the shortened strings
+        $this->assertStringContainsString("data-min-default=\"" . t("cal.min_nights") . "\"", $html);
+        $this->assertStringContainsString("placeholder=\"" . t("cal.price_hint") . "\"", $html);
+        $this->assertStringContainsString("data-min-label>" . t("cal.min_nights") . "<", $html);
+    }
 }
