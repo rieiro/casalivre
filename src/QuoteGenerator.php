@@ -12,9 +12,10 @@ final class QuoteGenerator
         int $cleaningFee,
         int $nights,
         int $taxPercent = 0,
-        ?int $specialOffer = null
+        ?int $specialOffer = null,
+        ?int $customSubtotal = null
     ): array {
-        $subtotal = $nightlyPrice * max(1, $nights);
+        $subtotal = $customSubtotal ?? ($nightlyPrice * max(1, $nights));
         $cleaning = max(0, $cleaningFee);
         $taxes = (int) round(($subtotal * max(0, $taxPercent)) / 100);
         $calculatedTotal = $subtotal + $cleaning + $taxes;

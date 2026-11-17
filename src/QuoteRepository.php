@@ -107,7 +107,8 @@ final class QuoteRepository
         string $checkout,
         int $taxPercent = 0,
         ?int $specialOffer = null,
-        string $pixKey = "rafaelrieiro@gmail.com"
+        string $pixKey = "rafaelrieiro@gmail.com",
+        ?int $overridePrice = null
     ): array {
         self::ensureTable();
         $avail = self::checkAvailability($propertyId, $checkin, $checkout);
@@ -130,19 +131,34 @@ final class QuoteRepository
             throw new InvalidArgumentException("O período deve ter pelo menos 1 noite.");
         }
 
+        $cursor = new DateTimeImmutable($checkin);
+        $end = new DateTimeImmutable($checkout);
+        $nightsList = [];
+        while ($cursor < $end) {
+            $nightsList[] = $cursor->format("Y-m-d");
+            $cursor = $cursor->modify("+1 day");
+        }
+        $byDay = HouseRepository::calendarForNights($propertyId, $nightsList);
+        $subtotal = 0;
+        foreach ($nightsList as $d) {
+            $subtotal += $overridePrice ?? (int) ($byDay[$d]["price"] ?? $property["nightly_price"]);
+        }
+        $avgNightly = (int) round($subtotal / max(1, $nights));
+
         $calc = QuoteGenerator::calculate(
-            nightlyPrice: (int) $property["nightly_price"],
+            nightlyPrice: $avgNightly,
             cleaningFee: (int) ($property["cleaning_fee"] ?? 0),
             nights: $nights,
             taxPercent: $taxPercent,
-            specialOffer: $specialOffer
+            specialOffer: $specialOffer,
+            customSubtotal: $subtotal
         );
 
         $hash = bin2hex(random_bytes(8));
         $expiresAt = (new DateTimeImmutable("+30 minutes"))->format("Y-m-d H:i:s");
 
         return Db::transactional(db(), static function () use (
-            $hash, $propertyId, $checkin, $checkout, $nights, $property, $calc, $pixKey, $expiresAt
+            $hash, $propertyId, $checkin, $checkout, $nights, $property, $calc, $pixKey, $expiresAt, $avgNightly, $byDay, $overridePrice
         ): array {
             $stmt = db()->prepare("INSERT INTO quotes (
                 quote_hash, property_id, checkin, checkout, nights, nightly_price,
@@ -154,7 +170,7 @@ final class QuoteRepository
                 $checkin,
                 $checkout,
                 $nights,
-                (int) $property["nightly_price"],
+                $avgNightly,
                 $calc["cleaning"],
                 $calc["taxes"],
                 $calc["special_offer"],
@@ -178,7 +194,7 @@ final class QuoteRepository
                     $placeholders[] = "(?, ?, 1, ?, 1, 'pre-reserva')";
                     $params[] = $propertyId;
                     $params[] = $d;
-                    $params[] = (int) $property["nightly_price"];
+                    $params[] = $overridePrice ?? (int) ($byDay[$d]["price"] ?? $property["nightly_price"]);
                 }
                 $sql = "INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin)
                         VALUES " . implode(", ", $placeholders) . "
@@ -221,7 +237,9 @@ final class QuoteRepository
         $cleaningFee = (int) ($row["cleaning_fee"] ?? 0);
         $taxes = (int) ($row["taxes"] ?? 0);
         $totalPrice = (int) ($row["total_price"] ?? 0);
-        $subtotal = $nights * $nightlyPrice;
+        $subtotal = (isset($row["special_offer"]) && $row["special_offer"] !== null)
+            ? ($nightlyPrice * max(1, $nights))
+            : max(0, $totalPrice - $cleaningFee - $taxes);
 
         return array_merge($row, [
             "nights" => $nights,
