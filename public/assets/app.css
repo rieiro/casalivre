@@ -253,6 +253,14 @@ footer { padding: var(--space-16); }
 .cal-fields input { min-width: 0; width: 100%; }
 .cal-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-6); }
 .cal-actions button { min-width: 0; padding: var(--space-10) var(--space-4); font-size: .85rem; }
+.cal-summary-table { display: flex; flex-direction: column; gap: var(--space-6); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-8); padding: var(--space-8) var(--space-10); font-size: .85rem; }
+.cal-summary-table[hidden] { display: none !important; }
+.cal-summary-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-8); }
+.cal-summary-row .cal-summary-label { text-align: left; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.cal-summary-row .cal-summary-val { text-align: right; font-weight: 600; white-space: nowrap; color: var(--ink); }
+.cal-summary-row.cal-summary-total { border-top: 1px solid var(--line); padding-top: var(--space-4); margin-top: var(--space-2); }
+.cal-summary-row.cal-summary-total .cal-summary-label,
+.cal-summary-row.cal-summary-total .cal-summary-val { font-weight: 700; color: var(--ink-strong); font-size: .9rem; }
 .cal-controls button { width: 100%; margin: 0; min-height: 42px; }
 .cal-summary { margin: 0; text-align: center; font-size: 1.2rem; font-weight: 700; color: var(--ink); }
 .cal-view { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-6); }
@@ -329,6 +337,7 @@ footer { padding: var(--space-16); }
     .cal-board[data-cal-mode="min"] .cal-main { font-size: 1rem; padding-top: var(--space-8); }
     .cal-corner { top: 2px; left: 3px; font-size: .6rem; }
     .cal-controls { padding: var(--space-12); gap: var(--space-10); }
+    .cal-summary-table { padding: var(--space-6) var(--space-8); font-size: .8rem; }
     .sync-board { gap: var(--space-12); margin-top: var(--space-12); }
     .sync-board .panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
     .sync-board .panel:first-child { padding: var(--space-10) var(--space-12); }

@@ -89,6 +89,20 @@ $feeds = $feeds ?? [];
                 <label><?= e(t('cal.price')) ?> <input name="price" data-cal-price placeholder="<?= e(t('cal.price_hint')) ?>"></label>
                 <label><span data-min-label><?= e(t('cal.min_nights')) ?></span> <input type="number" name="min_nights" min="1" data-cal-min value="<?= (int) $property['min_nights'] ?>"></label>
             </div>
+            <div class="cal-summary-table" data-cal-summary-table hidden>
+                <div class="cal-summary-row">
+                    <span class="cal-summary-label" data-cal-stay-formula></span>
+                    <span class="cal-summary-val" data-cal-stay-total></span>
+                </div>
+                <div class="cal-summary-row">
+                    <span class="cal-summary-label"><?= e(t('cal.taxes')) ?></span>
+                    <span class="cal-summary-val" data-cal-taxes-val>R$ 0</span>
+                </div>
+                <div class="cal-summary-row cal-summary-total">
+                    <span class="cal-summary-label"><?= e(t('cal.total')) ?></span>
+                    <span class="cal-summary-val" data-cal-grand-total></span>
+                </div>
+            </div>
             <div class="cal-actions">
                 <button class="danger is-off" type="submit" name="acao" value="bloquear" data-cal-block disabled><?= e(t('cal.block')) ?></button>
                 <button class="primary is-off" type="submit" name="acao" value="abrir" data-cal-open disabled><?= e(t('cal.open_action')) ?></button>
