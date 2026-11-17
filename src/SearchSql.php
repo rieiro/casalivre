@@ -169,6 +169,9 @@ final class SearchSql
         if ($checkin !== null && $checkout !== null) {
             $where[] = 'NOT EXISTS (SELECT 1 FROM calendar_days c WHERE c.property_id = p.id AND c.day >= ? AND c.day < ? AND c.blocked = 1)';
             array_push($params, $checkin, $checkout);
+            $nightsCount = (int) (new DateTimeImmutable($checkin))->diff(new DateTimeImmutable($checkout))->days;
+            $where[] = 'COALESCE((SELECT c2.min_nights FROM calendar_days c2 WHERE c2.property_id = p.id AND c2.day = ? AND c2.min_nights > 0), p.min_nights) <= ?';
+            array_push($params, $checkin, $nightsCount);
         }
         return [implode(' AND ', $where), $params];
     }

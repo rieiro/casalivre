@@ -185,6 +185,11 @@ final class SearchService
         $out['items'] = $page;
         $out['iteracoes'] = $queries;
         $out['linhas_lidas'] = $read;
+        if ($targetPage === 1 && $page === [] && !$hasMore) {
+            $out['total'] = 0;
+            $out['total_aprox'] = 0;
+            $out['total_pages'] = 1;
+        }
         if ($hasMore) {
             $out['next_cursor'] = SearchQuery::cursor($after['key'], $after['id'], $query->sort, $query->filtersHash());
         }

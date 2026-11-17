@@ -126,4 +126,36 @@ final class SearchPaginationTest extends TestCase
         $this->assertSame(6, $page6Result["page"]);
         $this->assertEmpty($page6Result["items"]);
     }
+    public function testSearchRespectsMinNightsAndKeepsCountCoherent(): void
+    {
+        $place = CityRepository::byId(4937);
+        $this->assertNotNull($place, "Saquarema (4937) must exist");
+
+        // 1 night stay when min_nights is 2: total and items must both be 0
+        $q1 = SearchQuery::fromRequest([
+            "local_id" => "4937",
+            "checkin" => "2026-11-19",
+            "checkout" => "2026-11-20",
+            "hospedes" => "3",
+        ]);
+        $res1 = SearchService::search($q1, null);
+        $this->assertSame(0, $res1["total"], "Total count must be 0 when stay length is below min_nights");
+        $this->assertSame(0, $res1["total_aprox"]);
+        $this->assertEmpty($res1["items"]);
+
+        // 2 nights stay: property meets min_nights, total and items must both be 1
+        $q2 = SearchQuery::fromRequest([
+            "local_id" => "4937",
+            "checkin" => "2026-11-19",
+            "checkout" => "2026-11-21",
+            "hospedes" => "3",
+        ]);
+        $res2 = SearchService::search($q2, null);
+        $this->assertSame(1, $res2["total"]);
+        $this->assertCount(1, $res2["items"]);
+
+        // search.js must ensure count coherence when items is empty
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/search.js");
+        $this->assertStringContainsString("items.length === 0", $js);
+    }
 }

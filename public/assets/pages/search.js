@@ -20,9 +20,13 @@
             .then((data) => {
                 const items = data.items || [];
                 const loc = params.get('localidade') || '';
-                const total = (data.total !== undefined && data.total !== null)
+                const page = Number(data.page) || Number(params.get('pagina')) || 1;
+                let total = (data.total !== undefined && data.total !== null)
                     ? data.total
                     : (data.total_aprox !== undefined && data.total_aprox !== null ? data.total_aprox : items.length);
+                if (items.length === 0 && page === 1) {
+                    total = 0;
+                }
                 const nodes = [el('h1', {}, (loc ? loc + ': ' : '') + total + ' encontrados')];
                 if (items.length === 0) {
                     nodes.push(el('p', { className: 'muted' }, 'Nenhum imóvel encontrado.'));
