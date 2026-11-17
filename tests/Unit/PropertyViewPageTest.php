@@ -275,4 +275,12 @@ final class PropertyViewPageTest extends TestCase
             $this->assertStringContainsString("{$key}: \"", $js, "Amenity missing in property.js for {$key}");
         }
     }
+    public function testPropertyViewEnforcesStartingNightMinNightsAndDisplaysWarning(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/property.js");
+        $this->assertStringContainsString("minMap", $js);
+        $this->assertStringContainsString("b.min_nights", $js);
+        $this->assertStringContainsString("Estadia mínima de ", $js);
+        $this->assertStringContainsString("a partir de ", $js);
+    }
 }

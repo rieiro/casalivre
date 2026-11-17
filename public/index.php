@@ -1345,6 +1345,14 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
             CalendarFlash::set('Data indisponível: ' . $avail['conflict_date'], 'error');
             redirect('/imoveis/' . $m[1] . '/calendario');
         }
+        $byDay = HouseRepository::calendarForNights((int) $property['id'], [$start]);
+        $customMin = (int) ($byDay[$start]['min_nights'] ?? 0);
+        $minNights = $customMin > 0 ? $customMin : (int) ($property['min_nights'] ?? 1);
+        $nightsCount = (int) (new DateTimeImmutable($start))->diff(new DateTimeImmutable($checkout))->days;
+        if ($nightsCount < $minNights) {
+            CalendarFlash::set('Estadia mínima de ' . $minNights . ' noites a partir de ' . format_date($start) . '.', 'error');
+            redirect('/imoveis/' . $m[1] . '/calendario');
+        }
         $redirectUrl = '/imoveis/' . $m[1] . '/cotacao?checkin=' . urlencode($start) . '&checkout=' . urlencode($checkout);
         $customPrice = trim((string) ($_POST['price'] ?? ''));
         if ($customPrice !== '' && is_numeric($customPrice) && (int) $customPrice > 0) {

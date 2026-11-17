@@ -139,6 +139,12 @@ final class QuoteRepository
             $cursor = $cursor->modify("+1 day");
         }
         $byDay = HouseRepository::calendarForNights($propertyId, $nightsList);
+        $customMin = (int) ($byDay[$checkin]['min_nights'] ?? 0);
+        $minNights = $customMin > 0 ? $customMin : (int) ($property['min_nights'] ?? 1);
+        if ($nights < $minNights) {
+            $formattedCheckin = function_exists('format_date') ? format_date($checkin) : (new DateTimeImmutable($checkin))->format('d/m/Y');
+            throw new InvalidArgumentException("Estadia mínima de {$minNights} noites a partir de {$formattedCheckin}.");
+        }
         $subtotal = 0;
         foreach ($nightsList as $d) {
             $subtotal += $overridePrice ?? (int) ($byDay[$d]["price"] ?? $property["nightly_price"]);

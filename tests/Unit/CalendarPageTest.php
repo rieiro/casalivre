@@ -399,4 +399,14 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString("cleaningFee", $js);
         $this->assertStringContainsString("form.dataset.cleaningFee", $js);
     }
+    public function testCalendarEnforcesStartingNightMinNightsForQuote(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/calendar-2.js");
+        $this->assertStringContainsString("meetsMinNights", $js);
+        $this->assertStringContainsString("data-min", $js);
+
+        $indexPhp = (string) file_get_contents(dirname(__DIR__, 2) . "/public/index.php");
+        $this->assertStringContainsString("minNights", $indexPhp);
+        $this->assertStringContainsString("Estadia mínima de", $indexPhp);
+    }
 }

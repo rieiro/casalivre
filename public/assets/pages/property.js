@@ -394,9 +394,11 @@
             // 7. Interactive Availability Calendar & Booking State
             const blockedMap = {};
             const priceMap = {};
+            const minMap = {};
             (data.blocked_days || []).forEach((b) => {
                 if (b.blocked) blockedMap[b.day] = true;
                 if (b.price) priceMap[b.day] = Number(b.price);
+                if (b.min_nights) minMap[b.day] = Number(b.min_nights);
             });
 
             const now = new Date();
@@ -687,11 +689,13 @@
                     const d1 = new Date(selectedCheckin + "T12:00:00");
                     const d2 = new Date(selectedCheckout + "T12:00:00");
                     const nights = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-                    const minNights = Number(data.min_nights || 1);
+                    const minNights = (minMap[selectedCheckin] && minMap[selectedCheckin] > 0)
+                        ? Number(minMap[selectedCheckin])
+                        : Number(data.min_nights || 1);
                     const cleaningFee = Number(data.cleaning_fee || 0);
 
                     if (nights < minNights) {
-                        warningBox.textContent = "Estadia mínima: " + minNights + " noites.";
+                        warningBox.textContent = "Estadia mínima de " + minNights + " noites a partir de " + formatDateBr(selectedCheckin) + ".";
                         warningBox.hidden = false;
                         totalBox.hidden = true;
                         btnConfirm.disabled = true;
@@ -718,6 +722,18 @@
                         totalBox.hidden = false;
                         btnConfirm.disabled = false;
                     }
+                } else if (selectedCheckin && !selectedCheckout) {
+                    const minNights = (minMap[selectedCheckin] && minMap[selectedCheckin] > 0)
+                        ? Number(minMap[selectedCheckin])
+                        : Number(data.min_nights || 1);
+                    if (minNights > 1) {
+                        warningBox.textContent = "Estadia mínima de " + minNights + " noites a partir de " + formatDateBr(selectedCheckin) + ".";
+                        warningBox.hidden = false;
+                    } else {
+                        warningBox.hidden = true;
+                    }
+                    totalBox.hidden = true;
+                    btnConfirm.disabled = true;
                 } else {
                     warningBox.hidden = true;
                     totalBox.hidden = true;

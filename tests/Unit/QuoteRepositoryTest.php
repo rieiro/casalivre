@@ -443,4 +443,22 @@ final class QuoteRepositoryTest extends TestCase
             $this->assertSame(1, (int) $r["blocked"]);
         }
     }
+    public function testCreateQuoteFailsWhenNightsLessThanStartingDayMinNights(): void
+    {
+        $propId = (int) $this->pdo->query("SELECT id FROM properties LIMIT 1")->fetchColumn();
+        $this->assertGreaterThan(0, $propId);
+
+        $stmt = $this->pdo->prepare("INSERT INTO calendar_days (property_id, day, blocked, min_nights, origin) VALUES (?, ?, 0, 3, 'sistema')
+                                      ON CONFLICT (property_id, day) DO UPDATE SET min_nights = 3");
+        $stmt->execute([$propId, "2027-11-01"]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Estadia mínima de 3 noites a partir de 01/11/2027");
+
+        QuoteRepository::create(
+            propertyId: $propId,
+            checkin: "2027-11-01",
+            checkout: "2027-11-03"
+        );
+    }
 }
