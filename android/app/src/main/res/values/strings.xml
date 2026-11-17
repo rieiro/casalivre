@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CasaLivre</string>
+    <string name="login_email">E-mail</string>
+    <string name="login_password">Senha</string>
+    <string name="login_cta">Entrar</string>
+
+    <string name="nav_explore">Explorar</string>
+    <string name="nav_bookings">Reservas</string>
+    <string name="nav_host">Anfitrião</string>
+    <string name="nav_account">Conta</string>
+
+    <string name="search_where">Onde você quer ir?</string>
+    <string name="search_checkin">Check-in</string>
+    <string name="search_checkout">Check-out</string>
+    <string name="search_guests">Hóspedes</string>
+    <string name="search_cta">Buscar</string>
+    <string name="search_empty">Nenhum imóvel encontrado.</string>
+
+    <string name="details_amenities">Comodidades</string>
+    <string name="details_book">Reservar</string>
+
+    <string name="booking_checkin">Data de check-in</string>
+    <string name="booking_checkout">Data de check-out</string>
+    <string name="booking_quote">Calcular valor</string>
+    <string name="booking_pay">Continuar para pagamento</string>
+
+    <string name="account_edit">Editar conta</string>
+    <string name="account_logout">Sair</string>
+
+    <string name="web_error_title">Não foi possível carregar</string>
+    <string name="web_retry">Tentar novamente</string>
+</resources>
