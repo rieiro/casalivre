@@ -1,0 +1,3 @@
+-keep class com.casalivre.app.data.models.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
