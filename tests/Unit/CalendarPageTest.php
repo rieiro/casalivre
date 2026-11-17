@@ -242,4 +242,70 @@ public function testCalendarMobileResponsiveCompactLayout(): void
         $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?data-feed-form/s", $css);
         $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.sync-table/s", $css);
     }
+public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Casa Teste",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Must have breakdown table container hidden by default
+        $this->assertStringContainsString("data-cal-summary-table", $html);
+        $this->assertStringContainsString("cal-summary-table", $html);
+
+        // Position: must be below cal-fields and before cal-actions
+        $fieldsPos = strpos($html, "class=\"cal-fields\"");
+        $tablePos = strpos($html, "data-cal-summary-table");
+        $actionsPos = strpos($html, "class=\"cal-actions\"");
+        $this->assertNotFalse($fieldsPos);
+        $this->assertNotFalse($tablePos);
+        $this->assertNotFalse($actionsPos);
+        $this->assertLessThan($tablePos, $fieldsPos, "summary table must be below cal-fields");
+        $this->assertLessThan($actionsPos, $tablePos, "summary table must be above cal-actions");
+
+        // Translations for new text fields
+        $this->assertSame("Taxas", t("cal.taxes"));
+        $this->assertSame("Total", t("cal.total"));
+
+        // Table elements
+        $this->assertStringContainsString("data-cal-stay-formula", $html);
+        $this->assertStringContainsString("data-cal-stay-total", $html);
+        $this->assertStringContainsString("data-cal-taxes-val", $html);
+        $this->assertStringContainsString("data-cal-grand-total", $html);
+
+        // Rendered view includes the labels
+        $this->assertStringContainsString(t("cal.taxes"), $html);
+        $this->assertStringContainsString(t("cal.total"), $html);
+
+        // Scripts must have dynamic calculation logic
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/calendar-2.js");
+        $this->assertStringContainsString("data-cal-summary-table", $js);
+        $this->assertStringContainsString("data-cal-stay-formula", $js);
+        $this->assertStringContainsString("data-cal-stay-total", $js);
+        $this->assertStringContainsString("data-cal-taxes-val", $js);
+        $this->assertStringContainsString("data-cal-grand-total", $js);
+
+        // CSS styles
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+        $this->assertStringContainsString(".cal-summary-table", $css);
+        $this->assertStringContainsString(".cal-summary-row", $css);
+    }
 }

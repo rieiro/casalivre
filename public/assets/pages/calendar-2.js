@@ -7,6 +7,11 @@
     const minInput = document.querySelector('[data-cal-min]');
     const minLabel = document.querySelector('[data-min-label]');
     const form = document.querySelector('[data-cal-form]');
+    const summaryTable = document.querySelector('[data-cal-summary-table]');
+    const stayFormula = document.querySelector('[data-cal-stay-formula]');
+    const stayTotal = document.querySelector('[data-cal-stay-total]');
+    const taxesVal = document.querySelector('[data-cal-taxes-val]');
+    const grandTotal = document.querySelector('[data-cal-grand-total]');
     const months = (form && form.dataset.months ? form.dataset.months : '').split(',');
     function stamp(iso) {
         const parts = iso.split('-');
@@ -51,10 +56,76 @@
         saveButton.classList.remove('is-off');
     }
     if (price) {
-        price.addEventListener('input', markEdited);
+        price.addEventListener('input', () => {
+            markEdited();
+            if (summaryTable && !summaryTable.hidden && start && start.value && end && end.value) {
+                const val = Number(price.value);
+                const currentChosen = buttons.filter((button) => {
+                    const day = button.getAttribute('data-cal-day');
+                    return !button.disabled && day >= start.value && day <= end.value;
+                });
+                if (val > 0 && currentChosen.length > 0) {
+                    const subtotal = currentChosen.length * val;
+                    const taxPercent = Number((form && form.dataset.taxPercent) || 0);
+                    const taxes = Math.round((subtotal * taxPercent) / 100);
+                    const total = subtotal + taxes;
+                    if (stayFormula) {
+                        stayFormula.textContent = currentChosen.length + ' x R$ ' + Number(val).toLocaleString('pt-BR');
+                    }
+                    if (stayTotal) {
+                        stayTotal.textContent = 'R$ ' + Number(subtotal).toLocaleString('pt-BR');
+                    }
+                    if (taxesVal) {
+                        taxesVal.textContent = 'R$ ' + Number(taxes).toLocaleString('pt-BR');
+                    }
+                    if (grandTotal) {
+                        grandTotal.textContent = 'R$ ' + Number(total).toLocaleString('pt-BR');
+                    }
+                } else if (currentChosen.length > 0) {
+                    updateSummaryTable(currentChosen);
+                }
+            }
+        });
     }
     if (minInput) {
         minInput.addEventListener('input', markEdited);
+    }
+    function updateSummaryTable(chosenDays) {
+        if (!summaryTable) {
+            return;
+        }
+        if (!chosenDays || chosenDays.length === 0) {
+            summaryTable.hidden = true;
+            return;
+        }
+        const priceCounts = {};
+        let subtotal = 0;
+        chosenDays.forEach((btn) => {
+            const p = Number(btn.getAttribute('data-price')) || 0;
+            priceCounts[p] = (priceCounts[p] || 0) + 1;
+            subtotal += p;
+        });
+        const formulaParts = [];
+        Object.keys(priceCounts).forEach((p) => {
+            formulaParts.push(priceCounts[p] + ' x R$ ' + Number(p).toLocaleString('pt-BR'));
+        });
+        const taxPercent = Number((form && form.dataset.taxPercent) || 0);
+        const taxes = Math.round((subtotal * taxPercent) / 100);
+        const total = subtotal + taxes;
+
+        if (stayFormula) {
+            stayFormula.textContent = formulaParts.join(' + ');
+        }
+        if (stayTotal) {
+            stayTotal.textContent = 'R$ ' + Number(subtotal).toLocaleString('pt-BR');
+        }
+        if (taxesVal) {
+            taxesVal.textContent = 'R$ ' + Number(taxes).toLocaleString('pt-BR');
+        }
+        if (grandTotal) {
+            grandTotal.textContent = 'R$ ' + Number(total).toLocaleString('pt-BR');
+        }
+        summaryTable.hidden = false;
     }
     function paint(from, to) {
         const first = from < to ? from : to;
@@ -128,6 +199,7 @@
                 ? fill(form.dataset.minFrom, [stamp(first)])
                 : fill(form.dataset.minRange, [stamp(first), stamp(last)]);
         }
+        updateSummaryTable(chosenDays);
         resetEdited();
     }
     buttons.forEach((button) => {
