@@ -25,6 +25,13 @@ $feeds = $feeds ?? [];
     <?php endif; ?>
     <div class="cal-board">
         <div class="cal-months">
+            <ul class="cal-legend cal-legend-desktop">
+                <li><span class="swatch open"></span> <?= e(t('cal.legend_open')) ?></li>
+                <li><span class="swatch sistema"></span> <?= e(t('cal.legend_system')) ?></li>
+                <li><span class="swatch sync"></span> <?= e(t('cal.legend_sync')) ?></li>
+                <li><span class="swatch reserva"></span> <?= e(t('cal.legend_booking')) ?></li>
+                <li><span class="swatch prereserva"></span> <?= e(t('cal.legend_prereserva')) ?></li>
+            </ul>
             <?php
             $weekdays = match (current_locale()) {
                 'en' => ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
@@ -64,7 +71,7 @@ $feeds = $feeds ?? [];
                             <button type="button" class="cal-day<?= $origin !== '' ? ' ' . e($origin) : '' ?>" data-cal-day="<?= e($iso) ?>" data-day-num="<?= $d ?>" data-origin="<?= e($origin) ?>" data-price="<?= e(money_input($nightPrice)) ?>" data-min="<?= $nightMin ?>" <?= $origin === 'pre-reserva' ? 'title="Pré-reserva (30 min)"' : '' ?> <?= $disabled ? 'disabled' : '' ?>><span class="cal-corner" data-cal-corner><?= $d ?></span><span class="cal-main" data-cal-main><?= $d ?></span></button>
                         <?php endfor; ?>
                     </div>
-                    <ul class="cal-legend">
+                    <ul class="cal-legend cal-legend-mobile">
                         <li><span class="swatch open"></span> <?= e(t('cal.legend_open')) ?></li>
                         <li><span class="swatch sistema"></span> <?= e(t('cal.legend_system')) ?></li>
                         <li><span class="swatch sync"></span> <?= e(t('cal.legend_sync')) ?></li>

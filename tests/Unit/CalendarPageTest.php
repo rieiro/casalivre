@@ -439,7 +439,7 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $html = (string) ob_get_clean();
 
         // Legend must be placed inside cal-month under cal-grid
-        $this->assertMatchesRegularExpression('/class="cal-grid".*?class="cal-legend"/s', $html);
+        $this->assertMatchesRegularExpression('/cal-grid[\\s\\S]*?cal-legend-mobile/', $html);
 
         $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
 
@@ -447,5 +447,43 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-view\s+button\s*\{[^}]*min-height:\s*(?:2[0-9]|3[0-2])px;/s', $css);
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-actions\s+button\s*\{[^}]*min-height:\s*(?:2[0-9]|3[2-6])px;/s', $css);
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?button\[data-cal-quote\]\s*\{[^}]*min-height:\s*(?:2[0-9]|3[2-6])px;/s', $css);
+    }
+
+    public function testCalendarDecreasesPriceAndMinNightsInputHeightsAndDesktopLegendIsOnceOnTop(): void
+    {
+        ob_start();
+        $property = [
+            'id' => 1,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'cleaning_fee' => 0,
+            'nightly_price' => 200,
+            'min_nights' => 2,
+            'calendar_months' => 3,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Must render desktop legend before cal-month and mobile legend inside cal-month
+        $this->assertStringContainsString('cal-legend-desktop', $html);
+        $this->assertStringContainsString('cal-legend-mobile', $html);
+        $this->assertMatchesRegularExpression('/cal-legend-desktop.*?class="cal-month/s', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+
+        // .cal-fields input must have reduced height
+        $this->assertMatchesRegularExpression('/\.cal-fields\s+input\s*\{[^}]*height:\s*(?:3[0-6]|2[0-9])px;/s', $css);
+
+        // Desktop must show cal-legend-desktop and hide cal-legend-mobile
+        $this->assertStringContainsString('.cal-legend-desktop { display: flex; }', $css);
+        $this->assertStringContainsString('.cal-legend-mobile { display: none; }', $css);
+
+        // Mobile media query must hide cal-legend-desktop and show cal-legend-mobile
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-legend-desktop\s*\{\s*display:\s*none;\s*\}/s', $css);
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-legend-mobile\s*\{[^}]*display:\s*flex;/s', $css);
     }
 }
