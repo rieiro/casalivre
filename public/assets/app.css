@@ -248,6 +248,9 @@ footer { padding: var(--space-16); }
 .cal-months { display: flex; flex-direction: column; gap: var(--space-22); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-16) var(--space-18) var(--space-20); }
 .cal-controls { position: sticky; top: 16px; display: grid; gap: var(--space-12); align-content: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-16); }
 .cal-controls label { display: grid; gap: var(--space-4); font-size: .9rem; }
+.cal-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); align-items: start; }
+.cal-fields label { display: grid; gap: var(--space-4); font-size: .85rem; }
+.cal-fields input { min-width: 0; width: 100%; }
 .cal-controls button { width: 100%; margin: 0; min-height: 42px; }
 .cal-summary { margin: 0; text-align: center; font-size: 1.2rem; font-weight: 700; color: var(--ink); }
 .cal-view { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-6); }
