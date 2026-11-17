@@ -26,8 +26,12 @@
             const price = Number(item.nightly_price) || 0;
             const guests = Number(item.max_guests) || 0;
 
+            const photoEl = item.photo
+                ? CL.photoImg(item.photo, '104px', item.title || '')
+                : el('img', { src: '/assets/placeholder.svg', alt: item.title || '', loading: 'lazy' });
+
             const mediaChildren = [
-                CL.photoImg(item.photo, '(max-width: 600px) 100vw, 400px', item.title || ''),
+                photoEl,
                 el('span', { className: 'dash-card-badge' }, page.active || '✓ Ativo')
             ];
             const media = el('div', { className: 'dash-card-media' }, ...mediaChildren);
@@ -53,12 +57,12 @@
 
             const actions = el('div', { className: 'dash-card-actions' }, btnCal, btnEdit, btnView);
 
-            const body = el('div', { className: 'dash-card-body body' }, headerRow, meta, actions);
+            const body = el('div', { className: 'dash-card-body' }, headerRow, meta, actions);
 
-            return el('article', { className: 'dash-card card' }, media, body);
+            return el('article', { className: 'dash-card' }, media, body);
         });
 
-        box.replaceChildren(el('div', { className: 'dash-grid grid' }, ...cards));
+        box.replaceChildren(el('div', { className: 'dash-grid' }, ...cards));
     }
 
     async function load() {

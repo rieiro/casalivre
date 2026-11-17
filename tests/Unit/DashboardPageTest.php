@@ -201,4 +201,21 @@ final class DashboardPageTest extends TestCase
         $this->assertStringContainsString("body:has(.dash-page) header.top", $css);
         $this->assertStringContainsString("body:has(.dash-page) footer", $css);
     }
+
+    public function testDashboardPropertyImagesHaveUniformSmallDimensionsOnDesktopAndMobile(): void
+    {
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/dashboard.js");
+
+        // Media in CSS should have fixed uniform dimensions without expanding to auto on mobile
+        $this->assertStringNotContainsString(".dash-card-media {\n        width: 95px;\n        min-width: 95px;\n        height: auto;", $css);
+        $this->assertStringContainsString("max-height:", $css);
+
+        // dashboard.js should not attach class 'card' to dash-card to avoid vitrine .card img rules
+        $this->assertStringNotContainsString("className: 'dash-card card'", $js);
+        $this->assertStringContainsString("className: 'dash-card'", $js);
+
+        // dashboard.js should supply placeholder when photo is missing so cards are uniform
+        $this->assertStringContainsString("placeholder.svg", $js);
+    }
 }
