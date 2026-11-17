@@ -315,9 +315,35 @@ footer { padding: var(--space-16); }
     .cal-nav { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; min-height: 36px; padding: 0; font-weight: 700; }
     .cal-month h2 { margin: 0; font-size: 1rem; }
     .cal-summary.is-hint { font-size: .78rem; font-weight: 500; line-height: 1.25; }
-    .cal-legend { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-8); margin: 0 0 var(--space-8); font-size: .72rem; line-height: 1.2; }
-    .cal-legend li { gap: var(--space-4); min-width: 0; }
-    .swatch { width: 12px; height: 12px; flex: 0 0 auto; }
+    .cal-legend { display: none; }
+    .cal-sync-locked { display: none; }
+    .cal-months { padding: var(--space-10) var(--space-12); gap: var(--space-12); }
+    .cal-month-head { margin-bottom: var(--space-4); }
+    .cal-month h2 { margin: 0; font-size: .95rem; }
+    .cal-weekdays { gap: var(--space-3); margin-bottom: var(--space-2); font-size: .72rem; }
+    .cal-grid { gap: var(--space-4); }
+    .cal-day { min-height: 38px; font-size: .95rem; border-radius: var(--radius-6); }
+    .cal-board[data-cal-mode="price"] .cal-day,
+    .cal-board[data-cal-mode="min"] .cal-day { min-height: 44px; }
+    .cal-board[data-cal-mode="price"] .cal-main,
+    .cal-board[data-cal-mode="min"] .cal-main { font-size: 1rem; padding-top: var(--space-8); }
+    .cal-corner { top: 2px; left: 3px; font-size: .6rem; }
+    .cal-controls { padding: var(--space-12); gap: var(--space-10); }
+    .sync-board { gap: var(--space-12); margin-top: var(--space-12); }
+    .sync-board .panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
+    .sync-board .panel:first-child { padding: var(--space-10) var(--space-12); }
+    .sync-board h2 { font-size: 1rem; margin: 0 0 var(--space-8); }
+    .sync-table { width: 100%; font-size: .78rem; }
+    .sync-table th, .sync-table td { padding: var(--space-6) var(--space-4); }
+    .sync-table th { font-size: .72rem; }
+    .sync-actions { display: flex; flex-direction: column; gap: var(--space-4); }
+    .sync-actions button { min-height: 28px; padding: var(--space-2) var(--space-6); font-size: .72rem; }
+    form[data-feed-form] { padding: var(--space-10) var(--space-12); gap: var(--space-8); }
+    form[data-feed-form] h2 { font-size: 1rem; margin: 0 0 var(--space-4); }
+    form[data-feed-form] label { font-size: .82rem; gap: var(--space-2); }
+    form[data-feed-form] input { padding: var(--space-6) var(--space-8); font-size: .85rem; }
+    form[data-feed-form] button { min-height: 34px; padding: var(--space-6) var(--space-10); font-size: .85rem; }
+    form[data-feed-form] p.fine { font-size: .72rem; margin: 0; line-height: 1.25; }
     .cal-month { display: none; }
     .cal-month.is-shown { display: block; }
 }
