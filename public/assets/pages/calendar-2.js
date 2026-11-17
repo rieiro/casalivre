@@ -223,7 +223,7 @@
     const desktop = window.matchMedia('(min-width: 801px)');
     let viewMode = 'day';
     function applyView() {
-        const mode = desktop.matches ? viewMode : 'day';
+        const mode = viewMode;
         if (board) {
             board.setAttribute('data-cal-mode', mode);
         }

@@ -308,4 +308,60 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString(".cal-summary-table", $css);
         $this->assertStringContainsString(".cal-summary-row", $css);
     }
+
+    public function testCalendarMobileHeaderAndControlsLayout(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Chalé 1",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // 1. Calendar title heading must have cal-title class for mobile hiding
+        $this->assertMatchesRegularExpression('/<h1[^>]*class="[^"]*cal-title[^"]*"[^>]*>/', $html);
+
+        // 2. View switcher controls (.cal-view with data-cal-view buttons) must be above .cal-fields
+        $viewPos = strpos($html, 'class="cal-view"');
+        $fieldsPos = strpos($html, 'class="cal-fields"');
+        $this->assertNotFalse($viewPos);
+        $this->assertNotFalse($fieldsPos);
+        $this->assertLessThan($fieldsPos, $viewPos, ".cal-view must be above .cal-fields");
+
+        // 3. CSS rules under @media (max-width: 800px)
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+
+        // Top horizontal element (header.top) removed on mobile for calendar
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?(?:body\.page-calendar|body:has\(\.cal-board\))\s*header\.top\s*\{\s*display:\s*none;/s', $css);
+
+        // 'Calendar - Chalé 1' (.cal-title) removed on mobile
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-title\s*\{\s*display:\s*none;/s', $css);
+
+        // Range date visual (.cal-summary) removed on mobile
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-summary\s*\{\s*display:\s*none;/s', $css);
+
+        // .cal-view must NOT be display: none on mobile
+        $this->assertDoesNotMatchRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-view\s*\{\s*display:\s*none;/s', $css);
+
+        // 4. JS logic must apply view mode on mobile as well (not force 'day' on !desktop.matches)
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/calendar-2.js");
+        $this->assertStringNotContainsString("desktop.matches ? viewMode : 'day'", $js);
+        $this->assertStringContainsString("const mode = viewMode;", $js);
+    }
 }

@@ -315,14 +315,16 @@ footer { padding: var(--space-16); }
 .cover-badge { position: absolute; left: 8px; bottom: 8px; background: var(--brand); color: var(--surface); border-radius: var(--radius-pill); padding: var(--space-2) var(--space-8); font-size: .75rem; }
 .cover-actions { display: flex; flex-wrap: wrap; gap: var(--space-8); margin-top: var(--space-8); }
 @media (max-width: 800px) {
+    body.page-calendar header.top,
+    body:has(.cal-board) header.top { display: none; }
+    .cal-title { display: none; }
     .result, .search-layout, .cal-board, .amenity-grid, .sync-board { grid-template-columns: 1fr; }
     .result .offer { justify-items: start; }
     .cal-controls { position: static; }
-    .cal-view { display: none; }
     .cal-month-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); }
     .cal-nav { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; min-height: 36px; padding: 0; font-weight: 700; }
     .cal-month h2 { margin: 0; font-size: 1rem; }
-    .cal-summary.is-hint { font-size: .78rem; font-weight: 500; line-height: 1.25; }
+    .cal-summary { display: none; }
     .cal-legend { display: none; }
     .cal-sync-locked { display: none; }
     .cal-months { padding: var(--space-10) var(--space-12); gap: var(--space-12); }
