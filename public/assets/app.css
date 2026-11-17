@@ -317,6 +317,10 @@ footer { padding: var(--space-16); }
 @media (max-width: 800px) {
     body.page-calendar header.top,
     body:has(.cal-board) header.top { display: none; }
+    body.page-dashboard header.top,
+    body:has(.dash-page) header.top { display: none; }
+    body.page-dashboard footer,
+    body:has(.dash-page) footer { display: none; }
     .cal-title { display: none; }
     .result, .search-layout, .cal-board, .amenity-grid, .sync-board { grid-template-columns: 1fr; }
     .result .offer { justify-items: start; }
@@ -2049,6 +2053,10 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 }
 
 @media (max-width: 640px) {
+    body.page-dashboard header.top,
+    body:has(.dash-page) header.top { display: none; }
+    body.page-dashboard footer,
+    body:has(.dash-page) footer { display: none; }
     .dash-page {
         padding: var(--space-8) var(--space-8) var(--space-20);
     }

@@ -181,4 +181,24 @@ final class DashboardPageTest extends TestCase
 
         $this->assertStringContainsString("dash-card-header", $html);
     }
+    public function testDashboardRemovesFrugalHeaderMarketingAndExtraneousButtons(): void
+    {
+        ob_start();
+        $properties = [];
+        $use_api = true;
+        $quotes_count = 0;
+        $pending_count = 0;
+        $csrf = "csrf_token_test";
+        require dirname(__DIR__, 2) . "/views/dashboard.php";
+        $html = (string) ob_get_clean();
+
+        $this->assertStringNotContainsString("PORTAL DO ANFITRIÃO", $html);
+        $this->assertStringNotContainsString("Gerencie seus imóveis anunciados", $html);
+        $this->assertStringNotContainsString("btn-dash-secondary", $html);
+        $this->assertStringNotContainsString("btn-dash-ghost", $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+        $this->assertStringContainsString("body:has(.dash-page) header.top", $css);
+        $this->assertStringContainsString("body:has(.dash-page) footer", $css);
+    }
 }
