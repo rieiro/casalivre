@@ -11,7 +11,7 @@ $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
 ?>
 <section class="wrap">
-    <h1><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>
+    <h1 class="cal-title" data-cal-title><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>
     <?php if ($message): ?>
         <?php
         $messages = is_array($message) ? $message : array_filter(array_map('trim', explode("

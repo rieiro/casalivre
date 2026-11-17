@@ -11,7 +11,8 @@
     <?= page_data_script($csrf) ?>
     <script src="<?= e(asset_url('/assets/safe-dom.js')) ?>"></script>
 </head>
-<body>
+<?php $bClass = trim(($body_class ?? "") . ((isset($template) && $template === "calendar") ? " page-calendar" : "")); ?>
+<body<?= $bClass !== "" ? " class=\"" . e($bClass) . "\"" : "" ?>>
 <header class="top">
     <a class="brand" href="<?= e((isset($vitrine_base) && is_string($vitrine_base) ? $vitrine_base : '') . '/') ?>"><?php if ($logo !== null): ?><img class="brand-logo" src="<?= e($logo) ?>" alt="<?= e($brand['nome']) ?>"><?php else: ?><?= e($brand['nome']) ?><?php endif; ?></a>
     <form class="lang" method="post" action="/idioma">
