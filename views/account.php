@@ -9,11 +9,7 @@ $formError = (string) ($error ?? '');
             <span>Voltar ao Painel</span>
         </a>
         <div class="account-header-content">
-            <span class="dash-badge-eyebrow">PORTAL DO ANFITRIÃO</span>
             <h1 class="dash-header-title"><?= e(t('account.title')) ?></h1>
-            <p class="dash-header-desc">
-                Gerencie suas informações cadastrais, endereço do titular, canais de contato e segurança de acesso.
-            </p>
         </div>
 
         <!-- Perfil Resumo -->

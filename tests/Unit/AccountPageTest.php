@@ -96,4 +96,32 @@ final class AccountPageTest extends TestCase
         $this->assertStringContainsString("CL.toast('error'", $accountJs);
         $this->assertStringNotContainsString("alert(e.message)", $accountJs);
     }
+    public function testAccountPageAdoptsFrugalLayoutAndMobileCleanMenu(): void
+    {
+        $user = [
+            'id' => 1,
+            'name' => 'Rafael Anfitrião',
+            'email' => 'rafael@casalivre.test',
+            'cpf' => '123.456.789-00',
+            'phone' => '(48) 99999-8888',
+            'cep' => '88010-000',
+            'street' => 'Rua Felipe Schmidt',
+            'address_number' => '100',
+            'address_complement' => 'Apto 101',
+            'created_at' => '2026-01-01 12:00:00',
+        ];
+
+        ob_start();
+        $error = null;
+        $csrf = 'csrf_token_test';
+        require dirname(__DIR__, 2) . '/views/account.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringNotContainsString('PORTAL DO ANFITRIÃO', $html);
+        $this->assertStringNotContainsString('Gerencie suas informações cadastrais', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertStringContainsString('body:has(.account-page) header.top', $css);
+        $this->assertStringContainsString('body:has(.account-page) footer', $css);
+    }
 }

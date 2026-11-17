@@ -321,6 +321,10 @@ footer { padding: var(--space-16); }
     body:has(.dash-page) header.top { display: none; }
     body.page-dashboard footer,
     body:has(.dash-page) footer { display: none; }
+    body.page-account header.top,
+    body:has(.account-page) header.top { display: none; }
+    body.page-account footer,
+    body:has(.account-page) footer { display: none; }
     .cal-title { display: none; }
     .result, .search-layout, .cal-board, .amenity-grid, .sync-board { grid-template-columns: 1fr; }
     .result .offer { justify-items: start; }
@@ -2057,6 +2061,10 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     body:has(.dash-page) header.top { display: none; }
     body.page-dashboard footer,
     body:has(.dash-page) footer { display: none; }
+    body.page-account header.top,
+    body:has(.account-page) header.top { display: none; }
+    body.page-account footer,
+    body:has(.account-page) footer { display: none; }
     .dash-page {
         padding: var(--space-8) var(--space-8) var(--space-20);
     }
@@ -2710,37 +2718,37 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 
 
 /* ==========================================================================
-   CONTA DO USUÁRIO (/conta) - LUXURY ACCOUNT STYLE
+   CONTA DO USUÁRIO (/conta) - FRUGAL ACCOUNT STYLE (MATCHING CALENDÁRIO)
    ========================================================================== */
 .account-page {
-    max-width: 960px;
+    max-width: 880px;
     margin: 0 auto;
-    padding: 2rem 1.25rem 5rem;
+    padding: var(--space-16) var(--space-12) var(--space-28);
 }
 
-/* Header Hero */
+/* Header Panel */
 .account-header {
-    background: linear-gradient(135deg, #001f4d 0%, #003580 50%, #004fb3 100%);
-    color: #ffffff;
-    border-radius: 20px;
-    padding: 2.25rem 2rem;
-    margin-bottom: 2rem;
-    box-shadow: 0 10px 25px -5px rgba(0, 53, 128, 0.25), 0 8px 10px -6px rgba(0, 53, 128, 0.2);
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-8);
+    padding: var(--space-12) var(--space-14);
+    margin-bottom: var(--space-14);
 }
 
 .account-back-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    color: #93c5fd;
+    gap: 0.35rem;
+    color: var(--brand);
     text-decoration: none;
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    margin-bottom: 1.25rem;
-    transition: color 0.2s ease;
+    margin-bottom: var(--space-8);
+    transition: opacity 0.15s ease;
 }
 .account-back-link:hover {
-    color: #ffffff;
+    opacity: 0.85;
 }
 
 .account-header-content {
@@ -2752,72 +2760,73 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .account-profile-summary {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
-    margin-top: 1.75rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+    padding-top: var(--space-8);
+    border-top: 1px solid var(--line);
+    flex-wrap: wrap;
 }
 
 .account-avatar {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-round);
+    background: var(--bg);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.85rem;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    font-size: 1.15rem;
+    border: 1px solid var(--line);
     flex-shrink: 0;
 }
 
 .account-profile-info {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    align-items: baseline;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+    font-size: 0.82rem;
 }
 
 .account-profile-name {
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--ink-strong);
 }
 
 .account-profile-email {
-    font-size: 0.88rem;
-    color: rgba(255, 255, 255, 0.85);
-    display: flex;
+    color: var(--muted);
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    gap: var(--space-4);
 }
 
 .account-verified-badge {
     background: #059669;
     color: #ffffff;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    padding: 0.15rem 0.5rem;
-    border-radius: 9999px;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-pill);
 }
 
 .account-profile-created {
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.75rem;
+    color: var(--muted);
 }
 
 /* Notifications */
 .account-alert {
-    border-radius: 14px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.95rem;
+    border-radius: var(--radius-6);
+    padding: var(--space-8) var(--space-12);
+    margin-bottom: var(--space-12);
+    font-size: 0.85rem;
     font-weight: 600;
 }
 .account-alert.error {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #991b1b;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-line);
+    color: var(--danger-strong);
 }
 .account-alert.ok {
     background: #ecfdf5;
@@ -2827,55 +2836,50 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 
 /* Cards */
 .account-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 18px;
-    box-shadow: 0 4px 16px rgba(0, 35, 80, 0.04);
-    margin-bottom: 1.75rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-8);
+    margin-bottom: var(--space-12);
     overflow: hidden;
-    transition: box-shadow 0.2s ease;
-}
-.account-card:hover {
-    box-shadow: 0 8px 24px rgba(0, 35, 80, 0.07);
 }
 
 .account-card-head {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1.5rem 1.75rem 1.25rem;
-    border-bottom: 1px solid #f1f5f9;
-    background: #fafbfc;
+    gap: var(--space-8);
+    padding: var(--space-10) var(--space-12);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
 }
 
 .account-card-icon {
-    font-size: 1.85rem;
+    font-size: 1.25rem;
     line-height: 1;
     flex-shrink: 0;
 }
 
 .account-card-title {
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 700;
-    color: #0f172a;
-    margin: 0 0 0.25rem;
+    color: var(--ink-strong);
+    margin: 0;
     line-height: 1.25;
 }
 
 .account-card-subtitle {
-    font-size: 0.88rem;
-    color: #64748b;
-    margin: 0;
-    line-height: 1.4;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin: var(--space-2) 0 0;
+    line-height: 1.35;
 }
 
 .account-card-body {
-    padding: 1.75rem;
+    padding: var(--space-12);
 }
 
 /* Form Fields */
 .account-field {
-    margin-bottom: 1.35rem;
+    margin-bottom: var(--space-10);
     display: flex;
     flex-direction: column;
 }
@@ -2887,49 +2891,48 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin-bottom: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: var(--space-4);
 }
 .account-label .req {
-    color: #ef4444;
+    color: var(--danger);
 }
 
 .account-input {
     width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    font-size: 0.95rem;
-    color: #0f172a;
-    background: #ffffff;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-6);
+    padding: var(--space-6) var(--space-10);
+    font-size: 0.88rem;
+    color: var(--ink);
+    background: var(--surface);
     box-sizing: border-box;
 }
 .account-input:focus {
-    border-color: #003580;
+    border-color: var(--brand);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(0, 53, 128, 0.12);
+    box-shadow: 0 0 0 2px var(--brand-ring);
 }
 .account-input.is-readonly {
-    background: #f8fafc;
-    color: #475569;
+    background: var(--bg);
+    color: var(--muted);
     cursor: not-allowed;
-    border-color: #e2e8f0;
+    border-color: var(--line);
 }
 
 .account-grid-2 {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-10);
 }
 
 .account-hint {
-    font-size: 0.82rem;
-    color: #64748b;
-    margin: 0.4rem 0 0;
-    line-height: 1.4;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin: var(--space-2) 0 0;
+    line-height: 1.35;
 }
 
 .account-input-readonly-wrap {
@@ -2939,13 +2942,13 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 }
 .account-lock-badge {
     position: absolute;
-    right: 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #64748b;
-    background: #e2e8f0;
-    padding: 0.2rem 0.6rem;
-    border-radius: 6px;
+    right: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--line);
+    padding: 0.15rem 0.45rem;
+    border-radius: var(--radius-4);
     pointer-events: none;
 }
 
@@ -2953,74 +2956,84 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .account-submit-bar {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-top: 1rem;
+    gap: var(--space-8);
+    margin-top: var(--space-10);
 }
 .account-submit-btn {
-    font-size: 1.05rem;
-    padding: 0.9rem 2.25rem;
-    border-radius: 14px;
-    box-shadow: 0 6px 18px rgba(5, 150, 105, 0.3);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: var(--space-6) var(--space-16);
+    border-radius: var(--radius-6);
 }
 .account-cancel-btn {
-    background: #ffffff !important;
-    color: #475569 !important;
-    border: 1px solid #cbd5e1 !important;
-    font-size: 0.95rem;
-    padding: 0.9rem 1.5rem;
-    border-radius: 14px;
+    background: var(--surface) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line) !important;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: var(--space-6) var(--space-12);
+    border-radius: var(--radius-6);
+    text-decoration: none;
 }
 .account-cancel-btn:hover {
-    background: #f8fafc !important;
-    color: #0f172a !important;
+    background: var(--bg) !important;
 }
 
 /* Danger Zone */
 .account-danger-box {
-    background: #ffffff;
-    border: 1px solid #fee2e2;
-    border-radius: 18px;
-    padding: 1.75rem;
-    margin-top: 2rem;
+    background: var(--surface);
+    border: 1px solid var(--danger-line);
+    border-radius: var(--radius-8);
+    padding: var(--space-12);
+    margin-top: var(--space-14);
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 1.25rem;
+    gap: var(--space-8);
 }
 .account-danger-title {
-    font-size: 1.15rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    color: #991b1b;
-    margin: 0 0 0.35rem;
+    color: var(--danger-strong);
+    margin: 0 0 var(--space-2);
 }
 .account-danger-desc {
-    font-size: 0.88rem;
-    color: #64748b;
+    font-size: 0.78rem;
+    color: var(--muted);
     margin: 0;
-    max-width: 580px;
-    line-height: 1.5;
+    max-width: 540px;
+    line-height: 1.4;
 }
 .account-delete-form {
     margin: 0;
 }
 
 @media (max-width: 640px) {
+    .account-page {
+        padding: var(--space-8) var(--space-8) var(--space-20);
+    }
     .account-header {
-        padding: 1.5rem 1.25rem;
+        padding: var(--space-10);
+        margin-bottom: var(--space-10);
     }
     .account-profile-summary {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: row;
+        align-items: center;
     }
     .account-card-head {
-        padding: 1.25rem;
+        padding: var(--space-8) var(--space-10);
     }
     .account-card-body {
-        padding: 1.25rem;
+        padding: var(--space-10);
+    }
+    .account-grid-2 {
+        grid-template-columns: 1fr;
+        gap: var(--space-8);
     }
     .account-submit-bar {
         flex-direction: column;
+        gap: var(--space-6);
     }
     .account-submit-btn,
     .account-cancel-btn {
