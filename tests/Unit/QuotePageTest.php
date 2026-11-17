@@ -118,4 +118,52 @@ final class QuotePageTest extends TestCase
         $this->assertStringContainsString('id="copy-status"', $html);
         $this->assertStringContainsString('quote-success-card', $html);
     }
+
+    public function testQuotePageCalculatesSubtotalFromCalendarCustomPrices(): void
+    {
+        $stmt = $this->pdo->query("SELECT id, public_hash, title, city_place_id, nightly_price, cleaning_fee FROM properties LIMIT 1");
+        $prop = $stmt->fetch(PDO::FETCH_ASSOC);
+        $propId = (int) $prop['id'];
+
+        $day1 = '2027-09-10';
+        $day2 = '2027-09-11';
+        $day3 = '2027-09-12';
+
+        // Set custom prices for day1 (350) and day2 (450)
+        $this->pdo->prepare("DELETE FROM calendar_days WHERE property_id = ? AND day IN (?, ?)")->execute([$propId, $day1, $day2]);
+        $this->pdo->prepare("INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin) VALUES (?, ?, 0, 350, 1, ''), (?, ?, 0, 450, 1, '')")
+            ->execute([$propId, $day1, $propId, $day2]);
+
+        $property = HouseRepository::find($propId);
+
+        ob_start();
+        try {
+            $error = null;
+            $quote = null;
+            $payment_url = null;
+            $whatsapp_msg = null;
+            $posted = [];
+            $checkin = $day1;
+            $checkout = $day3;
+            $csrf = 'csrf_token_test';
+            require dirname(__DIR__, 2) . '/views/quote.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Subtotal must be 350 + 450 = 800, NOT 2 * property['nightly_price']
+        $expectedSubtotal = 800;
+        $this->assertStringContainsString(money($expectedSubtotal), $html);
+
+        // QuoteRepository::create must also use the calendar days pricing
+        $created = QuoteRepository::create(
+            propertyId: $propId,
+            checkin: $day1,
+            checkout: $day3,
+        );
+        $this->assertSame(800, (int) $created['subtotal']);
+        $this->assertSame(800 + (int) ($property['cleaning_fee'] ?? 0), (int) $created['total']);
+    }
 }

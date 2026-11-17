@@ -623,6 +623,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method ===
         $specialOfferRaw = trim((string) ($_POST['special_offer'] ?? ''));
         $specialOffer = ($specialOfferRaw !== '' && is_numeric($specialOfferRaw)) ? (int) $specialOfferRaw : null;
         $pixKey = trim((string) ($property['pix_key'] ?? '')) ?: 'rafaelrieiro@gmail.com';
+        $overridePrice = isset($_POST['price']) && is_numeric($_POST['price']) && (int) $_POST['price'] > 0
+            ? (int) $_POST['price']
+            : (isset($_GET['price']) && is_numeric($_GET['price']) && (int) $_GET['price'] > 0 ? (int) $_GET['price'] : null);
 
         if ($checkin === '' || $checkout === '' || $checkin >= $checkout) {
             $error = 'Por favor, selecione datas válidas (o check-out deve ser posterior ao check-in).';
@@ -634,7 +637,8 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method ===
                     checkout: $checkout,
                     taxPercent: $taxPercent,
                     specialOffer: $specialOffer,
-                    pixKey: $pixKey
+                    pixKey: $pixKey,
+                    overridePrice: $overridePrice
                 );
                 $appUrl = app_url();
                 $paymentUrl = $appUrl . '/pagamento/' . $quote['quote_hash'];
@@ -1341,7 +1345,12 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
             CalendarFlash::set('Data indisponível: ' . $avail['conflict_date'], 'error');
             redirect('/imoveis/' . $m[1] . '/calendario');
         }
-        redirect('/imoveis/' . $m[1] . '/cotacao?checkin=' . urlencode($start) . '&checkout=' . urlencode($checkout));
+        $redirectUrl = '/imoveis/' . $m[1] . '/cotacao?checkin=' . urlencode($start) . '&checkout=' . urlencode($checkout);
+        $customPrice = trim((string) ($_POST['price'] ?? ''));
+        if ($customPrice !== '' && is_numeric($customPrice) && (int) $customPrice > 0) {
+            $redirectUrl .= '&price=' . urlencode($customPrice);
+        }
+        redirect($redirectUrl);
     }
     $res = CalendarSave::run($property, $_POST);
     $res->registrar();

@@ -1,12 +1,37 @@
 <?php
 $checkin = (string) ($posted['checkin'] ?? ($checkin ?? ''));
 $checkout = (string) ($posted['checkout'] ?? ($checkout ?? ''));
-$nights = (int) ($nights ?? (new DateTimeImmutable($checkin))->diff(new DateTimeImmutable($checkout))->days);
+$overridePrice = isset($_GET['price']) && is_numeric($_GET['price']) && (int) $_GET['price'] > 0
+    ? (int) $_GET['price']
+    : (isset($posted['price']) && is_numeric($posted['price']) && (int) $posted['price'] > 0 ? (int) $posted['price'] : null);
+
+$cursor = new DateTimeImmutable($checkin);
+$end = new DateTimeImmutable($checkout);
+$nightsList = [];
+while ($cursor < $end) {
+    $nightsList[] = $cursor->format('Y-m-d');
+    $cursor = $cursor->modify('+1 day');
+}
+$nights = count($nightsList);
+$byDay = HouseRepository::calendarForNights((int) $property['id'], $nightsList);
+$subtotal = 0;
+$nightPriceCounts = [];
+foreach ($nightsList as $d) {
+    $p = $overridePrice ?? (int) ($byDay[$d]['price'] ?? $property['nightly_price']);
+    $subtotal += $p;
+    $nightPriceCounts[$p] = ($nightPriceCounts[$p] ?? 0) + 1;
+}
+
 $baseNightly = (int) $property['nightly_price'];
 $cleaningFee = (int) ($property['cleaning_fee'] ?? 0);
-$subtotal = $baseNightly * $nights;
 $estimatedTotal = $subtotal + $cleaningFee;
 $propPixKey = (string) (!empty($property['pix_key']) ? $property['pix_key'] : 'rafaelrieiro@gmail.com');
+
+$formulaParts = [];
+foreach ($nightPriceCounts as $p => $cnt) {
+    $formulaParts[] = $cnt . ' x ' . money((int) $p);
+}
+$rateBreakdownStr = implode(' + ', $formulaParts);
 ?>
 <section class="quote-page wrap">
     <!-- Header Hero Luxury -->
@@ -139,6 +164,9 @@ $propPixKey = (string) (!empty($property['pix_key']) ? $property['pix_key'] : 'r
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <input type="hidden" name="checkin" value="<?= e($checkin) ?>">
         <input type="hidden" name="checkout" value="<?= e($checkout) ?>">
+        <?php if ($overridePrice !== null): ?>
+            <input type="hidden" name="price" value="<?= e((string) $overridePrice) ?>">
+        <?php endif; ?>
 
         <div class="quote-form-card-body">
             <!-- Box de Datas Verificadas -->
@@ -158,11 +186,17 @@ $propPixKey = (string) (!empty($property['pix_key']) ? $property['pix_key'] : 'r
                     </div>
                 </div>
                 <div class="quote-verified-rates">
-                    <span>Diária base: <strong><?= money($baseNightly) ?></strong></span>
+                    <?php if (count($nightPriceCounts) === 1): ?>
+                        <span>Diária: <strong><?= money(array_key_first($nightPriceCounts)) ?></strong></span>
+                    <?php else: ?>
+                        <span>Diárias: <strong><?= e($rateBreakdownStr) ?></strong></span>
+                    <?php endif; ?>
                     <span>·</span>
                     <span>Subtotal: <strong><?= money($subtotal) ?></strong></span>
                     <span>·</span>
                     <span>Limpeza: <strong><?= money($cleaningFee) ?></strong></span>
+                    <span>·</span>
+                    <span>Total: <strong><?= money($estimatedTotal) ?></strong></span>
                 </div>
                 <div class="quote-pix-info">
                     <span><?= e(t('quote.pix_key_label')) ?>:</span>
