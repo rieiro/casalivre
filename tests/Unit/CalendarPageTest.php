@@ -151,4 +151,52 @@ public function testCalendarViewRendersSideBySidePriceAndMinNightsWithShortenedL
         $this->assertStringContainsString("placeholder=\"" . t("cal.price_hint") . "\"", $html);
         $this->assertStringContainsString("data-min-label>" . t("cal.min_nights") . "<", $html);
     }
+public function testCalendarViewRendersSideBySideActionButtonsWithShortenedLabels(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Casa Teste",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // Must have .cal-actions container wrapping the action buttons
+        $this->assertStringContainsString("class=\"cal-actions\"", $html);
+
+        // Order must be Block, Open, Save (left to right)
+        $blockPos = strpos($html, "data-cal-block");
+        $openPos = strpos($html, "data-cal-open");
+        $savePos = strpos($html, "data-cal-save");
+        $this->assertNotFalse($blockPos, "block button must exist");
+        $this->assertNotFalse($openPos, "open button must exist");
+        $this->assertNotFalse($savePos, "save button must exist");
+        $this->assertLessThan($openPos, $blockPos, "Block button must be before Open button");
+        $this->assertLessThan($savePos, $openPos, "Open button must be before Save button");
+
+        // Translations shortened to Block, Open, Save
+        $this->assertSame("Bloquear", t("cal.block"));
+        $this->assertSame("Abrir", t("cal.open_action"));
+        $this->assertSame("Salvar", t("cal.save_changes"));
+
+        // Rendered buttons must display the shortened text
+        $this->assertStringContainsString("data-cal-block disabled>" . t("cal.block") . "<", $html);
+        $this->assertStringContainsString("data-cal-open disabled>" . t("cal.open_action") . "<", $html);
+        $this->assertStringContainsString("data-cal-save disabled>" . t("cal.save_changes") . "<", $html);
+    }
 }
