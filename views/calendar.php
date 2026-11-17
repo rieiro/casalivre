@@ -95,7 +95,7 @@ $feeds = $feeds ?? [];
                 <button class="primary is-off" type="submit" name="acao" value="salvar" data-cal-save disabled><?= e(t('cal.save_changes')) ?></button>
             </div>
             <button class="primary is-off" type="submit" name="acao" value="cotacao" data-cal-quote disabled><?= e(t('cal.generate_quote')) ?></button>
-            <p class="muted"><?= e(t('cal.sync_locked')) ?></p>
+            <p class="muted cal-sync-locked"><?= e(t('cal.sync_locked')) ?></p>
         </form>
     </div>
     <div class="sync-board">

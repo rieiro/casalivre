@@ -199,4 +199,47 @@ public function testCalendarViewRendersSideBySideActionButtonsWithShortenedLabel
         $this->assertStringContainsString("data-cal-open disabled>" . t("cal.open_action") . "<", $html);
         $this->assertStringContainsString("data-cal-save disabled>" . t("cal.save_changes") . "<", $html);
     }
+public function testCalendarMobileResponsiveCompactLayout(): void
+    {
+        $property = [
+            "id" => 1,
+            "title" => "Casa Teste",
+            "hash" => "abcdef0123456789",
+            "calendar_horizon_months" => 3,
+            "nightly_price" => 250,
+            "min_nights" => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $csrf = "test_csrf";
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . "/views/calendar.php";
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        // View must tag sync-locked warning with cal-sync-locked class for media query target
+        $this->assertStringContainsString("cal-sync-locked", $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+
+        // Legend must be hidden on mobile
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-legend\\s*\\{\\s*display:\\s*none;/s", $css);
+
+        // Sync locked note must be hidden on mobile
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-sync-locked\\s*\\{\\s*display:\\s*none;/s", $css);
+
+        // Calendar section must have compact mobile rules (e.g. smaller cal-day, cal-months)
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-day\\s*\\{\\s*min-height:\\s*3[0-9]px;/s", $css);
+
+        // Sync board / sync table and add feed form must have mobile compact sizing
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?data-feed-form/s", $css);
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.sync-table/s", $css);
+    }
 }
