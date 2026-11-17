@@ -30,13 +30,16 @@
                 CL.photoImg(item.photo, '(max-width: 600px) 100vw, 400px', item.title || ''),
                 el('span', { className: 'dash-card-badge' }, page.active || '✓ Ativo')
             ];
-            if (price > 0) {
-                mediaChildren.push(el('span', { className: 'dash-card-price' }, 'R$ ' + price.toLocaleString('pt-BR') + ' ' + (page.per_night || '/ noite')));
-            }
             const media = el('div', { className: 'dash-card-media' }, ...mediaChildren);
 
             const titleLink = el('a', { href: '/imoveis/' + ref }, item.title || '');
             const title = el('h2', { className: 'dash-card-title' }, titleLink);
+
+            const headerRowChildren = [title];
+            if (price > 0) {
+                headerRowChildren.push(el('span', { className: 'dash-card-price' }, 'R$ ' + price.toLocaleString('pt-BR') + ' ' + (page.per_night || '/ noite')));
+            }
+            const headerRow = el('div', { className: 'dash-card-header' }, ...headerRowChildren);
 
             const metaParts = ['📍 ' + (item.city || '')];
             if (guests > 0) {
@@ -50,7 +53,7 @@
 
             const actions = el('div', { className: 'dash-card-actions' }, btnCal, btnEdit, btnView);
 
-            const body = el('div', { className: 'dash-card-body body' }, title, meta, actions);
+            const body = el('div', { className: 'dash-card-body body' }, headerRow, meta, actions);
 
             return el('article', { className: 'dash-card card' }, media, body);
         });

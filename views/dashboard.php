@@ -95,14 +95,16 @@ $csrf = $csrf ?? '';
                             <div class="dash-card-media">
                                 <img src="<?= e($photoSrc) ?>" alt="Foto de <?= e($title) ?>" loading="lazy">
                                 <span class="dash-card-badge">✓ Ativo</span>
-                                <?php if ($price > 0): ?>
-                                    <span class="dash-card-price">R$ <?= number_format($price, 0, ',', '.') ?> <small>/ noite</small></span>
-                                <?php endif; ?>
                             </div>
                             <div class="dash-card-body">
-                                <h2 class="dash-card-title">
-                                    <a href="/imoveis/<?= e($ref) ?>"><?= e($title) ?></a>
-                                </h2>
+                                <div class="dash-card-header">
+                                    <h2 class="dash-card-title">
+                                        <a href="/imoveis/<?= e($ref) ?>"><?= e($title) ?></a>
+                                    </h2>
+                                    <?php if ($price > 0): ?>
+                                        <span class="dash-card-price">R$ <?= number_format($price, 0, ',', '.') ?> <small>/ noite</small></span>
+                                    <?php endif; ?>
+                                </div>
                                 <p class="dash-card-meta">
                                     <span>📍 <?= e($city) ?></span>
                                     <?php if ($guests > 0): ?>

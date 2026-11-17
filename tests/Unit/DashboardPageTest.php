@@ -148,4 +148,37 @@ final class DashboardPageTest extends TestCase
         $this->assertStringNotContainsString('is-delete', $js);
         $this->assertStringNotContainsString('btnDelete', $js);
     }
+    public function testDashboardUsesFrugalHorizontalCardLayout(): void
+    {
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
+        $this->assertStringContainsString(".dash-card {", $css);
+        $this->assertStringContainsString("flex-direction: row;", $css);
+        $this->assertStringContainsString("flex-direction: column;", $css);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/dashboard.js");
+        $this->assertStringContainsString("dash-card-header", $js);
+
+        ob_start();
+        $properties = [
+            [
+                "id" => 1,
+                "public_hash" => "abcdef0123456789",
+                "title" => "Casa Teste",
+                "city" => "Florianópolis",
+                "nightly_price" => 300,
+                "max_guests" => 4,
+                "photo" => null,
+                "status" => "active",
+                "created_at" => "2026-01-01 12:00:00",
+            ]
+        ];
+        $use_api = false;
+        $quotes_count = 1;
+        $pending_count = 0;
+        $csrf = "csrf_token_test";
+        require dirname(__DIR__, 2) . "/views/dashboard.php";
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString("dash-card-header", $html);
+    }
 }
