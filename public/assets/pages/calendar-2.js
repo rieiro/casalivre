@@ -202,9 +202,7 @@
             minInput.value = sameMin ? mins[0] : '';
         }
         if (minLabel && form) {
-            minLabel.textContent = first === last
-                ? fill(form.dataset.minFrom, [stamp(first)])
-                : fill(form.dataset.minRange, [stamp(first), stamp(last)]);
+            minLabel.textContent = form.dataset.minDefault || 'Min. nights';
         }
         updateSummaryTable(chosenDays);
         resetEdited();

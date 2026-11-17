@@ -409,4 +409,13 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString("minNights", $indexPhp);
         $this->assertStringContainsString("Estadia mínima de", $indexPhp);
     }
+
+    public function testCalendarMinimumNightsLabelDoesNotChangeToDateRangeOnSelection(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/calendar-2.js");
+        // minLabel must retain the standard minimum nights label and not be replaced by date ranges like 'Min 25-nov to 26-nov'
+        $this->assertStringNotContainsString("minLabel.textContent = first === last", $js);
+        $this->assertStringNotContainsString("form.dataset.minRange", $js);
+        $this->assertStringContainsString("minLabel.textContent = form.dataset.minDefault", $js);
+    }
 }
