@@ -66,8 +66,9 @@
                 });
                 if (val > 0 && currentChosen.length > 0) {
                     const subtotal = currentChosen.length * val;
+                    const cleaningFee = Number((form && form.dataset.cleaningFee) || 0);
                     const taxPercent = Number((form && form.dataset.taxPercent) || 0);
-                    const taxes = Math.round((subtotal * taxPercent) / 100);
+                    const taxes = cleaningFee + Math.round((subtotal * taxPercent) / 100);
                     const total = subtotal + taxes;
                     if (stayFormula) {
                         stayFormula.textContent = currentChosen.length + ' x R$ ' + Number(val).toLocaleString('pt-BR');
@@ -109,8 +110,9 @@
         Object.keys(priceCounts).forEach((p) => {
             formulaParts.push(priceCounts[p] + ' x R$ ' + Number(p).toLocaleString('pt-BR'));
         });
+        const cleaningFee = Number((form && form.dataset.cleaningFee) || 0);
         const taxPercent = Number((form && form.dataset.taxPercent) || 0);
-        const taxes = Math.round((subtotal * taxPercent) / 100);
+        const taxes = cleaningFee + Math.round((subtotal * taxPercent) / 100);
         const total = subtotal + taxes;
 
         if (stayFormula) {
