@@ -289,8 +289,8 @@ footer { padding: var(--space-16); }
 .cal-day.prereserva, .cal-day.pre-reserva { background: var(--cal-prereserva); color: #fff; border-color: #14532d; }
 .cal-day.prereserva .cal-corner, .cal-day.prereserva .cal-main, .cal-day.pre-reserva .cal-corner, .cal-day.pre-reserva .cal-main { color: #fff; }
 .cal-board[data-cal-mode="price"] .cal-day.prereserva .cal-main, .cal-board[data-cal-mode="price"] .cal-day.pre-reserva .cal-main, .cal-board[data-cal-mode="min"] .cal-day.prereserva .cal-main, .cal-board[data-cal-mode="min"] .cal-day.pre-reserva .cal-main { color: #fff; }
-.cal-legend { display: flex; flex-wrap: wrap; gap: var(--space-12) var(--space-18); list-style: none; padding: 0; margin: 0 0 var(--space-16); }
-.cal-legend li { display: flex; align-items: center; gap: var(--space-8); }
+.cal-legend { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: center; gap: var(--space-6); list-style: none; padding: var(--space-8) var(--space-4) 0; margin: var(--space-8) 0 0; font-size: 0.78rem; border-top: 1px solid var(--line); }
+.cal-legend li { display: inline-flex; align-items: center; gap: var(--space-4); white-space: nowrap; }
 .swatch { width: 18px; height: 18px; border-radius: var(--radius-4); border: 1px solid var(--line); display: inline-block; }
 .swatch.open { background: var(--surface); }
 .swatch.sistema { background: var(--cal-blocked); }
@@ -337,7 +337,12 @@ footer { padding: var(--space-16); }
     .cal-nav { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; min-height: 36px; padding: 0; font-weight: 700; }
     .cal-month h2 { margin: 0; font-size: 1rem; }
     .cal-summary { display: none; }
-    .cal-legend { display: none; }
+    .cal-legend { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: center; gap: 4px; list-style: none; padding: var(--space-6) 0 0; margin: var(--space-6) 0 0; font-size: .68rem; border-top: 1px solid var(--line); }
+    .cal-legend li { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .cal-legend .swatch { width: 10px; height: 10px; }
+    .cal-view button { min-height: 28px; padding: var(--space-4) var(--space-2); font-size: .75rem; border-radius: var(--radius-6); }
+    .cal-actions button { min-height: 32px; padding: var(--space-4) var(--space-2); font-size: .78rem; }
+    .cal-controls button[data-cal-quote] { min-height: 32px; padding: var(--space-4) var(--space-6); font-size: .82rem; }
     .cal-sync-locked { display: none; }
     .cal-months { padding: var(--space-10) var(--space-12); gap: var(--space-12); }
     .cal-month-head { margin-bottom: var(--space-4); }

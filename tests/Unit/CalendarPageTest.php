@@ -229,8 +229,8 @@ public function testCalendarMobileResponsiveCompactLayout(): void
 
         $css = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/app.css");
 
-        // Legend must be hidden on mobile
-        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-legend\\s*\\{\\s*display:\\s*none;/s", $css);
+        // Updated: 2026-11 - Requirement changed from hiding .cal-legend on mobile to showing it as a compact single line directly under month dates
+        $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-legend\\s*\\{[^}]*display:\\s*flex;/s", $css);
 
         // Sync locked note must be hidden on mobile
         $this->assertMatchesRegularExpression("/@media\\s*\\(max-width:\\s*800px\\).*?\\.cal-sync-locked\\s*\\{\\s*display:\\s*none;/s", $css);
@@ -417,5 +417,35 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString("minLabel.textContent = first === last", $js);
         $this->assertStringNotContainsString("form.dataset.minRange", $js);
         $this->assertStringContainsString("minLabel.textContent = form.dataset.minDefault", $js);
+    }
+
+    public function testCalendarLegendIsShortenedAndMobileReducesButtonHeights(): void
+    {
+        ob_start();
+        $property = [
+            'id' => 1,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'cleaning_fee' => 0,
+            'nightly_price' => 200,
+            'min_nights' => 2,
+            'calendar_months' => 3,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Legend must be placed inside cal-month under cal-grid
+        $this->assertMatchesRegularExpression('/class="cal-grid".*?class="cal-legend"/s', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+
+        // Mobile CSS must reduce heights of view buttons and action buttons
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-view\s+button\s*\{[^}]*min-height:\s*(?:2[0-9]|3[0-2])px;/s', $css);
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-actions\s+button\s*\{[^}]*min-height:\s*(?:2[0-9]|3[2-6])px;/s', $css);
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?button\[data-cal-quote\]\s*\{[^}]*min-height:\s*(?:2[0-9]|3[2-6])px;/s', $css);
     }
 }
