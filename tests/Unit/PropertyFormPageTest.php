@@ -316,4 +316,47 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('22:00', $hintPt);
         $this->assertStringContainsString('07:00', $hintPt);
     }
+
+    public function testPropertyFormAdoptsFrugalLayoutAndMobileCleanMenu(): void
+    {
+        ob_start();
+        $property = null;
+        $error = null;
+        $posted = [];
+        $csrf = 'csrf_token_test';
+        $photos = [];
+        require dirname(__DIR__, 2) . '/views/property_form.php';
+        $htmlNew = (string) ob_get_clean();
+
+        // New mode should not render luxury badge or decorative description
+        $this->assertStringNotContainsString('dash-badge-eyebrow', $htmlNew);
+        $this->assertStringNotContainsString('Cadastre sua propriedade para receber hóspedes', $htmlNew);
+
+        // Edit mode check
+        $prop = $this->pdo->query('SELECT * FROM properties LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        if ($prop) {
+            ob_start();
+            $property = $prop;
+            $error = null;
+            $posted = [];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $htmlEdit = (string) ob_get_clean();
+
+            $this->assertStringNotContainsString('CONFIGURAÇÕES DO IMÓVEL', $htmlEdit);
+            $this->assertStringNotContainsString('Atualize as informações, fotos, comodidades', $htmlEdit);
+        }
+
+        // Layout.php must assign page-property-form class
+        $layoutSrc = (string) file_get_contents(dirname(__DIR__, 2) . '/views/layout.php');
+        $this->assertStringContainsString('page-property-form', $layoutSrc);
+
+        // CSS must hide header.top and footer on mobile
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertStringContainsString('body:has(.prop-form-page) header.top', $css);
+        $this->assertStringContainsString('body:has(.prop-form-page) footer', $css);
+        $this->assertStringContainsString('.prop-form-header {', $css);
+        $this->assertMatchesRegularExpression('/\\.prop-form-header\\s*\\{[^}]*background:\\s*var\\(--surface\\)/', $css);
+    }
 }

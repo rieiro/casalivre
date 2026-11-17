@@ -48,18 +48,14 @@ if ($latValue === '' && $lngValue === '') {
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">
 <section class="prop-form-page wrap">
-    <!-- Header Hero Luxury -->
+    <!-- Header Frugal -->
     <div class="prop-form-header">
         <a class="prop-form-back-link" href="/painel">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
             <span>Voltar ao Painel</span>
         </a>
         <div class="prop-form-header-content">
-            <span class="dash-badge-eyebrow"><?= $editing ? 'CONFIGURAÇÕES DO IMÓVEL' : 'NOVO ANÚNCIO' ?></span>
             <h1 class="dash-header-title"><?= $editing ? e(t('form.edit')) : e(t('form.new')) ?></h1>
-            <p class="dash-header-desc">
-                <?= $editing ? 'Atualize as informações, fotos, comodidades e valores do seu imóvel com facilidade.' : 'Cadastre sua propriedade para receber hóspedes e gerenciar reservas diretamente via Pix.' ?>
-            </p>
         </div>
     </div>
 
