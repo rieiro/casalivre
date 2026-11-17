@@ -98,7 +98,7 @@ $error = $error ?? null;
                 $pixKey = (string) ($q['pix_key'] ?? '');
 
                 // WhatsApp URL
-                $appUrl = app_url();
+                $appUrl = request_base();
                 $paymentUrl = $appUrl . '/pagamento/' . $quoteHash;
                 $checkinFmt = format_date((string) $q['checkin']);
                 $checkoutFmt = format_date((string) $q['checkout']);

@@ -640,7 +640,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method ===
                     pixKey: $pixKey,
                     overridePrice: $overridePrice
                 );
-                $appUrl = app_url();
+                $appUrl = request_base();
                 $paymentUrl = $appUrl . '/pagamento/' . $quote['quote_hash'];
                 $checkinFmt = format_date($checkin);
                 $checkoutFmt = format_date($checkout);

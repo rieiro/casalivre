@@ -143,7 +143,7 @@ $rateBreakdownStr = implode(' + ', $formulaParts);
                 <a href="https://wa.me/?text=<?= urlencode($whatsapp_msg) ?>" target="_blank" class="btn-res-link" style="border-color: #25d366; color: #128c7e;">
                     <span>Abrir no WhatsApp ↗</span>
                 </a>
-                <a href="<?= e($payment_url) ?>" target="_blank" class="btn-res-link">
+                <a href="/pagamento/<?= e($quote['quote_hash']) ?>" target="_blank" class="btn-res-link">
                     <span><?= e(t('quote.open_guest_page')) ?></span>
                 </a>
             </div>
