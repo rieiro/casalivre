@@ -47,7 +47,6 @@
                     })));
                 }
 
-                const page = Number(data.page) || Number(params.get('pagina')) || 1;
                 const totalPages = Number(data.total_pages) || (typeof total === 'number' ? Math.max(1, Math.ceil(total / (data.per_page || 20))) : 1);
 
                 if (totalPages > 1) {

@@ -158,4 +158,10 @@ final class SearchPaginationTest extends TestCase
         $js = (string) file_get_contents(dirname(__DIR__, 2) . "/public/assets/pages/search.js");
         $this->assertStringContainsString("items.length === 0", $js);
     }
+    public function testSearchJsHasValidSyntax(): void
+    {
+        $jsPath = dirname(__DIR__, 2) . "/public/assets/pages/search.js";
+        exec("node -c " . escapeshellarg($jsPath), $output, $returnCode);
+        $this->assertSame(0, $returnCode, "search.js must have valid syntax with no duplicate identifier errors");
+    }
 }
