@@ -45,11 +45,21 @@
                 if (typeof CL.openPhotoGallery === "function") CL.openPhotoGallery(photos, index);
             };
             const photoButton = (photo, index, sizes, alt) => {
+                const bgImg = el("img", {
+                    className: "prop-view-photo-bg",
+                    src: CL.photoUrl(photo.path),
+                    alt: "",
+                    "aria-hidden": "true",
+                    loading: "lazy"
+                });
+                const fgImg = CL.photoImg(photo.path, sizes, alt);
+                fgImg.className = "prop-view-photo-fg";
+
                 const btn = el("button", {
                     type: "button",
                     className: "prop-view-photo-open",
                     "data-photo-index": String(index)
-                }, CL.photoImg(photo.path, sizes, alt));
+                }, bgImg, fgImg);
                 btn.addEventListener("click", () => openAt(index));
                 return btn;
             };

@@ -376,4 +376,26 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('JSON_HEX_TAG', $view);
         $this->assertSame(3, substr_count($messages, "'gallery.close'"));
     }
+
+    public function testPropertyViewMosaicUsesAmbientBlurAndContain(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $css = (string) file_get_contents($root . '/public/assets/app.css');
+        $js = (string) file_get_contents($root . '/public/assets/pages/property.js');
+        $view = (string) file_get_contents($root . '/views/property.php');
+
+        // CSS assertions
+        $this->assertStringContainsString('.prop-view-photo-bg', $css);
+        $this->assertStringContainsString('filter: blur', $css);
+        $this->assertStringContainsString('.prop-view-photo-fg', $css);
+        $this->assertStringContainsString('object-fit: contain', $css);
+
+        // JS client-side rendering assertions
+        $this->assertStringContainsString('prop-view-photo-bg', $js);
+        $this->assertStringContainsString('prop-view-photo-fg', $js);
+
+        // SSR template assertions
+        $this->assertStringContainsString('prop-view-photo-bg', $view);
+        $this->assertStringContainsString('prop-view-photo-fg', $view);
+    }
 }

@@ -55,20 +55,23 @@ $amenityIcons = Amenities::ICONS;
             <?php elseif (count($photos) === 1): ?>
                 <div class="prop-view-photo-single">
                     <button type="button" class="prop-view-photo-open" data-photo-index="0">
-                        <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 1200px') ?> alt="Foto de <?= e($property['title']) ?>" loading="eager">
+                        <img class="prop-view-photo-bg" src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>" alt="" aria-hidden="true" loading="lazy">
+                        <img class="prop-view-photo-fg" src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 1200px') ?> alt="Foto de <?= e($property['title']) ?>" loading="eager">
                     </button>
                 </div>
             <?php else: ?>
                 <div class="prop-view-photo-main">
                     <button type="button" class="prop-view-photo-open" data-photo-index="0">
-                        <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 700px') ?> alt="Foto principal de <?= e($property['title']) ?>" loading="eager">
+                        <img class="prop-view-photo-bg" src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>" alt="" aria-hidden="true" loading="lazy">
+                        <img class="prop-view-photo-fg" src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 700px') ?> alt="Foto principal de <?= e($property['title']) ?>" loading="eager">
                     </button>
                 </div>
                 <div class="prop-view-photo-grid">
                     <?php foreach (array_slice($photos, 1, 4) as $idx => $photo): ?>
                         <div class="prop-view-photo-item<?= ($idx === 3 && count($photos) > 5) ? ' has-more' : '' ?>">
                             <button type="button" class="prop-view-photo-open" data-photo-index="<?= (int) $idx + 1 ?>">
-                                <img src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>"<?= photo_srcset_attr($photo['path'], '(max-width: 600px) 50vw, 350px') ?> alt="Foto de <?= e($property['title']) ?>" loading="lazy">
+                                <img class="prop-view-photo-bg" src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>" alt="" aria-hidden="true" loading="lazy">
+                                <img class="prop-view-photo-fg" src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>"<?= photo_srcset_attr($photo['path'], '(max-width: 600px) 50vw, 350px') ?> alt="Foto de <?= e($property['title']) ?>" loading="lazy">
                             </button>
                             <?php if ($idx === 3 && count($photos) > 5): ?>
                                 <div class="prop-view-more-badge">
