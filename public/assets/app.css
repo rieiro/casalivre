@@ -3970,7 +3970,9 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     border-radius: 20px;
     overflow: hidden;
     margin-bottom: 2.5rem;
+    height: 480px;
     max-height: 480px;
+    grid-template-rows: minmax(0, 1fr);
     box-shadow: 0 10px 30px -10px rgba(0, 35, 80, 0.12);
     background: #0b1120;
 }
@@ -3991,7 +3993,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .prop-view-photo-main {
     position: relative;
     height: 100%;
-    min-height: 380px;
+    min-height: 0;
     overflow: hidden;
     background: #0b1120;
 }
@@ -4004,9 +4006,10 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .prop-view-photo-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
     height: 100%;
+    min-height: 0;
 }
 .prop-view-photo-item {
     position: relative;
@@ -4040,7 +4043,8 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 
 /* Sharp foreground photo — 100% visible, never cropped */
 .prop-view-photo-fg {
-    position: relative;
+    position: absolute;
+    inset: 0;
     z-index: 2;
     width: 100%;
     height: 100%;
@@ -4388,6 +4392,8 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 @media (max-width: 900px) {
     .prop-view-mosaic {
         grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        height: auto;
         max-height: none;
     }
     .prop-view-photo-main {
