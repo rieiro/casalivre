@@ -389,7 +389,16 @@ document.querySelectorAll('[data-photo-select]').forEach((form) => {
             return;
         }
         const selected = selectedBoxes().length;
-        if (selected === 0 || !window.confirm(form.dataset.confirm || '')) {
+        if (selected === 0) {
+            event.preventDefault();
+            return;
+        }
+        // Quando CL.confirm está disponível (como em páginas gerenciadas), a confirmação e toast
+        // amigáveis são coordenadas pelo script da página. Fallback para window.confirm caso contrário.
+        if (window.CL && typeof window.CL.confirm === 'function') {
+            return;
+        }
+        if (!window.confirm(form.dataset.confirm || '')) {
             event.preventDefault();
         }
     });

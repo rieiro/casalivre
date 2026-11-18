@@ -358,6 +358,78 @@
         });
     }
 
+    // --- 4. Friendly Photo Deletion Notification & Confirmation ---
+    function setupPhotoDeletion() {
+        // Exibir notificação amigável de sucesso se recém-excluído via reload/flash
+        try {
+            const deletedNotice = sessionStorage.getItem('photo_deleted_toast');
+            if (deletedNotice) {
+                sessionStorage.removeItem('photo_deleted_toast');
+                const data = JSON.parse(deletedNotice);
+                showToast(data.type || 'success', data.title || 'Fotos excluídas com sucesso', data.message || 'As fotos selecionadas foram removidas.');
+            }
+        } catch (_) {}
+
+        const galleryForm = document.querySelector('form.prop-gallery-form');
+        if (!galleryForm) return;
+
+        galleryForm.addEventListener('submit', async function (ev) {
+            const isSingleRemove = ev.submitter && ev.submitter.hasAttribute('data-photo-remove');
+            const selectedCheckboxes = galleryForm.querySelectorAll('.photo-check:checked');
+            const count = selectedCheckboxes.length;
+
+            if (!isSingleRemove && count === 0) {
+                ev.preventDefault();
+                return;
+            }
+
+            ev.preventDefault();
+
+            const title = isSingleRemove
+                ? 'Remover foto com falha?'
+                : (count === 1 ? 'Apagar foto selecionada?' : 'Apagar fotos selecionadas?');
+            const message = isSingleRemove
+                ? 'A imagem com falha será removida permanentemente. Deseja continuar?'
+                : (count === 1
+                    ? 'A foto selecionada será removida permanentemente do imóvel. Deseja continuar?'
+                    : 'As ' + count + ' fotos selecionadas serão removidas permanentemente do imóvel. Deseja continuar?');
+            const confirmBtnText = isSingleRemove ? 'Sim, remover' : 'Sim, apagar';
+
+            const confirmed = window.CL && typeof window.CL.confirm === 'function'
+                ? await window.CL.confirm({
+                    title: title,
+                    message: message,
+                    confirmText: confirmBtnText,
+                    cancelText: 'Cancelar',
+                    danger: true
+                })
+                : window.confirm(galleryForm.dataset.confirm || 'Apagar fotos?');
+
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                sessionStorage.setItem('photo_deleted_toast', JSON.stringify({
+                    type: 'success',
+                    title: 'Fotos excluídas com sucesso',
+                    message: isSingleRemove
+                        ? 'A foto com falha foi removida.'
+                        : (count === 1 ? 'A foto selecionada foi removida.' : count + ' fotos foram removidas com sucesso.')
+                }));
+            } catch (_) {}
+
+            showToast('info', 'Excluindo fotos...', 'Removendo imagens do imóvel.');
+
+            if (isSingleRemove && ev.submitter.getAttribute('formaction')) {
+                galleryForm.setAttribute('action', ev.submitter.getAttribute('formaction'));
+            }
+
+            HTMLFormElement.prototype.submit.call(galleryForm);
+        });
+    }
+    setupPhotoDeletion();
+
     const deletePropForm = document.querySelector('form[action*="/excluir"]:not([action*="/fotos/"])');
     if (deletePropForm) {
         deletePropForm.addEventListener('submit', async function (ev) {
