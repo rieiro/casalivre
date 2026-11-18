@@ -359,4 +359,13 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('.prop-form-header {', $css);
         $this->assertMatchesRegularExpression('/\\.prop-form-header\\s*\\{[^}]*background:\\s*var\\(--surface\\)/', $css);
     }
+    public function testPhotoDeletionUsesFriendlyConfirmationAndNotification(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringContainsString('setupPhotoDeletion', $js);
+        $this->assertStringContainsString('CL.confirm', $js);
+        $this->assertStringContainsString('Apagar fotos selecionadas?', $js);
+        $this->assertStringContainsString('showToast', $js);
+        $this->assertStringContainsString('Fotos excluídas com sucesso', $js);
+    }
 }
