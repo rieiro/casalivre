@@ -1,0 +1,18 @@
+# CasaLivre
+
+CasaLivre lists seasonal rentals in Brazil. Prices are whole reais (BRL), not cents.
+
+Canonical listing: https://casalivre.com.br/imoveis/{public_hash}
+{public_hash} is 16 lowercase hex characters. There is no slug.
+
+Full catalog (active listings only): /llms-full.txt
+Machine API: /openapi.json
+Search: /api/v1/agent/search
+One listing: /api/v1/agent/properties/{public_hash}
+Quote (no hold): /api/v1/agent/properties/{public_hash}/quote
+Hold for 15 minutes: POST /api/v1/agent/properties/{public_hash}/intent
+MCP: POST /mcp
+
+A hold returns a checkout URL. It does not confirm a stay, charge a card, or block the calendar.
+Do not request host CPF, the host Pix key, the street address, or an iCal URL. They are not in these responses.
+Group domains show only that group's listings.

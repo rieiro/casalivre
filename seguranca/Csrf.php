@@ -35,7 +35,14 @@ final class Csrf implements Middleware
     {
         $method = strtoupper((string) ($request['method'] ?? 'GET'));
         $path = (string) ($request['path'] ?? '/');
-        if (in_array($method, self::WRITE_METHODS, true) && !in_array($path, $this->semCsrf, true) && !$this->valid()) {
+        $isSemCsrf = false;
+        foreach ($this->semCsrf as $exempt) {
+            if ($exempt === $path || (str_starts_with($exempt, '#') && preg_match($exempt, $path) === 1)) {
+                $isSemCsrf = true;
+                break;
+            }
+        }
+        if (in_array($method, self::WRITE_METHODS, true) && !$isSemCsrf && !$this->valid()) {
             ($this->recusar)('csrf', $path);
             exit;
         }

@@ -11,3 +11,7 @@ vendor/
 
 # Tiles do mapa (PMTiles, vários GB): nunca no git; ver prompts/mapa-pmtiles.md
 *.pmtiles
+
+# Agent & LLM temporary files
+.env.agents
+.tmp/
