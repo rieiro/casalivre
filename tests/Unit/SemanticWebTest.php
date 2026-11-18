@@ -89,4 +89,115 @@ final class SemanticWebTest extends TestCase
         unset($_SERVER['HTTP_ACCEPT']);
         $this->assertFalse(prefers_markdown());
     }
+
+    public function testPublicListingSeparatesHouseRulesFromAmenitiesAndClarifiesQuietHours(): void
+    {
+        $house = [
+            'id' => 9999,
+            'user_id' => 1,
+            'title' => 'Casa Teste Regras',
+            'city' => 'Rio de Janeiro',
+            'uf' => 'RJ',
+            'bedrooms' => 2,
+            'beds' => 2,
+            'max_guests' => 4,
+            'nightly_price' => 30000,
+            'cleaning_fee' => 5000,
+            'min_nights' => 2,
+            'checkin_time' => '14:00',
+            'checkout_time' => '11:00',
+            'amenities' => json_encode([
+                'wifi' => 1,
+                'ac' => 1,
+                'noise' => 1,
+                'noise_from' => '22:00',
+                'noise_until' => '07:00',
+                'pets' => 1,
+                'wet_elevator' => 1,
+                'smoking' => 0,
+                'parties' => 0,
+            ]),
+            'public_hash' => '1234567890abcdef',
+            'status' => 'active',
+            'rating_count' => 0,
+            'rating_sum' => 0,
+        ];
+
+        $listing = public_listing($house);
+
+        // Amenities must exclude house rule keys
+        $this->assertContains('wifi', $listing['amenities']);
+        $this->assertContains('ac', $listing['amenities']);
+        $this->assertNotContains('noise', $listing['amenities']);
+        $this->assertNotContains('pets', $listing['amenities']);
+        $this->assertNotContains('wet_elevator', $listing['amenities']);
+        $this->assertNotContains('smoking', $listing['amenities']);
+        $this->assertNotContains('parties', $listing['amenities']);
+
+        // House rules must be explicitly structured
+        $this->assertArrayHasKey('house_rules', $listing);
+        $rules = $listing['house_rules'];
+        $this->assertTrue($rules['quiet_hours']['enabled']);
+        $this->assertSame('22:00', $rules['quiet_hours']['from']);
+        $this->assertSame('07:00', $rules['quiet_hours']['until']);
+        $this->assertStringContainsString('proibido', strtolower($rules['quiet_hours']['description']));
+        $this->assertTrue($rules['pets_allowed']);
+        $this->assertFalse($rules['smoking_allowed']);
+        $this->assertTrue($rules['wet_clothes_in_elevator_prohibited']);
+        $this->assertFalse($rules['parties_allowed']);
+
+        // Top level quiet hours aliases
+        $this->assertSame('22:00', $listing['quiet_hours_from']);
+        $this->assertSame('07:00', $listing['quiet_hours_until']);
+    }
+
+    public function testMarkdownRenderingSeparatesHouseRulesAndClarifiesQuietHours(): void
+    {
+        $house = [
+            'id' => 9999,
+            'user_id' => 1,
+            'title' => 'Casa Teste Markdown Regras',
+            'city' => 'Rio de Janeiro',
+            'uf' => 'RJ',
+            'bedrooms' => 2,
+            'beds' => 2,
+            'max_guests' => 4,
+            'nightly_price' => 30000,
+            'cleaning_fee' => 5000,
+            'min_nights' => 2,
+            'checkin_time' => '14:00',
+            'checkout_time' => '11:00',
+            'summary' => 'Casa aconchegante perto da praia.',
+            'description' => 'Descrição completa do imóvel.',
+            'amenities' => json_encode([
+                'wifi' => 1,
+                'ac' => 1,
+                'noise' => 1,
+                'noise_from' => '22:00',
+                'noise_until' => '07:00',
+                'pets' => 1,
+                'wet_elevator' => 1,
+            ]),
+            'public_hash' => '1234567890abcdef',
+            'status' => 'active',
+            'rating_count' => 0,
+            'rating_sum' => 0,
+        ];
+
+        $listing = public_listing($house);
+        $md = render_property_markdown($listing, 'casalivre.com.br');
+
+        // Amenities string must NOT contain noise or pets or wet_elevator
+        $this->assertMatchesRegularExpression('/amenities:\s*.*wifi/i', $md);
+        $this->assertDoesNotMatchRegularExpression('/amenities:\s*.*noise/i', $md);
+        $this->assertDoesNotMatchRegularExpression('/amenities:\s*.*pets/i', $md);
+
+        // Dedicated house rules section
+        $this->assertStringContainsString('## Regras da Casa', $md);
+        $this->assertStringContainsString('22:00', $md);
+        $this->assertStringContainsString('07:00', $md);
+        // Explicitly clarifies that noise is forbidden during quiet hours
+        $this->assertMatchesRegularExpression('/(silêncio|quiet hours).*?(proibido|não é permitido|no noise)/i', $md);
+        $this->assertStringContainsString('animais', strtolower($md));
+    }
 }

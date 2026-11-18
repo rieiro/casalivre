@@ -24,13 +24,16 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
     $photos = api_public_photos(PhotoRepository::listReady($id));
     $selected = Amenities::selected($house);
     $amenities = [];
-    foreach (Amenities::keys() as $key) {
+    foreach (Amenities::amenityKeys() as $key) {
         if (!empty($selected[$key])) {
             $amenities[] = $key;
         }
     }
+    $houseRules = Amenities::rules($house);
     $score = HouseRepository::score($house);
     $ratingCount = (int) ($house['rating_count'] ?? 0);
+    $noiseFrom = (string) ($selected['noise_from'] ?? '22:00');
+    $noiseUntil = (string) ($selected['noise_until'] ?? '07:00');
 
     return [
         'id' => property_ref($house),
@@ -45,6 +48,7 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
         'quote' => $quote,
         'photos' => $photos,
         'amenities' => $amenities,
+        'house_rules' => $houseRules,
         'bedrooms' => (int) ($house['bedrooms'] ?? 0),
         'beds' => (int) ($house['beds'] ?? 0),
         'max_guests' => (int) ($house['max_guests'] ?? 0),
@@ -53,8 +57,10 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
         'checkin_time' => (string) ($house['checkin_time'] ?? '14:00'),
         'checkout_time' => (string) ($house['checkout_time'] ?? '11:00'),
         'cleaning_fee' => (int) ($house['cleaning_fee'] ?? 0),
-        'noise_from' => (string) ($selected['noise_from'] ?? '22:00'),
-        'noise_until' => (string) ($selected['noise_until'] ?? '07:00'),
+        'noise_from' => $noiseFrom,
+        'noise_until' => $noiseUntil,
+        'quiet_hours_from' => $noiseFrom,
+        'quiet_hours_until' => $noiseUntil,
         'blocked_days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($house)),
     ];
 }

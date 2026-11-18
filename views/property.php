@@ -126,7 +126,7 @@ $amenityIcons = Amenities::ICONS;
                         <?php
                         $hasAnyAmenity = false;
                         foreach (Amenities::keys() as $k):
-                            if (in_array($k, ['noise', 'noise_from', 'noise_until'], true) || empty($selectedAmenities[$k])) continue;
+                            if (Amenities::isRule($k) || in_array($k, ['noise_from', 'noise_until'], true) || empty($selectedAmenities[$k])) continue;
                             $hasAnyAmenity = true;
                             $icon = Amenities::icon($k);
                         ?>
@@ -150,8 +150,17 @@ $amenityIcons = Amenities::ICONS;
                         <li>📅 <strong>Estadia mínima:</strong> <?= (int) $property['min_nights'] ?> noite(s)</li>
                         <?php if (!empty($selectedAmenities['noise'])): ?>
                             <li class="prop-view-quiet-rule">
-                                🌙 <strong>Lei do Silêncio:</strong> das <?= e($selectedAmenities['noise_from'] ?? '22:00') ?> às <?= e($selectedAmenities['noise_until'] ?? '07:00') ?> (não é permitido fazer barulho).
+                                🌙 <strong>Lei do Silêncio:</strong> das <?= e($selectedAmenities['noise_from'] ?? '22:00') ?> às <?= e($selectedAmenities['noise_until'] ?? '07:00') ?> (horário de silêncio — não é permitido fazer barulho).
                             </li>
+                        <?php endif; ?>
+                        <li>🚬 <strong>Fumo:</strong> <?= !empty($selectedAmenities['smoking']) ? 'Permitido fumar' : 'Proibido fumar' ?></li>
+                        <li>🐾 <strong>Animais:</strong> <?= !empty($selectedAmenities['pets']) ? 'Aceita animais de estimação' : 'Não aceita animais de estimação' ?></li>
+                        <li>🎉 <strong>Festas e eventos:</strong> <?= !empty($selectedAmenities['parties']) ? 'Permitido realizar eventos' : 'Não são permitidas festas ou eventos' ?></li>
+                        <?php if (!empty($selectedAmenities['sand_shower'])): ?>
+                            <li>🚿 <strong>Ducha externa:</strong> Usar ducha externa para remover a areia antes de entrar.</li>
+                        <?php endif; ?>
+                        <?php if (!empty($selectedAmenities['wet_elevator'])): ?>
+                            <li>🚫 <strong>Elevador:</strong> Proibido usar elevadores sociais com trajes de banho molhados.</li>
                         <?php endif; ?>
                     </ul>
                 </div>

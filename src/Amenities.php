@@ -210,6 +210,56 @@ final class Amenities
         return $match[1] . ':' . $match[2];
     }
 
+    public const RULE_KEYS = ['noise', 'smoking', 'pets', 'sand_shower', 'wet_elevator', 'parties'];
+
+    public static function ruleKeys(): array
+    {
+        return self::RULE_KEYS;
+    }
+
+    public static function isRule(string $key): bool
+    {
+        return in_array($key, self::RULE_KEYS, true);
+    }
+
+    public static function amenityKeys(): array
+    {
+        $keys = [];
+        foreach (self::GROUPS as $group => $items) {
+            if ($group === 'rules') {
+                continue;
+            }
+            foreach ($items as $key) {
+                $keys[] = $key;
+            }
+        }
+        return $keys;
+    }
+
+    public static function rules(?array $property): array
+    {
+        $selected = self::selected($property);
+        $quietEnabled = !empty($selected['noise']);
+        $from = self::clock((string) ($selected['noise_from'] ?? '')) ?? '22:00';
+        $until = self::clock((string) ($selected['noise_until'] ?? '')) ?? '07:00';
+
+        return [
+            'quiet_hours' => [
+                'enabled' => $quietEnabled,
+                'from' => $from,
+                'until' => $until,
+                'description' => $quietEnabled
+                    ? sprintf('Horário de Silêncio das %s às %s (proibido fazer barulho / quiet hours - no noise allowed)', $from, $until)
+                    : 'Sem horário específico de silêncio cadastrado',
+            ],
+            'smoking_allowed' => !empty($selected['smoking']),
+            'pets_allowed' => !empty($selected['pets']),
+            'parties_allowed' => !empty($selected['parties']),
+            'sand_shower_required' => !empty($selected['sand_shower']),
+            'wet_clothes_in_elevator_prohibited' => !empty($selected['wet_elevator']),
+        ];
+    }
+
     public static function noiseWindow(?array $property): string
     {
         $selected = self::selected($property);

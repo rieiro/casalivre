@@ -283,4 +283,69 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString("Estadia mínima de ", $js);
         $this->assertStringContainsString("a partir de ", $js);
     }
+
+    public function testPropertyViewSeparatesHouseRulesFromAmenities(): void
+    {
+        $property = [
+            'id' => 1,
+            'user_id' => 1,
+            'title' => 'Casa Teste Regras View',
+            'description' => 'Descrição do imóvel de teste.',
+            'city' => 'Rio de Janeiro',
+            'street' => 'Rua Paulo Barreto',
+            'address_number' => '100',
+            'lat' => -22.9519,
+            'lng' => -43.1856,
+            'bedrooms' => 2,
+            'beds' => 2,
+            'rooms' => 3,
+            'max_guests' => 4,
+            'nightly_price' => 30000,
+            'cleaning_fee' => 5000,
+            'checkin_time' => '14:00:00',
+            'checkout_time' => '11:00:00',
+            'min_nights' => 2,
+            'amenities' => json_encode([
+                'wifi' => 1,
+                'ac' => 1,
+                'noise' => 1,
+                'noise_from' => '22:00',
+                'noise_until' => '07:00',
+                'pets' => 1,
+                'wet_elevator' => 1,
+            ]),
+            'public_hash' => 'abcdef0123456789',
+            'rating_count' => 5,
+            'rating_sum' => 50,
+            'status' => 'active',
+        ];
+
+        $photos = [];
+        $score = 10.0;
+        $quote = null;
+        $use_api = false;
+        $csrf = 'test_token';
+
+        ob_start();
+        try {
+            require dirname(__DIR__, 2) . '/views/property.php';
+        } finally {
+            $html = (string) ob_get_clean();
+        }
+
+        // Amenities showcase must contain wifi but not pets, noise, or wet_elevator
+        $this->assertStringContainsString('prop-view-amenities-grid', $html);
+        preg_match('/<div class="prop-view-amenities-grid">([\s\S]*?)<\/div>\s*<\/div>/u', $html, $m);
+        $amenitiesHtml = $m[1] ?? '';
+        $this->assertStringContainsString('Wi-Fi', $amenitiesHtml);
+        $this->assertStringNotContainsString('animais', strtolower($amenitiesHtml));
+        $this->assertStringNotContainsString('elevador', strtolower($amenitiesHtml));
+
+        // Rules card must contain quiet hours and house rules
+        $this->assertStringContainsString('prop-view-rules-list', $html);
+        $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?Lei do Silêncio[\s\S]*?22:00[\s\S]*?07:00/u', $html);
+        $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?não é permitido fazer barulho/u', $html);
+        $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?animais/iu', $html);
+        $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?elevador/iu', $html);
+    }
 }

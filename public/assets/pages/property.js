@@ -373,8 +373,9 @@
                 parties: "🎉"
 };
 
+            const ruleKeys = ["noise", "noise_from", "noise_until", "smoking", "pets", "sand_shower", "wet_elevator", "parties"];
             const amenityElements = (data.amenities || [])
-                .filter((key) => key !== "noise" && key !== "noise_from" && key !== "noise_until")
+                .filter((key) => key !== "noise_from" && key !== "noise_until" && !ruleKeys.includes(key))
                 .map((key) => {
                     const label = amenityLabels[key] || key;
                     const icon = amenityIcons[key] || "✓";
@@ -754,16 +755,29 @@
             renderDoubleCalendar();
 
             // 8. Rules & Quiet Hours Card
-            const noiseFrom = data.noise_from || "22:00";
-            const noiseUntil = data.noise_until || "07:00";
+            const noiseFrom = data.quiet_hours_from || data.noise_from || "22:00";
+            const noiseUntil = data.quiet_hours_until || data.noise_until || "07:00";
             const rulesList = [
                 el("li", {}, "🕒 Check-in: a partir das " + (data.checkin_time || "15:00")),
                 el("li", {}, "🕚 Check-out: até às " + (data.checkout_time || "11:00")),
                 el("li", {}, "📅 Estadia mínima: " + (data.min_nights || 1) + " noite(s)"),
                 el("li", { className: "prop-view-quiet-rule" },
-                    "🌙 Lei do Silêncio: das " + noiseFrom + " às " + noiseUntil + " (não é permitido fazer barulho)."
+                    "🌙 Lei do Silêncio: das " + noiseFrom + " às " + noiseUntil + " (horário de silêncio — não é permitido fazer barulho)."
                 )
             ];
+            const houseRules = data.house_rules || {};
+            const smokingAllowed = houseRules.smoking_allowed !== undefined ? houseRules.smoking_allowed : (data.smoking || false);
+            const petsAllowed = houseRules.pets_allowed !== undefined ? houseRules.pets_allowed : (data.pets || false);
+            const partiesAllowed = houseRules.parties_allowed !== undefined ? houseRules.parties_allowed : (data.parties || false);
+            rulesList.push(el("li", {}, "🚬 Fumo: " + (smokingAllowed ? "Permitido fumar" : "Proibido fumar")));
+            rulesList.push(el("li", {}, "🐾 Animais: " + (petsAllowed ? "Aceita animais de estimação" : "Não aceita animais de estimação")));
+            rulesList.push(el("li", {}, "🎉 Festas e eventos: " + (partiesAllowed ? "Permitido realizar eventos" : "Não são permitidas festas ou eventos")));
+            if (houseRules.sand_shower_required || data.sand_shower) {
+                rulesList.push(el("li", {}, "🚿 Ducha externa: Usar ducha externa para remover a areia antes de entrar."));
+            }
+            if (houseRules.wet_clothes_in_elevator_prohibited || data.wet_elevator) {
+                rulesList.push(el("li", {}, "🚫 Elevador: Proibido usar elevadores sociais com trajes de banho molhados."));
+            }
 
             const rulesCard = el("div", { className: "prop-view-card" },
                 el("h2", { className: "prop-view-card-title" }, "Regras da casa & Convivência"),

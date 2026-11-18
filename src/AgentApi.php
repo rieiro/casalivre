@@ -806,10 +806,24 @@ final class AgentApi
             $neighborhood = house_neighborhood($row) ?? '-';
             $selected = Amenities::selected($row);
             $amenities = [];
-            foreach (Amenities::keys() as $key) {
+            foreach (Amenities::amenityKeys() as $key) {
                 if (!empty($selected[$key])) {
                     $amenities[] = $key;
                 }
+            }
+            $rules = Amenities::rules($row);
+            $rulesSummary = [];
+            if (!empty($rules['quiet_hours']['enabled'])) {
+                $rulesSummary[] = 'quiet_hours: ' . $rules['quiet_hours']['from'] . '-' . $rules['quiet_hours']['until'] . ' (no noise allowed)';
+            }
+            $rulesSummary[] = !empty($rules['smoking_allowed']) ? 'smoking: allowed' : 'smoking: no';
+            $rulesSummary[] = !empty($rules['pets_allowed']) ? 'pets: allowed' : 'pets: no';
+            $rulesSummary[] = !empty($rules['parties_allowed']) ? 'parties: allowed' : 'parties: no';
+            if (!empty($rules['sand_shower_required'])) {
+                $rulesSummary[] = 'sand_shower: required';
+            }
+            if (!empty($rules['wet_clothes_in_elevator_prohibited'])) {
+                $rulesSummary[] = 'wet_elevator: prohibited';
             }
 
             $summary = str_replace(["
@@ -831,6 +845,7 @@ final class AgentApi
                 'checkin: ' . ($row['checkin_time'] ?? '14:00'),
                 'checkout: ' . ($row['checkout_time'] ?? '11:00'),
                 'amenities: ' . (!empty($amenities) ? implode(', ', $amenities) : '-'),
+                'house_rules: ' . implode(', ', $rulesSummary),
                 'summary: ' . $summary,
             ]);
         }
