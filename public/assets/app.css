@@ -3972,17 +3972,20 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     margin-bottom: 2.5rem;
     max-height: 480px;
     box-shadow: 0 10px 30px -10px rgba(0, 35, 80, 0.12);
+    background: #0b1120;
 }
 .prop-view-photo-single {
     grid-column: 1 / -1;
     max-height: 480px;
     overflow: hidden;
     border-radius: 20px;
+    background: #0b1120;
+    position: relative;
 }
-.prop-view-photo-single img {
+.prop-view-photo-single img:not(.prop-view-photo-bg):not(.prop-view-photo-fg) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
 }
 .prop-view-photo-main {
@@ -3990,16 +3993,13 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     height: 100%;
     min-height: 380px;
     overflow: hidden;
+    background: #0b1120;
 }
-.prop-view-photo-main img {
+.prop-view-photo-main img:not(.prop-view-photo-bg):not(.prop-view-photo-fg) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
-    transition: transform 0.4s ease;
-}
-.prop-view-photo-main:hover img {
-    transform: scale(1.02);
 }
 .prop-view-photo-grid {
     display: grid;
@@ -4012,22 +4012,60 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     position: relative;
     overflow: hidden;
     height: 100%;
+    background: #0b1120;
 }
-.prop-view-photo-item img {
+.prop-view-photo-item img:not(.prop-view-photo-bg):not(.prop-view-photo-fg) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
-    transition: transform 0.4s ease;
 }
-.prop-view-photo-item:hover img {
-    transform: scale(1.04);
+
+/* Ambient blur background layer */
+.prop-view-photo-bg {
+    position: absolute;
+    inset: -25%;
+    width: 150%;
+    height: 150%;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    filter: blur(24px) brightness(0.65) saturate(1.25);
+    transform: scale(1.1);
+    pointer-events: none;
+    z-index: 1;
+    display: block;
+    transition: filter 0.4s ease, transform 0.4s ease;
 }
+
+/* Sharp foreground photo — 100% visible, never cropped */
+.prop-view-photo-fg {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain !important;
+    display: block;
+    transition: transform 0.35s ease;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.35));
+}
+
+.prop-view-photo-open:hover .prop-view-photo-fg {
+    transform: scale(1.025);
+}
+
+.prop-view-photo-open:hover .prop-view-photo-bg {
+    filter: blur(28px) brightness(0.72) saturate(1.35);
+    transform: scale(1.15);
+}
+
 .prop-view-more-badge {
     position: absolute;
     inset: 0;
-    background: rgba(15, 23, 42, 0.55);
-    backdrop-filter: blur(4px);
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
     color: #ffffff;
     display: flex;
     align-items: center;
@@ -4037,6 +4075,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     font-weight: 700;
     cursor: pointer;
     transition: background 0.2s ease;
+    z-index: 3;
 }
 .prop-view-more-badge:hover {
     background: rgba(15, 23, 42, 0.7);
