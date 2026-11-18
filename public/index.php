@@ -173,7 +173,7 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16}|pagamento/intencao/[a-f0-9]{32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16,32}|pagamento/intencao/[a-f0-9]{16,32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
@@ -712,7 +712,7 @@ Valor total: $totalFmt (Chave Pix: $pixKey)";
 }
 
 // Direct Guest Payment Page (Public Side)
-if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+if (preg_match('#^/pagamento/([a-f0-9]{16,32})$#', $path, $m) && $method === 'GET') {
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/PixPayload.php';
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
@@ -720,29 +720,76 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET')
 
     QuoteRepository::ensureTable();
     $quote = QuoteRepository::findByHash($m[1]);
+    $intent = null;
+    if (!$quote) {
+        $intentStmt = db()->prepare("SELECT * FROM booking_intents WHERE token = ? ORDER BY id DESC LIMIT 1");
+        $intentStmt->execute([$m[1]]);
+        $intent = $intentStmt->fetch(PDO::FETCH_ASSOC);
+        if ($intent) {
+            if ($intent['status'] === 'expired' || ($intent['status'] === 'held' && strtotime((string) $intent['expires_at']) <= time())) {
+                http_response_code(410);
+                view('message', ['title' => 'Reserva expirada', 'message' => 'Esta reserva temporária expirou. Faça uma nova cotação.']);
+                return null;
+            }
+            $property = HouseRepository::find((int) $intent['property_id']);
+            if (!$property || ($property['status'] ?? 'active') !== 'active') {
+                http_response_code(404);
+                view('message', ['title' => 'Imóvel não encontrado', 'message' => 'O imóvel desta reserva não está mais disponível.']);
+                return null;
+            }
+
+            $quote = [
+                'id' => (int) $intent['id'],
+                'quote_hash' => (string) $intent['token'],
+                'property_id' => (int) $intent['property_id'],
+                'checkin' => (string) $intent['checkin'],
+                'checkout' => (string) $intent['checkout'],
+                'nights' => (int) $intent['nights'],
+                'nightly_price' => (int) $intent['nightly_price'],
+                'cleaning_fee' => (int) $intent['cleaning_fee'],
+                'cleaning' => (int) $intent['cleaning_fee'],
+                'taxes' => 0,
+                'special_offer' => null,
+                'total_price' => (int) $intent['total_price'],
+                'total' => (int) $intent['total_price'],
+                'subtotal' => (int) ($intent['nights'] * $intent['nightly_price']),
+                'status' => $intent['status'] === 'confirmed' ? 'confirmed' : 'pending',
+                'pix_key' => (string) (!empty($property['pix_key']) ? $property['pix_key'] : 'rafaelrieiro@gmail.com'),
+                'expires_at' => (string) $intent['expires_at'],
+                'plan' => (string) ($intent['plan'] ?? 'pix_a_vista'),
+                'amount_due_now' => (int) ($intent['amount_due_now'] ?? $intent['total_price']),
+                'balance_due' => (int) ($intent['balance_due'] ?? 0),
+                'installments' => (int) ($intent['installments'] ?? 1),
+            ];
+        }
+    }
+
     if (!$quote) {
         http_response_code(404);
         view('message', ['title' => 'Cotação não encontrada', 'message' => 'O link de pagamento informado não existe ou já expirou.']);
         return null;
     }
 
-    $property = HouseRepository::find((int) $quote['property_id']);
+    if (!isset($property)) {
+        $property = HouseRepository::find((int) $quote['property_id']);
+    }
     $photos = PhotoRepository::listReady((int) $property['id']);
     $property['photo'] = $photos[0]['path'] ?? null;
 
+    $amountToPay = !empty($quote['amount_due_now']) ? (float) $quote['amount_due_now'] : (float) $quote['total_price'];
     $pixKey = (string) ($quote['pix_key'] ?: 'rafaelrieiro@gmail.com');
     $pixPayload = PixPayload::generate(
         key: $pixKey,
         name: 'Rafael Rieiro',
         city: (string) ($property['city'] ?? 'Saquarema'),
-        amount: (float) $quote['total_price'],
-        txid: 'CL' . strtoupper($m[1])
+        amount: $amountToPay,
+        txid: 'CL' . strtoupper(substr($m[1], 0, 16))
     );
 
     $checkinFmt = format_date((string) $quote['checkin']);
     $checkoutFmt = format_date((string) $quote['checkout']);
-    $totalFmt = money((int) $quote['total_price']);
-    $waText = urlencode("Olá! Acabei de realizar o pagamento Pix no valor de $totalFmt para a reserva do imóvel {$property['title']} ($checkinFmt a $checkoutFmt). Código: {$m[1]}");
+    $totalFmt = money((int) $amountToPay);
+    $waText = urlencode("Olá! Acabei de realizar o pagamento Pix no valor de $totalFmt para a reserva do imóvel {$property['title']} ($checkinFmt a $checkoutFmt). Código: " . substr($m[1], 0, 16));
     $waUrl = "https://wa.me/5521999999999?text=$waText";
 
     view('payment', [
@@ -758,7 +805,7 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})$#', $path, $m) && $method === 'GET')
     return null;
 }
 
-if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method === 'POST') {
+if (preg_match('#^/pagamento/([a-f0-9]{16,32})/confirmar$#', $path, $m) && $method === 'POST') {
     csrf_check();
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
@@ -766,16 +813,54 @@ if (preg_match('#^/pagamento/([a-f0-9]{16})/confirmar$#', $path, $m) && $method 
     QuoteRepository::ensureTable();
     $quote = QuoteRepository::findByHash($m[1]);
     if (!$quote) {
+        $intentStmt = db()->prepare("SELECT * FROM booking_intents WHERE token = ? ORDER BY id DESC LIMIT 1");
+        $intentStmt->execute([$m[1]]);
+        $intent = $intentStmt->fetch(PDO::FETCH_ASSOC);
+        if ($intent) {
+            Db::transactional(db(), static function () use ($intent, $m): void {
+                $cursor = new DateTimeImmutable((string) $intent['checkin']);
+                $end = new DateTimeImmutable((string) $intent['checkout']);
+                $ins = db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, price, min_nights, origin)
+                                      VALUES (?, ?, 1, ?, 1, 'reserva')
+                                      ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'reserva'");
+                while ($cursor < $end) {
+                    $dayIso = $cursor->format('Y-m-d');
+                    $ins->execute([(int) $intent['property_id'], $dayIso, (int) $intent['nightly_price']]);
+                    $cursor = $cursor->modify('+1 day');
+                }
+                db()->prepare("UPDATE booking_intents SET status = 'confirmed' WHERE token = ?")->execute([$m[1]]);
+            });
+
+            activity(
+                ActivityLog::RESERVATION_CONFIRM,
+                [
+                    'imovel_id' => (int) $intent['property_id'],
+                    'checkin' => (string) $intent['checkin'],
+                    'checkout' => (string) $intent['checkout'],
+                    'total' => (int) $intent['total_price'],
+                    'motivo' => 'guest_pix_bot',
+                ],
+                ['status' => 'held'],
+                ['status' => 'confirmed', 'intent_token' => $m[1]]
+            );
+
+            redirect('/pagamento/' . $m[1] . '?sucesso=1');
+            return null;
+        }
+
         http_response_code(404);
         view('message', ['title' => 'Erro na confirmação', 'message' => 'Cotação não encontrada.']);
         return null;
     }
+
     $ok = QuoteRepository::confirmPayment($m[1]);
     if (!$ok) {
         http_response_code(400);
         view('message', ['title' => 'Erro na confirmação', 'message' => 'Não foi possível confirmar esta reserva.']);
         return null;
     }
+
+    db()->prepare("UPDATE booking_intents SET status = 'confirmed' WHERE token = ?")->execute([$m[1]]);
 
     activity(
         ActivityLog::RESERVATION_CONFIRM,

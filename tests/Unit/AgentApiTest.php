@@ -102,7 +102,9 @@ final class AgentApiTest extends TestCase
         $h1 = $refCall->invoke(null, 'create_booking_intent', $intentArgs);
         $this->assertArrayHasKey('result', $h1);
         $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $h1['result']['intent_token']);
-        $this->assertStringContainsString('/pagamento/intencao/', $h1['result']['checkout_url']);
+        $this->assertStringContainsString('/pagamento/' . $h1['result']['intent_token'], $h1['result']['checkout_url']);
+        $this->assertStringNotContainsString('/pagamento/intencao/', $h1['result']['checkout_url']);
+        $this->assertStringNotContainsString('?plano=', $h1['result']['checkout_url']);
 
         // 2nd hold -> success
         $h2 = $refCall->invoke(null, 'create_booking_intent', $intentArgs);
@@ -162,5 +164,38 @@ final class AgentApiTest extends TestCase
         $daysAfter = HouseRepository::calendarDaysUntil($propId, '2027-02-05');
         $dayMapAfter = array_column($daysAfter, null, 'day');
         $this->assertTrue(!isset($dayMapAfter['2027-01-29']) || $dayMapAfter['2027-01-29']['origin'] !== 'pre-reserva');
+    }
+
+    public function testBotReservationGeneratesUnifiedPaymentLinkAndRendersPaymentView(): void
+    {
+        $house = $this->pdo->query("SELECT * FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $propId = (int) $house['id'];
+
+        $refClass = new ReflectionClass(AgentApi::class);
+        $refCall = $refClass->getMethod('callMcpTool');
+        $refCall->setAccessible(true);
+
+        $intentArgs = [
+            'public_hash' => (string) ($house['public_hash'] ?? $house['hash']),
+            'checkin' => '2028-11-01',
+            'checkout' => '2028-11-04',
+            'hospedes' => 2,
+            'plan' => 'pix_a_vista',
+        ];
+
+        $res = $refCall->invoke(null, 'create_booking_intent', $intentArgs);
+        $this->assertArrayHasKey('result', $res);
+        $token = $res['result']['intent_token'];
+        $checkoutUrl = $res['result']['checkout_url'];
+
+        // Must unify with manual reservation link: /pagamento/{hash} without intencao or query string
+        $this->assertStringContainsString('/pagamento/' . $token, $checkoutUrl);
+        $this->assertStringNotContainsString('/intencao/', $checkoutUrl);
+        $this->assertStringNotContainsString('?plano=', $checkoutUrl);
+
+        // Fetch intent from DB
+        $intent = $this->pdo->query("SELECT * FROM booking_intents WHERE token = '{$token}'")->fetch(PDO::FETCH_ASSOC);
+        $this->assertIsArray($intent);
+        $this->assertSame('held', $intent['status']);
     }
 }
