@@ -329,7 +329,44 @@ SQL;
         }
         $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? AND day <= ? ORDER BY day');
         $stmt->execute([$propertyId, $maxDay]);
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+
+        $byDay = [];
+        foreach ($rows as $r) {
+            $byDay[$r['day']] = $r;
+        }
+
+        try {
+            $intentsStmt = db()->prepare("SELECT checkin, checkout FROM booking_intents WHERE property_id = ? AND status = 'held' AND expires_at > now()");
+            $intentsStmt->execute([$propertyId]);
+            $holds = $intentsStmt->fetchAll();
+            foreach ($holds as $hold) {
+                $cur = new DateTimeImmutable((string) $hold['checkin']);
+                $end = new DateTimeImmutable((string) $hold['checkout']);
+                while ($cur < $end) {
+                    $d = $cur->format('Y-m-d');
+                    if ($d <= $maxDay) {
+                        if (!isset($byDay[$d])) {
+                            $byDay[$d] = [
+                                'day' => $d,
+                                'blocked' => 1,
+                                'price' => null,
+                                'min_nights' => null,
+                                'origin' => 'pre-reserva',
+                            ];
+                        } elseif (empty($byDay[$d]['origin']) || $byDay[$d]['origin'] === 'pre-reserva') {
+                            $byDay[$d]['blocked'] = 1;
+                            $byDay[$d]['origin'] = 'pre-reserva';
+                        }
+                    }
+                    $cur = $cur->modify('+1 day');
+                }
+            }
+        } catch (Throwable) {
+        }
+
+        ksort($byDay);
+        return array_values($byDay);
     }
 
     public static function calendarForNights(int $propertyId, array $nights): array
