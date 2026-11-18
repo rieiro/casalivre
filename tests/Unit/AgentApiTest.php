@@ -198,4 +198,58 @@ final class AgentApiTest extends TestCase
         $this->assertIsArray($intent);
         $this->assertSame('held', $intent['status']);
     }
+
+    
+    public function testSoftHoldBlocksAvailabilityAndReleasesOnExpiry(): void
+    {
+        $house = $this->pdo->query("SELECT * FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertIsArray($house);
+        $hash = (string) ($house['public_hash'] ?? $house['hash']);
+
+        $refClass = new ReflectionClass(AgentApi::class);
+        $refCall = $refClass->getMethod('callMcpTool');
+        $refCall->setAccessible(true);
+
+        // 1. Initially available
+        $quoteRes = $refCall->invoke(null, 'check_availability_and_quote', [
+            'public_hash' => $hash,
+            'checkin' => '2029-06-01',
+            'checkout' => '2029-06-05',
+            'hospedes' => 2,
+        ]);
+        $this->assertTrue($quoteRes['result']['available'] ?? false);
+
+        // 2. Create 15-minute booking intent
+        $intentRes = $refCall->invoke(null, 'create_booking_intent', [
+            'public_hash' => $hash,
+            'checkin' => '2029-06-01',
+            'checkout' => '2029-06-05',
+            'hospedes' => 2,
+            'plan' => 'pix_a_vista',
+        ]);
+        $this->assertArrayHasKey('result', $intentRes);
+        $token = $intentRes['result']['intent_token'];
+
+        // 3. Overlapping quote must now be blocked
+        $blockedQuote = $refCall->invoke(null, 'check_availability_and_quote', [
+            'public_hash' => $hash,
+            'checkin' => '2029-06-02',
+            'checkout' => '2029-06-04',
+            'hospedes' => 2,
+        ]);
+        $this->assertFalse($blockedQuote['result']['available'] ?? true);
+        $this->assertNotNull($blockedQuote['result']['conflict_date'] ?? null);
+
+        // 4. Once expired, availability is automatically released
+        $this->pdo->prepare("UPDATE booking_intents SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE token = :token")
+            ->execute([':token' => $token]);
+
+        $releasedQuote = $refCall->invoke(null, 'check_availability_and_quote', [
+            'public_hash' => $hash,
+            'checkin' => '2029-06-01',
+            'checkout' => '2029-06-05',
+            'hospedes' => 2,
+        ]);
+        $this->assertTrue($releasedQuote['result']['available'] ?? false);
+    }
 }
