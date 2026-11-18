@@ -393,7 +393,6 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method === 'POST') {
         require_once __DIR__ . '/HouseRepository.php';
         require_once __DIR__ . '/QuoteRepository.php';
-        QuoteRepository::ensureTable();
 
         $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
         if (!$property || ($property['status'] ?? 'active') !== 'active') {

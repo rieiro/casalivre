@@ -259,10 +259,21 @@ SQL;
         return $row ?: null;
     }
 
+    /**
+     * Own properties plus the ones from groups the user manages, newest first.
+     *
+     * UNION ALL of two index-friendly branches (idx_properties_user / idx_properties_group) instead of
+     * `user_id = ? OR group_id IN (SELECT ...)`: the OR makes the planner walk properties_pkey backwards
+     * to satisfy ORDER BY id DESC and discard every row of other users (O(table), 15 ms at 10k rows).
+     */
     public static function listByUser(int $userId): array
     {
-        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')) AND p.status = 'active' ORDER BY p.id DESC");
-        $stmt->execute([$userId, $userId]);
+        $owned = self::SQL_WITH_CITY . " WHERE p.user_id = ? AND p.status = 'active'";
+        $managed = self::SQL_WITH_CITY
+            . " WHERE p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')"
+            . " AND p.status = 'active' AND p.user_id <> ?";
+        $stmt = db()->prepare("($owned) UNION ALL ($managed) ORDER BY id DESC");
+        $stmt->execute([$userId, $userId, $userId]);
         return $stmt->fetchAll();
     }
 
