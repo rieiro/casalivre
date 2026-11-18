@@ -1,4 +1,4 @@
--- Admin Bot Analytics Queries (ARCHITECTURE_AI_PLAN.md §5.4)
+-- Admin Bot Analytics Queries (docs/ai/ARCHITECTURE_AI_PLAN.md §5.4)
 
 -- 1. Traffic by bot, last 24 hours
 SELECT bot_name,

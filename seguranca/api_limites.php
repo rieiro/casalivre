@@ -25,7 +25,7 @@ return [
     // Formulários web (mesma camada e mesmos baldes da API). Atrás de proxy, REMOTE_ADDR precisa ser o IP real (real_ip no nginx).
     ['POST', '#^/cadastro$#', 10, 3600, '/cadastro'],
     ['POST', '#^/senha/esqueci$#', 5, 900, '/senha/esqueci'],
-    // Agent surface & MCP limits (ARCHITECTURE_AI_PLAN.md §4.5)
+    // Agent surface & MCP limits (docs/ai/ARCHITECTURE_AI_PLAN.md §4.5)
     ['GET', '#^/api/v1/agent/search$#', 60, 60, '/api/v1/agent/search'],
     ['GET', '#^/api/v1/agent/properties/[a-f0-9]{16}$#', 120, 60, '/api/v1/agent/property'],
     ['GET', '#^/api/v1/agent/properties/[a-f0-9]{16}/quote$#', 30, 60, '/api/v1/agent/quote'],
