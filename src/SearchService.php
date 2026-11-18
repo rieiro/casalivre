@@ -185,6 +185,15 @@ final class SearchService
         $out['items'] = $page;
         $out['iteracoes'] = $queries;
         $out['linhas_lidas'] = $read;
+        // The SQL total counts the bbox (radius + 1 km). Price, amenities, and the
+        // haversine drop rows after that. Once every candidate was read, the heading
+        // has to match the cards. An unfinished scan keeps the SQL upper bound.
+        if ($hasPhpFilters && !$hasMore) {
+            $exact = ($targetOffset - $skip) + count($page);
+            $out['total'] = $exact;
+            $out['total_aprox'] = $exact > 100 ? '100+' : $exact;
+            $out['total_pages'] = max(1, (int) ceil($exact / self::PAGE_SIZE));
+        }
         if ($targetPage === 1 && $page === [] && !$hasMore) {
             $out['total'] = 0;
             $out['total_aprox'] = 0;

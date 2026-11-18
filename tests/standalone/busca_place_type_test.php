@@ -110,6 +110,9 @@ t_ok(!in_array($outside, $defaultIds, true), 'a house in the POI city but 8 km a
 t_eq([$otherCityInside, $outside, $past, $near, $inside], $ids(['local_id' => (string) $poiId, 'raio' => '10']), 'an explicit raio replaces the 3 km default');
 $poiResult = SearchService::search(SearchQuery::fromRequest(['local_id' => (string) $poiId]), null);
 t_ok(isset($poiResult['items'][0]['distance_km']), 'POI rows carry distance_km');
+t_eq(count($defaultIds), $poiResult['total'], 'POI total matches the houses inside the radius');
+t_eq(count($defaultIds), $poiResult['total_aprox'], 'POI total_aprox matches the houses inside the radius');
+t_eq(count($poiResult['items']), $poiResult['total'], 'POI heading count matches the cards');
 
 echo "cep\n";
 $floripaNb = db()->prepare("SELECT id, name FROM places WHERE type = 'neighborhood' AND parent_id = ? ORDER BY id LIMIT 1");
