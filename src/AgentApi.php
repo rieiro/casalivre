@@ -327,7 +327,7 @@ final class AgentApi
 
         $host = $_SERVER['HTTP_HOST'] ?? 'casalivre.com.br';
         $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'https';
-        $checkoutUrl = $scheme . '://' . $host . '/pagamento/intencao/' . $token . '?plano=' . urlencode($plan);
+        $checkoutUrl = $scheme . '://' . $host . '/pagamento/' . $token;
 
         http_response_code(201);
         header('Content-Type: application/json; charset=utf-8');
@@ -703,7 +703,7 @@ final class AgentApi
 
             $host = $_SERVER['HTTP_HOST'] ?? 'casalivre.com.br';
             $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'https';
-            $checkoutUrl = $scheme . '://' . $host . '/pagamento/intencao/' . $token . '?plano=' . urlencode($plan);
+            $checkoutUrl = $scheme . '://' . $host . '/pagamento/' . $token;
 
             return ['result' => [
                 'intent_token' => $token,
@@ -882,43 +882,8 @@ truncated: true
 
     private static function handlePaymentIntent(string $token): void
     {
-        $stmt = db()->prepare("SELECT * FROM booking_intents WHERE token = :token");
-        $stmt->execute([':token' => $token]);
-        $intent = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$intent) {
-            http_response_code(404);
-            view('message', ['title' => 'Intenção não encontrada', 'message' => 'Esta intenção de reserva não existe.']);
-            exit;
-        }
-
-        if ($intent['status'] !== 'held' || strtotime((string) $intent['expires_at']) <= time()) {
-            http_response_code(410);
-            view('message', ['title' => 'Intenção expirada', 'message' => 'Esta intenção de reserva expirou. Faça uma nova cotação.']);
-            exit;
-        }
-
-        $property = HouseRepository::find((int) $intent['property_id']);
-        if (!$property || ($property['status'] ?? 'active') !== 'active') {
-            http_response_code(404);
-            view('message', ['title' => 'Imóvel não encontrado', 'message' => 'O imóvel desta reserva não está mais disponível.']);
-            exit;
-        }
-
-        $labels = [
-            'pix_a_vista' => 'Pague o valor integral via Pix no fechamento.',
-            'sinal_50' => 'Pague 50% agora. A segunda metade deve ser quitada antes do check-in.',
-            'cartao_12x' => 'Pague o valor total no cartão em até 12 parcelas.',
-        ];
-
-        view('payment_intent', [
-            'intent' => $intent,
-            'house' => [
-                'title' => $property['title'],
-                'city' => $property['city'],
-            ],
-            'planLabel' => $labels[$intent['plan']] ?? 'Pagamento padrão',
-        ]);
+        $qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+        header('Location: /pagamento/' . $token . $qs, true, 302);
         exit;
     }
 }

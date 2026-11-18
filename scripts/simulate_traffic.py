@@ -169,7 +169,7 @@ async def run_mcp_agents(base_url: str, public_hash: Optional[str], requests: in
         text_content = data['result']['content'][0]['text']
         intent_res = json.loads(text_content)
         assert 'checkout_url' in intent_res, f"Expected checkout_url in intent result: {intent_res}"
-        assert '/pagamento/intencao/' in intent_res['checkout_url']
+        assert '/pagamento/' in intent_res['checkout_url'] and '/pagamento/intencao/' not in intent_res['checkout_url']
 
         print(f"[+] mcp_agents: All tools/calls executed successfully! Intent checkout_url: {intent_res['checkout_url']}")
         return True

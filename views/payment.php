@@ -244,10 +244,21 @@ $pixKey = (string) ($quote['pix_key'] ?: 'rafaelrieiro@gmail.com');
                             <span><?= money($specialOffer) ?></span>
                         </div>
                     <?php endif; ?>
-                    <div class="price-row total">
-                        <span>Total a pagar via Pix</span>
-                        <span class="payment-total-amount"><?= money($total) ?></span>
-                    </div>
+                    <?php if (!empty($quote['balance_due']) && (int) $quote['balance_due'] > 0): ?>
+                        <div class="price-row total">
+                            <span>Sinal a pagar agora (Pix)</span>
+                            <span class="payment-total-amount"><?= money((int) $quote['amount_due_now']) ?></span>
+                        </div>
+                        <div class="price-row text-muted text-sm">
+                            <span>Saldo restante antes do check-in</span>
+                            <span><?= money((int) $quote['balance_due']) ?></span>
+                        </div>
+                    <?php else: ?>
+                        <div class="price-row total">
+                            <span>Total a pagar via Pix</span>
+                            <span class="payment-total-amount"><?= money($total) ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div class="payment-total-sub mt-8">Preço final garantido, sem cobranças adicionais ou surpresas.</div>
             </div>
@@ -270,7 +281,7 @@ $pixKey = (string) ($quote['pix_key'] ?: 'rafaelrieiro@gmail.com');
                     </div>
                     <div class="payment-step-item">
                         <span class="payment-step-num">3</span>
-                        <span>Confira o valor de <strong><?= money($total) ?></strong> e confirme.</span>
+                        <span>Confira o valor de <strong><?= money(!empty($quote['amount_due_now']) ? (int) $quote['amount_due_now'] : $total) ?></strong> e confirme.</span>
                     </div>
                 </div>
 
