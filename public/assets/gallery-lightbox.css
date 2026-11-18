@@ -21,7 +21,7 @@ body.gallery-lightbox-open {
 .gallery-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: 100000;
 }
 
 .gallery-lightbox-backdrop {

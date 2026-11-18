@@ -370,6 +370,9 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('openPhotoGallery', $page);
         $this->assertStringContainsString('data-photo-index', $page);
         $this->assertStringContainsString('id="property-photos"', $view);
+        $head = strstr($view, 'id="property-detail"', true);
+        $this->assertIsString($head);
+        $this->assertStringContainsString('gallery-lightbox.css', (string) $head);
         $this->assertStringContainsString('JSON_HEX_TAG', $view);
         $this->assertSame(3, substr_count($messages, "'gallery.close'"));
     }

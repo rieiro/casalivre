@@ -9,8 +9,8 @@ $backUrl = safe_search_return((string) ($_GET['volta'] ?? ''));
 
 $amenityIcons = Amenities::ICONS;
 ?>
+<link rel="stylesheet" href="<?= e(asset_url('/assets/gallery-lightbox.css')) ?>">
 <section class="wrap prop-view-page" id="property-detail">
-    <link rel="stylesheet" href="<?= e(asset_url('/assets/gallery-lightbox.css')) ?>">
     <?php if (!empty($use_api)): ?>
         <p class="muted">Carregando…</p>
     <?php else: ?>
