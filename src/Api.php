@@ -351,8 +351,11 @@ function handle_api(string $path, string $method): void
         $selected = Amenities::selected($house);
         $amenities = array_values(array_filter(
             array_keys(array_filter($selected)),
-            static fn ($k) => !in_array($k, ['noise', 'noise_from', 'noise_until'], true)
+            static fn ($k) => !in_array($k, ['noise', 'noise_from', 'noise_until'], true) && !Amenities::isRule($k)
         ));
+        $houseRules = Amenities::rules($house);
+        $noiseFrom = (string) ($selected['noise_from'] ?? '22:00');
+        $noiseUntil = (string) ($selected['noise_until'] ?? '07:00');
         activity(ActivityLog::PROPERTY_VIEW, [
             'imovel_id' => $id,
             'cidade' => $house['city'],
@@ -370,6 +373,7 @@ function handle_api(string $path, string $method): void
             'score' => HouseRepository::score($house),
             'quote' => $quote,
             'amenities' => $amenities,
+            'house_rules' => $houseRules,
             'bedrooms' => (int) $house['bedrooms'],
             'beds' => (int) $house['beds'],
             'max_guests' => (int) $house['max_guests'],
@@ -378,8 +382,10 @@ function handle_api(string $path, string $method): void
             'checkin_time' => $house['checkin_time'],
             'checkout_time' => $house['checkout_time'],
             'cleaning_fee' => (int) ($house['cleaning_fee'] ?? 0),
-            'noise_from' => $selected['noise_from'] ?? '22:00',
-            'noise_until' => $selected['noise_until'] ?? '07:00',
+            'noise_from' => $noiseFrom,
+            'noise_until' => $noiseUntil,
+            'quiet_hours_from' => $noiseFrom,
+            'quiet_hours_until' => $noiseUntil,
             'blocked_days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($house)),
         ]);
     }
