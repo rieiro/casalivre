@@ -243,7 +243,7 @@ final class AgentApi
         $checkout = trim((string) ($body['checkout'] ?? ''));
         $hospedes = (int) ($body['hospedes'] ?? 1);
 
-        $quoteRes = self::calculateQuote($house, $checkin, $checkout, $hospedes);
+        $quoteRes = self::calculateQuote($house, $checkin, $checkout, $hospedes, false);
         if ($quoteRes['status'] !== 200) {
             http_response_code($quoteRes['status']);
             header('Content-Type: application/json; charset=utf-8');
@@ -349,7 +349,7 @@ final class AgentApi
      *
      * @return array{status: int, body: array<string, mixed>}
      */
-    private static function calculateQuote(array $house, string $checkin, string $checkout, int $hospedes): array
+    private static function calculateQuote(array $house, string $checkin, string $checkout, int $hospedes, bool $checkHolds = true): array
     {
         if (!preg_match('#^\d{4}-\d{2}-\d{2}$#', $checkin) || !preg_match('#^\d{4}-\d{2}-\d{2}$#', $checkout) || $checkin >= $checkout) {
             return [
@@ -379,6 +379,34 @@ final class AgentApi
                     'conflict_date' => $avail['conflict_date'],
                 ],
             ];
+        }
+
+        if ($checkHolds) {
+            $holdStmt = db()->prepare(
+                "SELECT checkin, checkout FROM booking_intents
+                  WHERE property_id = :pid
+                    AND status IN ('held', 'pending', 'PENDING_PAYMENT')
+                    AND expires_at > now()
+                    AND checkin < :checkout
+                    AND checkout > :checkin
+                  ORDER BY checkin ASC
+                  LIMIT 1"
+            );
+            $holdStmt->execute([
+                ':pid' => $id,
+                ':checkout' => $checkout,
+                ':checkin' => $checkin,
+            ]);
+            $hold = $holdStmt->fetch(PDO::FETCH_ASSOC);
+            if ($hold) {
+                return [
+                    'status' => 409,
+                    'body' => [
+                        'available' => false,
+                        'conflict_date' => max((string) $hold['checkin'], $checkin),
+                    ],
+                ];
+            }
         }
 
         $nightly = (int) ($house['nightly_price'] ?? 0);
@@ -635,7 +663,7 @@ final class AgentApi
                 return ['error' => ['code' => -32602, 'message' => 'Invalid plan']];
             }
 
-            $quoteRes = self::calculateQuote($house, $checkin, $checkout, $hospedes);
+            $quoteRes = self::calculateQuote($house, $checkin, $checkout, $hospedes, false);
             if ($quoteRes['status'] !== 200) {
                 return ['result' => $quoteRes['body']];
             }

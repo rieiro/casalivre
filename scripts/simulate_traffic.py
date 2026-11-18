@@ -22,18 +22,19 @@ HUMAN_UA = 'Mozilla/5.0 (compatible; CasaLivreHumanSim/1.0)'
 MCP_UA = 'CasaLivre-MCP-Sim'
 
 async def get_test_hash(client: httpx.AsyncClient, base_url: str) -> str:
-    res = await client.get(f"{base_url}/api/v1/agent/search?localidade=Florianópolis")
-    if res.status_code == 200:
-        data = res.json()
-        if data.get('items'):
-            return data['items'][0]['id']
+    for loc in ['Rio de Janeiro', 'Florianópolis']:
+        res = await client.get(f"{base_url}/api/v1/agent/search?localidade={loc}")
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('items'):
+                return data['items'][0]['id']
     # Fallback search without locality
     res2 = await client.get(f"{base_url}/api/v1/agent/search")
     if res2.status_code == 200:
         data = res2.json()
         if data.get('items'):
             return data['items'][0]['id']
-    return '0123456789abcdef'
+    return 'a3fac08940fdecad'
 
 async def run_search_bots(base_url: str, public_hash: Optional[str], requests: int, concurrency: int) -> bool:
     print(f"[*] Running profile: search_bots ({requests} requests, concurrency {concurrency})")
@@ -55,7 +56,7 @@ async def run_search_bots(base_url: str, public_hash: Optional[str], requests: i
             async with sem:
                 r1 = await client.get(f"{base_url}/robots.txt", headers=headers)
                 r2 = await client.get(f"{base_url}/llms.txt", headers=headers)
-                r3 = await client.get(f"{base_url}/api/v1/agent/search?localidade=Florianópolis&hospedes=2", headers=headers)
+                r3 = await client.get(f"{base_url}/api/v1/agent/search?localidade=Rio+de+Janeiro&hospedes=2", headers=headers)
                 r4 = await client.get(f"{base_url}/imoveis/{public_hash}", headers=headers_md)
 
                 total += 4
@@ -110,7 +111,7 @@ async def run_mcp_agents(base_url: str, public_hash: Optional[str], requests: in
             'method': 'tools/call',
             'params': {
                 'name': 'search_properties',
-                'arguments': {'localidade': 'Florianópolis', 'hospedes': 2}
+                'arguments': {'localidade': 'Rio de Janeiro', 'hospedes': 2}
             }
         }
         r_search = await client.post(f"{base_url}/mcp", headers=headers, json=call_search)
@@ -182,7 +183,7 @@ async def run_human_mix(base_url: str, requests: int) -> bool:
         total = 0
         for _ in range(requests // 2 or 1):
             r1 = await client.get(f"{base_url}/", headers=headers)
-            r2 = await client.get(f"{base_url}/api/busca?localidade=Florianópolis", headers=headers)
+            r2 = await client.get(f"{base_url}/api/busca?localidade=Rio+de+Janeiro", headers=headers)
             total += 2
             if r1.status_code == 200:
                 successes += 1

@@ -173,7 +173,7 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16,32}|pagamento/intencao/[a-f0-9]{16,32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imove(?:is|l)/[a-f0-9]{16}|imovel/[a-z0-9-]+|pagamento/[a-f0-9]{16,32}|pagamento/intencao/[a-f0-9]{16,32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
@@ -1296,7 +1296,24 @@ if ($path === '/imoveis' && $method === 'POST') {
     redirect('/imoveis/' . property_ref(HouseRepository::find((int) $created['id'])) . '/editar');
 }
 
-if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
+$isPropertyView = false;
+$propertyRef = null;
+if (preg_match('#^/imove(?:is|l)/([a-f0-9]{16})$#', $path, $m)) {
+    $isPropertyView = true;
+    $propertyRef = $m[1];
+} elseif (preg_match('#^/imovel/([a-z0-9-]+)$#', $path, $m)) {
+    $slug = strtolower($m[1]);
+    $st = db()->prepare("SELECT public_hash FROM properties WHERE LOWER(REGEXP_REPLACE(title, '[^a-zA-Z0-9]+', '-', 'g')) = ? AND status = 'active' LIMIT 1");
+    $st->execute([$slug]);
+    $foundHash = $st->fetchColumn();
+    if ($foundHash) {
+        $isPropertyView = true;
+        $propertyRef = (string) $foundHash;
+    }
+}
+
+if ($isPropertyView && $method === 'GET') {
+    $m = [0 => $path, 1 => $propertyRef];
     // No domínio de um grupo, só imóvel dele (outro grupo ou sem grupo: 404); na plataforma, como antes.
     [$noGrupo, $imovel] = GrupoResolvedor::imovelNoHost($m[1], $_SERVER['HTTP_HOST'] ?? null);
     if ($noGrupo && $imovel === null) {
