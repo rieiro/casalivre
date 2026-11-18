@@ -43,7 +43,7 @@ final class IpRateLimiter
         '/senha/esqueci',   // password reset (web + API), sends email
         '/cadastro',        // signup (web + API), sends the activation email
         'ativacao-reenvio', // activation resend on login of a pending account (LoginAttempt), sends email
-        '/api/v1/agent/intent', // booking hold minting (ARCHITECTURE_AI_PLAN.md §4.5)
+        '/api/v1/agent/intent', // booking hold minting (docs/ai/ARCHITECTURE_AI_PLAN.md §4.5)
         '/mcp',                 // mcp tool calls
     ];
 
