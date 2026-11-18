@@ -43,6 +43,8 @@ final class IpRateLimiter
         '/senha/esqueci',   // password reset (web + API), sends email
         '/cadastro',        // signup (web + API), sends the activation email
         'ativacao-reenvio', // activation resend on login of a pending account (LoginAttempt), sends email
+        '/api/v1/agent/intent', // booking hold minting (ARCHITECTURE_AI_PLAN.md §4.5)
+        '/mcp',                 // mcp tool calls
     ];
 
     /** Only for dev/local without LOG_SALT (APP_ENV=dev|local); production without LOG_SALT fails per bucket. */

@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="<?= e(asset_url('/assets/app.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url(Theme::cssPath($themeName))) ?>">
     <?= page_data_script($csrf) ?>
+    <?php if (!empty($json_ld)): ?><script type="application/ld+json"><?= $json_ld ?></script><?php endif; ?>
     <script src="<?= e(asset_url('/assets/safe-dom.js')) ?>"></script>
 </head>
 <?php $bClass = trim(($body_class ?? "") . ((isset($template) && $template === "calendar") ? " page-calendar" : "") . ((isset($template) && $template === "dashboard") ? " page-dashboard" : "") . ((isset($template) && $template === "account") ? " page-account" : "") . ((isset($template) && $template === "property_form") ? " page-property-form" : "")); ?>

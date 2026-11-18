@@ -1,0 +1,303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CasaLivre agent API",
+    "version": "1.0.0",
+    "summary": "Read listings, quote a stay, and place a 15-minute hold. No payment capture."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/agent/search": {
+      "get": {
+        "operationId": "search_properties",
+        "parameters": [
+          {
+            "name": "localidade",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          {
+            "name": "checkin",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "checkout",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "hospedes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "raio",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          },
+          {
+            "name": "preco_min",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "preco_max",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "score_min",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            }
+          },
+          {
+            "name": "amenidade",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "relevance",
+                "rating"
+              ]
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of public listings"
+          },
+          "400": {
+            "description": "Invalid cursor"
+          },
+          "503": {
+            "description": "Search timeout"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/properties/{public_hash}": {
+      "get": {
+        "operationId": "get_property_details",
+        "parameters": [
+          {
+            "name": "public_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}$"
+            }
+          },
+          {
+            "name": "checkin",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "checkout",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public listing"
+          },
+          "404": {
+            "description": "Not found on this host"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/properties/{public_hash}/quote": {
+      "get": {
+        "operationId": "check_availability_and_quote",
+        "parameters": [
+          {
+            "name": "public_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}$"
+            }
+          },
+          {
+            "name": "checkin",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "checkout",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "hospedes",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available, with pix_a_vista, sinal_50, and cartao_12x figures"
+          },
+          "409": {
+            "description": "Calendar conflict"
+          },
+          "422": {
+            "description": "Invalid range or minimum nights"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/properties/{public_hash}/intent": {
+      "post": {
+        "operationId": "create_booking_intent",
+        "parameters": [
+          {
+            "name": "public_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "checkin",
+                  "checkout",
+                  "hospedes",
+                  "plan"
+                ],
+                "properties": {
+                  "checkin": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "checkout": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "hospedes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "plan": {
+                    "type": "string",
+                    "enum": [
+                      "pix_a_vista",
+                      "sinal_50",
+                      "cartao_12x"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Hold created. Body includes checkout_url. Calendar is not blocked."
+          },
+          "409": {
+            "description": "Dates unavailable"
+          },
+          "422": {
+            "description": "Bad dates, bad plan, or unexpected field"
+          },
+          "429": {
+            "description": "IP bucket or 3 open holds on this property"
+          }
+        }
+      }
+    }
+  }
+}

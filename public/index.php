@@ -32,6 +32,11 @@ require_once __DIR__ . '/../src/CalendarSync.php';
 require_once __DIR__ . '/../src/Api.php';
 require_once __DIR__ . '/../src/ActivityLog.php';
 ActivityLog::beginRequest();
+require_once __DIR__ . '/../src/PublicListing.php';
+require_once __DIR__ . '/../src/MarkdownListing.php';
+require_once __DIR__ . '/../src/BotTelemetry.php';
+require_once __DIR__ . '/../src/AgentApi.php';
+BotTelemetry::start();
 require_once __DIR__ . '/../src/SecureSession.php';
 require_once __DIR__ . '/../src/ExceptionShield.php';
 
@@ -114,7 +119,10 @@ require_once __DIR__ . '/../src/bootstrap.php';
 return Seguranca::pipeline(
     [
         'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url'],
-        'sem_csrf' => [],
+        'sem_csrf' => [
+            '/mcp',
+            '#^/api/v1/agent/properties/[a-f0-9]{16}/intent$#',
+        ],
         'login' => [
             ['POST', '/entrar'],
             ['POST', '/api/sessao'],
@@ -165,11 +173,14 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16}))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imoveis/[a-f0-9]{16}|pagamento/[a-f0-9]{16}|pagamento/intencao/[a-f0-9]{32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
 {
+    if (str_starts_with($path, '/api/v1/agent') || $path === '/mcp' || str_starts_with($path, '/pagamento/intencao/') || $path === '/llms-full.txt' || $path === '/openapi.json') {
+        return false;
+    }
     if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
@@ -269,6 +280,10 @@ function casa_html_error(int $status, string $title, string $message): never
 
 function dispatch(string $path, string $method): mixed
 {
+    if (str_starts_with($path, '/api/v1/agent') || $path === '/mcp' || $path === '/llms-full.txt' || $path === '/openapi.json' || str_starts_with($path, '/pagamento/intencao/')) {
+        AgentApi::handle($path, $method);
+        return null;
+    }
 if ($path === '/idioma' && $method === 'POST') {
     csrf_check();
     $locale = (string) ($_POST['locale'] ?? '');
@@ -1204,12 +1219,37 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'GET') {
         view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
         return null;
     }
+
+    $house = HouseRepository::findByPublicHash($m[1]);
+    if (!$house || ($house['status'] ?? 'active') !== 'active') {
+        http_response_code(404);
+        view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
+        return null;
+    }
+
+    $checkin = (string) ($_GET['checkin'] ?? '');
+    $checkout = (string) ($_GET['checkout'] ?? '');
+    $listing = public_listing($house, $checkin, $checkout);
+
+    if (prefers_markdown()) {
+        BotTelemetry::setContext('markdown', 'get_property_details', (int) $house['id']);
+        header('Content-Type: text/markdown; charset=utf-8');
+        header('Vary: Accept');
+        echo render_property_markdown($listing);
+        exit;
+    }
+
+    BotTelemetry::setContext('html', 'get_property_details', (int) $house['id']);
+    $jsonLd = jsonld_vacation_rental($listing);
+
     view('property', [
         'hash' => $m[1],
         'imovel' => $imovel,
+        'property' => $house,
         'use_api' => true,
-        'checkin' => (string) ($_GET['checkin'] ?? ''),
-        'checkout' => (string) ($_GET['checkout'] ?? ''),
+        'json_ld' => $jsonLd,
+        'checkin' => $checkin,
+        'checkout' => $checkout,
     ]);
     return null;
 }
