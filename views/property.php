@@ -10,6 +10,7 @@ $backUrl = safe_search_return((string) ($_GET['volta'] ?? ''));
 $amenityIcons = Amenities::ICONS;
 ?>
 <section class="wrap prop-view-page" id="property-detail">
+    <link rel="stylesheet" href="<?= e(asset_url('/assets/gallery-lightbox.css')) ?>">
     <?php if (!empty($use_api)): ?>
         <p class="muted">Carregando…</p>
     <?php else: ?>
@@ -53,16 +54,22 @@ $amenityIcons = Amenities::ICONS;
                 </div>
             <?php elseif (count($photos) === 1): ?>
                 <div class="prop-view-photo-single">
-                    <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 1200px') ?> alt="Foto de <?= e($property['title']) ?>" loading="eager">
+                    <button type="button" class="prop-view-photo-open" data-photo-index="0">
+                        <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 1200px') ?> alt="Foto de <?= e($property['title']) ?>" loading="eager">
+                    </button>
                 </div>
             <?php else: ?>
                 <div class="prop-view-photo-main">
-                    <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 700px') ?> alt="Foto principal de <?= e($property['title']) ?>" loading="eager">
+                    <button type="button" class="prop-view-photo-open" data-photo-index="0">
+                        <img src="<?= e(photo_url(photo_variant($photos[0]['path'], 'card'))) ?>"<?= photo_srcset_attr($photos[0]['path'], '(max-width: 900px) 100vw, 700px') ?> alt="Foto principal de <?= e($property['title']) ?>" loading="eager">
+                    </button>
                 </div>
                 <div class="prop-view-photo-grid">
                     <?php foreach (array_slice($photos, 1, 4) as $idx => $photo): ?>
                         <div class="prop-view-photo-item<?= ($idx === 3 && count($photos) > 5) ? ' has-more' : '' ?>">
-                            <img src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>"<?= photo_srcset_attr($photo['path'], '(max-width: 600px) 50vw, 350px') ?> alt="Foto de <?= e($property['title']) ?>" loading="lazy">
+                            <button type="button" class="prop-view-photo-open" data-photo-index="<?= (int) $idx + 1 ?>">
+                                <img src="<?= e(photo_url(photo_variant($photo['path'], 'card'))) ?>"<?= photo_srcset_attr($photo['path'], '(max-width: 600px) 50vw, 350px') ?> alt="Foto de <?= e($property['title']) ?>" loading="lazy">
+                            </button>
                             <?php if ($idx === 3 && count($photos) > 5): ?>
                                 <div class="prop-view-more-badge">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -273,6 +280,19 @@ $amenityIcons = Amenities::ICONS;
         </div>
     <?php endif; ?>
 </section>
+<?php
+$galleryPhotos = [];
+foreach (($photos ?? []) as $galleryPhoto) {
+    $galleryPhotos[] = [
+        'url' => photo_url(photo_variant((string) ($galleryPhoto['path'] ?? ''), 'full')),
+        'caption' => trim((string) ($galleryPhoto['caption'] ?? $galleryPhoto['room'] ?? '')),
+    ];
+}
+?>
+<?php if (empty($use_api) && $galleryPhotos !== []): ?>
+<script type="application/json" id="property-photos"><?= json_encode($galleryPhotos, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+<?php endif; ?>
+<script src="<?= e(asset_url('/assets/gallery-lightbox.js')) ?>"></script>
 <?php if (!empty($use_api)): ?>
 <?php page_data(['hash' => $hash ?? '', 'csrf' => $csrf ?? '']); ?>
 <script src="<?= e(asset_url('/assets/pages/property.js')) ?>"></script>

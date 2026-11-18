@@ -41,6 +41,18 @@
 
             // 3. Luxury Photo Mosaic Gallery
             const photos = data.photos || [];
+            const openAt = (index) => {
+                if (typeof CL.openPhotoGallery === "function") CL.openPhotoGallery(photos, index);
+            };
+            const photoButton = (photo, index, sizes, alt) => {
+                const btn = el("button", {
+                    type: "button",
+                    className: "prop-view-photo-open",
+                    "data-photo-index": String(index)
+                }, CL.photoImg(photo.path, sizes, alt));
+                btn.addEventListener("click", () => openAt(index));
+                return btn;
+            };
             let galleryMosaic;
             if (photos.length === 0) {
                 galleryMosaic = el("div", { className: "prop-view-mosaic" },
@@ -51,14 +63,15 @@
             } else if (photos.length === 1) {
                 galleryMosaic = el("div", { className: "prop-view-mosaic" },
                     el("div", { className: "prop-view-photo-single" },
-                        CL.photoImg(photos[0].path, "(max-width: 900px) 100vw, 1200px", "Foto de " + (data.title || ""))
+                        photoButton(photos[0], 0, "(max-width: 900px) 100vw, 1200px", "Foto de " + (data.title || ""))
                     )
                 );
             } else {
                 const secondaryPhotos = photos.slice(1, 5).map((photo, idx) => {
+                    const index = idx + 1;
                     const isFourth = idx === 3 && photos.length > 5;
                     const item = el("div", { className: "prop-view-photo-item" + (isFourth ? " has-more" : "") },
-                        CL.photoImg(photo.path, "(max-width: 600px) 50vw, 350px", "Foto de " + (data.title || ""))
+                        photoButton(photo, index, "(max-width: 600px) 50vw, 350px", "Foto de " + (data.title || ""))
                     );
                     if (isFourth) {
                         item.appendChild(el("div", { className: "prop-view-more-badge" }, "📷 +" + (photos.length - 5) + " fotos"));
@@ -68,7 +81,7 @@
 
                 galleryMosaic = el("div", { className: "prop-view-mosaic" },
                     el("div", { className: "prop-view-photo-main" },
-                        CL.photoImg(photos[0].path, "(max-width: 900px) 100vw, 700px", "Foto principal de " + (data.title || ""))
+                        photoButton(photos[0], 0, "(max-width: 900px) 100vw, 700px", "Foto principal de " + (data.title || ""))
                     ),
                     el("div", { className: "prop-view-photo-grid" }, ...secondaryPhotos)
                 );

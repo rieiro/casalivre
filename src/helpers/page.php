@@ -31,7 +31,14 @@ function page_data_script(string $csrf): string
 {
     $data = page_data() + [
         'csrf' => $csrf,
-        'i18n' => ['netError' => t('js.net_error'), 'requestFailed' => t('js.request_failed')],
+        'i18n' => [
+            'netError' => t('js.net_error'),
+            'requestFailed' => t('js.request_failed'),
+            'gallery.close' => t('gallery.close'),
+            'gallery.prev' => t('gallery.prev'),
+            'gallery.next' => t('gallery.next'),
+            'gallery.photo' => t('gallery.photo'),
+        ],
     ];
     return '<script type="application/json" id="page-data">'
         . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)

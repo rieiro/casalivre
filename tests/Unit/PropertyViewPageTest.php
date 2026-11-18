@@ -348,4 +348,29 @@ final class PropertyViewPageTest extends TestCase
         $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?animais/iu', $html);
         $this->assertMatchesRegularExpression('/prop-view-rules-list[\s\S]*?elevador/iu', $html);
     }
+
+    public function testPropertyGalleryLightbox(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $js = (string) file_get_contents($root . '/public/assets/gallery-lightbox.js');
+        $css = (string) file_get_contents($root . '/public/assets/gallery-lightbox.css');
+        $page = (string) file_get_contents($root . '/public/assets/pages/property.js');
+        $view = (string) file_get_contents($root . '/views/property.php');
+        $messages = (string) file_get_contents($root . '/database/messages.php');
+
+        $this->assertStringNotContainsString('innerHTML', $js);
+        $this->assertStringContainsString('ArrowLeft', $js);
+        $this->assertStringContainsString('ArrowRight', $js);
+        $this->assertStringContainsString('Escape', $js);
+        $this->assertStringContainsString('touchstart', $js);
+        $this->assertStringContainsString('gallery-lightbox-open', $js);
+        $this->assertStringContainsString(' / ', $js);
+        $this->assertStringContainsString('gallery.close', $js);
+        $this->assertStringContainsString('gallery-lightbox', $css);
+        $this->assertStringContainsString('openPhotoGallery', $page);
+        $this->assertStringContainsString('data-photo-index', $page);
+        $this->assertStringContainsString('id="property-photos"', $view);
+        $this->assertStringContainsString('JSON_HEX_TAG', $view);
+        $this->assertSame(3, substr_count($messages, "'gallery.close'"));
+    }
 }
