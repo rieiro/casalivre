@@ -517,7 +517,6 @@ if (($path === '/reservas' || $path === '/admin/reservas') && $method === 'GET')
     $user = require_user();
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/PhotoRepository.php';
-    QuoteRepository::ensureTable();
 
     $filter = (string) ($_GET['status'] ?? '');
     if (!in_array($filter, ['pending', 'confirmed'], true)) {
@@ -571,7 +570,6 @@ if ((preg_match('#^/reservas/([a-f0-9]{16})/confirmar$#', $path, $m) || preg_mat
     csrf_check();
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
-    QuoteRepository::ensureTable();
 
     $hash = $m[1];
     $quote = QuoteRepository::findByHash($hash);
@@ -620,7 +618,6 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method ===
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/QuoteGenerator.php';
-    QuoteRepository::ensureTable();
 
     $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
 
@@ -718,7 +715,6 @@ if (preg_match('#^/pagamento/([a-f0-9]{16,32})$#', $path, $m) && $method === 'GE
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
     require_once dirname(__DIR__) . '/src/PhotoRepository.php';
 
-    QuoteRepository::ensureTable();
     $quote = QuoteRepository::findByHash($m[1]);
     $intent = null;
     if (!$quote) {
@@ -810,7 +806,6 @@ if (preg_match('#^/pagamento/([a-f0-9]{16,32})/confirmar$#', $path, $m) && $meth
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
 
-    QuoteRepository::ensureTable();
     $quote = QuoteRepository::findByHash($m[1]);
     if (!$quote) {
         $intentStmt = db()->prepare("SELECT * FROM booking_intents WHERE token = ? ORDER BY id DESC LIMIT 1");
@@ -1471,7 +1466,6 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
 
     if (($_POST['acao'] ?? '') === 'cotacao') {
         require_once dirname(__DIR__) . '/src/QuoteRepository.php';
-        QuoteRepository::ensureTable();
         $start = parse_date((string) ($_POST['inicio'] ?? ''));
         $end = parse_date((string) ($_POST['fim'] ?? '')) ?? $start;
         if ($start === null || $end === null) {
@@ -1671,7 +1665,6 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method ===
     }
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
-    QuoteRepository::ensureTable();
 
     $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
     if (!$property || ($property['status'] ?? 'active') !== 'active') {

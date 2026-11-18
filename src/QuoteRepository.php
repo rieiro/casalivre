@@ -39,7 +39,6 @@ final class QuoteRepository
 
     public static function cleanupExpired(?int $propertyId = null): void
     {
-        self::ensureTable();
         $check = $propertyId !== null
             ? db()->prepare("SELECT 1 FROM quotes WHERE property_id = ? AND status = 'pending' AND expires_at < CURRENT_TIMESTAMP LIMIT 1")
             : db()->query("SELECT 1 FROM quotes WHERE status = 'pending' AND expires_at < CURRENT_TIMESTAMP LIMIT 1");
@@ -82,7 +81,6 @@ final class QuoteRepository
      */
     public static function checkAvailability(int $propertyId, string $checkin, string $checkout, ?string $forQuoteHash = null): array
     {
-        self::ensureTable();
         self::cleanupExpired($propertyId);
         if ($forQuoteHash !== null) {
             $stmt = db()->prepare("SELECT day FROM calendar_days WHERE property_id = ? AND day >= ? AND day < ? AND blocked = 1 AND origin != 'pre-reserva' LIMIT 1");
@@ -110,7 +108,6 @@ final class QuoteRepository
         string $pixKey = "rafaelrieiro@gmail.com",
         ?int $overridePrice = null
     ): array {
-        self::ensureTable();
         $avail = self::checkAvailability($propertyId, $checkin, $checkout);
         if (!$avail["available"]) {
             throw new InvalidArgumentException("Data indisponível: " . $avail["conflict_date"]);
@@ -226,7 +223,6 @@ final class QuoteRepository
 
     public static function findByHash(string $hash): ?array
     {
-        self::ensureTable();
         $stmt = db()->prepare("SELECT q.*, p.title as property_title, p.public_hash as property_hash,
                                       p.address, p.nightly_price as base_nightly, p.max_guests,
                                       p.bedrooms, p.beds, p.checkin_time, p.checkout_time
@@ -262,7 +258,6 @@ final class QuoteRepository
 
     public static function confirmPayment(string $hash): bool
     {
-        self::ensureTable();
         self::cleanupExpired();
         $quote = self::findByHash($hash);
         if (!$quote) {
@@ -303,7 +298,6 @@ final class QuoteRepository
      */
     public static function listForUser(int $userId, ?string $status = null): array
     {
-        self::ensureTable();
         $sql = "SELECT q.*, p.title as property_title, p.public_hash as property_hash
                 FROM quotes q
                 JOIN properties p ON p.id = q.property_id
@@ -321,7 +315,6 @@ final class QuoteRepository
 
     public static function listAll(?string $status = null): array
     {
-        self::ensureTable();
         $sql = "SELECT q.*, p.title as property_title, p.public_hash as property_hash
                 FROM quotes q
                 JOIN properties p ON p.id = q.property_id";

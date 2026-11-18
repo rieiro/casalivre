@@ -121,4 +121,96 @@ final class HouseManagementTest extends TestCase
         $this->assertSame(0, (int) $row["fail_count"]);
         $this->assertSame("PENDENTE", $row["last_status"]);
     }
+
+    /**
+     * Perf (#painel): listByUser must read only the user's rows (own + groups they manage),
+     * keep newest-first ordering, never duplicate, and never return inactive properties.
+     */
+    public function testListByUserReturnsOnlyOwnedAndManagedActiveProperties(): void
+    {
+        $row = $this->pdo->query("
+            SELECT user_id
+            FROM properties
+            WHERE status = 'active'
+            GROUP BY user_id
+            HAVING count(*) >= 2
+            ORDER BY user_id
+            LIMIT 1
+        ")->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $this->markTestSkipped('Seed has no user with two active properties');
+        }
+        $ownerId = (int) $row['user_id'];
+
+        $listed = HouseRepository::listByUser($ownerId);
+        $ids = array_map(static fn (array $p): int => (int) $p['id'], $listed);
+
+        foreach ($listed as $property) {
+            $this->assertSame('active', $property['status'], 'inactive properties must never be listed');
+        }
+        $this->assertSame(count($ids), count(array_unique($ids)), 'a property must never be listed twice');
+        $descending = $ids;
+        rsort($descending);
+        $this->assertSame($descending, $ids, 'newest property first (id DESC)');
+
+        $ownActive = array_map('intval', $this->pdo->query(
+            "SELECT id FROM properties WHERE user_id = {$ownerId} AND status = 'active' ORDER BY id DESC"
+        )->fetchAll(PDO::FETCH_COLUMN));
+        $this->assertNotEmpty($ownActive);
+        foreach ($ownActive as $id) {
+            $this->assertContains($id, $ids, "owned active property {$id} must be listed");
+        }
+
+        // Same group-manager contract as findManageable(): a gestor sees properties of the group.
+        $managed = $this->pdo->query("
+            SELECT gm.user_id AS manager_id, p.id AS property_id
+            FROM properties p
+            JOIN group_members gm ON gm.group_id = p.group_id AND gm.role = 'gestor'
+            WHERE p.status = 'active' AND p.user_id <> gm.user_id
+            LIMIT 1
+        ")->fetch(PDO::FETCH_ASSOC);
+        if ($managed) {
+            $managedIds = array_map(
+                static fn (array $p): int => (int) $p['id'],
+                HouseRepository::listByUser((int) $managed['manager_id'])
+            );
+            $this->assertContains((int) $managed['property_id'], $managedIds, 'group manager must see the group property');
+        }
+
+        // Deactivating an owned property removes it from the list (and nothing else leaks in).
+        $target = $ownActive[0];
+        $this->pdo->prepare("UPDATE properties SET status = 'inactive' WHERE id = ?")->execute([$target]);
+        $afterInactive = array_map(
+            static fn (array $p): int => (int) $p['id'],
+            HouseRepository::listByUser($ownerId)
+        );
+        $this->assertNotContains($target, $afterInactive);
+    }
+
+    /** Equivalence guard: the optimized query must return exactly the rows of the original OR definition. */
+    public function testListByUserMatchesTheOriginalOrDefinition(): void
+    {
+        $row = $this->pdo->query("SELECT user_id FROM properties WHERE status = 'active' GROUP BY user_id ORDER BY count(*) DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $this->markTestSkipped('Seed has no active properties');
+        }
+        $userId = (int) $row['user_id'];
+
+        $expected = array_map('intval', $this->pdo->query("
+            SELECT p.id
+            FROM properties p
+            JOIN places c ON c.id = p.city_place_id
+            WHERE (p.user_id = {$userId} OR p.group_id IN (
+                SELECT group_id FROM group_members WHERE user_id = {$userId} AND role = 'gestor'
+            )) AND p.status = 'active'
+            ORDER BY p.id DESC
+        ")->fetchAll(PDO::FETCH_COLUMN));
+
+        $actual = array_map(
+            static fn (array $p): int => (int) $p['id'],
+            HouseRepository::listByUser($userId)
+        );
+
+        $this->assertSame($expected, $actual);
+    }
 }

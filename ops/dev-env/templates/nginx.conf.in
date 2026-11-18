@@ -24,6 +24,15 @@ http {
 			fastcgi_param SCRIPT_FILENAME $document_root/index.php;
 			fastcgi_pass unix:${CL_HOME}/run/php-fpm.sock;
 		}
+		# Fotos: o nome carrega UUID, então o arquivo é imutável. Cache de 1 ano e nunca executa PHP
+		# (prompts/deploy.md). Sem isso, cada card do painel revalida a foto a cada visita (304).
+		location /uploads/ {
+			autoindex off;
+			add_header Cache-Control "public, max-age=31536000, immutable" always;
+			add_header X-Content-Type-Options nosniff always;
+			location ~ \.php$ { return 404; }
+			try_files $uri =404;
+		}
 		location / { try_files $uri /index.php$is_args$args; }
 		location ~ \.php$ {
 			include /etc/nginx/fastcgi_params;
