@@ -398,4 +398,21 @@ final class PropertyViewPageTest extends TestCase
         $this->assertStringContainsString('prop-view-photo-bg', $view);
         $this->assertStringContainsString('prop-view-photo-fg', $view);
     }
+
+    public function testDesktopMosaicHasFixedRowHeightSoTallPhotosAreNotCropped(): void
+    {
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $start = strpos($css, '.prop-view-mosaic {');
+        $this->assertNotFalse($start);
+        $block = substr($css, $start, (int) strpos($css, '}', $start) - $start);
+        // Fixed track height: intrinsic size of tall photos must not grow the row past the clip box
+        $this->assertStringContainsString('height: 480px;', $block);
+        $this->assertStringContainsString('grid-template-rows: minmax(0, 1fr);', $block);
+        // Foreground photo is taken out of flow so it never contributes intrinsic height
+        $fgStart = strpos($css, '.prop-view-photo-fg {');
+        $this->assertNotFalse($fgStart);
+        $fg = substr($css, $fgStart, (int) strpos($css, '}', $fgStart) - $fgStart);
+        $this->assertStringContainsString('position: absolute;', $fg);
+        $this->assertStringContainsString('inset: 0;', $fg);
+    }
 }
