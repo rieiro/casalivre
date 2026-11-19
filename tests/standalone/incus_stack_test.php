@@ -162,7 +162,7 @@ $dev = incus_read('scripts/05-dev-live.sh');
 foreach (['on|off|status', 'setfacl', 'volatile.idmap.base', 'opcache.validate_timestamps=1',
     'dev-live-src', 'dev-live-static', 'dev-live-tiles',
     '/srv/app', '/srv/static', '/srv/tiles', 'alias /srv/tiles/brasil.pmtiles',
-    'storage/tiles', 'nginx -t'] as $n) {
+    'storage/tiles', 'nginx -t', 'ALLOW_LOCAL_DB', 'QUEUE_DRIVER', 'check_env', '/busca'] as $n) {
     t_ok(str_contains($dev, $n), "05-dev-live.sh has $n");
 }
 t_ok(str_contains($dev, 'sv restart php-fpm'), '05-dev-live.sh restarts php-fpm after the opcache switch');

@@ -180,7 +180,11 @@ sudo ./scripts/05-dev-live.sh off    # restore the copies, php.ini and edge conf
 - sets `opcache.validate_timestamps=1` / `revalidate_freq=0` and restarts php-fpm once, so a saved
   PHP file is picked up on the next request;
 - disables browser caching for `/assets/` and `/uploads/`;
-- backs up `php.ini` and the edge `default.conf` under `artifacts/dev-backups/`.
+- backs up `php.ini` and the edge `default.conf` under `artifacts/dev-backups/`;
+- preflights the repo `.env`: refuses a `DB_DSN` pointing at localhost (the DB is `db-pg` at
+  `10.10.20.10`) unless `ALLOW_LOCAL_DB=1`, and warns on `QUEUE_DRIVER=valkey` or a loopback
+  `APP_URL`;
+- smoke-tests `/`, `/busca` (DB-backed) and `/assets/app.css`, plus the tiles range.
 
 Caveats:
 
@@ -280,13 +284,16 @@ sudo ./scripts/05-dev-live.sh off      # remove and restore php.ini/nginx.conf
 ./scripts/05-dev-live.sh status        # show mode, devices, opcache, cache headers
 ```
 
-Overrides (environment): `REPO_DIR`, `APP`, `EDGE`, `STATE_DIR`, `BACKUP_DIR`.
+Overrides (environment): `REPO_DIR`, `APP`, `EDGE`, `STATE_DIR`, `BACKUP_DIR`, `ALLOW_LOCAL_DB`.
 `EDGE` defaults to the active slot recorded by the edge module, then to the running
 `nginx-prod-blue`/`nginx-prod-green`.
 
 ### A.4 What `on` does, step by step
 
-1. **Resolve** `APP`, the active `EDGE`, `REPO_DIR` and `APPUID` (see A.6).
+1. **Resolve** `APP`, the active `EDGE`, `REPO_DIR` and `APPUID` (see A.6), then **preflight the
+   repo `.env`**: it must exist, `DB_DSN` must not point at `127.0.0.1`/`localhost`/a local socket
+   (the 3-tier stack uses `db-pg` at `10.10.20.10`; `ALLOW_LOCAL_DB=1` overrides), and
+   `QUEUE_DRIVER=valkey`/a loopback `APP_URL` produce warnings.
 2. **Back up once** (only when no marker exists):
    - `app-php:/etc/php8.4/php.ini` → `artifacts/dev-backups/php.ini.<UTC timestamp>`
    - `<edge>:/usr/local/nginx/conf/sites-enabled/default.conf` → `artifacts/dev-backups/default.conf.<UTC timestamp>`
@@ -397,6 +404,7 @@ in mind that it exposes activation/reset links in responses.
 | Symptom | Check / fix |
 |---|---|
 | `05` says “device already exists with a different source” | an old bind remains. `incus config device remove <ct> <name>` (or fix `REPO_DIR`) then re-run `on`. |
+| `05 on` refuses: “DB_DSN points to a local database” | the repo `.env` is a leftover single-container env. Copy `deploy/incus/secrets/app.env`, or set `ALLOW_LOCAL_DB=1` only if a local DB really exists. |
 | PHP edits do not show | `incus exec app-php -- php -i \| grep opcache.validate_timestamps`; must be `On`. Re-run `on` (restarts FPM). |
 | `403`/`404` on assets or uploads | `incus config device show <edge>`; `/srv/static` must point to `<repo>/public`. Re-run `on`. |
 | Tiles 404 | the `/srv/tiles` device must exist and the config must contain `alias /srv/tiles/brasil.pmtiles;`. |

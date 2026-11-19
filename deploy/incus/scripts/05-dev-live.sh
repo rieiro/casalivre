@@ -120,7 +120,7 @@ edge_base_url() {
 smoke() {
   local url code
   url="$(edge_base_url "$EDGE")"
-  for path in / /assets/app.css; do
+  for path in / /busca /assets/app.css; do
     code="$(curl -k -sS -o /dev/null -w '%{http_code}' --max-time 10 "$url$path" || echo 000)"
     [ "$code" = "200" ] || die "smoke failed: $url$path -> $code"
   done
@@ -131,6 +131,37 @@ smoke() {
   log "smoke ok: $url/"
 }
 
+env_value() {
+  sed -n "s/^$1=//p" "$REPO_DIR/.env" 2>/dev/null | head -n1 | sed -e 's/^"//' -e 's/"$//'
+}
+
+# The overlay makes app-php read $REPO_DIR/.env. A leftover single-container env (localhost DB,
+# Valkey queue) would break every request, so validate it before touching the running stack.
+check_env() {
+  local f="$REPO_DIR/.env" dsn qd appurl
+  [ -f "$f" ] || die "$f is missing: copy deploy/incus/secrets/app.env (or .env.example) before enabling live-dev"
+  dsn="$(env_value DB_DSN)"
+  qd="$(env_value QUEUE_DRIVER)"
+  appurl="$(env_value APP_URL)"
+  [ -n "$dsn" ] || die "DB_DSN is empty in $f"
+
+  case "$dsn" in
+    *host=127.0.0.1*|*host=localhost*|*host=/run/postgresql*|*host=/var/run/postgresql*)
+      [ "${ALLOW_LOCAL_DB:-0}" = "1" ] || die "DB_DSN points to a local database ($dsn), but this stack keeps PostgreSQL in db-pg (10.10.20.10).
+       Update $f (copy deploy/incus/secrets/app.env) or set ALLOW_LOCAL_DB=1 if a local DB really exists."
+      log "WARNING: DB_DSN uses a local database ($dsn); continuing because ALLOW_LOCAL_DB=1"
+      ;;
+  esac
+  case "$qd" in
+    valkey|redis) log "WARNING: QUEUE_DRIVER=$qd but this stack has no Valkey/Redis; use QUEUE_DRIVER=db" ;;
+  esac
+  case "$appurl" in
+    *127.0.0.1*|*10.64.215.59*) log "WARNING: APP_URL=$appurl will generate wrong links; use the public edge URL" ;;
+  esac
+
+  log "env preflight ok: db_host=$(printf '%s' "$dsn" | sed -n 's/.*host=\([^;]*\).*/\1/p') queue=${qd:-unset}"
+}
+
 do_on() {
   [ "$(state_of "$APP")" = "RUNNING" ] || die "$APP is not RUNNING"
   EDGE="$(active_edge)"
@@ -138,6 +169,7 @@ do_on() {
   [ -d "$REPO_DIR/.git" ] || die "$REPO_DIR is not a git working tree (set REPO_DIR=...)"
   [ -d "$REPO_DIR/public" ] || die "$REPO_DIR/public is missing"
   [ -d "$REPO_DIR/storage/tiles" ] || log "WARNING: $REPO_DIR/storage/tiles is missing; the map will 404"
+  check_env
 
   mkdir -p "$STATE_DIR" "$BACKUP_DIR"
   if [ ! -f "$MARKER" ]; then
