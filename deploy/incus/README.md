@@ -91,6 +91,10 @@ database 100% air-gapped. The script initializes the cluster, installs a self-si
 (`secrets/`, gitignored), applies `postgresql.conf`/`pg_hba.conf`, enables
 `/var/service/postgresql`, and creates the `casalivre_app` role and `casalivre` database.
 
+The cluster preloads and installs `pg_stat_statements` (same as the reference container); use it for
+slow-query statistics. `04-jumpstart-app.sh` also creates the extension idempotently on existing
+databases.
+
 ## 3. Deploy the application tier
 
 ```bash

@@ -104,6 +104,7 @@ fi
 
 # The schema is loaded by `postgres`; grant the runtime roles explicitly (idempotent).
 cat > "$WORK/grants.sql" <<'SQL'
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 GRANT USAGE, CREATE ON SCHEMA public TO casalivre_app;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO casalivre_app;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO casalivre_app;
