@@ -1,0 +1,32 @@
+name: db-pg
+description: CasaLivre PostgreSQL tier (Void glibc + runit), air-gapped on incusbr-internal
+config:
+  security.protection.delete: "true"
+  limits.cpu: "2"
+  limits.memory: "1GiB"
+  limits.memory.enforce: "hard"
+  limits.processes: "256"
+  boot.autostart: "true"
+  boot.autostart.delay: "0"
+devices:
+  # Internal NIC only: no DMZ NIC, no default gateway.
+  eth0:
+    type: nic
+    name: eth0
+    network: incusbr-internal
+    ipv4.address: 10.10.20.10
+    ipv4.gateway: "none"
+    security.mac_filtering: "true"
+    security.ipv4_filtering: "true"
+    security.ipv6_filtering: "true"
+  data:
+    type: disk
+    name: data
+    source: casalivre-db
+    path: /var/lib/postgresql
+  root:
+    type: disk
+    name: root
+    path: /
+    pool: __STORAGE_POOL__
+    size: 8GiB

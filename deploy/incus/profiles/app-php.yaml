@@ -1,0 +1,39 @@
+name: app-php
+description: CasaLivre PHP-FPM application tier (Void glibc + runit)
+config:
+  limits.cpu: "2"
+  limits.memory: "1GiB"
+  limits.memory.enforce: "hard"
+  limits.processes: "512"
+  boot.autostart: "true"
+  # Starts five seconds after the database tier.
+  boot.autostart.delay: "5"
+devices:
+  eth0:
+    type: nic
+    name: eth0
+    network: incusbr-dmz
+    ipv4.address: 10.10.10.20
+    security.mac_filtering: "true"
+    security.ipv4_filtering: "true"
+    security.ipv6_filtering: "true"
+  eth1:
+    type: nic
+    name: eth1
+    network: incusbr-internal
+    ipv4.address: 10.10.20.11
+    ipv4.gateway: "none"
+    security.mac_filtering: "true"
+    security.ipv4_filtering: "true"
+    security.ipv6_filtering: "true"
+  media:
+    type: disk
+    name: media
+    source: casalivre-media
+    path: /var/lib/casalivre/media
+  root:
+    type: disk
+    name: root
+    path: /
+    pool: __STORAGE_POOL__
+    size: 8GiB

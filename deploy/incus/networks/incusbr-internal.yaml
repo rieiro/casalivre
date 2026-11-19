@@ -1,0 +1,10 @@
+name: incusbr-internal
+description: CasaLivre internal bridge - air-gapped app/db tier (no NAT, ACL-restricted)
+type: bridge
+config:
+  ipv4.address: 10.10.20.1/24
+  ipv4.nat: "false"
+  ipv4.dhcp: "false"
+  ipv6.address: none
+  dns.mode: none
+  security.acls: acl-internal
