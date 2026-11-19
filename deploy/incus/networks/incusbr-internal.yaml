@@ -1,4 +1,4 @@
-name: incusbr-internal
+name: incusbr-int
 description: CasaLivre internal bridge - air-gapped app/db tier (no NAT, ACL-restricted)
 type: bridge
 config:

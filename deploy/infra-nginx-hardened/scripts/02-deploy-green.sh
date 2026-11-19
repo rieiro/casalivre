@@ -82,16 +82,35 @@ fi
 log "creating $CONTAINER ($ALPINE_IMAGE) with static IP $STATIC_IP"
 incus init "$ALPINE_IMAGE" "$CONTAINER" --no-profiles --profile "$PROFILE"
 incus config device override "$CONTAINER" eth0 ipv4.address="$STATIC_IP"
+
+# Incus copies every inherited key into the instance override; keeping security.acls
+# there applies the ACL twice, and the first default-drop shadows the ingress allows.
+incus config device unset "$CONTAINER" eth0 security.acls >/dev/null 2>&1 || true
+incus config device unset "$CONTAINER" eth0 security.ipv4_filtering >/dev/null 2>&1 || true
+incus config device unset "$CONTAINER" eth0 security.ipv6_filtering >/dev/null 2>&1 || true
+incus config device unset "$CONTAINER" eth0 security.mac_filtering >/dev/null 2>&1 || true
 incus config set "$CONTAINER" security.protection.delete=true
 incus config set "$CONTAINER" boot.autostart=false
 incus start "$CONTAINER"
+
+# The Alpine image does not apply Incus static IPs; configure the guest NIC.
+for _ in $(seq 1 10); do
+  if incus exec "$CONTAINER" -- test -e /sys/class/net/eth0 >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+incus exec "$CONTAINER" -- ip addr add "$STATIC_IP/24" dev eth0 2>/dev/null || true
+incus exec "$CONTAINER" -- ip link set eth0 up
+incus exec "$CONTAINER" -- ip route add default via 10.10.10.1 dev eth0 2>/dev/null || true
+
 
 log "waiting for static IP $STATIC_IP"
 assigned=0
 current_ip=""
 for _ in $(seq 1 30); do
   current_ip="$(incus list "$CONTAINER" -c4 --format csv 2>/dev/null | tr ',' '\n' \
-    | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+    | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
   if [ "$current_ip" = "$STATIC_IP" ]; then
     assigned=1
     break
@@ -147,6 +166,13 @@ incus exec "$CONTAINER" -- sh -c '
     /etc/nginx-hardened /etc/nginx-hardened/tls
   find /usr/local/nginx/conf -type f -exec chmod 0640 {} +
   chmod 0640 /etc/nginx-hardened/tls/*
+  # make install in the artifact recreates the runtime dirs as root; re-assert ownership.
+  mkdir -p /run/nginx /var/log/nginx /var/cache/nginx/client_body /var/cache/nginx/proxy /var/cache/nginx/fastcgi
+  touch /var/log/nginx/error.log /var/log/nginx/access.log
+  chown -R nginx:nginx /run/nginx /var/log/nginx /var/cache/nginx
+  chmod 0750 /run/nginx /var/log/nginx /var/cache/nginx
+  chmod 0750 /var/cache/nginx/client_body /var/cache/nginx/proxy /var/cache/nginx/fastcgi
+  chmod 0640 /var/log/nginx/error.log /var/log/nginx/access.log
 '
 
 log "validating configuration (nginx -t) as nginx"

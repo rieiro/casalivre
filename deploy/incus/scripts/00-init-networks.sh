@@ -57,7 +57,7 @@ apply_network() { # apply_network <name> <yaml>
   fi
 }
 apply_network incusbr-dmz      "$ROOT_DIR/networks/incusbr-dmz.yaml"
-apply_network incusbr-internal "$ROOT_DIR/networks/incusbr-internal.yaml"
+apply_network incusbr-int "$ROOT_DIR/networks/incusbr-internal.yaml"
 
 # 3. Persistent custom volumes.
 for vol in casalivre-db casalivre-media; do
@@ -76,5 +76,14 @@ apply_profile app-php "$tmp/app-php.yaml"
 render_profile "$ROOT_DIR/profiles/db-pg.yaml" "$tmp/db-pg.yaml"
 apply_profile db-pg "$tmp/db-pg.yaml"
 
-log "done: incusbr-dmz 10.10.10.0/24 (nat), incusbr-internal 10.10.20.0/24 (air-gapped)"
+# Some hosts DNAT all forwarded 80/443 to a dev container; exempt the Incus subnets so
+# containers can reach package mirrors over TLS.
+if [ "$(id -u)" -eq 0 ] && command -v iptables >/dev/null 2>&1; then
+  for subnet in 10.64.215.0/24 10.81.193.0/24 10.10.10.0/24 10.10.20.0/24; do
+    iptables -t nat -C PREROUTING -s "$subnet" -j ACCEPT 2>/dev/null || iptables -t nat -I PREROUTING 1 -s "$subnet" -j ACCEPT
+  done
+  log "container subnets exempt from host 80/443 DNAT"
+fi
+
+log "done: incusbr-dmz 10.10.10.0/24 (nat), incusbr-int 10.10.20.0/24 (air-gapped)"
 log "next: $ROOT_DIR/scripts/01-deploy-db.sh"

@@ -15,7 +15,8 @@ log "provisioner: $SCRIPT_DIR"
 
 log "installing postgresql${PG_VERSION} and contrib"
 xbps-install -Syu -y
-xbps-install -y "postgresql${PG_VERSION}" "postgresql${PG_VERSION}-contrib" ca-certificates
+if [ -r /root/ca-bundle.crt ]; then cp /root/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; fi
+xbps-install -y "postgresql${PG_VERSION}" "postgresql${PG_VERSION}-contrib" postgresql-client ca-certificates
 
 # The database must not carry remote shells, downloaders or compilers.
 for pkg in openssh curl wget gcc make; do
@@ -24,6 +25,9 @@ for pkg in openssh curl wget gcc make; do
         xbps-remove -y "$pkg" >/dev/null 2>&1 || true
     fi
 done
+
+# openssh is a base dependency on Void; remove the server binary even when the package stays.
+rm -f /usr/sbin/sshd
 
 log "preparing PostgreSQL directories"
 mkdir -p /run/postgresql /var/log

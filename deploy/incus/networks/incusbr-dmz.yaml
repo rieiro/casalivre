@@ -4,6 +4,6 @@ type: bridge
 config:
   ipv4.address: 10.10.10.1/24
   ipv4.nat: "true"
-  # DHCP stays on so the temporary maintenance NIC on db-pg can reach xbps during provisioning.
-  ipv4.dhcp: "true"
+  # All DMZ addresses are static (edge .10/.11, app .20, maintenance .50); no DHCP.
+  ipv4.dhcp: "false"
   ipv6.address: none

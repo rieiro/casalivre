@@ -13,7 +13,7 @@ devices:
   eth0:
     type: nic
     name: eth0
-    network: incusbr-internal
+    network: incusbr-int
     ipv4.address: 10.10.20.10
     ipv4.gateway: "none"
     security.mac_filtering: "true"
@@ -21,12 +21,11 @@ devices:
     security.ipv6_filtering: "true"
   data:
     type: disk
-    name: data
     source: casalivre-db
+    pool: __STORAGE_POOL__
     path: /var/lib/postgresql
   root:
     type: disk
-    name: root
     path: /
     pool: __STORAGE_POOL__
     size: 8GiB
