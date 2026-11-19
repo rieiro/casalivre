@@ -167,6 +167,8 @@ incus move "$NEW_CONTAINER" "$OLD_CONTAINER"
 incus start "$OLD_CONTAINER"
 incus exec "$OLD_CONTAINER" -- sv up postgresql >/dev/null 2>&1 || true
 incus exec "$APP_CONTAINER" -- sv up php-fpm >/dev/null 2>&1 || true
+# The DB was swapped/restarted: recycle the pooler so it reconnects to the new cluster.
+incus exec "$APP_CONTAINER" -- sv restart casalivre-pgbouncer >/dev/null 2>&1 || true
 
 log "upgrade complete: $OLD_CONTAINER now runs PostgreSQL $NEW_PG_VERSION"
 log "kept for rollback: $OLD_CONTAINER_KEEP (volume $OLD_VOLUME_KEEP, snapshot $SNAPSHOT)"

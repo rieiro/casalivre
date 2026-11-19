@@ -25,10 +25,12 @@ $required = [
     'containers/app-php/config/logrotate-casalivre',
     'containers/app-php/sv/casalivre-valkey/run', 'containers/app-php/sv/casalivre-valkey/log/run',
     'containers/app-php/sv/casalivre-logrotate/run', 'containers/app-php/sv/casalivre-logrotate/log/run',
+    'containers/app-php/config/pgbouncer.ini.in',
+    'containers/app-php/sv/casalivre-pgbouncer/run', 'containers/app-php/sv/casalivre-pgbouncer/log/run',
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
-    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh',
+    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh', 'scripts/pgbouncer-setup.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -44,7 +46,7 @@ $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
-    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh',
+    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh', 'scripts/pgbouncer-setup.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -283,5 +285,36 @@ t_ok(str_contains($devLive, 'public, max-age=31536000, immutable'),
 t_ok(str_contains($devLive, 'no-store'), '05-dev-live.sh uses no-store in dev');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'immutable'),
     'README documents immutable static caching');
+
+echo "incus stack: pgbouncer\n";
+$pgb = incus_read('containers/app-php/config/pgbouncer.ini.in');
+foreach (['[databases]', 'casalivre = host=10.10.20.10', '[users]',
+    'cl_logw = max_user_connections=8', 'cl_retention_job = max_user_connections=2',
+    'listen_addr = 127.0.0.1', 'listen_port = 6432', 'auth_type = md5',
+    'pool_mode = session', 'default_pool_size = 32', 'min_pool_size = 5',
+    'server_idle_timeout = 600', 'max_db_connections = 60',
+    'server_tls_sslmode = verify-ca', 'server_tls_ca_file = /etc/casalivre-pgbouncer/db-ca.crt'] as $n) {
+    t_ok(str_contains($pgb, $n), "pgbouncer.ini.in has $n");
+}
+$pgbSetup = incus_read('scripts/pgbouncer-setup.sh');
+foreach (['xbps-install', 'pgbouncer', 'userlist.txt', '_pgbouncer', 'sleep 6',
+    'casalivre-pgbouncer'] as $n) {
+    t_ok(str_contains($pgbSetup, $n), "pgbouncer-setup.sh has $n");
+}
+t_ok(str_contains(incus_read('scripts/02-deploy-app.sh'), 'pgbouncer-setup.sh'),
+    '02-deploy-app.sh runs pgbouncer-setup.sh');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'pgbouncer-setup.sh'),
+    '04-jumpstart-app.sh runs pgbouncer-setup.sh');
+$devLive = incus_read('scripts/05-dev-live.sh');
+t_ok(str_contains($devLive, 'port=6432'), '05-dev-live.sh allows the pgbouncer DSN');
+t_ok(str_contains($devLive, 'casalivre-pgbouncer'), '05-dev-live.sh checks pgbouncer');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'casalivre-pgbouncer'),
+    'verify-stack.sh checks pgbouncer');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'casalivre-pgbouncer has a log service'),
+    'verify-stack.sh checks the pgbouncer log service');
+t_ok(str_contains(incus_read('scripts/03-upgrade-pg-major.sh'), 'casalivre-pgbouncer'),
+    '03-upgrade-pg-major.sh recycles pgbouncer after the DB swap');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'PgBouncer'),
+    'README documents PgBouncer');
 
 t_done();

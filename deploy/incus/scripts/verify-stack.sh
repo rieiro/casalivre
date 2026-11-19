@@ -86,6 +86,25 @@ else
   bad "php redis extension is not loaded"
 fi
 
+echo "== pgbouncer =="
+if incus exec "$APP" -- sv status /var/service/casalivre-pgbouncer 2>&1 | grep -q '^run:'; then
+  ok "casalivre-pgbouncer is running"
+else
+  bad "casalivre-pgbouncer is not running"
+fi
+if incus exec "$APP" -- /bin/sh -c 'ss -ltn 2>/dev/null | grep -q "127.0.0.1:6432"'; then
+  ok "PgBouncer listens on 127.0.0.1:6432"
+else
+  bad "PgBouncer is not listening on 127.0.0.1:6432"
+fi
+if incus exec "$APP" -- su -s /bin/sh appuser -c \
+  'cd /srv/app && /usr/sbin/php -r "require \"src/Db.php\"; Db::loadEnv(); Db::pdo(); echo \"ok\";"' \
+  2>/dev/null | grep -q ok; then
+  ok "app PDO connects through PgBouncer"
+else
+  bad "app PDO cannot connect through PgBouncer"
+fi
+
 echo "== logs =="
 if incus exec "$APP" -- sv status /var/service/casalivre-logrotate 2>&1 | grep -q '^run:'; then
   ok "casalivre-logrotate is running"
@@ -96,6 +115,11 @@ if incus exec "$APP" -- sv status /var/service/casalivre-valkey 2>&1 | grep -q '
   ok "casalivre-valkey has a log service"
 else
   bad "casalivre-valkey has no log service"
+fi
+if incus exec "$APP" -- sv status /var/service/casalivre-pgbouncer 2>&1 | grep -q 'log:'; then
+  ok "casalivre-pgbouncer has a log service"
+else
+  bad "casalivre-pgbouncer has no log service"
 fi
 if [ -n "${edge:-}" ] && incus exec "$edge" -- test -f /etc/logrotate.d/nginx >/dev/null 2>&1; then
   ok "edge nginx logrotate policy is installed"

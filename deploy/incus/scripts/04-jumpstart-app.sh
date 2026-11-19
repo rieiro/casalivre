@@ -143,15 +143,22 @@ CONTAINER="$APP" bash "$SCRIPT_DIR/valkey-setup.sh"
 
 log "ensuring log rotation"
 CONTAINER="$APP" bash "$SCRIPT_DIR/logs-setup.sh"
+
+log "ensuring PgBouncer"
+CONTAINER="$APP" APP_ENV_FILE="$APP_ENV_FILE" bash "$SCRIPT_DIR/pgbouncer-setup.sh"
 incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || true
 incus exec "$APP" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' \
   || die "php redis extension is not loaded; run 02-deploy-app.sh to publish php.ini"
 
 # ---------------------------------------------------------------- data
 php() { incus exec "$APP" -- su -s /bin/sh appuser -c "cd /srv/app && $PHP -d memory_limit=$PHP_MEMORY $*"; }
+php_migrate() {
+  incus exec "$APP" -- su -s /bin/sh appuser -c \
+    "cd /srv/app && DB_DSN='pgsql:host=10.10.20.10;dbname=casalivre;sslmode=require' $PHP -d memory_limit=$PHP_MEMORY scripts/migrate.php"
+}
 
 log "running migrations/seeds (idempotent)"
-php scripts/migrate.php
+php_migrate
 if [ "$(scalar 'SELECT count(*) FROM ceps')" = "0" ]; then
   log "loading the CEP database (database/cep.csv.bz2)"
   php scripts/load-ceps.php
