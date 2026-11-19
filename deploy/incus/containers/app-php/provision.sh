@@ -11,7 +11,7 @@ command -v xbps-install >/dev/null 2>&1 || die "xbps-install not found"
 
 log "provisioner: $SCRIPT_DIR"
 
-PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-gd php8.4-intl ca-certificates}"
+PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-gd php8.4-intl php8.4-redis valkey ca-certificates}"
 
 log "installing PHP 8.4 FPM and extensions"
 xbps-install -Syu -y

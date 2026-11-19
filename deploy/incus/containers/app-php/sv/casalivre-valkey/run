@@ -1,0 +1,6 @@
+#!/bin/sh
+# CasaLivre Valkey: Unix socket only, ACL in /etc/casalivre-valkey/valkey.acl.
+# Runs as the dedicated _valkey user with the app group so appuser can use the socket.
+exec 2>&1
+install -d -o _valkey -g appuser -m 0750 /run/casalivre-valkey
+exec chpst -u _valkey:appuser valkey-server /etc/casalivre-valkey/valkey.conf

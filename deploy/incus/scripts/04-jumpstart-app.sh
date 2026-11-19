@@ -55,6 +55,14 @@ if [ -z "$EDGE" ]; then
 fi
 [ -n "$EDGE" ] && [ "$(state_of "$EDGE")" = "RUNNING" ] || die "no active nginx-prod-* container found"
 
+# Never publish into a live-dev bind: /srv/app would be the host git tree, and the chown/chmod
+# below would rewrite the working copy's ownership and modes through the idmapped mount.
+DEV_MARKER="$ROOT_DIR/../infra-nginx-hardened/artifacts/state/dev-live"
+if [ -f "$DEV_MARKER" ] || incus config device list "$APP" 2>/dev/null | grep -qx 'dev-live-src'; then
+  [ "${ALLOW_LIVE_DEV:-0}" = "1" ] || die "live-dev overlay is active on $APP; /srv/app is the host git tree.
+       Run scripts/05-dev-live.sh off first (or set ALLOW_LIVE_DEV=1 to force)."
+fi
+
 psql_db() { incus exec "$DB" -- su - postgres -c "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -v ON_ERROR_STOP=1 $*"; }
 scalar() { incus exec "$DB" -- su - postgres -c "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"$1\"" | tr -d '[:space:]'; }
 
@@ -129,6 +137,12 @@ incus exec "$APP" -- /bin/sh -c '
 log "restarting php-fpm"
 incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || incus exec "$APP" -- sv up php-fpm >/dev/null 2>&1 || true
 
+log "ensuring Valkey is configured"
+CONTAINER="$APP" bash "$SCRIPT_DIR/valkey-setup.sh"
+incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || true
+incus exec "$APP" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' \
+  || die "php redis extension is not loaded; run 02-deploy-app.sh to publish php.ini"
+
 # ---------------------------------------------------------------- data
 php() { incus exec "$APP" -- su -s /bin/sh appuser -c "cd /srv/app && $PHP -d memory_limit=$PHP_MEMORY $*"; }
 
@@ -157,7 +171,15 @@ incus file push -r "$REPO_DIR/deploy/runit/casalivre-calendar-worker" "$APP/etc/
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-rank-verify" "$APP/etc/sv/casalivre-rank-verify"
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-log-retention" "$APP/etc/sv/casalivre-log-retention"
 for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention; do
-  incus exec "$APP" -- /bin/sh -c "printf 'APP_DIR=/srv/app\nAPP_USER=appuser\nPHP_BIN=$PHP\n' > /etc/sv/$s/conf && chmod 0640 /etc/sv/$s/conf"
+  extra=""
+  case "$s" in
+    casalivre-mail-worker)
+      extra='VALKEY_MAIL_USER=cl_app\nVALKEY_MAIL_PASSWORD_FILE=/etc/casalivre/valkey-app.secret' ;;
+    casalivre-image-worker-1)
+      extra='VALKEY_IMAGE_USER=cl_app\nVALKEY_IMAGE_PASSWORD_FILE=/etc/casalivre/valkey-app.secret' ;;
+  esac
+  printf 'APP_DIR=/srv/app\nAPP_USER=appuser\nPHP_BIN=%s\n%b\n' "$PHP" "$extra" \
+    | incus exec "$APP" -- /bin/sh -c "cat > /etc/sv/$s/conf && chmod 0640 /etc/sv/$s/conf"
 done
 incus exec "$APP" -- /bin/sh -c '
   set -e
@@ -187,7 +209,7 @@ EOF
     chmod 0755 "/etc/sv/$s/run" "/etc/sv/$s/finish" "/etc/sv/$s/log/run" 2>/dev/null || true
     chmod 0640 "/etc/sv/$s/conf" 2>/dev/null || true
     ln -sfn "/etc/sv/$s" "/var/service/$s"
-    sv up "$s" >/dev/null 2>&1 || true
+    sv restart "$s" >/dev/null 2>&1 || sv up "$s" >/dev/null 2>&1 || true
   done
 '
 
