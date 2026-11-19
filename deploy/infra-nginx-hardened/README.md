@@ -20,13 +20,13 @@ Internet :80/:443
 │                    │                                             │
 │        incusbr-dmz │  ACL casalivre-nginx-dmz                     │
 │                    ▼                                             │
-│   ┌──────────── casalivre-nginx-green (prod) ────────────┐        │
+│   ┌─────────── nginx-prod-blue/green (prod) ────────────┐        │
 │   │ non-root nginx :8080/:8443 · read-only config        │        │
 │   │ ACL: 80/443/8080/8443 in · backend + DNS/NTP out      │        │
 │   └───────────────────────┬──────────────────────────────┘        │
 └───────────────────────────┼───────────────────────────────────────┘
                             ▼
-                 backend upstream (host:port)
+                 app-php 10.10.10.20:9000 (FastCGI)
 ```
 
 ## Layout
@@ -42,12 +42,35 @@ Internet :80/:443
 | `host/nftables-nginx.conf` | Host DNAT template (80→8080, 443→8443) rendered at cutover. |
 | `config/nginx.conf` | Main hardened config (`server_tokens off`, limits, includes). |
 | `config/snippets/*.conf` | TLS params, security headers, rate-limit zones. |
-| `config/sites-enabled/default.conf` | Reverse-proxy vhost (8080 redirect + 8443 TLS). |
+| `config/sites-enabled/default.conf` | FastCGI front-controller vhost (8080 redirect + 8443 TLS). |
 | `scripts/00-init-host.sh` | Applies profiles, ACL, IP forwarding and nftables skeleton (idempotent). |
 | `scripts/01-build-artifact.sh` | Launches the builder, compiles, pulls the artifact, destroys the builder. |
 | `scripts/02-deploy-green.sh` | Launches/refreshes the green container, installs config, runs `nginx -t`, starts it. |
 | `scripts/03-cutover.sh` | Atomically repoints host DNAT to green, stops blue (kept for rollback). |
 | `scripts/04-rollback.sh` | Starts blue and repoints DNAT back. |
+
+## Integration with `/deploy/incus`
+
+This module is the **edge tier** of the 3-tier Incus architecture:
+
+| Tier | Container | Address |
+|---|---|---|
+| Edge (this module) | `nginx-prod-blue` / `nginx-prod-green` | `10.10.10.10` / `10.10.10.11` on `incusbr-dmz` |
+| App | `app-php` | `10.10.10.20:9000` (PHP-FPM) on `incusbr-dmz`; `10.10.20.11` on `incusbr-internal` |
+| DB | `db-pg` | `10.10.20.10:5432` on air-gapped `incusbr-internal` |
+
+The edge forwards every dynamic request to `app-php` over FastCGI (`10.10.10.20:9000`). The DMZ ACL
+allows only that backend, DNS and NTP, and drops all other DMZ/internal traffic. `app-php` pins
+`listen.allowed_clients = 10.10.10.10,10.10.10.11`, which is why Blue and Green use deterministic
+static IPs and `02-deploy-green.sh` always stages the inactive slot.
+
+**Order on a fresh host:**
+
+1. `/deploy/incus/scripts/00-init-networks.sh` — creates `incusbr-dmz` and `incusbr-internal`.
+2. `sudo ./scripts/00-init-host.sh` — reuses the DMZ bridge, applies the profiles and the strict ACL.
+3. `./scripts/01-build-artifact.sh` — builds/verifies the hardened nginx tarball.
+4. `sudo PRIMARY_DOMAIN=... TLS_CERT=... TLS_KEY=... ./scripts/02-deploy-green.sh` — stages the inactive slot.
+5. `sudo ./scripts/03-cutover.sh` — atomically switches host DNAT to it.
 
 ## Prerequisites (host)
 
@@ -61,22 +84,22 @@ Internet :80/:443
 | Variable | Used by | Meaning |
 |---|---|---|
 | `PRIMARY_DOMAIN` | 02 | `server_name` / certificate host (e.g. `example.com`). |
-| `BACKEND_UPSTREAM` | 02 | Upstream as `host:port` (e.g. `10.0.0.10:8080`). |
-| `BACKEND_IP` / `BACKEND_PORT` | 00 | Backend allowed by the DMZ ACL. |
 | `TLS_CERT` / `TLS_KEY` | 02 | Paths to the certificate and private key on the host. |
-| `DMZ_NETWORK` | 00 | Incus bridge (default `incusbr0`). |
+| `DMZ_NETWORK` | 00 | DMZ bridge owned by `/deploy/incus` (default `incusbr-dmz`). |
 | `DNS_RESOLVER` / `NTP_SERVER` | 00 | Egress allowed by the ACL (default: bridge gateway). |
 | `PUBLIC_IFACE` | 00/03/04 | Host public NIC (default `eth0`). |
 | `ALPINE_IMAGE` | 01/02 | Base image (default from `build/versions.env`). |
 
 The nginx container listens on **8080/8443** (unprivileged); the host maps 80/443 to them with nftables.
 That keeps the master process running as the dedicated `nginx` user, with no `CAP_NET_BIND_SERVICE`.
+Dynamic requests are forwarded to `app-php` over FastCGI (`10.10.10.20:9000`).
 
 ## 1. First-time host initialisation
 
 ```bash
 cd deploy/infra-nginx-hardened
-sudo BACKEND_IP=10.0.0.10 BACKEND_PORT=8080 ./scripts/00-init-host.sh
+# The DMZ bridge must already exist (created by /deploy/incus/scripts/00-init-networks.sh).
+sudo ./scripts/00-init-host.sh
 ```
 
 This creates/updates the Incus profiles `casalivre-nginx-prod` and `casalivre-nginx-builder`, the ACL
@@ -99,7 +122,6 @@ version and official SHA256 (from <https://nginx.org/download/>), then re-run.
 
 ```bash
 sudo PRIMARY_DOMAIN=example.com \
-     BACKEND_UPSTREAM=10.0.0.10:8080 \
      TLS_CERT=/etc/ssl/example.com/fullchain.pem \
      TLS_KEY=/etc/ssl/example.com/privkey.pem \
      ./scripts/02-deploy-green.sh
@@ -147,7 +169,8 @@ incus delete <container> --force
 - nginx runs entirely as the unprivileged `nginx` user on 8080/8443.
 - `server_tokens off` plus `more_clear_headers Server` hide the version/fingerprint.
 - TLS 1.2/1.3 only, AEAD ciphers, no session tickets, HSTS enabled.
-- The DMZ ACL allows only HTTP(S) ingress and backend/DNS/NTP egress; lateral movement is dropped.
+- The DMZ ACL allows only 8080/8443 ingress and FastCGI (`10.10.10.20:9000`) + DNS/NTP egress;
+  all other DMZ traffic and the internal/DB tier (`10.10.20.0/24`) are dropped.
 - Certificates and build artifacts are gitignored and never committed.
 
 ## Commit this structure

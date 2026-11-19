@@ -1,5 +1,5 @@
 <?php
-// Contract test for deploy/infra-nginx-hardened (hardened nginx reverse proxy, IaC).
+// Contract test for deploy/infra-nginx-hardened (hardened nginx edge, 3-tier Incus integration).
 // Static checks (tree, pins, directives, shell syntax) plus a real `nginx -t` render when nginx/openssl exist.
 require __DIR__ . '/lib.php';
 
@@ -72,12 +72,25 @@ foreach (['TLSv1.2', 'TLSv1.3', 'ssl_session_tickets off;', 'Strict-Transport-Se
 t_ok(!str_contains($ssl, 'TLSv1.1'), 'ssl-params does not allow TLS 1.1');
 $rl = infra_read('config/snippets/rate-limit.conf');
 t_ok(str_contains($rl, 'limit_req_zone') && str_contains($rl, 'limit_conn_zone'), 'rate-limit defines req + conn zones');
+
+echo "infra nginx hardened: FastCGI front controller\n";
 $site = infra_read('config/sites-enabled/default.conf');
-foreach (['proxy_pass', 'listen 8080', 'listen 8443', '__BACKEND_UPSTREAM__', '__PRIMARY_DOMAIN__', '__TLS_CERT__', '__TLS_KEY__'] as $n) {
+foreach ([
+    'listen 8080', 'listen 8443', '__PRIMARY_DOMAIN__', '__TLS_CERT__', '__TLS_KEY__',
+    'fastcgi_pass 10.10.10.20:9000;', 'include fastcgi_params;',
+    'SCRIPT_FILENAME /srv/app/public/index.php;', 'DOCUMENT_ROOT /srv/app/public;',
+    'try_files $uri /index.php$is_args$args;', 'internal;',
+    'location ~ \\.php$ { return 404; }', 'location ~ /\\.(?!well-known)',
+    '/srv/static',
+    'HTTP_ACCEPT', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED_PROTO',
+    'OAI-SearchBot', 'ClaudeBot', 'Google-Extended', 'PerplexityBot',
+] as $n) {
     t_ok(str_contains($site, $n), "default.conf contains $n");
 }
+t_ok(!str_contains($site, 'proxy_pass'), 'no generic proxy_pass left');
+t_ok(!str_contains($site, '__BACKEND_UPSTREAM__'), 'no generic upstream token left');
 
-echo "infra nginx hardened: incus profiles and ACL\n";
+echo "infra nginx hardened: incus profiles and strict DMZ ACL\n";
 $prod = infra_read('incus/profile-prod.yaml');
 foreach (['security.privileged: "false"', 'security.idmap.isolated: "true"', 'security.nesting: "false"',
     'security.protection.delete: "true"', 'security.mac_filtering: "true"',
@@ -86,22 +99,36 @@ foreach (['security.privileged: "false"', 'security.idmap.isolated: "true"', 'se
     t_ok(str_contains($prod, $n), "profile-prod contains $n");
 }
 $acl = infra_read('incus/acl-dmz.yaml');
-foreach (['ingress:', 'egress:', 'destination_port: "80"', 'destination_port: "443"',
-    'destination_port: "8080"', 'destination_port: "8443"', '__BACKEND_IP__', '__BACKEND_PORT__',
+foreach (['ingress:', 'egress:', 'destination_port: "8080"', 'destination_port: "8443"',
+    'destination: "10.10.10.20/32"', 'destination_port: "9000"',
+    'destination: "10.10.10.0/24"', 'destination: "10.10.20.0/24"',
     'destination_port: "53"', 'destination_port: "123"', 'action: drop'] as $n) {
     t_ok(str_contains($acl, $n), "acl-dmz contains $n");
 }
+t_ok(!str_contains($acl, 'destination_port: "80"'), 'no unused :80 ingress');
+t_ok(!str_contains($acl, 'destination_port: "443"'), 'no unused :443 ingress');
+t_ok(!str_contains($acl, '__BACKEND_IP__'), 'backend tier IP is fixed');
 infra_has('host/nftables-nginx.conf', 'dnat ip to __ACTIVE_NGINX_IP__:8080', 'host DNAT 80->8080');
 infra_has('host/nftables-nginx.conf', 'dnat ip to __ACTIVE_NGINX_IP__:8443', 'host DNAT 443->8443');
 
 echo "infra nginx hardened: script wiring\n";
+infra_has('scripts/00-init-host.sh', 'incusbr-dmz', 'init defaults to incusbr-dmz');
+infra_has('scripts/00-init-host.sh', 'reusing', 'init reuses an existing DMZ bridge');
 infra_has('scripts/01-build-artifact.sh', 'sha256sum -c', 'builder verifies artifact hash');
+infra_has('scripts/01-build-artifact.sh', '--no-profiles', 'builder uses only the hardened profile');
+infra_has('scripts/02-deploy-green.sh', '--no-profiles', 'edge uses only the hardened profile');
+infra_has('scripts/02-deploy-green.sh', '10.10.10.10', 'blue static IP');
+infra_has('scripts/02-deploy-green.sh', '10.10.10.11', 'green static IP');
+infra_has('scripts/02-deploy-green.sh', 'nginx-prod-blue', 'blue container name');
+infra_has('scripts/02-deploy-green.sh', 'nginx-prod-green', 'green container name');
 infra_has('scripts/02-deploy-green.sh', 'nginx -t', 'green deploy validates with nginx -t');
 infra_has('scripts/02-deploy-green.sh', '__PRIMARY_DOMAIN__', 'green deploy renders domain');
 infra_has('scripts/03-cutover.sh', 'nft -f -', 'cutover applies nftables atomically');
 infra_has('scripts/03-cutover.sh', 'incus stop', 'cutover stops blue');
 infra_has('scripts/04-rollback.sh', 'incus start', 'rollback starts blue');
 
+// Real syntax validation. The stock nginx lacks headers-more, so render a harness that
+// drops more_* directives, points paths at a temp dir, and uses unprivileged test ports.
 echo "infra nginx hardened: nginx -t render\n";
 $nginx = trim((string) shell_exec('command -v nginx 2>/dev/null'));
 $openssl = trim((string) shell_exec('command -v openssl 2>/dev/null'));
@@ -116,6 +143,27 @@ if ($nginx === '' || $openssl === '') {
         mkdir($tmp . '/cache/' . $d, 0777, true);
     }
     file_put_contents($tmp . '/mime.types', "types { text/html html; }\n");
+    $fastcgiParams = <<<'FP'
+fastcgi_param QUERY_STRING $query_string;
+fastcgi_param REQUEST_METHOD $request_method;
+fastcgi_param CONTENT_TYPE $content_type;
+fastcgi_param CONTENT_LENGTH $content_length;
+fastcgi_param SCRIPT_NAME $fastcgi_script_name;
+fastcgi_param REQUEST_URI $request_uri;
+fastcgi_param DOCUMENT_URI $document_uri;
+fastcgi_param DOCUMENT_ROOT $document_root;
+fastcgi_param SERVER_PROTOCOL $server_protocol;
+fastcgi_param REQUEST_SCHEME $scheme;
+fastcgi_param GATEWAY_INTERFACE CGI/1.1;
+fastcgi_param SERVER_SOFTWARE nginx;
+fastcgi_param REMOTE_ADDR $remote_addr;
+fastcgi_param REMOTE_PORT $remote_port;
+fastcgi_param SERVER_ADDR $server_addr;
+fastcgi_param SERVER_PORT $server_port;
+fastcgi_param SERVER_NAME $server_name;
+fastcgi_param REDIRECT_STATUS 200;
+FP;
+    file_put_contents($tmp . '/fastcgi_params', $fastcgiParams);
     copy($root . '/config/nginx.conf', $tmp . '/nginx.conf');
     foreach (glob($root . '/config/snippets/*.conf') ?: [] as $f) {
         copy($f, $tmp . '/snippets/' . basename($f));
@@ -136,8 +184,8 @@ if ($nginx === '' || $openssl === '') {
         $c = preg_replace('/^\s*more_(clear|set)_headers\b.*$/m', '', $c) ?? $c;
         $c = str_replace('listen 8080', 'listen 18080', $c);
         $c = str_replace('listen 8443 ssl', 'listen 18443 ssl', $c);
-        $c = str_replace(['__PRIMARY_DOMAIN__', '__BACKEND_UPSTREAM__', '__TLS_CERT__', '__TLS_KEY__'],
-            ['localhost', '127.0.0.1:8080', $tmp . '/cert.pem', $tmp . '/key.pem'], $c);
+        $c = str_replace(['__PRIMARY_DOMAIN__', '__TLS_CERT__', '__TLS_KEY__'],
+            ['localhost', $tmp . '/cert.pem', $tmp . '/key.pem'], $c);
         $c = preg_replace('/^\s*user\s+nginx;.*$/m', '', $c) ?? $c;
         file_put_contents($file, $c);
     };

@@ -38,7 +38,7 @@ if incus info "$BUILDER_NAME" >/dev/null 2>&1; then
 fi
 
 log "launching builder ($ALPINE_IMAGE)"
-incus launch "$ALPINE_IMAGE" "$BUILDER_NAME" --profile "$BUILDER_PROFILE"
+incus launch "$ALPINE_IMAGE" "$BUILDER_NAME" --no-profiles --profile "$BUILDER_PROFILE"
 
 log "installing bash/git/curl in the builder (waits for network)"
 installed=0

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# First-time host initialisation: Incus profiles, DMZ ACL, IPv4 forwarding and the nftables skeleton.
-# Idempotent: safe to re-run after editing a profile or the ACL.
+# First-time host initialisation for the edge module: Incus profiles, DMZ ACL, IPv4 forwarding and
+# the nftables skeleton. Reuses a DMZ bridge already created by /deploy/incus. Idempotent.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,21 +16,30 @@ require sed
 
 [ "$(id -u)" -eq 0 ] || die "run as root (this script changes sysctl and nftables)"
 
-DMZ_NETWORK="${DMZ_NETWORK:-incusbr0}"
+# 3-tier contract: edge on incusbr-dmz (10.10.10.0/24), app-php (PHP-FPM) at 10.10.10.20:9000.
+DMZ_NETWORK="${DMZ_NETWORK:-incusbr-dmz}"
 BUILDER_NETWORK="${BUILDER_NETWORK:-incusbr0}"
 STORAGE_POOL="${STORAGE_POOL:-default}"
-BACKEND_IP="${BACKEND_IP:-}"
-BACKEND_PORT="${BACKEND_PORT:-}"
 PUBLIC_IFACE="${PUBLIC_IFACE:-eth0}"
+DMZ_SUBNET="${DMZ_SUBNET:-10.10.10.0/24}"
 
-[ -n "$BACKEND_IP" ]   || die "BACKEND_IP is required (the upstream the edge is allowed to reach)"
-[ -n "$BACKEND_PORT" ] || die "BACKEND_PORT is required (e.g. 8080)"
-
-incus network show "$DMZ_NETWORK" >/dev/null 2>&1 || die "Incus network not found: $DMZ_NETWORK"
 incus storage show "$STORAGE_POOL" >/dev/null 2>&1 || die "Incus storage pool not found: $STORAGE_POOL"
 
-# Default the DNS/NTP egress to the DMZ bridge gateway.
+# The DMZ bridge is owned by /deploy/incus/scripts/00-init-networks.sh: reuse it, never recreate it.
+if incus network show "$DMZ_NETWORK" >/dev/null 2>&1; then
+  log "reusing existing network: $DMZ_NETWORK (expected subnet $DMZ_SUBNET)"
+else
+  die "network $DMZ_NETWORK not found; run /deploy/incus/scripts/00-init-networks.sh first"
+fi
+
 bridge_cidr="$(incus network get "$DMZ_NETWORK" ipv4.address 2>/dev/null || true)"
+case "$bridge_cidr" in
+  10.10.10.*) : ;;
+  '') log "warning: $DMZ_NETWORK has no IPv4 address; set DNS_RESOLVER/NTP_SERVER explicitly" ;;
+  *)  log "warning: $DMZ_NETWORK is $bridge_cidr, expected $DMZ_SUBNET" ;;
+esac
+
+# Default the DNS/NTP egress to the bridge gateway.
 bridge_gw="${bridge_cidr%%/*}"
 DNS_RESOLVER="${DNS_RESOLVER:-$bridge_gw}"
 NTP_SERVER="${NTP_SERVER:-$bridge_gw}"
@@ -45,8 +54,6 @@ render() { # render <src> <dst>
     -e "s|__DMZ_NETWORK__|${DMZ_NETWORK}|g" \
     -e "s|__BUILDER_NETWORK__|${BUILDER_NETWORK}|g" \
     -e "s|__STORAGE_POOL__|${STORAGE_POOL}|g" \
-    -e "s|__BACKEND_IP__|${BACKEND_IP}|g" \
-    -e "s|__BACKEND_PORT__|${BACKEND_PORT}|g" \
     -e "s|__DNS_RESOLVER__|${DNS_RESOLVER}|g" \
     -e "s|__NTP_SERVER__|${NTP_SERVER}|g" \
     -e "s|__PUBLIC_IFACE__|${PUBLIC_IFACE}|g" \
@@ -69,7 +76,7 @@ apply_profile() { # apply_profile <name> <yaml>
 apply_profile casalivre-nginx-prod    "$ROOT_DIR/incus/profile-prod.yaml"
 apply_profile casalivre-nginx-builder "$ROOT_DIR/incus/profile-builder.yaml"
 
-# DMZ ACL (rendered: backend IP/port, DNS and NTP).
+# DMZ ACL (rendered: DNS/NTP; the FastCGI backend is fixed at 10.10.10.20:9000).
 acl_out="$tmp/acl-dmz.yaml"
 render "$ROOT_DIR/incus/acl-dmz.yaml" "$acl_out"
 if incus network acl show casalivre-nginx-dmz >/dev/null 2>&1; then
@@ -98,5 +105,5 @@ else
   log "nftables table inet casalivre_edge created"
 fi
 
-log "done: backend ${BACKEND_IP}:${BACKEND_PORT}, DMZ ${DMZ_NETWORK}, DNS/NTP ${DNS_RESOLVER}"
+log "done: edge on ${DMZ_NETWORK} (${DMZ_SUBNET}), PHP-FPM 10.10.10.20:9000"
 log "next: $ROOT_DIR/scripts/01-build-artifact.sh"

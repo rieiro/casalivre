@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage a new production nginx container ("green"): install the verified artifact + read-only config,
+# Stage the inactive edge slot (Blue/Green) with the verified artifact + read-only config,
 # validate with `nginx -t`, and start it as the unprivileged nginx user.
 set -euo pipefail
 
@@ -8,10 +8,14 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ARTIFACTS_DIR="$ROOT_DIR/artifacts"
 STATE_DIR="$ARTIFACTS_DIR/state"
 
-CONTAINER="${CONTAINER:-casalivre-nginx-green}"
+# 3-tier static IP contract: app-php pins listen.allowed_clients to these two addresses.
+BLUE_CONTAINER="${BLUE_CONTAINER:-nginx-prod-blue}"
+BLUE_IP="${BLUE_IP:-10.10.10.10}"
+GREEN_CONTAINER="${GREEN_CONTAINER:-nginx-prod-green}"
+GREEN_IP="${GREEN_IP:-10.10.10.11}"
+
 PROFILE="${PROFILE:-casalivre-nginx-prod}"
 PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-}"
-BACKEND_UPSTREAM="${BACKEND_UPSTREAM:-}"
 TLS_CERT="${TLS_CERT:-}"
 TLS_KEY="${TLS_KEY:-}"
 ARTIFACT="${ARTIFACT:-}"
@@ -27,10 +31,36 @@ _alpine_override="${ALPINE_IMAGE:-}"
 . "$ROOT_DIR/build/versions.env"
 [ -n "$_alpine_override" ] && ALPINE_IMAGE="$_alpine_override"
 
-[ -n "$PRIMARY_DOMAIN" ]  || die "PRIMARY_DOMAIN is required (e.g. example.com)"
-[ -n "$BACKEND_UPSTREAM" ] || die "BACKEND_UPSTREAM is required (host:port)"
+[ -n "$PRIMARY_DOMAIN" ] || die "PRIMARY_DOMAIN is required (e.g. example.com)"
 [ -n "$TLS_CERT" ] && [ -f "$TLS_CERT" ] || die "TLS_CERT must be a readable certificate file"
 [ -n "$TLS_KEY" ]  && [ -f "$TLS_KEY" ]  || die "TLS_KEY must be a readable private key file"
+
+mkdir -p "$STATE_DIR"
+
+# Pick the inactive slot: if Green is serving, stage Blue; otherwise stage Green.
+active_container="$(cat "$STATE_DIR/active-container" 2>/dev/null || true)"
+active_ip="$(cat "$STATE_DIR/active-ip" 2>/dev/null || true)"
+if [ -z "$active_ip" ] && command -v nft >/dev/null 2>&1; then
+  active_ip="$(nft list chain inet casalivre_edge prerouting 2>/dev/null \
+    | grep -Eo 'dnat ip to [0-9.]+' | awk '{print $4}' | head -n1 || true)"
+fi
+
+if [ -n "${CONTAINER:-}" ]; then
+  :
+elif [ "$active_container" = "$GREEN_CONTAINER" ] || [ "$active_ip" = "$GREEN_IP" ]; then
+  CONTAINER="$BLUE_CONTAINER"
+else
+  CONTAINER="$GREEN_CONTAINER"
+fi
+
+if [ -z "${STATIC_IP:-}" ]; then
+  case "$CONTAINER" in
+    "$BLUE_CONTAINER")  STATIC_IP="$BLUE_IP" ;;
+    "$GREEN_CONTAINER") STATIC_IP="$GREEN_IP" ;;
+    *) die "set STATIC_IP for custom container $CONTAINER" ;;
+  esac
+fi
+log "target slot: $CONTAINER ($STATIC_IP); active: ${active_container:-none} (${active_ip:-none})"
 
 # Artifact: explicit ARTIFACT or the newest hardened tarball.
 if [ -z "$ARTIFACT" ]; then
@@ -41,8 +71,6 @@ fi
 ( cd "$(dirname "$ARTIFACT")" && sha256sum -c "$(basename "$ARTIFACT").sha256" >/dev/null )
 log "artifact verified: $(basename "$ARTIFACT")"
 
-mkdir -p "$STATE_DIR"
-
 if incus info "$CONTAINER" >/dev/null 2>&1; then
   [ "${REPLACE:-0}" = "1" ] || die "$CONTAINER already exists (set REPLACE=1 to rebuild it)"
   log "REPLACE=1: removing existing $CONTAINER"
@@ -51,21 +79,26 @@ if incus info "$CONTAINER" >/dev/null 2>&1; then
   incus delete "$CONTAINER" --force
 fi
 
-log "launching $CONTAINER ($ALPINE_IMAGE)"
-incus launch "$ALPINE_IMAGE" "$CONTAINER" --profile "$PROFILE"
+log "creating $CONTAINER ($ALPINE_IMAGE) with static IP $STATIC_IP"
+incus init "$ALPINE_IMAGE" "$CONTAINER" --no-profiles --profile "$PROFILE"
+incus config device override "$CONTAINER" eth0 ipv4.address="$STATIC_IP"
 incus config set "$CONTAINER" security.protection.delete=true
 incus config set "$CONTAINER" boot.autostart=false
+incus start "$CONTAINER"
 
-log "waiting for network"
-ready=0
+log "waiting for static IP $STATIC_IP"
+assigned=0
+current_ip=""
 for _ in $(seq 1 30); do
-  if incus list "$CONTAINER" -c4 --format csv 2>/dev/null | grep -Eq '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'; then
-    ready=1
+  current_ip="$(incus list "$CONTAINER" -c4 --format csv 2>/dev/null | tr ',' '\n' \
+    | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+  if [ "$current_ip" = "$STATIC_IP" ]; then
+    assigned=1
     break
   fi
   sleep 2
 done
-[ "$ready" -eq 1 ] || die "$CONTAINER did not get a network route"
+[ "$assigned" -eq 1 ] || die "expected static IP $STATIC_IP, got ${current_ip:-none}"
 
 # Dedicated non-root service account and runtime directories.
 incus exec "$CONTAINER" -- sh -c '
@@ -76,7 +109,7 @@ incus exec "$CONTAINER" -- sh -c '
     /var/cache/nginx/client_body /var/cache/nginx/proxy \
     /var/cache/nginx/fastcgi /var/cache/nginx/uwsgi /var/cache/nginx/scgi \
     /usr/local/nginx/conf/snippets /usr/local/nginx/conf/sites-enabled \
-    /etc/nginx-hardened/tls /var/www/acme
+    /etc/nginx-hardened/tls /var/www/acme /srv/static
   chown -R nginx:nginx /run/nginx /var/log/nginx /var/cache/nginx
   chmod 0750 /run/nginx /var/log/nginx /var/cache/nginx
 '
@@ -102,7 +135,6 @@ incus exec "$CONTAINER" -- sh -c "
   cd /usr/local/nginx/conf
   find . -type f -name '*.conf' -print0 | xargs -0 sed -i \
     -e 's|__PRIMARY_DOMAIN__|$PRIMARY_DOMAIN|g' \
-    -e 's|__BACKEND_UPSTREAM__|$BACKEND_UPSTREAM|g' \
     -e 's|__TLS_CERT__|/etc/nginx-hardened/tls/fullchain.pem|g' \
     -e 's|__TLS_KEY__|/etc/nginx-hardened/tls/privkey.pem|g'
 "
@@ -155,9 +187,8 @@ INIT
 log "starting $CONTAINER"
 incus exec "$CONTAINER" -- su -s /bin/sh -c '/usr/local/nginx/sbin/nginx -c /usr/local/nginx/conf/nginx.conf' nginx
 
-ip="$(incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
-[ -n "$ip" ] || die "could not determine $CONTAINER IPv4"
-printf '%s\n' "$ip" > "$STATE_DIR/$CONTAINER.ip"
+printf '%s\n' "$CONTAINER" > "$STATE_DIR/pending-container"
+printf '%s\n' "$STATIC_IP"  > "$STATE_DIR/pending-ip"
 
-log "green is up: $CONTAINER at $ip:8080 (health http://$ip:8080/healthz)"
+log "slot ready: $CONTAINER at $STATIC_IP:8080 (health http://$STATIC_IP:8080/healthz)"
 log "next: sudo $ROOT_DIR/scripts/03-cutover.sh"

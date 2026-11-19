@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 STATE_DIR="$ROOT_DIR/artifacts/state"
 
-CONTAINER="${1:-${CONTAINER:-casalivre-nginx-green}}"
+CONTAINER="${1:-${CONTAINER:-$(cat "$STATE_DIR/pending-container" 2>/dev/null || true)}}"
+[ -n "$CONTAINER" ] || CONTAINER="nginx-prod-green"
 PUBLIC_IFACE="${PUBLIC_IFACE:-eth0}"
 GREEN_IP="${GREEN_IP:-}"
 
@@ -22,6 +23,9 @@ require curl
 nft list table inet casalivre_edge >/dev/null 2>&1 || die "nftables table missing; run scripts/00-init-host.sh first"
 incus info "$CONTAINER" >/dev/null 2>&1 || die "green container not found: $CONTAINER"
 
+if [ -z "$GREEN_IP" ]; then
+  GREEN_IP="$(cat "$STATE_DIR/pending-ip" 2>/dev/null || true)"
+fi
 if [ -z "$GREEN_IP" ]; then
   GREEN_IP="$(incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' \
     | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
