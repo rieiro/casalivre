@@ -86,6 +86,23 @@ else
   bad "php redis extension is not loaded"
 fi
 
+echo "== logs =="
+if incus exec "$APP" -- sv status /var/service/casalivre-logrotate 2>&1 | grep -q '^run:'; then
+  ok "casalivre-logrotate is running"
+else
+  bad "casalivre-logrotate is not running"
+fi
+if incus exec "$APP" -- sv status /var/service/casalivre-valkey 2>&1 | grep -q 'log:'; then
+  ok "casalivre-valkey has a log service"
+else
+  bad "casalivre-valkey has no log service"
+fi
+if [ -n "${edge:-}" ] && incus exec "$edge" -- test -f /etc/logrotate.d/nginx >/dev/null 2>&1; then
+  ok "edge nginx logrotate policy is installed"
+else
+  bad "edge nginx logrotate policy is missing"
+fi
+
 echo "== isolation and reachability =="
 if incus exec "$DB" -- sh -c 'ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1'; then
   bad "db-pg reached the internet"

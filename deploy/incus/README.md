@@ -54,6 +54,7 @@ else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning
 | `scripts/04-jumpstart-app.sh` | Pushes app code + `.env`, seeds empty data, publishes static/tiles, installs workers. |
 | `scripts/05-dev-live.sh` | Binds the host git tree into the app/edge for live development (`on`/`off`/`status`). |
 | `scripts/valkey-setup.sh` | Installs/repairs `valkey` + `php8.4-redis`, renders the ACL/secret and starts the socket service. |
+| `scripts/logs-setup.sh` | Installs logrotate + `casalivre-logrotate` for the file logs PHP-FPM/alerts write directly. |
 | `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh`. |
 | `scripts/verify-stack.sh` | End-to-end isolation/IP/service/port checks (PASS/FAIL). |
 
@@ -158,8 +159,9 @@ sudo APP_DB_PASSWORD='<secret>' PRIMARY_DOMAIN=example.com \
 Checks (PASS/FAIL): exact static IPs and states, `sv status` in both containers, `db-pg` has no
 internet, `app-php` can reach `10.10.20.10:5432`, the active edge can reach `10.10.10.20:9000` and
 **cannot** reach `10.10.20.10:5432`, and no maintenance NIC remains on `db-pg`. It also checks the
-`casalivre-valkey` service, the Unix socket, an authenticated `PING` as `cl_app`, and that PHP
-loaded the `redis` extension.
+`casalivre-valkey` service, the Unix socket, an authenticated `PING` as `cl_app`, that PHP loaded the
+`redis` extension, and the log services (`casalivre-logrotate`, the Valkey log service and the edge
+nginx logrotate policy).
 
 ## 6. Jumpstart the application (code, data, statics, workers)
 
@@ -178,8 +180,9 @@ Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempo
 5. runs `migrate.php`; loads the 1.2M CEPs only if the table is empty; seeds demo rows only when
    `SEED_DEMO=1` **and** there are no properties; processes the image queue once;
 6. ensures Valkey is installed/current (`valkey-setup.sh`) and restarts php-fpm so `redis.so` loads;
-7. installs the runit workers/one-shots and enables them (mail/image carry the `cl_app` credentials);
-8. publishes `public/assets`, `public/uploads`, the app media uploads and `storage/tiles/brasil.pmtiles`
+7. installs/refreshes the daily `logrotate` service (`logs-setup.sh`);
+8. installs the runit workers/one-shots and enables them (mail/image carry the `cl_app` credentials);
+9. publishes `public/assets`, `public/uploads`, the app media uploads and `storage/tiles/brasil.pmtiles`
    to the active edge's `/srv/static`, then reloads nginx.
 
 Environment knobs: `REPO_DIR`, `APP_ENV_FILE`, `TILES_FILE`, `SEED_DEMO=0`, `FORCE_TILES=1`,
@@ -238,6 +241,35 @@ sudo CONFIRM=1 NEW_PG_VERSION=18 OLD_PG_VERSION=17 ./scripts/03-upgrade-pg-major
 The script snapshots `casalivre-db`, builds a new container on a new volume with the new major
 version, restores a logical `pg_dumpall`, verifies it, and (only with `CONFIRM=1`) freezes the app,
 swaps the containers/volumes and keeps the old ones for rollback.
+
+## Logs
+
+Three layers, mirroring the reference container:
+
+- **Worker logs:** each `casalivre-*` runit service has a `log/run` using `casalivre-svlogd`
+  (`/var/log/casalivre/<service>/`, rotation `s100000000 n14 t86400` = 100MB/day, 14 files). ALERT
+  lines are paged to `/var/log/casalivre/alerts.log` by `casalivre-alert`.
+- **System logs:** PHP-FPM, cronie, PostgreSQL and the base services use `vlogger` →
+  `socklog-unix` (`svlogd -ttt`); PostgreSQL runs with `log_destination=stderr` and
+  `logging_collector=off`, so its logs are in `/var/log/socklog/daemon/current`.
+- **Direct file logs:** `scripts/logs-setup.sh` installs `logrotate` and the
+  `casalivre-logrotate` runit service (daily). It rotates `/var/log/php-fpm/{access,error,slow}.log`,
+  `/var/log/php-fpm.log` and `/var/log/casalivre/alerts.log` with `copytruncate`.
+- **Edge:** `system/logrotate-nginx` is installed by `02-deploy-green.sh` to
+  `/etc/logrotate.d/nginx`; Alpine’s daily `logrotate` (crond) rotates `/var/log/nginx/*.log` and
+  reopens them with `kill -USR1`.
+- **Application data:** `casalivre-log-retention` (runit, daily) prunes `storage/error.log`,
+  `storage/logs/api/*` and the DB audit partitions according to the retention policy.
+
+`verify-stack.sh` checks that `casalivre-logrotate` runs, that Valkey has a log service, and that the
+edge nginx logrotate policy is installed. Useful commands:
+
+```bash
+incus exec app-php -- sv status /var/service/casalivre-logrotate
+incus exec app-php -- logrotate -d /etc/logrotate.d/casalivre
+incus exec nginx-prod-green -- logrotate -d /etc/logrotate.d/nginx
+incus exec db-pg -- tail -n 20 /var/log/socklog/daemon/current
+```
 
 ## Secrets
 

@@ -106,6 +106,9 @@ done
 
 log "configuring Valkey (Unix socket + ACL)"
 CONTAINER="$CONTAINER" bash "$SCRIPT_DIR/valkey-setup.sh"
+
+log "configuring log rotation"
+CONTAINER="$CONTAINER" bash "$SCRIPT_DIR/logs-setup.sh"
 incus exec "$CONTAINER" -- sv restart php-fpm >/dev/null 2>&1 || true
 
 incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);' || die "OPcache is not loaded"

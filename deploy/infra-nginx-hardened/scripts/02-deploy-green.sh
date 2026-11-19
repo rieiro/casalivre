@@ -144,6 +144,12 @@ incus exec "$CONTAINER" -- sh -c '
 log "installing configuration"
 incus file push -r "$ROOT_DIR/config/." "$CONTAINER/usr/local/nginx/conf/"
 
+log "installing logrotate policy"
+incus exec "$CONTAINER" -- mkdir -p /etc/logrotate.d
+incus file push "$ROOT_DIR/system/logrotate-nginx" "$CONTAINER/etc/logrotate.d/nginx"
+incus exec "$CONTAINER" -- chown root:root /etc/logrotate.d/nginx
+incus exec "$CONTAINER" -- chmod 0644 /etc/logrotate.d/nginx
+
 log "installing TLS material"
 incus file push "$TLS_CERT" "$CONTAINER/etc/nginx-hardened/tls/fullchain.pem"
 incus file push "$TLS_KEY"  "$CONTAINER/etc/nginx-hardened/tls/privkey.pem"
