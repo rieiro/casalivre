@@ -271,4 +271,17 @@ t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'pg_stat_statements'),
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'pg_stat_statements'),
     'README documents pg_stat_statements');
 
+echo "incus stack: static cache headers\n";
+$edgeConf = (string) file_get_contents(CL_ROOT . '/deploy/infra-nginx-hardened/config/sites-enabled/default.conf');
+t_ok(str_contains($edgeConf, 'add_header_inherit merge'),
+    'edge config preserves inherited security headers on static locations');
+t_ok(substr_count($edgeConf, 'public, max-age=31536000, immutable') >= 2,
+    'edge config marks assets and uploads immutable for one year');
+$devLive = incus_read('scripts/05-dev-live.sh');
+t_ok(str_contains($devLive, 'public, max-age=31536000, immutable'),
+    '05-dev-live.sh overrides the production immutable header in dev');
+t_ok(str_contains($devLive, 'no-store'), '05-dev-live.sh uses no-store in dev');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'immutable'),
+    'README documents immutable static caching');
+
 t_done();
