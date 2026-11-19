@@ -247,11 +247,12 @@ echo "incus stack: data backup\n";
 $backup = incus_read('scripts/06-backup-data.sh');
 foreach (['pg_dump', 'pg_dumpall', 'storage volume export', 'casalivre-media',
     'public/uploads', 'storage/fotos', 'deploy/incus/secrets', 'MAX_BACKUPS',
-    '--volume-only', 'storage/tiles'] as $n) {
+    '--volume-only', 'storage/tiles', 'casalivre-app', 'DB_PGHOST', 'MIN_FREE_MB'] as $n) {
     t_ok(str_contains($backup, $n), "06-backup-data.sh has $n");
 }
+t_ok(!str_contains($backup, 'not a git working tree'), '06-backup-data.sh does not require .git');
 $readme = (string) file_get_contents(CL_ROOT . '/deploy/incus/README.md');
-foreach (['06-backup-data.sh', 'pg_dump', 'storage/tiles'] as $n) {
+foreach (['06-backup-data.sh', 'pg_dump', 'storage/tiles', 'casalivre-app', 'DB_PGHOST'] as $n) {
     t_ok(str_contains($readme, $n), "README documents $n");
 }
 
