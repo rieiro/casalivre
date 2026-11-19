@@ -208,5 +208,9 @@ incus exec "$CONTAINER" -- su - postgres -c \
   "PGHOST=/run/postgresql /usr/bin/psql -v ON_ERROR_STOP=1 -v app_password='$APP_DB_PASSWORD' -f /tmp/bootstrap.sql" >/dev/null
 incus exec "$CONTAINER" -- rm -f /tmp/bootstrap.sql
 
+log "creating the pg_stat_statements extension"
+incus exec "$CONTAINER" -- su - postgres -c \
+  "PGHOST=/run/postgresql /usr/bin/psql -d $APP_DB_NAME -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;'" >/dev/null
+
 log "db-pg is ready and air-gapped: 10.10.20.10:5432 (TLS + SCRAM)"
 log "next: $ROOT_DIR/scripts/02-deploy-app.sh"

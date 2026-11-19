@@ -103,6 +103,22 @@ else
   bad "edge nginx logrotate policy is missing"
 fi
 
+echo "== postgres stats =="
+if incus exec "$DB" -- su - postgres -c \
+  "PGHOST=/run/postgresql /usr/bin/psql -tAc \"SHOW shared_preload_libraries\"" 2>/dev/null \
+  | grep -q pg_stat_statements; then
+  ok "PostgreSQL preloads pg_stat_statements"
+else
+  bad "PostgreSQL does not preload pg_stat_statements"
+fi
+if incus exec "$DB" -- su - postgres -c \
+  "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'\"" 2>/dev/null \
+  | grep -qx 1; then
+  ok "pg_stat_statements extension is installed"
+else
+  bad "pg_stat_statements extension is missing"
+fi
+
 echo "== isolation and reachability =="
 if incus exec "$DB" -- sh -c 'ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1'; then
   bad "db-pg reached the internet"

@@ -256,4 +256,19 @@ foreach (['06-backup-data.sh', 'pg_dump', 'storage/tiles', 'casalivre-app', 'DB_
     t_ok(str_contains($readme, $n), "README documents $n");
 }
 
+echo "incus stack: pg_stat_statements\n";
+$pgconf = incus_read('containers/db-pg/config/postgresql.conf');
+t_ok(str_contains($pgconf, "shared_preload_libraries = 'pg_stat_statements'"),
+    "postgresql.conf preloads pg_stat_statements");
+t_ok(str_contains(incus_read('scripts/01-deploy-db.sh'),
+    'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'),
+    '01-deploy-db.sh creates the pg_stat_statements extension');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'),
+    'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'),
+    '04-jumpstart-app.sh creates the pg_stat_statements extension');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'pg_stat_statements'),
+    'verify-stack.sh checks pg_stat_statements');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'pg_stat_statements'),
+    'README documents pg_stat_statements');
+
 t_done();
