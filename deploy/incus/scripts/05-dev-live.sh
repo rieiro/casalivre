@@ -97,8 +97,10 @@ patch_php_ini() {
 }
 
 patch_nginx_conf() {
-  sed -E -i 's/^([[:space:]]*)expires 30d;[[:space:]]*$/\1expires off;\
-\1add_header Cache-Control "no-store" always;/' "$1"
+  sed -E -i \
+    -e 's|^([[:space:]]*)add_header Cache-Control "public, max-age=31536000, immutable" always;[[:space:]]*$|\1add_header Cache-Control "no-store" always;|' \
+    -e 's|^([[:space:]]*)expires 30d;[[:space:]]*$|\1add_header Cache-Control "no-store" always;|' \
+    "$1"
   # Tiles live in a separate top-level bind (/srv/tiles) to avoid a mount nested under
   # /srv/static, which Incus cannot hot-plug. Serve them through an alias.
   if grep -q 'location = /tiles/brasil.pmtiles' "$1"; then

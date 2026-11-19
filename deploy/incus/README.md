@@ -155,6 +155,14 @@ sudo APP_DB_PASSWORD='<secret>' PRIMARY_DOMAIN=example.com \
   ./scripts/stack-up.sh
 ```
 
+### Static caching
+
+The production edge serves `/assets/` and `/uploads/` with
+`Cache-Control: public, max-age=31536000, immutable` and
+`add_header_inherit merge`, so the server-level security headers (nosniff, HSTS, CSP, …) are
+preserved. Uploaded photos are UUID-named and append-only; assets carry a `?v=` content hash. The
+live-dev overlay replaces both with `Cache-Control: no-store` so edits are visible immediately.
+
 ## 5. Verify
 
 ```bash
