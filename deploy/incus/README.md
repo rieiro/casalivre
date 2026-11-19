@@ -251,25 +251,29 @@ Two complementary layers on the host:
   `incus export --instance-only`, which excludes snapshots but keeps attached custom volumes
   (`--root-only` is the flag that would drop the volumes). It covers the rootfs of `app-php`,
   `db-pg`, the edge, and the `casalivre-db`/`casalivre-media` volumes at the filesystem level.
-- **Data backup** — `scripts/06-backup-data.sh` (run as root) creates a consistent logical backup
-  and a host-side copy:
+- **Data backup** — `scripts/06-backup-data.sh` works in **both dev and production**:
 
   ```bash
   sudo ./scripts/06-backup-data.sh
   ```
 
-  Output in `/backup-sdcard` (retention: 7 of each):
+  It does not require a `.git` checkout; host paths are optional and container-side data is used
+  when the host working tree is absent. Output in `/backup-sdcard` (retention: 7 of each):
   - `casalivre-db_<ts>.dump` — `pg_dump -Fc casalivre` (restore with `pg_restore`)
   - `casalivre-globals_<ts>.sql` — `pg_dumpall --globals-only` (roles)
-  - `casalivre-host_<ts>.tar.gz` — host `public/uploads`, `storage/fotos`,
-    `deploy/incus/secrets` and `.env`
+  - `casalivre-app_<ts>.tar.gz` — `/srv/app/public/uploads` taken from the app container
+    (authoritative both with live-dev and in the deployed rootfs)
+  - `casalivre-host_<ts>.tar.gz` — host `storage/fotos`, `deploy/incus/secrets` and `.env`, only when
+    those paths exist (skipped with a log line otherwise)
   - `casalivre-media_<ts>.tar.gz` — `incus storage volume export` of `casalivre-media`
 
-  It is not encrypted (by design); run it as root and keep `/backup-sdcard` protected. Suggested
-  root cron on Void (`/etc/crontabs/root`):
+  Overrides: `BACKUP_DIR`, `DB`, `DB_PGHOST` (default `/run/postgresql`), `APP`, `POOL`,
+  `MEDIA_VOLUME`, `MAX_BACKUPS`, `MIN_FREE_MB` (default 1024), `REPO_DIR`, `LOG_FILE`.
+  It is not encrypted (by design); run it as root and keep `/backup-sdcard` protected. The
+  installed rafael cron uses passwordless sudo; a root cron is equivalent:
 
   ```cron
-  30 22 * * * /srv/dev/casalivre/deploy/incus/scripts/06-backup-data.sh >/dev/null 2>&1
+  30 22 * * * sudo -n /srv/dev/casalivre/deploy/incus/scripts/06-backup-data.sh >/dev/null 2>&1
   ```
 
 **Tiles:** the host repo's `storage/tiles/brasil.pmtiles` (1.5G) is **not** in the data backup.
@@ -289,7 +293,11 @@ incus exec db-pg -- su - postgres -c 'PGHOST=/run/postgresql pg_restore --no-own
 # Media volume back into a scratch volume
 incus storage volume import default /backup-sdcard/casalivre-media_<ts>.tar.gz casalivre-media-restore
 
-# Host working-tree data
+# App uploads into the app container (live-dev or deployed tree)
+incus file push /backup-sdcard/casalivre-app_<ts>.tar.gz app-php/tmp/app.tar.gz
+incus exec app-php -- tar -C /srv/app -xzf /tmp/app.tar.gz
+
+# Host working-tree extras (secrets/.env/storage/fotos), when present
 tar -C /srv/dev/casalivre -xzf /backup-sdcard/casalivre-host_<ts>.tar.gz
 ```
 
