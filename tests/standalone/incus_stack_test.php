@@ -28,7 +28,7 @@ $required = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
-    'scripts/logs-setup.sh',
+    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -44,7 +44,7 @@ $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
-    'scripts/logs-setup.sh',
+    'scripts/logs-setup.sh', 'scripts/06-backup-data.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -241,6 +241,18 @@ t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/infra-nginx-hard
 $verifyLogs = incus_read('scripts/verify-stack.sh');
 foreach (['casalivre-logrotate', 'logrotate.d/nginx'] as $n) {
     t_ok(str_contains($verifyLogs, $n), "verify-stack.sh checks $n");
+}
+
+echo "incus stack: data backup\n";
+$backup = incus_read('scripts/06-backup-data.sh');
+foreach (['pg_dump', 'pg_dumpall', 'storage volume export', 'casalivre-media',
+    'public/uploads', 'storage/fotos', 'deploy/incus/secrets', 'MAX_BACKUPS',
+    '--volume-only', 'storage/tiles'] as $n) {
+    t_ok(str_contains($backup, $n), "06-backup-data.sh has $n");
+}
+$readme = (string) file_get_contents(CL_ROOT . '/deploy/incus/README.md');
+foreach (['06-backup-data.sh', 'pg_dump', 'storage/tiles'] as $n) {
+    t_ok(str_contains($readme, $n), "README documents $n");
 }
 
 t_done();

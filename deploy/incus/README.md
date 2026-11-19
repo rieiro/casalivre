@@ -56,6 +56,7 @@ else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning
 | `scripts/valkey-setup.sh` | Installs/repairs `valkey` + `php8.4-redis`, renders the ACL/secret and starts the socket service. |
 | `scripts/logs-setup.sh` | Installs logrotate + `casalivre-logrotate` for the file logs PHP-FPM/alerts write directly. |
 | `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh`. |
+| `scripts/06-backup-data.sh` | Host-level data backup: DB dump, host uploads/secrets and the media volume. |
 | `scripts/verify-stack.sh` | End-to-end isolation/IP/service/port checks (PASS/FAIL). |
 
 ## Prerequisites
@@ -241,6 +242,56 @@ sudo CONFIRM=1 NEW_PG_VERSION=18 OLD_PG_VERSION=17 ./scripts/03-upgrade-pg-major
 The script snapshots `casalivre-db`, builds a new container on a new volume with the new major
 version, restores a logical `pg_dumpall`, verifies it, and (only with `CONFIRM=1`) freezes the app,
 swaps the containers/volumes and keeps the old ones for rollback.
+
+## Backups
+
+Two complementary layers on the host:
+
+- **Container exports** — `~/.local/bin/backup-incus-containers.sh` (daily 22:00) runs
+  `incus export --instance-only`, which excludes snapshots but keeps attached custom volumes
+  (`--root-only` is the flag that would drop the volumes). It covers the rootfs of `app-php`,
+  `db-pg`, the edge, and the `casalivre-db`/`casalivre-media` volumes at the filesystem level.
+- **Data backup** — `scripts/06-backup-data.sh` (run as root) creates a consistent logical backup
+  and a host-side copy:
+
+  ```bash
+  sudo ./scripts/06-backup-data.sh
+  ```
+
+  Output in `/backup-sdcard` (retention: 7 of each):
+  - `casalivre-db_<ts>.dump` — `pg_dump -Fc casalivre` (restore with `pg_restore`)
+  - `casalivre-globals_<ts>.sql` — `pg_dumpall --globals-only` (roles)
+  - `casalivre-host_<ts>.tar.gz` — host `public/uploads`, `storage/fotos`,
+    `deploy/incus/secrets` and `.env`
+  - `casalivre-media_<ts>.tar.gz` — `incus storage volume export` of `casalivre-media`
+
+  It is not encrypted (by design); run it as root and keep `/backup-sdcard` protected. Suggested
+  root cron on Void (`/etc/crontabs/root`):
+
+  ```cron
+  30 22 * * * /srv/dev/casalivre/deploy/incus/scripts/06-backup-data.sh >/dev/null 2>&1
+  ```
+
+**Tiles:** the host repo's `storage/tiles/brasil.pmtiles` (1.5G) is **not** in the data backup.
+The edge rootfs export contains the `/srv/static/tiles` copy, so a full host loss can be recovered
+from the edge archive (or the tile can be re-copied from the reference source). The host source is
+intentionally left out to keep the daily data backups small.
+
+Restore examples:
+
+```bash
+# PostgreSQL into a scratch database
+incus file push /backup-sdcard/casalivre-db_<ts>.dump db-pg/tmp/restore.dump
+incus exec db-pg -- su - postgres -c 'PGHOST=/run/postgresql dropdb --if-exists casalivre_restore'
+incus exec db-pg -- su - postgres -c 'PGHOST=/run/postgresql createdb casalivre_restore'
+incus exec db-pg -- su - postgres -c 'PGHOST=/run/postgresql pg_restore --no-owner --no-acl -d casalivre_restore /tmp/restore.dump'
+
+# Media volume back into a scratch volume
+incus storage volume import default /backup-sdcard/casalivre-media_<ts>.tar.gz casalivre-media-restore
+
+# Host working-tree data
+tar -C /srv/dev/casalivre -xzf /backup-sdcard/casalivre-host_<ts>.tar.gz
+```
 
 ## Logs
 
