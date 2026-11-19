@@ -55,6 +55,14 @@ if [ -z "$EDGE" ]; then
 fi
 [ -n "$EDGE" ] && [ "$(state_of "$EDGE")" = "RUNNING" ] || die "no active nginx-prod-* container found"
 
+# Never publish into a live-dev bind: /srv/app would be the host git tree, and the chown/chmod
+# below would rewrite the working copy's ownership and modes through the idmapped mount.
+DEV_MARKER="$ROOT_DIR/../infra-nginx-hardened/artifacts/state/dev-live"
+if [ -f "$DEV_MARKER" ] || incus config device list "$APP" 2>/dev/null | grep -qx 'dev-live-src'; then
+  [ "${ALLOW_LIVE_DEV:-0}" = "1" ] || die "live-dev overlay is active on $APP; /srv/app is the host git tree.
+       Run scripts/05-dev-live.sh off first (or set ALLOW_LIVE_DEV=1 to force)."
+fi
+
 psql_db() { incus exec "$DB" -- su - postgres -c "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -v ON_ERROR_STOP=1 $*"; }
 scalar() { incus exec "$DB" -- su - postgres -c "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"$1\"" | tr -d '[:space:]'; }
 

@@ -23,7 +23,7 @@ $required = [
     'containers/app-php/provision.sh', 'containers/app-php/config/php.ini', 'containers/app-php/config/php-fpm.d/www.conf',
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
-    'scripts/04-jumpstart-app.sh',
+    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -38,7 +38,7 @@ echo "incus stack: shell scripts\n";
 $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
-    'scripts/04-jumpstart-app.sh',
+    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -156,5 +156,18 @@ foreach (['APP_ENV_FILE', 'ops/dev-env/pg-roles.sql', 'database/schema.pgsql.sql
     t_ok(str_contains($jumpstart, $n), "04-jumpstart-app.sh has $n");
 }
 t_ok(str_contains($jumpstart, 'chmod 0640 /srv/app/.env'), '04-jumpstart-app.sh protects .env with 0640');
+
+echo "incus stack: dev live overlay\n";
+$dev = incus_read('scripts/05-dev-live.sh');
+foreach (['on|off|status', 'setfacl', 'volatile.idmap.base', 'opcache.validate_timestamps=1',
+    'dev-live-src', 'dev-live-static', 'dev-live-tiles',
+    '/srv/app', '/srv/static', '/srv/tiles', 'alias /srv/tiles/brasil.pmtiles',
+    'storage/tiles', 'nginx -t'] as $n) {
+    t_ok(str_contains($dev, $n), "05-dev-live.sh has $n");
+}
+t_ok(str_contains($dev, 'sv restart php-fpm'), '05-dev-live.sh restarts php-fpm after the opcache switch');
+t_ok(str_contains($dev, 'set -euo pipefail'), '05-dev-live.sh is defensive');
+t_ok(str_contains($jumpstart, 'ALLOW_LIVE_DEV'), '04-jumpstart-app.sh has the live-dev guard');
+t_ok(str_contains($jumpstart, '05-dev-live.sh'), '04-jumpstart-app.sh points at 05-dev-live.sh');
 
 t_done();

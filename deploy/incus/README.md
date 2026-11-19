@@ -52,6 +52,7 @@ else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning
 | `scripts/02-deploy-app.sh` | Deploys `app-php`, configs, users, permissions and PHP-FPM. |
 | `scripts/03-upgrade-pg-major.sh` | Snapshot + clone-and-swap major PostgreSQL upgrade (gated). |
 | `scripts/04-jumpstart-app.sh` | Pushes app code + `.env`, seeds empty data, publishes static/tiles, installs workers. |
+| `scripts/05-dev-live.sh` | Binds the host git tree into the app/edge for live development (`on`/`off`/`status`). |
 | `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh`. |
 | `scripts/verify-stack.sh` | End-to-end isolation/IP/service/port checks (PASS/FAIL). |
 
@@ -158,7 +159,39 @@ Environment knobs: `REPO_DIR`, `APP_ENV_FILE`, `TILES_FILE`, `SEED_DEMO=0`, `FOR
 > The tiles archive is 1.5G; it is copied only when missing on the edge (or `FORCE_TILES=1`).
 > Secrets live in `deploy/incus/secrets/` (gitignored) and are never printed by the script.
 
-## 7. Major PostgreSQL upgrade
+## 7. Live development overlay
+
+For day-to-day edits, bind the host git tree into the running tiers instead of republishing it:
+
+```bash
+sudo ./scripts/05-dev-live.sh on
+# edit the repo and refresh the browser
+sudo ./scripts/05-dev-live.sh off    # restore the copies, php.ini and edge config
+./scripts/05-dev-live.sh status
+```
+
+`on` is idempotent and:
+
+- binds the repo at `/srv/app` in `app-php`, `public/` at `/srv/static` on the active edge
+  (read-only for nginx), and `storage/tiles/` at `/srv/tiles` (referenced by an alias in the dev
+  copy of the tiles location);
+- grants the container's mapped `appuser` (host uid = `volatile.idmap.base` + `id -u appuser`) an
+  ACL on the tree, keeping the host user as owner;
+- sets `opcache.validate_timestamps=1` / `revalidate_freq=0` and restarts php-fpm once, so a saved
+  PHP file is picked up on the next request;
+- disables browser caching for `/assets/` and `/uploads/`;
+- backs up `php.ini` and the edge `default.conf` under `artifacts/dev-backups/`.
+
+Caveats:
+
+- Development only: the application user can write the working tree (uploads, cache, and code).
+- `04-jumpstart-app.sh` refuses to run while the overlay is active; `ALLOW_LIVE_DEV=1` overrides it.
+- Re-run `on` after an edge rebuild (devices live on the container), and `off` before a normal
+  release. `off` restores `php.ini`/edge config; run `04` to republish the current tree.
+- Migrations still go through the app container:
+  `incus exec app-php -- su -s /bin/sh appuser -c 'cd /srv/app && php scripts/migrate.php'`.
+
+## 8. Major PostgreSQL upgrade
 
 ```bash
 sudo NEW_PG_VERSION=18 OLD_PG_VERSION=17 ./scripts/03-upgrade-pg-major.sh
