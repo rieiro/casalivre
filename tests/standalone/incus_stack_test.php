@@ -21,9 +21,11 @@ $required = [
     'profiles/base-void-hardened.yaml', 'profiles/app-php.yaml', 'profiles/db-pg.yaml',
     'containers/db-pg/provision.sh', 'containers/db-pg/config/postgresql.conf', 'containers/db-pg/config/pg_hba.conf',
     'containers/app-php/provision.sh', 'containers/app-php/config/php.ini', 'containers/app-php/config/php-fpm.d/www.conf',
+    'containers/app-php/config/valkey.conf', 'containers/app-php/config/valkey.acl.in',
+    'containers/app-php/sv/casalivre-valkey/run',
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
-    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh',
+    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -38,7 +40,7 @@ echo "incus stack: shell scripts\n";
 $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
-    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh',
+    'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -170,5 +172,41 @@ t_ok(str_contains($dev, 'sv restart php-fpm'), '05-dev-live.sh restarts php-fpm 
 t_ok(str_contains($dev, 'set -euo pipefail'), '05-dev-live.sh is defensive');
 t_ok(str_contains($jumpstart, 'ALLOW_LIVE_DEV'), '04-jumpstart-app.sh has the live-dev guard');
 t_ok(str_contains($jumpstart, '05-dev-live.sh'), '04-jumpstart-app.sh points at 05-dev-live.sh');
+t_ok(str_contains(incus_read('scripts/02-deploy-app.sh'), 'ALLOW_LIVE_DEV'),
+    '02-deploy-app.sh has the live-dev guard');
+
+echo "incus stack: valkey\n";
+$vkconf = incus_read('containers/app-php/config/valkey.conf');
+foreach (['port 0', 'unixsocket /run/casalivre-valkey/valkey.sock', 'unixsocketperm 660',
+    'aclfile /etc/casalivre-valkey/valkey.acl', 'dir /var/lib/casalivre/media/valkey'] as $n) {
+    t_ok(str_contains($vkconf, $n), "valkey.conf has $n");
+}
+$vkeacl = incus_read('containers/app-php/config/valkey.acl.in');
+foreach (['user default off', 'user cl_app on #__VALKEY_APP_HASH__', '~cl:*', '&cl:*', '-@all'] as $n) {
+    t_ok(str_contains($vkeacl, $n), "valkey.acl.in has $n");
+}
+$vksetup = incus_read('scripts/valkey-setup.sh');
+foreach (['valkey', 'php8.4-redis', 'xbps-install', 'sha256sum', 'VALKEY_PASSWORD_FILE',
+    'cl_app', 'valkey-cli', 'sv up', 'VALKEY_SOCKET'] as $n) {
+    t_ok(str_contains($vksetup, $n), "valkey-setup.sh has $n");
+}
+t_ok(str_contains(incus_read('scripts/02-deploy-app.sh'), 'valkey-setup.sh'),
+    '02-deploy-app.sh runs valkey-setup.sh');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'valkey-setup.sh'),
+    '04-jumpstart-app.sh runs valkey-setup.sh');
+t_ok(str_contains(incus_read('containers/app-php/provision.sh'), 'valkey'),
+    'app-php provision.sh installs valkey');
+t_ok(str_contains(incus_read('containers/app-php/provision.sh'), 'php8.4-redis'),
+    'app-php provision.sh installs php8.4-redis');
+t_ok(str_contains(incus_read('containers/app-php/config/php.ini'), 'extension=redis.so'),
+    'php.ini loads redis.so');
+t_ok(str_contains(incus_read('containers/app-php/config/php.ini'), '/etc/casalivre'),
+    'php.ini allows /etc/casalivre in open_basedir');
+$verify = incus_read('scripts/verify-stack.sh');
+foreach (['casalivre-valkey', 'valkey-cli', 'redis'] as $n) {
+    t_ok(str_contains($verify, $n), "verify-stack.sh has $n");
+}
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/.env.example'), 'VALKEY_SOCKET'),
+    '.env.example documents VALKEY_SOCKET');
 
 t_done();

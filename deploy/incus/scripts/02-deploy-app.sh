@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CONTAINER="${CONTAINER:-app-php}"
 IMAGE="${IMAGE:-images:voidlinux/current}"
-PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-gd php8.4-intl ca-certificates}"
+PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-gd php8.4-intl php8.4-redis valkey ca-certificates}"
 CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 
 log() { printf '[app] %s\n' "$*"; }
@@ -22,6 +22,13 @@ else
   log "launching $CONTAINER ($IMAGE)"
   incus launch "$IMAGE" "$CONTAINER" --no-profiles \
     --profile base-void-hardened --profile app-php
+fi
+
+# Never chown/chmod /srv/app when it is the live-dev bind to the host git tree.
+DEV_MARKER="$ROOT_DIR/../infra-nginx-hardened/artifacts/state/dev-live"
+if [ -f "$DEV_MARKER" ] || incus config device list "$CONTAINER" 2>/dev/null | grep -qx 'dev-live-src'; then
+  [ "${ALLOW_LIVE_DEV:-0}" = "1" ] || die "live-dev overlay is active on $CONTAINER; /srv/app is the host git tree.
+       Run scripts/05-dev-live.sh off first (or set ALLOW_LIVE_DEV=1 to force)."
 fi
 
 # The Void image does not apply Incus' static IPs; configure both NICs in-guest.
@@ -97,8 +104,13 @@ for _ in $(seq 1 30); do
 done
 [ "$ready" -eq 1 ] || die "PHP-FPM did not listen on 10.10.10.20:9000"
 
+log "configuring Valkey (Unix socket + ACL)"
+CONTAINER="$CONTAINER" bash "$SCRIPT_DIR/valkey-setup.sh"
+incus exec "$CONTAINER" -- sv restart php-fpm >/dev/null 2>&1 || true
+
 incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);' || die "OPcache is not loaded"
 incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("pdo_pgsql") ? 0 : 1);' || die "pdo_pgsql is not loaded"
+incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' || die "php redis extension is not loaded"
 
 log "app-php is ready: 10.10.10.20:9000 (allowed: 10.10.10.10,10.10.10.11)"
 log "deploy the application code (read-only) into /srv/app before serving traffic"

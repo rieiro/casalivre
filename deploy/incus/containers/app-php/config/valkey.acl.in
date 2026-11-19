@@ -1,0 +1,2 @@
+user default off resetkeys resetchannels -@all
+user cl_app on #__VALKEY_APP_HASH__ resetkeys ~cl:* resetchannels &cl:* -@all +get +set +del +unlink +exists +expire +pexpire +ttl +pttl +incr +incrby +decr +mget +mset +rename +hget +hset +hdel +hmget +hgetall +hincrby +hlen +hexists +lpush +rpush +lpop +rpop +blpop +brpop +lmove +blmove +llen +lrange +lrem +zadd +zrem +zrange +zrangebyscore +zremrangebyscore +zcard +sadd +srem +smembers +sismember +multi +exec +discard +watch +unwatch +ping +hello +auth +select|0

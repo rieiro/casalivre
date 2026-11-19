@@ -137,6 +137,12 @@ incus exec "$APP" -- /bin/sh -c '
 log "restarting php-fpm"
 incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || incus exec "$APP" -- sv up php-fpm >/dev/null 2>&1 || true
 
+log "ensuring Valkey is configured"
+CONTAINER="$APP" bash "$SCRIPT_DIR/valkey-setup.sh"
+incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || true
+incus exec "$APP" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' \
+  || die "php redis extension is not loaded; run 02-deploy-app.sh to publish php.ini"
+
 # ---------------------------------------------------------------- data
 php() { incus exec "$APP" -- su -s /bin/sh appuser -c "cd /srv/app && $PHP -d memory_limit=$PHP_MEMORY $*"; }
 
@@ -165,7 +171,15 @@ incus file push -r "$REPO_DIR/deploy/runit/casalivre-calendar-worker" "$APP/etc/
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-rank-verify" "$APP/etc/sv/casalivre-rank-verify"
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-log-retention" "$APP/etc/sv/casalivre-log-retention"
 for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention; do
-  incus exec "$APP" -- /bin/sh -c "printf 'APP_DIR=/srv/app\nAPP_USER=appuser\nPHP_BIN=$PHP\n' > /etc/sv/$s/conf && chmod 0640 /etc/sv/$s/conf"
+  extra=""
+  case "$s" in
+    casalivre-mail-worker)
+      extra='VALKEY_MAIL_USER=cl_app\nVALKEY_MAIL_PASSWORD_FILE=/etc/casalivre/valkey-app.secret' ;;
+    casalivre-image-worker-1)
+      extra='VALKEY_IMAGE_USER=cl_app\nVALKEY_IMAGE_PASSWORD_FILE=/etc/casalivre/valkey-app.secret' ;;
+  esac
+  printf 'APP_DIR=/srv/app\nAPP_USER=appuser\nPHP_BIN=%s\n%b\n' "$PHP" "$extra" \
+    | incus exec "$APP" -- /bin/sh -c "cat > /etc/sv/$s/conf && chmod 0640 /etc/sv/$s/conf"
 done
 incus exec "$APP" -- /bin/sh -c '
   set -e
@@ -195,7 +209,7 @@ EOF
     chmod 0755 "/etc/sv/$s/run" "/etc/sv/$s/finish" "/etc/sv/$s/log/run" 2>/dev/null || true
     chmod 0640 "/etc/sv/$s/conf" 2>/dev/null || true
     ln -sfn "/etc/sv/$s" "/var/service/$s"
-    sv up "$s" >/dev/null 2>&1 || true
+    sv restart "$s" >/dev/null 2>&1 || sv up "$s" >/dev/null 2>&1 || true
   done
 '
 

@@ -62,6 +62,30 @@ for c in "$DB" "$APP"; do
   fi
 done
 
+echo "== valkey =="
+if incus exec "$APP" -- sv status /var/service/casalivre-valkey 2>&1 | grep -q '^run:'; then
+  ok "app-php casalivre-valkey is running"
+else
+  bad "app-php casalivre-valkey is not running"
+fi
+if incus exec "$APP" -- test -S /run/casalivre-valkey/valkey.sock >/dev/null 2>&1; then
+  ok "valkey socket exists"
+else
+  bad "valkey socket is missing"
+fi
+if incus exec "$APP" -- su -s /bin/sh appuser -c \
+  'valkey-cli -s /run/casalivre-valkey/valkey.sock --user cl_app --pass "$(cat /etc/casalivre/valkey-app.secret)" --no-auth-warning PING' \
+  2>/dev/null | grep -q PONG; then
+  ok "valkey authenticated PING"
+else
+  bad "valkey authenticated PING failed"
+fi
+if incus exec "$APP" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' >/dev/null 2>&1; then
+  ok "php redis extension is loaded"
+else
+  bad "php redis extension is not loaded"
+fi
+
 echo "== isolation and reachability =="
 if incus exec "$DB" -- sh -c 'ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1'; then
   bad "db-pg reached the internet"
