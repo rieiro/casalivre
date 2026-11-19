@@ -1,0 +1,8 @@
+# Secrets and local state: never committed.
+*.key
+*.crt
+*.pem
+.env*
+secrets/
+# Local overrides
+*.local

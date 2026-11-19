@@ -1,0 +1,9 @@
+name: incusbr-dmz
+description: CasaLivre DMZ bridge - edge and app tiers (NAT to the internet)
+type: bridge
+config:
+  ipv4.address: 10.10.10.1/24
+  ipv4.nat: "true"
+  # DHCP stays on so the temporary maintenance NIC on db-pg can reach xbps during provisioning.
+  ipv4.dhcp: "true"
+  ipv6.address: none

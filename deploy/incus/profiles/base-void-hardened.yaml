@@ -1,0 +1,9 @@
+name: base-void-hardened
+description: Hardened base for CasaLivre Void Linux (glibc + runit) containers
+config:
+  security.privileged: "false"
+  security.idmap.isolated: "true"
+  security.nesting: "false"
+  boot.autostart: "false"
+# NIC-level anti-spoofing is applied to every NIC in the role profiles:
+# security.mac_filtering: "true", security.ipv4_filtering: "true", security.ipv6_filtering: "true".
