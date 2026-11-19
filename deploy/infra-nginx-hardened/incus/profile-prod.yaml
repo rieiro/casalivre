@@ -1,0 +1,32 @@
+name: casalivre-nginx-prod
+description: Hardened production profile for the CasaLivre nginx edge
+config:
+  # Unprivileged container with an isolated user namespace.
+  security.privileged: "false"
+  security.idmap.isolated: "true"
+  security.nesting: "false"
+  # Protect the running edge from accidental deletion. Scripts unset this at instance level to rotate.
+  security.protection.delete: "true"
+  # Explicit resource limits (adjust to the VPS size).
+  limits.cpu: "2"
+  limits.memory: "512MiB"
+  limits.memory.swap: "false"
+  limits.processes: "256"
+  # Only the active container autostarts; 03-cutover/04-rollback toggle this.
+  boot.autostart: "false"
+devices:
+  eth0:
+    type: nic
+    name: eth0
+    network: __DMZ_NETWORK__
+    # Anti-spoofing on the DMZ NIC.
+    security.mac_filtering: "true"
+    security.ipv4_filtering: "true"
+    security.ipv6_filtering: "true"
+    # Restrict lateral movement (see incus/acl-dmz.yaml).
+    security.acls: casalivre-nginx-dmz
+  root:
+    type: disk
+    path: /
+    pool: __STORAGE_POOL__
+    size: 2GiB

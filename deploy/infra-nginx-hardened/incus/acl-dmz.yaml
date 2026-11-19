@@ -1,0 +1,41 @@
+name: casalivre-nginx-dmz
+description: DMZ ACL for the nginx edge - 8080/8443 in, PHP-FPM 10.10.10.20:9000 + DNS/NTP out, all other lateral traffic dropped
+config:
+  user.casalivre.role: nginx-edge
+ingress:
+  # Only the unprivileged listeners behind the host DNAT (external 80->8080, 443->8443).
+  - action: allow
+    protocol: tcp
+    destination_port: "8080"
+  - action: allow
+    protocol: tcp
+    destination_port: "8443"
+  - action: drop
+egress:
+  # Strict FastCGI egress to app-php (PHP-FPM) only.
+  - action: allow
+    protocol: tcp
+    destination: "10.10.10.20/32"
+    destination_port: "9000"
+  # DNS resolver (rendered by 00-init-host.sh from the DMZ gateway).
+  - action: allow
+    protocol: udp
+    destination: "__DNS_RESOLVER__"
+    destination_port: "53"
+  - action: allow
+    protocol: tcp
+    destination: "__DNS_RESOLVER__"
+    destination_port: "53"
+  # NTP (rendered by 00-init-host.sh).
+  - action: allow
+    protocol: udp
+    destination: "__NTP_SERVER__"
+    destination_port: "123"
+  # No lateral movement inside the DMZ.
+  - action: drop
+    destination: "10.10.10.0/24"
+  # The internal/DB tier (incusbr-internal) is air-gapped from the edge.
+  - action: drop
+    destination: "10.10.20.0/24"
+  # Catch-all: drop every other lateral destination.
+  - action: drop

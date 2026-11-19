@@ -1,0 +1,12 @@
+# Build artifacts and runtime state are never committed.
+artifacts/
+state/
+*.tar.gz
+*.sha256
+certs/
+*.key
+*.pem
+.env
+# Editor / OS noise
+.DS_Store
+*.swp

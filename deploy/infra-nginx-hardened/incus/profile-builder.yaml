@@ -1,0 +1,20 @@
+name: casalivre-nginx-builder
+description: Disposable builder for the hardened nginx artifact (never used in production)
+config:
+  security.privileged: "false"
+  security.nesting: "false"
+  # Compiling nginx needs more CPU, memory and disk than the edge.
+  limits.cpu: "2"
+  limits.memory: "2GiB"
+  limits.processes: "512"
+  boot.autostart: "false"
+devices:
+  eth0:
+    type: nic
+    name: eth0
+    network: __BUILDER_NETWORK__
+  root:
+    type: disk
+    path: /
+    pool: __STORAGE_POOL__
+    size: 8GiB
