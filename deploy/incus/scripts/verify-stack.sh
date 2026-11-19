@@ -116,6 +116,11 @@ if incus exec "$APP" -- sv status /var/service/casalivre-valkey 2>&1 | grep -q '
 else
   bad "casalivre-valkey has no log service"
 fi
+if incus exec "$APP" -- sv status /var/service/casalivre-pgbouncer 2>&1 | grep -q 'log:'; then
+  ok "casalivre-pgbouncer has a log service"
+else
+  bad "casalivre-pgbouncer has no log service"
+fi
 if [ -n "${edge:-}" ] && incus exec "$edge" -- test -f /etc/logrotate.d/nginx >/dev/null 2>&1; then
   ok "edge nginx logrotate policy is installed"
 else

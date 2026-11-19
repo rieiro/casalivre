@@ -310,6 +310,8 @@ t_ok(str_contains($devLive, 'port=6432'), '05-dev-live.sh allows the pgbouncer D
 t_ok(str_contains($devLive, 'casalivre-pgbouncer'), '05-dev-live.sh checks pgbouncer');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'casalivre-pgbouncer'),
     'verify-stack.sh checks pgbouncer');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'casalivre-pgbouncer has a log service'),
+    'verify-stack.sh checks the pgbouncer log service');
 t_ok(str_contains(incus_read('scripts/03-upgrade-pg-major.sh'), 'casalivre-pgbouncer'),
     '03-upgrade-pg-major.sh recycles pgbouncer after the DB swap');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'PgBouncer'),

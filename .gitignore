@@ -1,4 +1,5 @@
 .env
+/DEPLOY_E2E_STATUS.md
 storage/
 public/uploads/
 # Ignore all .patch files
