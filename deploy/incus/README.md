@@ -55,6 +55,7 @@ else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning
 | `scripts/05-dev-live.sh` | Binds the host git tree into the app/edge for live development (`on`/`off`/`status`). |
 | `scripts/valkey-setup.sh` | Installs/repairs `valkey` + `php8.4-redis`, renders the ACL/secret and starts the socket service. |
 | `scripts/logs-setup.sh` | Installs logrotate + `casalivre-logrotate` for the file logs PHP-FPM/alerts write directly. |
+| `scripts/pgbouncer-setup.sh` | Installs/renders the loopback PgBouncer session pool and its TLS/auth files. |
 | `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh`. |
 | `scripts/06-backup-data.sh` | Host-level data backup: DB dump, host uploads/secrets and the media volume. |
 | `scripts/verify-stack.sh` | End-to-end isolation/IP/service/port checks (PASS/FAIL). |
@@ -138,6 +139,37 @@ VALKEY_PASSWORD_FILE=/etc/casalivre/valkey-app.secret
 
 The mail/image runit workers use the same `cl_app` credentials (configured by
 `04-jumpstart-app.sh`). `QUEUE_DRIVER=db` remains supported as a fallback.
+
+### PgBouncer (connection pool)
+
+`app-php` runs PgBouncer on loopback `127.0.0.1:6432`; `db-pg` stays the only PostgreSQL and
+still receives TLS+SCRAM connections from `10.10.20.11`.
+
+- **Session pooling** (`pool_mode = session`) because the app and scripts use `SET ROLE` and a
+  session-level migration advisory lock.
+- **Warm pool**: `min_pool_size = 5`, `server_idle_timeout = 600`.
+- **Budget**: `default_pool_size = 32` (25 FPM + 6 workers), `max_db_connections = 60`;
+  `cl_logw` is capped at 8 and `cl_retention_job` at 2 in `[users]`.
+- **Local hop**: `auth_type = md5` on loopback; the plaintext userlist (0600 `_pgbouncer`) lets
+  PgBouncer keep server connections pre-warmed with SCRAM+TLS to `db-pg`.
+- **TLS**: `server_tls_sslmode = verify-ca` with `deploy/incus/secrets/db-pg.crt`.
+- **Workers** stay on the pool within the 32 budget; schema migrations run **directly** to
+  `db-pg` so the session advisory lock never depends on the pooler.
+
+```ini
+DB_DSN=pgsql:host=127.0.0.1;port=6432;dbname=casalivre;sslmode=disable
+```
+
+`scripts/pgbouncer-setup.sh` installs `pgbouncer` + `postgresql-client`, renders the config and
+userlist from `secrets/app.env`, starts `casalivre-pgbouncer` (cycling `/var/service` for the log
+service) and verifies a client connection. `02`/`04` call it; `verify-stack.sh` checks the service,
+port and a PDO connection. Admin:
+
+```bash
+incus exec app-php -- psql -h 127.0.0.1 -p 6432 -U pgbouncer_admin -d pgbouncer -c 'SHOW POOLS'
+```
+
+`05-dev-live.sh` accepts a `127.0.0.1:6432` DSN and verifies `casalivre-pgbouncer`.
 
 ## 4. Bring up the edge
 

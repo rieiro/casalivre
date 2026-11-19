@@ -1,0 +1,4 @@
+#!/bin/sh
+# CasaLivre PgBouncer: loopback only; config/userlist are 0640/0600.
+exec 2>&1
+exec chpst -u _pgbouncer:_pgbouncer pgbouncer /etc/casalivre-pgbouncer/pgbouncer.ini

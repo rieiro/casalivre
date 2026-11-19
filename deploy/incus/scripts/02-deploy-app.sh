@@ -109,6 +109,10 @@ CONTAINER="$CONTAINER" bash "$SCRIPT_DIR/valkey-setup.sh"
 
 log "configuring log rotation"
 CONTAINER="$CONTAINER" bash "$SCRIPT_DIR/logs-setup.sh"
+
+log "configuring PgBouncer (loopback session pool)"
+CONTAINER="$CONTAINER" APP_ENV_FILE="${APP_ENV_FILE:-$ROOT_DIR/secrets/app.env}" \
+  bash "$SCRIPT_DIR/pgbouncer-setup.sh"
 incus exec "$CONTAINER" -- sv restart php-fpm >/dev/null 2>&1 || true
 
 incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);' || die "OPcache is not loaded"

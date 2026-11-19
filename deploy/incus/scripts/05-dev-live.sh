@@ -147,13 +147,17 @@ check_env() {
   appurl="$(env_value APP_URL)"
   [ -n "$dsn" ] || die "DB_DSN is empty in $f"
 
-  case "$dsn" in
-    *host=127.0.0.1*|*host=localhost*|*host=/run/postgresql*|*host=/var/run/postgresql*)
-      [ "${ALLOW_LOCAL_DB:-0}" = "1" ] || die "DB_DSN points to a local database ($dsn), but this stack keeps PostgreSQL in db-pg (10.10.20.10).
+  if [[ "$dsn" == *host=127.0.0.1* || "$dsn" == *host=localhost* ]] && [[ "$dsn" == *port=6432* ]]; then
+    if incus exec "$APP" -- sv status /var/service/casalivre-pgbouncer 2>&1 | grep -q '^run:'; then
+      log "pgbouncer loopback DSN: $dsn"
+    else
+      die "DB_DSN points to PgBouncer (127.0.0.1:6432) but casalivre-pgbouncer is not running in $APP"
+    fi
+  elif [[ "$dsn" == *host=127.0.0.1* || "$dsn" == *host=localhost* || "$dsn" == *host=/run/postgresql* || "$dsn" == *host=/var/run/postgresql* ]]; then
+    [ "${ALLOW_LOCAL_DB:-0}" = "1" ] || die "DB_DSN points to a local database ($dsn), but this stack keeps PostgreSQL in db-pg (10.10.20.10).
        Update $f (copy deploy/incus/secrets/app.env) or set ALLOW_LOCAL_DB=1 if a local DB really exists."
-      log "WARNING: DB_DSN uses a local database ($dsn); continuing because ALLOW_LOCAL_DB=1"
-      ;;
-  esac
+    log "WARNING: DB_DSN uses a local database ($dsn); continuing because ALLOW_LOCAL_DB=1"
+  fi
   case "$qd" in
     valkey|redis)
       local vs vu vf
