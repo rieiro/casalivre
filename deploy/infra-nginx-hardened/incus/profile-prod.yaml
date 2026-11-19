@@ -10,7 +10,6 @@ config:
   # Explicit resource limits (adjust to the VPS size).
   limits.cpu: "2"
   limits.memory: "512MiB"
-  limits.memory.swap: "false"
   limits.processes: "256"
   # Only the active container autostarts; 03-cutover/04-rollback toggle this.
   boot.autostart: "false"

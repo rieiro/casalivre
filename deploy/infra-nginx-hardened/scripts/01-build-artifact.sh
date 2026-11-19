@@ -8,6 +8,7 @@ ARTIFACTS_DIR="$ROOT_DIR/artifacts"
 
 BUILDER_NAME="${BUILDER_NAME:-casalivre-nginx-builder}"
 BUILDER_PROFILE="${BUILDER_PROFILE:-casalivre-nginx-builder}"
+CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 
 log() { printf '[build] %s\n' "$*"; }
 die() { printf '[build] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -39,6 +40,10 @@ fi
 
 log "launching builder ($ALPINE_IMAGE)"
 incus launch "$ALPINE_IMAGE" "$BUILDER_NAME" --no-profiles --profile "$BUILDER_PROFILE"
+if [ -r "$CA_BUNDLE" ]; then
+  incus file push "$CA_BUNDLE" "$BUILDER_NAME/etc/ssl/certs/ca-certificates.crt"
+  incus file push "$CA_BUNDLE" "$BUILDER_NAME/root/ca-bundle.crt"
+fi
 
 log "installing bash/git/curl in the builder (waits for network)"
 installed=0

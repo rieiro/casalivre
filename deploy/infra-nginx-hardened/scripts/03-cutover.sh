@@ -28,7 +28,7 @@ if [ -z "$GREEN_IP" ]; then
 fi
 if [ -z "$GREEN_IP" ]; then
   GREEN_IP="$(incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' \
-    | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+    | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
 fi
 [ -n "$GREEN_IP" ] || die "could not determine the green IPv4 (pass GREEN_IP=...)"
 

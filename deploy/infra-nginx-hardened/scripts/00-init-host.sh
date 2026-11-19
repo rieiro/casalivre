@@ -61,7 +61,8 @@ render() { # render <src> <dst>
 }
 
 apply_profile() { # apply_profile <name> <yaml>
-  local name="$1" src="$2" out="$tmp/$name.yaml"
+  local name="$1" src="$2"
+  local out="$tmp/$name.yaml"
   render "$src" "$out"
   if incus profile show "$name" >/dev/null 2>&1; then
     incus profile edit "$name" < "$out"
@@ -72,9 +73,6 @@ apply_profile() { # apply_profile <name> <yaml>
     log "profile created: $name"
   fi
 }
-
-apply_profile casalivre-nginx-prod    "$ROOT_DIR/incus/profile-prod.yaml"
-apply_profile casalivre-nginx-builder "$ROOT_DIR/incus/profile-builder.yaml"
 
 # DMZ ACL (rendered: DNS/NTP; the FastCGI backend is fixed at 10.10.10.20:9000).
 acl_out="$tmp/acl-dmz.yaml"
@@ -87,6 +85,10 @@ else
   incus network acl edit casalivre-nginx-dmz < "$acl_out"
   log "ACL created: casalivre-nginx-dmz"
 fi
+
+apply_profile casalivre-nginx-prod    "$ROOT_DIR/incus/profile-prod.yaml"
+apply_profile casalivre-nginx-builder "$ROOT_DIR/incus/profile-builder.yaml"
+
 
 # Persist IPv4 forwarding for the DNAT path.
 if [ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)" != "1" ]; then

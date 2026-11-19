@@ -15,11 +15,23 @@ APP_DB_USER="${APP_DB_USER:-casalivre_app}"
 APP_DB_NAME="${APP_DB_NAME:-casalivre}"
 APP_DB_PASSWORD="${APP_DB_PASSWORD:-}"
 APP_DB_PASSWORD_FILE="${APP_DB_PASSWORD_FILE:-$SECRETS_DIR/app_db_password}"
+CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 DATA_DIR="/var/lib/postgresql/data"
 
 log() { printf '[db] %s\n' "$*"; }
 die() { printf '[db] ERROR: %s\n' "$*" >&2; exit 1; }
 require() { command -v "$1" >/dev/null 2>&1 || die "required tool not found: $1"; }
+
+wait_stopped() {
+  local c="$1"
+  for _ in $(seq 1 30); do
+    if [ "$(incus list "$c" -cs --format csv 2>/dev/null | head -n1)" != "RUNNING" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
 
 require incus
 require openssl
@@ -39,7 +51,8 @@ tmp="$(mktemp -d)"
 MAINT_NIC=0
 cleanup() {
   if [ "$MAINT_NIC" = "1" ]; then
-    incus stop "$CONTAINER" >/dev/null 2>&1 || true
+    incus stop "$CONTAINER" --force >/dev/null 2>&1 || true
+    wait_stopped "$CONTAINER" || true
     incus config device remove "$CONTAINER" maint-nic >/dev/null 2>&1 || true
     incus start "$CONTAINER" >/dev/null 2>&1 || true
   fi
@@ -55,22 +68,44 @@ else
     --profile base-void-hardened --profile db-pg
 fi
 
-if ! incus exec "$CONTAINER" -- xbps-query -p pkgver "postgresql${PG_VERSION}" >/dev/null 2>&1; then
+if ! incus exec "$CONTAINER" -- sh -c "command -v psql >/dev/null 2>&1 && xbps-query -p pkgver postgresql${PG_VERSION} >/dev/null 2>&1"; then
   log "installing postgresql${PG_VERSION} through a temporary DMZ NIC"
-  incus stop "$CONTAINER" >/dev/null 2>&1 || true
-  incus config device add "$CONTAINER" maint-nic nic network=incusbr-dmz
+  incus stop "$CONTAINER" --force >/dev/null 2>&1 || true
+  wait_stopped "$CONTAINER"
+  if incus config device list "$CONTAINER" 2>/dev/null | grep -qx maint-nic; then
+    log "maintenance NIC already present"
+  else
+    incus config device add "$CONTAINER" maint-nic nic network=incusbr-dmz \
+      ipv4.address=10.10.10.50 security.mac_filtering=true security.ipv4_filtering=true security.ipv6_filtering=true
+  fi
   MAINT_NIC=1
   incus start "$CONTAINER"
 
+  # The Void image does not apply Incus' static IPs; configure the maintenance NIC in-guest.
+  for _ in $(seq 1 10); do
+    if incus exec "$CONTAINER" -- test -e /sys/class/net/eth1 >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  incus exec "$CONTAINER" -- sh -c 'printf "nameserver 10.10.10.1\n" > /etc/resolv.conf'
+  incus exec "$CONTAINER" -- ip addr replace 10.10.10.50/24 dev eth1
+  incus exec "$CONTAINER" -- ip link set eth1 up
+  incus exec "$CONTAINER" -- ip route replace default via 10.10.10.1 dev eth1
+  if [ -r "$CA_BUNDLE" ]; then
+    incus file push "$CA_BUNDLE" "$CONTAINER/etc/ssl/certs/ca-certificates.crt"
+    incus file push "$CA_BUNDLE" "$CONTAINER/root/ca-bundle.crt"
+  fi
+
   got_ip=0
   for _ in $(seq 1 30); do
-    if incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' | grep -Eq '^10\.10\.10\.[0-9]+$'; then
+    if incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' | grep -Eq '^10\.10\.10\.50( |$)'; then
       got_ip=1
       break
     fi
     sleep 1
   done
-  [ "$got_ip" -eq 1 ] || die "maintenance NIC did not get a DHCP address"
+  [ "$got_ip" -eq 1 ] || die "maintenance NIC did not get 10.10.10.50"
 
   incus exec "$CONTAINER" -- mkdir -p /root/db-pg
   incus file push -r "$ROOT_DIR/containers/db-pg/." "$CONTAINER/root/db-pg/"
@@ -78,13 +113,24 @@ if ! incus exec "$CONTAINER" -- xbps-query -p pkgver "postgresql${PG_VERSION}" >
   incus exec "$CONTAINER" -- rm -rf /root/db-pg
 
   log "removing the maintenance NIC (db-pg is air-gapped again)"
-  incus stop "$CONTAINER"
+  incus stop "$CONTAINER" --force
+  wait_stopped "$CONTAINER"
   incus config device remove "$CONTAINER" maint-nic
   MAINT_NIC=0
   incus start "$CONTAINER"
 else
   log "postgresql${PG_VERSION} already installed"
 fi
+
+# The Void image does not apply Incus' static IPs; configure the internal NIC in-guest.
+for _ in $(seq 1 10); do
+  if incus exec "$CONTAINER" -- test -e /sys/class/net/eth0 >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+incus exec "$CONTAINER" -- ip addr replace 10.10.20.10/24 dev eth0
+incus exec "$CONTAINER" -- ip link set eth0 up
 
 # Void service defaults: pin PGROOT to the persistent volume and enforce SCRAM for host auth.
 cat > "$tmp/void-default" <<EOF
@@ -133,9 +179,9 @@ incus exec "$CONTAINER" -- sh -c "ln -sfn /etc/sv/postgresql${PG_VERSION} /var/s
 incus exec "$CONTAINER" -- sv up postgresql >/dev/null 2>&1 || incus exec "$CONTAINER" -- sv restart postgresql >/dev/null 2>&1 || true
 
 ready=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 90); do
   if incus exec "$CONTAINER" -- su - postgres -c \
-    "/usr/lib/psql${PG_VERSION}/bin/pg_isready -h /run/postgresql -p 5432" >/dev/null 2>&1; then
+    "/usr/bin/pg_isready -h /run/postgresql -p 5432" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -159,7 +205,7 @@ ALTER DATABASE $APP_DB_NAME SET timezone TO 'UTC';
 EOF
 incus file push "$tmp/bootstrap.sql" "$CONTAINER/tmp/bootstrap.sql"
 incus exec "$CONTAINER" -- su - postgres -c \
-  "PGHOST=/run/postgresql psql -v ON_ERROR_STOP=1 -v app_password='$APP_DB_PASSWORD' -f /tmp/bootstrap.sql" >/dev/null
+  "PGHOST=/run/postgresql /usr/bin/psql -v ON_ERROR_STOP=1 -v app_password='$APP_DB_PASSWORD' -f /tmp/bootstrap.sql" >/dev/null
 incus exec "$CONTAINER" -- rm -f /tmp/bootstrap.sql
 
 log "db-pg is ready and air-gapped: 10.10.20.10:5432 (TLS + SCRAM)"

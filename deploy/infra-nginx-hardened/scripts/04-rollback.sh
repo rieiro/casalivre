@@ -38,7 +38,7 @@ healthy=0
 for _ in $(seq 1 30); do
   if [ -z "$TARGET_IP" ]; then
     TARGET_IP="$(incus list "$TARGET" -c4 --format csv | tr ',' '\n' \
-      | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+      | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
   fi
   if [ -n "$TARGET_IP" ] && curl -fsS --max-time 3 "http://$TARGET_IP:8080/healthz" >/dev/null 2>&1; then
     healthy=1

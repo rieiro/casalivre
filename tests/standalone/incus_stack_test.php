@@ -23,6 +23,7 @@ $required = [
     'containers/app-php/provision.sh', 'containers/app-php/config/php.ini', 'containers/app-php/config/php-fpm.d/www.conf',
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
+    'scripts/04-jumpstart-app.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -37,6 +38,7 @@ echo "incus stack: shell scripts\n";
 $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
+    'scripts/04-jumpstart-app.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -52,13 +54,14 @@ foreach ($scripts as $rel) {
 }
 
 echo "incus stack: networks\n";
+// Updated: 2026-11 - Linux interface names are limited to 15 chars; the air-gapped network is incusbr-int.
 $dmz = incus_read('networks/incusbr-dmz.yaml');
 foreach (['10.10.10.1/24', 'ipv4.nat: "true"', 'ipv6.address: none'] as $n) {
     t_ok(str_contains($dmz, $n), "incusbr-dmz has $n");
 }
 $internal = incus_read('networks/incusbr-internal.yaml');
 foreach (['10.10.20.1/24', 'ipv4.nat: "false"', 'ipv6.address: none', 'security.acls: acl-internal'] as $n) {
-    t_ok(str_contains($internal, $n), "incusbr-internal has $n");
+    t_ok(str_contains($internal, $n), "incusbr-int has $n");
 }
 
 echo "incus stack: internal ACL\n";
@@ -74,14 +77,14 @@ foreach (['security.privileged: "false"', 'security.idmap.isolated: "true"', 'se
 }
 $dbp = incus_read('profiles/db-pg.yaml');
 foreach (['security.protection.delete: "true"', 'limits.cpu', 'limits.memory', 'limits.memory.enforce: "hard"',
-    'limits.processes', 'casalivre-db', '/var/lib/postgresql', '10.10.20.10', 'incusbr-internal',
+    'limits.processes', 'casalivre-db', '/var/lib/postgresql', '10.10.20.10', 'incusbr-int',
     'ipv4.gateway: "none"', 'security.mac_filtering: "true"'] as $n) {
     t_ok(str_contains($dbp, $n), "db-pg profile has $n");
 }
 t_ok(!str_contains($dbp, 'incusbr-dmz'), 'db-pg profile has no DMZ NIC');
 $app = incus_read('profiles/app-php.yaml');
 foreach (['boot.autostart.delay: "5"', 'casalivre-media', '/var/lib/casalivre/media',
-    '10.10.10.20', '10.10.20.11', 'incusbr-dmz', 'incusbr-internal',
+    '10.10.10.20', '10.10.20.11', 'incusbr-dmz', 'incusbr-int',
     'limits.cpu', 'limits.memory', 'limits.processes', 'security.mac_filtering: "true"'] as $n) {
     t_ok(str_contains($app, $n), "app-php profile has $n");
 }
@@ -118,8 +121,8 @@ foreach (['maint-nic', 'incusbr-dmz', 'postgresql${PG_VERSION}',
     t_ok(str_contains($db, $n), "01-deploy-db.sh has $n");
 }
 $appd = incus_read('scripts/02-deploy-app.sh');
-foreach (['php8.4-fpm', 'php8.4-pgsql', 'php8.4-pdo_pgsql', 'php8.4-opcache',
-    'php8.4-mbstring', 'php8.4-intl', 'php8.4-xml', 'php8.4-curl',
+// Updated: 2026-11 - Void ships pdo_pgsql/opcache/mbstring/xml/curl in php8.4 + php8.4-pgsql.
+foreach (['php8.4', 'php8.4-fpm', 'php8.4-pgsql', 'php8.4-gd', 'php8.4-intl',
     'useradd', 'appuser', '/srv/app', '/var/lib/casalivre/media', 'php-fpm8.4'] as $n) {
     t_ok(str_contains($appd, $n), "02-deploy-app.sh has $n");
 }
@@ -141,8 +144,17 @@ foreach (['xbps-install', 'postgresql${PG_VERSION}', 'postgresql${PG_VERSION}-co
     t_ok(str_contains($dbp_cfg, $n), "db-pg provision.sh has $n");
 }
 $app_cfg = incus_read('containers/app-php/provision.sh');
-foreach (['php8.4-fpm', 'php8.4-pdo_pgsql', 'appuser', 'xbps-remove'] as $n) {
+foreach (['php8.4-fpm', 'php8.4-pgsql', 'php8.4-gd', 'appuser', 'xbps-remove'] as $n) {
     t_ok(str_contains($app_cfg, $n), "app-php provision.sh has $n");
 }
+
+echo "incus stack: jumpstart script\n";
+$jumpstart = incus_read('scripts/04-jumpstart-app.sh');
+foreach (['APP_ENV_FILE', 'ops/dev-env/pg-roles.sql', 'database/schema.pgsql.sql', 'migrate.php',
+    'load-ceps.php', 'seed.php', 'storage/tiles/brasil.pmtiles', 'casalivre-mail-worker',
+    'SEED_DEMO', 'FORCE_TILES'] as $n) {
+    t_ok(str_contains($jumpstart, $n), "04-jumpstart-app.sh has $n");
+}
+t_ok(str_contains($jumpstart, 'chmod 0640 /srv/app/.env'), '04-jumpstart-app.sh protects .env with 0640');
 
 t_done();

@@ -18,7 +18,7 @@ require() { command -v "$1" >/dev/null 2>&1 || { printf 'FAIL  required tool not
 require incus
 
 state_of() { incus list "$1" -cs --format csv 2>/dev/null | head -n1; }
-ips_of() { incus list "$1" -c4 --format csv 2>/dev/null | tr ',' '\n' | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -u; }
+ips_of() { incus list "$1" -c4 --format csv 2>/dev/null | tr -d '"' | tr ',' '\n' | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -u; }
 has_ip() { ips_of "$1" | grep -qx "$2"; }
 
 echo "== containers and static IPs =="
@@ -50,11 +50,15 @@ fi
 
 echo "== runit services =="
 for c in "$DB" "$APP"; do
-  out="$(incus exec "$c" -- sh -c 'sv status /var/service/*' 2>&1 || true)"
-  if printf '%s\n' "$out" | grep -q '^run:' && ! printf '%s\n' "$out" | grep -qE '^(down|fail|timeout):'; then
-    ok "$c services are running"
+  case "$c" in
+    "$DB") svc=postgresql ;;
+    *) svc=php-fpm ;;
+  esac
+  out="$(incus exec "$c" -- sv status "/var/service/$svc" 2>&1 || true)"
+  if printf '%s\n' "$out" | grep -q '^run:'; then
+    ok "$c $svc is running"
   else
-    bad "$c services are not all running: $out"
+    bad "$c $svc is not running: $out"
   fi
 done
 
@@ -98,7 +102,7 @@ else
 fi
 for c in "$DB" "$APP"; do
   for tool in curl wget gcc make sshd; do
-    if incus exec "$c" -- sh -c "command -v $tool >/dev/null 2>&1"; then
+    if incus exec "$c" -- /bin/sh -c "command -v $tool >/dev/null 2>&1"; then
       bad "$c has a forbidden tool: $tool"
     fi
   done

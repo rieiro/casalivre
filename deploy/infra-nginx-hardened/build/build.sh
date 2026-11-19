@@ -20,7 +20,8 @@ command -v apk >/dev/null 2>&1 || die "apk not found: run inside the Alpine buil
 
 log "installing build dependencies"
 apk add --no-cache build-base pcre2-dev zlib-dev openssl-dev linux-headers \
-  curl ca-certificates git bash >/dev/null
+  curl ca-certificates git bash musl-utils >/dev/null
+if [ -r /root/ca-bundle.crt ]; then cp /root/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; fi
 
 mkdir -p "$OUT_DIR" "$WORK_DIR"
 
@@ -59,6 +60,14 @@ stage="$WORK_DIR/stage"
 rm -rf "$stage"
 mkdir -p "$stage"
 cp -a "$WORK_DIR/pkg/." "$stage/"
+
+# Bundle the runtime libraries so the production container needs no package manager.
+mkdir -p "$stage/usr/lib"
+if command -v ldd >/dev/null 2>&1; then
+  ldd "$stage/usr/local/nginx/sbin/nginx" 2>/dev/null | awk '/=>/ {print $3}' | while read -r lib; do
+    if [ -f "$lib" ]; then cp -L "$lib" "$stage/usr/lib/"; fi
+  done
+fi
 
 cat > "$stage/BUILD-INFO" <<EOF
 nginx_version=$NGINX_VERSION

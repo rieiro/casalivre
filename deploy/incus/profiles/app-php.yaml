@@ -20,7 +20,7 @@ devices:
   eth1:
     type: nic
     name: eth1
-    network: incusbr-internal
+    network: incusbr-int
     ipv4.address: 10.10.20.11
     ipv4.gateway: "none"
     security.mac_filtering: "true"
@@ -28,12 +28,11 @@ devices:
     security.ipv6_filtering: "true"
   media:
     type: disk
-    name: media
     source: casalivre-media
+    pool: __STORAGE_POOL__
     path: /var/lib/casalivre/media
   root:
     type: disk
-    name: root
     path: /
     pool: __STORAGE_POOL__
     size: 8GiB

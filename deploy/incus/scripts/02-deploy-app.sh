@@ -7,7 +7,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CONTAINER="${CONTAINER:-app-php}"
 IMAGE="${IMAGE:-images:voidlinux/current}"
-PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-pdo_pgsql php8.4-opcache php8.4-mbstring php8.4-intl php8.4-xml php8.4-curl ca-certificates}"
+PHP_PACKAGES="${PHP_PACKAGES:-php8.4 php8.4-fpm php8.4-pgsql php8.4-gd php8.4-intl ca-certificates}"
+CA_BUNDLE="${CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 
 log() { printf '[app] %s\n' "$*"; }
 die() { printf '[app] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -23,9 +24,28 @@ else
     --profile base-void-hardened --profile app-php
 fi
 
+# The Void image does not apply Incus' static IPs; configure both NICs in-guest.
+for _ in $(seq 1 10); do
+  if incus exec "$CONTAINER" -- test -e /sys/class/net/eth0 >/dev/null 2>&1 \
+     && incus exec "$CONTAINER" -- test -e /sys/class/net/eth1 >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+incus exec "$CONTAINER" -- sh -c 'printf "nameserver 10.10.10.1\n" > /etc/resolv.conf'
+incus exec "$CONTAINER" -- ip addr replace 10.10.10.20/24 dev eth0
+incus exec "$CONTAINER" -- ip link set eth0 up
+incus exec "$CONTAINER" -- ip route replace default via 10.10.10.1 dev eth0
+incus exec "$CONTAINER" -- ip addr replace 10.10.20.11/24 dev eth1
+incus exec "$CONTAINER" -- ip link set eth1 up
+if [ -r "$CA_BUNDLE" ]; then
+  incus file push "$CA_BUNDLE" "$CONTAINER/etc/ssl/certs/ca-certificates.crt"
+  incus file push "$CA_BUNDLE" "$CONTAINER/root/ca-bundle.crt"
+fi
+
 got_ip=0
 for _ in $(seq 1 30); do
-  if incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' | grep -qx '10\.10\.10\.20'; then
+  if incus list "$CONTAINER" -c4 --format csv | tr ',' '\n' | grep -Eq '^10\.10\.10\.20( |$)'; then
     got_ip=1
     break
   fi
@@ -77,8 +97,8 @@ for _ in $(seq 1 30); do
 done
 [ "$ready" -eq 1 ] || die "PHP-FPM did not listen on 10.10.10.20:9000"
 
-incus exec "$CONTAINER" -- php -m | grep -qi opcache || die "OPcache is not loaded"
-incus exec "$CONTAINER" -- php -m | grep -qi pdo_pgsql || die "pdo_pgsql is not loaded"
+incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("Zend OPcache") ? 0 : 1);' || die "OPcache is not loaded"
+incus exec "$CONTAINER" -- /usr/sbin/php -r 'exit(extension_loaded("pdo_pgsql") ? 0 : 1);' || die "pdo_pgsql is not loaded"
 
 log "app-php is ready: 10.10.10.20:9000 (allowed: 10.10.10.10,10.10.10.11)"
 log "deploy the application code (read-only) into /srv/app before serving traffic"
