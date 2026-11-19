@@ -1,0 +1,37 @@
+# Hardened compiler and linker flags: PIE, RELRO/NOW, stack protector and _FORTIFY_SOURCE.
+HARDEN_CFLAGS="-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Wformat -Werror=format-security"
+HARDEN_LDFLAGS="-Wl,-z,relro,-z,now -pie"
+
+# Minimal feature set for an HTTP/HTTPS reverse proxy. Every module not needed at the edge is removed.
+# (headers-more is added by build.sh with --add-module, after the pinned commit is verified.)
+NGINX_CONFIGURE_FLAGS=(
+  --prefix=/usr/local/nginx
+  --sbin-path=/usr/local/nginx/sbin/nginx
+  --conf-path=/usr/local/nginx/conf/nginx.conf
+  --pid-path=/run/nginx/nginx.pid
+  --lock-path=/run/nginx/nginx.lock
+  --http-log-path=/var/log/nginx/access.log
+  --error-log-path=/var/log/nginx/error.log
+  --http-client-body-temp-path=/var/cache/nginx/client_body
+  --http-proxy-temp-path=/var/cache/nginx/proxy
+  --http-fastcgi-temp-path=/var/cache/nginx/fastcgi
+  --http-uwsgi-temp-path=/var/cache/nginx/uwsgi
+  --http-scgi-temp-path=/var/cache/nginx/scgi
+  --user=nginx
+  --group=nginx
+  --with-threads
+  --with-file-aio
+  --with-http_ssl_module
+  --with-http_v2_module
+  --without-http_autoindex_module
+  --without-http_ssi_module
+  --without-http_userid_module
+  --without-http_uwsgi_module
+  --without-http_scgi_module
+  --without-http_memcached_module
+  --without-http_empty_gif_module
+  --without-http_split_clients_module
+  --without-mail_pop3_module
+  --without-mail_imap_module
+  --without-mail_smtp_module
+)

@@ -1,0 +1,42 @@
+name: casalivre-nginx-dmz
+description: DMZ ACL for the nginx edge - HTTP(S) in, backend + DNS/NTP out, all other lateral traffic dropped
+config:
+  user.casalivre.role: nginx-edge
+ingress:
+  # Conceptual HTTP/HTTPS ingress.
+  - action: allow
+    protocol: tcp
+    destination_port: "80"
+  - action: allow
+    protocol: tcp
+    destination_port: "443"
+  # Actual unprivileged listener behind the host DNAT (80->8080, 443->8443).
+  - action: allow
+    protocol: tcp
+    destination_port: "8080"
+  - action: allow
+    protocol: tcp
+    destination_port: "8443"
+  - action: drop
+egress:
+  # The single application backend.
+  - action: allow
+    protocol: tcp
+    destination: "__BACKEND_IP__"
+    destination_port: "__BACKEND_PORT__"
+  # DNS (resolver).
+  - action: allow
+    protocol: udp
+    destination: "__DNS_RESOLVER__"
+    destination_port: "53"
+  - action: allow
+    protocol: tcp
+    destination: "__DNS_RESOLVER__"
+    destination_port: "53"
+  # NTP.
+  - action: allow
+    protocol: udp
+    destination: "__NTP_SERVER__"
+    destination_port: "123"
+  # Everything else is lateral movement: drop.
+  - action: drop
