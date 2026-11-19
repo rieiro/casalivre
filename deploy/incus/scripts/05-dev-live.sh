@@ -153,7 +153,21 @@ check_env() {
       ;;
   esac
   case "$qd" in
-    valkey|redis) log "WARNING: QUEUE_DRIVER=$qd but this stack has no Valkey/Redis; use QUEUE_DRIVER=db" ;;
+    valkey|redis)
+      local vs vu vf
+      vs="$(env_value VALKEY_SOCKET)"
+      vu="$(env_value VALKEY_USER)"
+      vf="$(env_value VALKEY_PASSWORD_FILE)"
+      if [ -z "$vs" ] || [ -z "$vu" ] || [ -z "$vf" ]; then
+        log "WARNING: QUEUE_DRIVER=$qd requires VALKEY_SOCKET, VALKEY_USER and VALKEY_PASSWORD_FILE"
+      elif incus exec "$APP" -- test -S "$vs" >/dev/null 2>&1; then
+        log "valkey queue: socket $vs present in $APP"
+        incus exec "$APP" -- su -s /bin/sh appuser -c "test -r $vf" >/dev/null 2>&1 \
+          || log "WARNING: $vf is not readable by appuser in $APP"
+      else
+        log "WARNING: QUEUE_DRIVER=$qd but $vs is not present in $APP; start Valkey or set QUEUE_DRIVER=db"
+      fi
+      ;;
   esac
   case "$appurl" in
     *127.0.0.1*|*10.64.215.59*) log "WARNING: APP_URL=$appurl will generate wrong links; use the public edge URL" ;;

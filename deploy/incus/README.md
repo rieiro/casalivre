@@ -182,8 +182,9 @@ sudo ./scripts/05-dev-live.sh off    # restore the copies, php.ini and edge conf
 - disables browser caching for `/assets/` and `/uploads/`;
 - backs up `php.ini` and the edge `default.conf` under `artifacts/dev-backups/`;
 - preflights the repo `.env`: refuses a `DB_DSN` pointing at localhost (the DB is `db-pg` at
-  `10.10.20.10`) unless `ALLOW_LOCAL_DB=1`, and warns on `QUEUE_DRIVER=valkey` or a loopback
-  `APP_URL`;
+  `10.10.20.10`) unless `ALLOW_LOCAL_DB=1`, and warns on a loopback `APP_URL`; when
+  `QUEUE_DRIVER=valkey`, verifies `VALKEY_SOCKET`, `VALKEY_USER`, `VALKEY_PASSWORD_FILE` and that the
+  socket exists in `app-php`;
 - smoke-tests `/`, `/busca` (DB-backed) and `/assets/app.css`, plus the tiles range.
 
 Caveats:
@@ -292,8 +293,10 @@ Overrides (environment): `REPO_DIR`, `APP`, `EDGE`, `STATE_DIR`, `BACKUP_DIR`, `
 
 1. **Resolve** `APP`, the active `EDGE`, `REPO_DIR` and `APPUID` (see A.6), then **preflight the
    repo `.env`**: it must exist, `DB_DSN` must not point at `127.0.0.1`/`localhost`/a local socket
-   (the 3-tier stack uses `db-pg` at `10.10.20.10`; `ALLOW_LOCAL_DB=1` overrides), and
-   `QUEUE_DRIVER=valkey`/a loopback `APP_URL` produce warnings.
+   (the 3-tier stack uses `db-pg` at `10.10.20.10`; `ALLOW_LOCAL_DB=1` overrides), and a loopback
+   `APP_URL` produces a warning. With `QUEUE_DRIVER=valkey`, the required `VALKEY_SOCKET`,
+   `VALKEY_USER` and `VALKEY_PASSWORD_FILE` are checked, and the socket must exist in `app-php`
+   (plus the secret must be readable by `appuser`).
 2. **Back up once** (only when no marker exists):
    - `app-php:/etc/php8.4/php.ini` → `artifacts/dev-backups/php.ini.<UTC timestamp>`
    - `<edge>:/usr/local/nginx/conf/sites-enabled/default.conf` → `artifacts/dev-backups/default.conf.<UTC timestamp>`
@@ -382,6 +385,12 @@ Migrations command (unchanged by the overlay):
 ```bash
 incus exec app-php -- su -s /bin/sh appuser -c 'cd /srv/app && php scripts/migrate.php'
 ```
+
+> **Valkey:** CasaLivre’s production queue and rate limiter use a Unix-socket Valkey
+> (`VALKEY_SOCKET`, ACL user, password file; see `ops/dev-env/` and the `casalivre-valkey` service in
+> the reference container). The 3-tier stack may run with `QUEUE_DRIVER=db` as a deployment choice;
+> the preflight validates Valkey only when the driver selects it and never requires it for the
+> overlay itself.
 
 `.env` is not modified by the script: `APP_ENV`, `APP_URL`, `DB_DSN` and secrets stay exactly as
 committed in the host file. Set `APP_ENV=dev` yourself if you want dev-only links/behaviour, keeping
