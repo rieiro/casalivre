@@ -139,6 +139,9 @@ incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || incus exec "$APP" -- 
 
 log "ensuring Valkey is configured"
 CONTAINER="$APP" bash "$SCRIPT_DIR/valkey-setup.sh"
+
+log "ensuring log rotation"
+CONTAINER="$APP" bash "$SCRIPT_DIR/logs-setup.sh"
 incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || true
 incus exec "$APP" -- /usr/sbin/php -r 'exit(extension_loaded("redis") ? 0 : 1);' \
   || die "php redis extension is not loaded; run 02-deploy-app.sh to publish php.ini"

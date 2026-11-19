@@ -1,0 +1,3 @@
+#!/bin/sh
+# CasaLivre Valkey log service: stdout/stderr goes to socklog (rotated by svlogd).
+exec vlogger -t casalivre-valkey -p daemon

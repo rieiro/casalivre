@@ -22,10 +22,13 @@ $required = [
     'containers/db-pg/provision.sh', 'containers/db-pg/config/postgresql.conf', 'containers/db-pg/config/pg_hba.conf',
     'containers/app-php/provision.sh', 'containers/app-php/config/php.ini', 'containers/app-php/config/php-fpm.d/www.conf',
     'containers/app-php/config/valkey.conf', 'containers/app-php/config/valkey.acl.in',
-    'containers/app-php/sv/casalivre-valkey/run',
+    'containers/app-php/config/logrotate-casalivre',
+    'containers/app-php/sv/casalivre-valkey/run', 'containers/app-php/sv/casalivre-valkey/log/run',
+    'containers/app-php/sv/casalivre-logrotate/run', 'containers/app-php/sv/casalivre-logrotate/log/run',
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
+    'scripts/logs-setup.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -41,6 +44,7 @@ $scripts = [
     'scripts/00-init-networks.sh', 'scripts/01-deploy-db.sh', 'scripts/02-deploy-app.sh',
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
+    'scripts/logs-setup.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -208,5 +212,35 @@ foreach (['casalivre-valkey', 'valkey-cli', 'redis'] as $n) {
 }
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/.env.example'), 'VALKEY_SOCKET'),
     '.env.example documents VALKEY_SOCKET');
+
+echo "incus stack: log services\n";
+$vlog = incus_read('containers/app-php/sv/casalivre-valkey/log/run');
+foreach (['vlogger', 'casalivre-valkey'] as $n) {
+    t_ok(str_contains($vlog, $n), "casalivre-valkey log/run has $n");
+}
+$logrotate = incus_read('containers/app-php/config/logrotate-casalivre');
+foreach (['/var/log/php-fpm/access.log', '/var/log/php-fpm/error.log',
+    '/var/log/casalivre/alerts.log', 'copytruncate', 'rotate 14'] as $n) {
+    t_ok(str_contains($logrotate, $n), "logrotate-casalivre has $n");
+}
+$logs = incus_read('scripts/logs-setup.sh');
+foreach (['logrotate', 'xbps-install', '/etc/logrotate.d/casalivre',
+    'logrotate.status', 'sv up', 'casalivre-logrotate'] as $n) {
+    t_ok(str_contains($logs, $n), "logs-setup.sh has $n");
+}
+t_ok(str_contains(incus_read('scripts/02-deploy-app.sh'), 'logs-setup.sh'),
+    '02-deploy-app.sh runs logs-setup.sh');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'logs-setup.sh'),
+    '04-jumpstart-app.sh runs logs-setup.sh');
+$edgeLogrotate = (string) file_get_contents(CL_ROOT . '/deploy/infra-nginx-hardened/system/logrotate-nginx');
+foreach (['/var/log/nginx/*.log', 'kill -USR1', 'rotate 14'] as $n) {
+    t_ok(str_contains($edgeLogrotate, $n), "edge logrotate-nginx has $n");
+}
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/infra-nginx-hardened/scripts/02-deploy-green.sh'),
+    'logrotate'), 'edge 02-deploy-green.sh installs logrotate policy');
+$verifyLogs = incus_read('scripts/verify-stack.sh');
+foreach (['casalivre-logrotate', 'logrotate.d/nginx'] as $n) {
+    t_ok(str_contains($verifyLogs, $n), "verify-stack.sh checks $n");
+}
 
 t_done();

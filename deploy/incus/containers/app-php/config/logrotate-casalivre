@@ -1,0 +1,12 @@
+# CasaLivre file logs not captured by svlogd/socklog.
+# PHP-FPM writes access/error/slow logs itself; alerts.log is appended by casalivre-alert.
+# copytruncate keeps the open file descriptors valid (no FPM signal/reopen needed).
+/var/log/php-fpm/access.log /var/log/php-fpm/error.log /var/log/php-fpm/slow.log /var/log/php-fpm.log /var/log/casalivre/alerts.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

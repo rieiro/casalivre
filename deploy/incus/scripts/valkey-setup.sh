@@ -52,7 +52,7 @@ incus exec "$CONTAINER" -- /bin/sh -c '
   id -u _valkey >/dev/null 2>&1 || useradd -r -g appuser -d /var/lib/casalivre/media/valkey -s /sbin/nologin _valkey
   install -d -o _valkey -g appuser -m 0750 /run/casalivre-valkey /var/lib/casalivre/media/valkey
   install -d -o root -g appuser -m 0750 /etc/casalivre
-  install -d -o root -g root -m 0755 /etc/casalivre-valkey /etc/sv/casalivre-valkey
+  install -d -o root -g root -m 0755 /etc/casalivre-valkey /etc/sv/casalivre-valkey /etc/sv/casalivre-valkey/log
 '
 
 # ---------------------------------------------------------------- secret + ACL
@@ -77,17 +77,30 @@ incus file push "$ROOT_DIR/containers/app-php/config/valkey.conf" "$CONTAINER$VA
 incus file push "$work/valkey.acl" "$CONTAINER$VALKEY_ACL"
 incus file push "$SECRET_FILE" "$CONTAINER$VALKEY_PASSWORD_FILE"
 incus file push "$ROOT_DIR/containers/app-php/sv/casalivre-valkey/run" "$CONTAINER/etc/sv/$SERVICE/run"
+incus file push "$ROOT_DIR/containers/app-php/sv/casalivre-valkey/log/run" "$CONTAINER/etc/sv/$SERVICE/log/run"
 
 incus exec "$CONTAINER" -- chown _valkey:_valkey "$VALKEY_CONF" "$VALKEY_ACL"
 incus exec "$CONTAINER" -- chmod 0600 "$VALKEY_CONF" "$VALKEY_ACL"
 incus exec "$CONTAINER" -- chown root:appuser "$VALKEY_PASSWORD_FILE"
 incus exec "$CONTAINER" -- chmod 0640 "$VALKEY_PASSWORD_FILE"
-incus exec "$CONTAINER" -- chmod 0755 "/etc/sv/$SERVICE/run"
-incus exec "$CONTAINER" -- ln -sfn "/etc/sv/$SERVICE" "/var/service/$SERVICE"
+incus exec "$CONTAINER" -- chmod 0755 "/etc/sv/$SERVICE/run" "/etc/sv/$SERVICE/log/run"
 
 # ---------------------------------------------------------------- start and verify
+# A log/ directory added after the service is already supervised is only picked up by a fresh
+# runsv, so cycle the /var/service symlink instead of relying on `sv restart`.
+incus exec "$CONTAINER" -- sv down "$SERVICE" >/dev/null 2>&1 || true
+incus exec "$CONTAINER" -- rm -f "/var/service/$SERVICE"
+sleep 6   # runsvdir scans /var/service every 5s; let it drop the old supervisor
+incus exec "$CONTAINER" -- ln -sfn "/etc/sv/$SERVICE" "/var/service/$SERVICE"
+sleep 2
 incus exec "$CONTAINER" -- sv up "$SERVICE" >/dev/null 2>&1 || true
-incus exec "$CONTAINER" -- sv restart "$SERVICE" >/dev/null 2>&1 || incus exec "$CONTAINER" -- sv up "$SERVICE" >/dev/null 2>&1 || true
+# Wait until the new supervisor has started the log service too.
+for _ in $(seq 1 20); do
+  if incus exec "$CONTAINER" -- /bin/sh -c 'ps -ef | grep -q "[v]logger -t casalivre-valkey"'; then
+    break
+  fi
+  sleep 1
+done
 
 ready=0
 for _ in $(seq 1 30); do

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Daily logrotate loop for the file logs PHP-FPM and casalivre-alert write directly.
+# Runs as root (needed to rotate root/appuser-owned files); its output goes to socklog.
+exec 2>&1
+while :; do
+  logrotate -s /var/lib/casalivre/logrotate.status /etc/logrotate.d/casalivre || true
+  sleep 86400
+done
