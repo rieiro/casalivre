@@ -207,6 +207,11 @@ do_on() {
   log "granting host uid $appuid (mapped appuser) read/write access to $REPO_DIR"
   setfacl -R -m "u:$appuid:rwX" "$REPO_DIR"
   find "$REPO_DIR" -type d -exec setfacl -m "d:u:$appuid:rwX" {} +
+  # Never expose the deployment secrets in the repo to the app user; the runtime copies live in /etc.
+  if [ -d "$REPO_DIR/deploy/incus/secrets" ]; then
+    setfacl -R -x "u:$appuid" "$REPO_DIR/deploy/incus/secrets" 2>/dev/null || true
+    find "$REPO_DIR/deploy/incus/secrets" -type d -exec setfacl -x "d:u:$appuid" {} + 2>/dev/null || true
+  fi
 
   ensure_device "$APP" "$DEV_APP" "$REPO_DIR" "/srv/app"
   ensure_device "$EDGE" "$DEV_STATIC" "$REPO_DIR/public" "/srv/static" true
