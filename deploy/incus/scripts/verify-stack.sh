@@ -62,6 +62,31 @@ for c in "$DB" "$APP"; do
   fi
 done
 
+echo "== ota verification =="
+if incus exec "$APP" -- test -e /var/service/casalivre-ota-verify >/dev/null 2>&1; then
+  if incus exec "$APP" -- sv status /var/service/casalivre-ota-verify 2>&1 | grep -q '^run:'; then
+    ok "app-php casalivre-ota-verify is running"
+  else
+    bad "app-php casalivre-ota-verify is not running"
+  fi
+  if incus exec "$APP" -- sv status /var/service/casalivre-ota-verify 2>&1 | grep -q 'log:'; then
+    ok "casalivre-ota-verify has a log service"
+  else
+    bad "casalivre-ota-verify has no log service"
+  fi
+fi
+if incus exec "$DB" -- su - postgres -c \
+  "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.users') IS NOT NULL\"" 2>/dev/null \
+  | grep -qx t; then
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.property_external_verifications') IS NOT NULL\"" 2>/dev/null \
+    | grep -qx t; then
+    ok "property_external_verifications table is present (schema 35)"
+  else
+    bad "property_external_verifications table is missing"
+  fi
+fi
+
 echo "== valkey =="
 if incus exec "$APP" -- sv status /var/service/casalivre-valkey 2>&1 | grep -q '^run:'; then
   ok "app-php casalivre-valkey is running"

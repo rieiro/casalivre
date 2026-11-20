@@ -340,4 +340,24 @@ t_ok(str_contains(incus_read('scripts/stack-up.sh'), '07-edge-static-network.sh'
 t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), '07-edge-static-network.sh'),
     '04-jumpstart-app.sh applies the edge static network');
 
+echo "incus stack: ota verification deploy\n";
+$jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
+t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
+    '04-jumpstart-app.sh applies incremental migrations on an existing database');
+t_ok(str_contains($jumpstartOta, 'migration_035_ota_verifications.sql'),
+    '04-jumpstart-app.sh documents the schema 35 migration');
+t_ok(str_contains($jumpstartOta, 'casalivre-ota-verify'),
+    '04-jumpstart-app.sh installs casalivre-ota-verify');
+t_ok(str_contains($jumpstartOta, 'check_pending_ota_verifications.php'),
+    '04-jumpstart-app.sh runs the OTA verification check');
+t_ok(str_contains($jumpstartOta, '/srv/app/storage/cache'),
+    '04-jumpstart-app.sh creates the storage subdirectories');
+$verifyOta = incus_read('scripts/verify-stack.sh');
+t_ok(str_contains($verifyOta, 'casalivre-ota-verify'),
+    'verify-stack.sh checks casalivre-ota-verify');
+t_ok(str_contains($verifyOta, 'property_external_verifications'),
+    'verify-stack.sh checks the schema 35 table');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'casalivre-ota-verify'),
+    'README documents casalivre-ota-verify');
+
 t_done();

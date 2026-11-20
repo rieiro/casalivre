@@ -102,7 +102,13 @@ if [ "$(scalar "SELECT to_regclass('public.users') IS NULL")" = "t" ]; then
   incus file push "$REPO_DIR/database/schema.pgsql.sql" "$DB/tmp/jumpstart/schema.pgsql.sql"
   psql_db '-f /tmp/jumpstart/schema.pgsql.sql' >/dev/null
 else
-  log "schema already present"
+  log "schema already present; applying idempotent migrations (up to migration_035_ota_verifications.sql)"
+  for mig in "$REPO_DIR"/database/migrations/migration_*.sql; do
+    [ -f "$mig" ] || continue
+    mname="$(basename "$mig")"
+    incus file push "$mig" "$DB/tmp/jumpstart/$mname" >/dev/null
+    psql_db "-f /tmp/jumpstart/$mname" >/dev/null
+  done
 fi
 
 # The schema is loaded by `postgres`; grant the runtime roles explicitly (idempotent).
@@ -137,6 +143,9 @@ incus exec "$APP" -- /bin/sh -c '
   chmod 0640 /srv/app/.env
   find /srv/app -type d -exec chmod 0750 {} +
   find /srv/app -type f -exec chmod 0640 {} +
+  mkdir -p /srv/app/storage/cache /srv/app/storage/db /srv/app/storage/logs /srv/app/storage/mail /srv/app/storage/sessions
+  chown -R appuser:appuser /srv/app/storage
+  find /srv/app/storage -type d -exec chmod 0750 {} +
 '
 log "restarting php-fpm"
 incus exec "$APP" -- sv restart php-fpm >/dev/null 2>&1 || incus exec "$APP" -- sv up php-fpm >/dev/null 2>&1 || true
@@ -184,7 +193,8 @@ incus file push -r "$REPO_DIR/deploy/runit/casalivre-image-worker" "$APP/etc/sv/
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-calendar-worker" "$APP/etc/sv/casalivre-calendar-worker"
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-rank-verify" "$APP/etc/sv/casalivre-rank-verify"
 incus file push -r "$REPO_DIR/deploy/runit/casalivre-log-retention" "$APP/etc/sv/casalivre-log-retention"
-for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention; do
+incus file push -r "$REPO_DIR/deploy/runit/casalivre-ota-verify" "$APP/etc/sv/casalivre-ota-verify"
+for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention casalivre-ota-verify; do
   extra=""
   case "$s" in
     casalivre-mail-worker)
@@ -219,7 +229,7 @@ EOF
   printf "APP_DIR=/srv/app\nAPP_USER=appuser\nPHP_BIN='"$PHP"'\n" > "/etc/sv/$svc/conf"
   chmod 0755 "/etc/sv/$svc/run" "/etc/sv/$svc/log/run"
   chmod 0640 "/etc/sv/$svc/conf"
-  for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention casalivre-verify-domains; do
+  for s in casalivre-mail-worker casalivre-image-worker-1 casalivre-calendar-worker casalivre-rank-verify casalivre-log-retention casalivre-verify-domains casalivre-ota-verify; do
     chmod 0755 "/etc/sv/$s/run" "/etc/sv/$s/finish" "/etc/sv/$s/log/run" 2>/dev/null || true
     chmod 0640 "/etc/sv/$s/conf" 2>/dev/null || true
     ln -sfn "/etc/sv/$s" "/var/service/$s"
@@ -269,6 +279,7 @@ php scripts/calendar-worker.php --once || true
 php scripts/rank-verify.php || true
 php scripts/log-retention.php || true
 php scripts/verify-domains.php || true
+php scripts/check_pending_ota_verifications.php || true
 incus exec "$DB" -- su - postgres -c "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -c \"UPDATE booking_intents SET status='expired' WHERE status='held' AND expires_at <= now()\"" >/dev/null
 
 log "jumpstart complete: $(scalar 'SELECT count(*) FROM users') users, $(scalar 'SELECT count(*) FROM properties') properties, $(scalar 'SELECT count(*) FROM ceps') CEPs"

@@ -1,0 +1,18 @@
+#!/bin/sh
+# Periodic OTA iCal challenge-response verification fallback (every 5 minutes by default).
+# conf (optional, 0640, no secrets): APP_DIR, APP_USER, PHP_BIN, OTA_VERIFY_INTERVAL.
+exec 2>&1
+[ -r ./conf ] && . ./conf
+APP_DIR="${APP_DIR:-/srv/casalivre}"
+APP_USER="${APP_USER:-casalivre}"
+PHP_BIN="${PHP_BIN:-php}"
+OTA_VERIFY_INTERVAL="${OTA_VERIFY_INTERVAL:-300}"
+
+cd "$APP_DIR" || exit 1
+chpst -u "$APP_USER" "$PHP_BIN" -d zend.exception_ignore_args=1 scripts/check_pending_ota_verifications.php
+status=$?
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+exec chpst -u "$APP_USER" sleep "$OTA_VERIFY_INTERVAL"
+exit 1

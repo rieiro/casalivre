@@ -228,17 +228,25 @@ sudo ./scripts/04-jumpstart-app.sh
 Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempotent and:
 
 1. applies `ops/dev-env/pg-roles.sql` and sets the app/log/retention passwords from `secrets/app.env`;
-2. loads `database/schema.pgsql.sql` only when `public.users` is missing, then grants the runtime roles;
+2. loads `database/schema.pgsql.sql` only when `public.users` is missing; on an existing database it
+   applies the idempotent `database/migrations/migration_*.sql` in order (schema 35 adds
+   `property_external_verifications` and `users.quote_credits`), then grants the runtime roles;
 3. allows `cl_logw`/`cl_retention_job` over TLS from `10.10.20.11` and reloads PostgreSQL;
 4. streams the repo into `/srv/app` (excluding `.git`, `.env*`, `deploy/`, `tests/`, `storage/`) as
-   `root:appuser` read-only and pushes `secrets/app.env` as `0640`;
+   `root:appuser` read-only, recreates `storage/cache`, `storage/db`, `storage/logs`, `storage/mail`
+   and `storage/sessions` writable by `appuser:appuser` (`0750`), and pushes `secrets/app.env` as `0640`;
 5. runs `migrate.php`; loads the 1.2M CEPs only if the table is empty; seeds demo rows only when
    `SEED_DEMO=1` **and** there are no properties; processes the image queue once;
 6. ensures Valkey is installed/current (`valkey-setup.sh`) and restarts php-fpm so `redis.so` loads;
 7. installs/refreshes the daily `logrotate` service (`logs-setup.sh`);
-8. installs the runit workers/one-shots and enables them (mail/image carry the `cl_app` credentials);
+8. installs the runit workers/one-shots and enables them (mail/image carry the `cl_app` credentials).
+   `casalivre-ota-verify` runs `scripts/check_pending_ota_verifications.php` every 5 minutes
+   (`OTA_VERIFY_INTERVAL`, default `300`) and logs to `/var/log/casalivre/ota-verify`;
 9. publishes `public/assets`, `public/uploads`, the app media uploads and `storage/tiles/brasil.pmtiles`
    to the active edge's `/srv/static`, then reloads nginx.
+
+At the end it also runs the one-shot worker checks (mail/image drains, calendar, rank, log retention,
+domain reverification and pending OTA verifications) so a fresh jumpstart does not wait for cron.
 
 Environment knobs: `REPO_DIR`, `APP_ENV_FILE`, `TILES_FILE`, `SEED_DEMO=0`, `FORCE_TILES=1`,
 `DB`, `APP`, `EDGE`, `PHP_MEMORY`.
