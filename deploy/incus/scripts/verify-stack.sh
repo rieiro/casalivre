@@ -92,6 +92,13 @@ if incus exec "$DB" -- su - postgres -c \
   else
     bad "ota_credit_ledger table is missing"
   fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.property_ical_exports') IS NOT NULL\"" 2>/dev/null \
+    | grep -qx t; then
+    ok "property_ical_exports table is present (schema 38)"
+  else
+    bad "property_ical_exports table is missing"
+  fi
 fi
 
 echo "== valkey =="

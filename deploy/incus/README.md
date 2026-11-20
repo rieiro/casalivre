@@ -231,7 +231,9 @@ Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempo
 2. loads `database/schema.pgsql.sql` only when `public.users` is missing; on an existing database it
    applies the idempotent `database/migrations/migration_*.sql` in order (schema 35 adds
    `property_external_verifications` and `users.quote_credits`; schema 36 adds the OTA fraud gate,
-   `ota_credit_ledger` and `ota_challenge_attempts`), then grants the runtime roles;
+   `ota_credit_ledger` and `ota_challenge_attempts`; schema 37 adds `calendar_feeds.url_hash` and
+   encrypted feed URLs; schema 38 adds per-platform `property_ical_exports` links), then grants the
+   runtime roles;
 3. allows `cl_logw`/`cl_retention_job` over TLS from `10.10.20.11` and reloads PostgreSQL;
 4. streams the repo into `/srv/app` (excluding `.git`, `.env*`, `deploy/`, `tests/`, `storage/`) as
    `root:appuser` read-only, recreates `storage/cache`, `storage/db`, `storage/logs`, `storage/mail`

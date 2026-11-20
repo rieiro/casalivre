@@ -157,4 +157,96 @@
             }
         });
     });
+
+    // Exportação iCal por plataforma: toggles, geração, cópia e revogação.
+    const icalExport = document.querySelector('[data-ical-export]');
+    if (icalExport) {
+        const exportToast = function (type, text) {
+            if (window.CL && typeof CL.toast === 'function') {
+                CL.toast(type, type === 'error' ? 'Atenção' : 'Exportação iCal', String(text || ''));
+            }
+        };
+        const manual = icalExport.querySelector('[data-ical-export-setting="manual"]');
+        const imported = icalExport.querySelector('[data-ical-export-setting="imported"]');
+        const saveSettings = async function () {
+            try {
+                await CL.api('/api/imoveis/' + ref + '/ical-exports/settings', {
+                    method: 'PUT',
+                    body: {
+                        ical_export_manual_blocks: manual && manual.checked ? 1 : 0,
+                        ical_export_imported_events: imported && imported.checked ? 1 : 0
+                    },
+                    error: icalExport.dataset.errorSettings || ''
+                });
+                exportToast('success', icalExport.dataset.saved || '');
+            } catch (e) {
+                exportToast('error', (e && e.message) || icalExport.dataset.errorSettings || '');
+            }
+        };
+        if (manual) manual.addEventListener('change', saveSettings);
+        if (imported) imported.addEventListener('change', saveSettings);
+
+        const exportForm = icalExport.querySelector('[data-ical-export-form]');
+        if (exportForm) {
+            exportForm.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                const button = exportForm.querySelector('button[type="submit"]');
+                if (button) button.disabled = true;
+                const data = Object.fromEntries(new FormData(exportForm).entries());
+                try {
+                    await CL.api('/api/imoveis/' + ref + '/ical-exports', {
+                        method: 'POST',
+                        body: {
+                            target_platform: data.target_platform || '',
+                            label: data.label || ''
+                        },
+                        error: icalExport.dataset.errorCreate || ''
+                    });
+                    window.location.reload();
+                } catch (e) {
+                    exportToast('error', (e && e.message) || icalExport.dataset.errorCreate || '');
+                    if (button) button.disabled = false;
+                }
+            });
+        }
+
+        icalExport.querySelectorAll('[data-ical-export-copy]').forEach(function (button) {
+            button.addEventListener('click', async function () {
+                const input = button.closest('.ical-export-link')?.querySelector('[data-ical-export-link]');
+                if (!input) return;
+                try {
+                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        await navigator.clipboard.writeText(input.value);
+                    } else {
+                        input.select();
+                        document.execCommand('copy');
+                    }
+                    exportToast('success', icalExport.dataset.copied || '');
+                } catch (e) {
+                    exportToast('error', icalExport.dataset.copyError || '');
+                }
+            });
+        });
+
+        icalExport.querySelectorAll('[data-ical-export-revoke]').forEach(function (button) {
+            button.addEventListener('click', async function () {
+                const message = icalExport.dataset.revokeConfirm || '';
+                const confirmed = (window.CL && typeof CL.confirm === 'function')
+                    ? await CL.confirm({ title: 'Revogar', message: message, confirmText: 'Revogar', cancelText: 'Cancelar', danger: true })
+                    : confirm(message);
+                if (!confirmed) return;
+                button.disabled = true;
+                try {
+                    await CL.api('/api/imoveis/' + ref + '/ical-exports/' + button.getAttribute('data-export-id'), {
+                        method: 'DELETE',
+                        error: icalExport.dataset.errorRevoke || ''
+                    });
+                    window.location.reload();
+                } catch (e) {
+                    exportToast('error', (e && e.message) || icalExport.dataset.errorRevoke || '');
+                    button.disabled = false;
+                }
+            });
+        });
+    }
 })();

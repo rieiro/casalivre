@@ -344,11 +344,11 @@ echo "incus stack: ota verification deploy\n";
 $jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
 t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
     '04-jumpstart-app.sh applies incremental migrations on an existing database');
-// Updated: 2026-11 - The schema upgrade now goes up to migration_037_ical_hardening.sql.
-t_ok(str_contains($jumpstartOta, 'migration_037_ical_hardening.sql'),
-    '04-jumpstart-app.sh documents the schema 37 migration');
-t_ok(is_file(CL_ROOT . '/database/migrations/migration_037_ical_hardening.sql'),
-    'migration_037_ical_hardening.sql exists');
+// Updated: 2026-11 - The schema upgrade now goes up to migration_038_ical_export_sync.sql.
+t_ok(str_contains($jumpstartOta, 'migration_038_ical_export_sync.sql'),
+    '04-jumpstart-app.sh documents the schema 38 migration');
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_038_ical_export_sync.sql'),
+    'migration_038_ical_export_sync.sql exists');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'), 'url_hash'),
     'schema documents calendar_feeds.url_hash');
 t_ok(str_contains($jumpstartOta, 'casalivre-ota-verify'),
@@ -368,11 +368,13 @@ t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'
 echo "incus stack: ota fraud gate deploy\n";
 t_ok(is_file(CL_ROOT . '/database/migrations/migration_036_ota_fraud_gate.sql'),
     'migration_036_ota_fraud_gate.sql exists');
-// Updated: 2026-11 - The jumpstart now applies migrations up to schema 37.
-t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_037_ical_hardening.sql'),
-    '04-jumpstart-app.sh mentions the schema 37 migration');
+// Updated: 2026-11 - The jumpstart now applies migrations up to schema 38.
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_038_ical_export_sync.sql'),
+    '04-jumpstart-app.sh mentions the schema 38 migration');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'ota_credit_ledger'),
     'verify-stack.sh checks the credit ledger');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'property_ical_exports'),
+    'verify-stack.sh checks the iCal export table');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'ota_credit_ledger'),
     'README documents the credit ledger');
 

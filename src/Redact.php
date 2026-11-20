@@ -12,7 +12,7 @@ final class Redact
     /** Segmentos de 32 hex (ical_hash e tokens similares) viram {hash}. */
     public static function path(string $path): string
     {
-        return preg_replace('/(?<![a-f0-9])[a-f0-9]{32}(?![a-f0-9])/i', '{hash}', $path) ?? $path;
+        return preg_replace('/(?<![a-f0-9])[a-f0-9]{32,64}(?![a-f0-9])/i', '{hash}', $path) ?? $path;
     }
 
     /** REQUEST_URI -> só o caminho (sem query string nem fragmento), com hashes redigidos. */

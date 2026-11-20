@@ -20,6 +20,8 @@ return [
     ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
     // Validar o Google Place ID no painel: 10 tentativas por 10 min por IP.
     ['POST', '#^/api/google-place/verificar$#', 10, 600, '/api/google-place/verificar'],
+    // Exportação iCal por plataforma: 20 novos links por 10 min por IP.
+    ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical-exports$#', 20, 600, '/api/imoveis/*/ical-exports'],
     // Verificação de anúncio em plataforma parceira: 10 desafios/10 min e 30 checagens/min por IP.
     ['POST', '#^/api/properties/[^/]+/verifications$#', 10, 600, '/api/properties/*/verifications/add'],
     ['POST', '#^/api/properties/[^/]+/verifications/start$#', 10, 600, '/api/properties/*/verifications/start'],
