@@ -68,7 +68,7 @@ $otaStatusMeta = static function (string $status): array {
                 <p class="prop-form-hint"><?= e(t('ota.ical_url_hint')) ?></p>
             </div>
             <div class="prop-ota-actions">
-                <button type="button" class="btn-dash-action primary" data-ota-add><?= e(t('ota.add_btn')) ?></button>
+                <button type="button" class="btn-dash-action primary is-off" data-ota-add disabled><?= e(t('ota.add_btn')) ?></button>
                 <p class="prop-form-hint" data-ota-message hidden></p>
             </div>
         </div>

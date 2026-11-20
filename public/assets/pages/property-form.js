@@ -95,7 +95,8 @@
     // Verificação de anúncio em plataformas parceiras: adicionar, gerar, checar e remover.
     // A tabela é dirigida por data-ota-*; cada linha carrega o seu verification id, então o
     // "Verificar agora" sempre usa o id correto (inclusive depois de gerar o desafio).
-    const otaRoot = form.querySelector('[data-ota-root]');
+    // A ficha OTA fica DEPOIS do </form> do imóvel: buscar no documento, não dentro de form.
+    const otaRoot = document.querySelector('[data-ota-root]');
     if (otaRoot) {
         const el = CL.el;
         const ds = otaRoot.dataset;
@@ -115,7 +116,8 @@
         };
         const otaSyncAdd = function () {
             if (!otaAdd) return;
-            const ready = otaPublic && otaIcal
+            const ready = !!(otaPlatform && otaPublic && otaIcal)
+                && String(otaPlatform.value || '').trim() !== ''
                 && String(otaPublic.value || '').trim() !== ''
                 && String(otaIcal.value || '').trim() !== '';
             otaAdd.disabled = !ready;
@@ -243,6 +245,7 @@
             }
         };
 
+        if (otaPlatform) otaPlatform.addEventListener('change', otaSyncAdd);
         if (otaPublic) otaPublic.addEventListener('input', otaSyncAdd);
         if (otaIcal) otaIcal.addEventListener('input', otaSyncAdd);
         otaSyncAdd();
