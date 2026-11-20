@@ -263,6 +263,7 @@
                         }
                     });
                     if (otaIcal) otaIcal.value = '';
+                    if (otaPublic) otaPublic.value = '';
                     otaShowMessage(ds.otaAdded || '');
                     await otaLoadRows();
                 } catch (e) {

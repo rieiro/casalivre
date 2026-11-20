@@ -381,4 +381,15 @@ final class PropertyFormPageTest extends TestCase
         $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
         $this->assertMatchesRegularExpression('/<button[^>]*data-ota-add[^>]*disabled[^>]*>/', $partial);
     }
+
+    public function testOtaAddClearsBothUrlInputsAfterSuccess(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertMatchesRegularExpression('/otaPublic\.value\s*=\s*\'\'/', $js);
+        $this->assertMatchesRegularExpression('/otaIcal\.value\s*=\s*\'\'/', $js);
+
+        $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-public-url[^>]*value="/', $partial);
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-ical-url[^>]*value="/', $partial);
+    }
 }
