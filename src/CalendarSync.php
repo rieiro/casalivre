@@ -15,7 +15,7 @@ final class CalendarSync
     /** Número máximo de redirecionamentos, cada um revalidado. */
     public const MAX_REDIRECTS = 3;
     /** Total fetch budget (seconds). Connect stays at CONNECT_TIMEOUT. */
-    public const FETCH_TIMEOUT = 20;
+    public const FETCH_TIMEOUT = 8;
     public const CONNECT_TIMEOUT = 5;
 
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
@@ -24,6 +24,7 @@ final class CalendarSync
         if ($url === null || $url === '') {
             return $url;
         }
+        $url = self::decryptUrl($url);
         $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
         return ($host !== '' ? strtolower($host) : '?') . '#' . substr(hash('sha256', $url), 0, 12);
     }
@@ -53,8 +54,17 @@ final class CalendarSync
         if (isset($parts['port']) && (int) $parts['port'] !== 443) {
             return false;
         }
-        return strtolower((string) ($parts['scheme'] ?? '')) === 'https'
-            && (string) ($parts['host'] ?? '') !== '';
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        if ($host === '') {
+            return false;
+        }
+        $bare = trim($host, '[]');
+        if (filter_var($bare, FILTER_VALIDATE_IP) === false
+            && (preg_match('/\A[a-z0-9.-]+\z/i', $host) !== 1 || str_contains($host, '..'))
+        ) {
+            return false;
+        }
+        return strtolower((string) ($parts['scheme'] ?? '')) === 'https';
     }
 
     /**
@@ -62,7 +72,7 @@ final class CalendarSync
      * - só https na porta 443 (isHttpsUrl), sem credenciais na URL;
      * - host resolvido uma única vez e fixado com CURLOPT_RESOLVE (evita DNS rebinding entre a checagem e o connect);
      * - recusa IPs privados, loopback, link-local, reservados e CGNAT;
-     * - redirecionamentos seguidos manualmente e revalidados a cada salto;
+     * - sem redirecionamentos (3xx é bad_url; o host do .ics deve ser o destino final);
      * - corpo limitado a MAX_BYTES.
      *
      * @return array{body: string, http: int}|array{error: string, http: int}
@@ -81,27 +91,19 @@ final class CalendarSync
         if (!function_exists('curl_init')) {
             return ['error' => 'http_5xx', 'http' => 0];
         }
-        $current = $url;
-        for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
-            $target = self::resolveTarget($current);
-            if (isset($target['error'])) {
-                return ['error' => $target['error'], 'http' => 0];
-            }
-            $result = self::request($current, $target, $timeout);
-            if (isset($result['error'])) {
-                return $result;
-            }
-            [$code, $body, $location] = $result;
-            if ($code >= 300 && $code < 400) {
-                if ($location === '' || $hop === self::MAX_REDIRECTS) {
-                    return ['error' => 'bad_url', 'http' => $code];
-                }
-                $current = $location;
-                continue;
-            }
-            return self::classify($code, $body);
+        $target = self::resolveTarget($url);
+        if (isset($target['error'])) {
+            return ['error' => $target['error'], 'http' => 0];
         }
-        return ['error' => 'bad_url', 'http' => 0];
+        $result = self::request($url, $target, $timeout);
+        if (isset($result['error'])) {
+            return $result;
+        }
+        [$code, $body] = $result;
+        if ($code >= 300 && $code < 400) {
+            return ['error' => 'bad_url', 'http' => $code];
+        }
+        return self::classify($code, $body);
     }
 
     /**
@@ -131,10 +133,11 @@ final class CalendarSync
         if (strlen($body) > self::MAX_BYTES) {
             return ['error' => 'too_big', 'http' => $http];
         }
-        if (!str_contains($body, 'BEGIN:VCALENDAR')) {
+        $clean = ltrim($body, "\xEF\xBB\xBF \t\r\n");
+        if (!str_starts_with($clean, 'BEGIN:VCALENDAR')) {
             return ['error' => 'not_ics', 'http' => $http];
         }
-        return ['body' => $body, 'http' => $http];
+        return ['body' => $clean, 'http' => $http];
     }
 
     /**
@@ -269,7 +272,11 @@ final class CalendarSync
             CURLOPT_TIMEOUT => max(1, $timeout),
             CURLOPT_CONNECTTIMEOUT => min(self::CONNECT_TIMEOUT, max(1, $timeout)),
             CURLOPT_USERAGENT => 'CasaLivre/1.0',
-            CURLOPT_HTTPHEADER => ['Accept: text/calendar, text/plain, */*'],
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/calendar, text/plain, */*',
+                'Cache-Control: no-cache',
+                'Pragma: no-cache',
+            ],
             CURLOPT_NOPROXY => '*',
             CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig): int {
                 if (strlen($buffer) + strlen($chunk) > self::MAX_BYTES) {
@@ -312,5 +319,56 @@ final class CalendarSync
             return ['error' => 'private_ip', 'http' => $code];
         }
         return [$code, $buffer, $location];
+    }
+
+    /** AES-256-GCM at rest (enc:v1:); legacy plaintext URLs pass through decrypt unchanged. */
+    public static function encryptUrl(string $url): string
+    {
+        if ($url === '' || str_starts_with($url, 'enc:v1:')) {
+            return $url;
+        }
+        if (!function_exists('openssl_encrypt')) {
+            throw new RuntimeException('A extensão OpenSSL é necessária para proteger a URL do calendário.');
+        }
+        $iv = random_bytes(12);
+        $tag = '';
+        $cipher = openssl_encrypt($url, 'aes-256-gcm', self::encryptionKey(), OPENSSL_RAW_DATA, $iv, $tag, '', 16);
+        if (!is_string($cipher)) {
+            throw new RuntimeException('Não foi possível proteger a URL do calendário.');
+        }
+        return 'enc:v1:' . base64_encode($iv . $tag . $cipher);
+    }
+
+    public static function decryptUrl(?string $value): string
+    {
+        $value = (string) $value;
+        if (!str_starts_with($value, 'enc:v1:')) {
+            return $value;
+        }
+        if (!function_exists('openssl_decrypt')) {
+            return '';
+        }
+        $raw = base64_decode(substr($value, 7), true);
+        if (!is_string($raw) || strlen($raw) < 28) {
+            return '';
+        }
+        $plain = openssl_decrypt(
+            substr($raw, 28),
+            'aes-256-gcm',
+            self::encryptionKey(),
+            OPENSSL_RAW_DATA,
+            substr($raw, 0, 12),
+            substr($raw, 12, 16)
+        );
+        return is_string($plain) ? $plain : '';
+    }
+
+    private static function encryptionKey(): string
+    {
+        if (class_exists('Db', false)) {
+            Db::loadEnv();
+        }
+        $salt = (string) getenv('LOG_SALT') . '|' . (string) getenv('GEO_SALT') . '|casalivre-ota-ical-v1';
+        return hash('sha256', $salt, true);
     }
 }
