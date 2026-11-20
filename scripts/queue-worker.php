@@ -21,23 +21,36 @@ ini_set('zend.exception_ignore_args', '1');
 // A job whose ack was lost stays reserved and is sent again after STALE_SECONDS (at-least-once). That reclaim
 // counts as an attempt, so retries stop at Queues::MAX_ATTEMPTS.
 
+// Recycling: after each batch and before sleep(), exit(0) when memory/jobs/runtime thresholds are
+// reached; runit restarts with a fresh heap and updated code. Override with --max-memory=MB,
+// --max-jobs=N, --max-time=S or WORKER_MAX_MEMORY_MB/WORKER_MAX_JOBS/WORKER_MAX_TIME_SECONDS.
+// --once never recycles.
+
 $root = dirname(__DIR__);
 require_once $root . '/src/Db.php';
 require_once $root . '/src/AppEnv.php';
 require_once $root . '/src/helpers.php';
 require_once $root . '/src/QueueWorkerLoop.php';
+require_once $root . '/src/WorkerRecycling.php';
 Db::loadEnv();
 
-$firstArg = $argv[1] ?? 'all';
-if ($firstArg === '--once') {
-    $which = 'all';
-} elseif (in_array($firstArg, ['mail', 'image', 'all'], true)) {
-    $which = $firstArg;
-} else {
-    fwrite(STDERR, "usage: php scripts/queue-worker.php [mail|image|all] [--once]\n");
+$which = 'all';
+$once = false;
+try {
+    foreach (array_slice($argv, 1) as $arg) {
+        if ($arg === '--once') {
+            $once = true;
+        } elseif (in_array($arg, ['mail', 'image', 'all'], true)) {
+            $which = $arg;
+        } elseif (!str_starts_with($arg, '--max-')) {
+            throw new InvalidArgumentException('unknown argument');
+        }
+    }
+    $recycling = WorkerRecycling::fromArgv($argv);
+} catch (InvalidArgumentException) {
+    fwrite(STDERR, "usage: php scripts/queue-worker.php [mail|image|all] [--once] [--max-memory=MB] [--max-jobs=N] [--max-time=S]\n");
     exit(2);
 }
-$once = in_array('--once', $argv, true);
 $stop = false;
 if (function_exists('pcntl_async_signals')) {
     pcntl_async_signals(true);
@@ -62,19 +75,26 @@ echo 'queue-worker: ' . $which . ' ' . Queues::driver() . "\n";
 $mailQueue = null;
 $imageQueue = null;
 do {
+    $jobs = 0;
     try {
         if ($which === 'mail' || $which === 'all') {
             $mailQueue ??= MailQueues::make();
             $rMail = QueueWorkerLoop::mail($mailQueue, $root . '/storage');
-            if ($rMail !== null && ($rMail['enviados'] + $rMail['ignorados'] + $rMail['falhas']) > 0) {
-                echo 'queue-worker: mail ' . json_encode($rMail) . "\n";
+            if ($rMail !== null) {
+                $jobs += (int) $rMail['enviados'] + (int) $rMail['ignorados'] + (int) $rMail['falhas'];
+                if ($jobs > 0 && ($rMail['enviados'] + $rMail['ignorados'] + $rMail['falhas']) > 0) {
+                    echo 'queue-worker: mail ' . json_encode($rMail) . "\n";
+                }
             }
         }
         if ($which === 'image' || $which === 'all') {
             $imageQueue ??= ImageQueues::make();
             $rImage = QueueWorkerLoop::image($imageQueue);
-            if ($rImage !== null && ($rImage['enviados'] + $rImage['ignorados'] + $rImage['falhas']) > 0) {
-                echo 'queue-worker: image ' . json_encode($rImage) . "\n";
+            if ($rImage !== null) {
+                $jobs += (int) $rImage['enviados'] + (int) $rImage['ignorados'] + (int) $rImage['falhas'];
+                if ($rImage['enviados'] + $rImage['ignorados'] + $rImage['falhas'] > 0) {
+                    echo 'queue-worker: image ' . json_encode($rImage) . "\n";
+                }
             }
         }
         QueueWorkerLoop::valkeyUp();
@@ -95,6 +115,10 @@ do {
         exit(1);
     }
     if (!$once && !$stop) {
+        if ($jobs > 0) {
+            $recycling->recordJobs($jobs);
+        }
+        $recycling->terminateIfDue('queue-worker');
         sleep(1);
     }
 } while (!$once && !$stop);
