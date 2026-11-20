@@ -13,13 +13,30 @@ ALTER TABLE property_external_verifications
 -- Data migration: hash existing feeds and give existing rows a canonical id.
 UPDATE property_external_verifications
    SET ical_url_hash = encode(sha256(convert_to(ical_url, 'UTF8')), 'hex')
- WHERE ical_url IS NOT NULL AND ical_url_hash IS NULL;
+ WHERE ical_url IS NOT NULL
+   AND ical_url_hash IS NULL
+   AND ical_url NOT LIKE 'enc:v1:%';
 
 UPDATE property_external_verifications
-   SET canonical_listing_id = platform || ':' || public_url
- WHERE canonical_listing_id IS NULL;
+   SET canonical_listing_id = CASE
+       WHEN platform = 'airbnb' AND substring(public_url FROM '/(?:rooms|h)/([0-9]+)') IS NOT NULL
+           THEN 'airbnb:' || substring(public_url FROM '/(?:rooms|h)/([0-9]+)')
+       WHEN platform = 'booking' AND substring(public_url FROM '(?i)/hotel/([a-z]{2}/[a-z0-9][a-z0-9_-]*)') IS NOT NULL
+           THEN 'booking:' || lower(substring(public_url FROM '(?i)/hotel/([a-z]{2}/[a-z0-9][a-z0-9_-]*)'))
+       WHEN platform = 'vrbo' AND substring(public_url FROM '(?i)/(?:pt-br/)?(?:imovel/[^/?#]+/|p)?([0-9]+)') IS NOT NULL
+           THEN 'vrbo:' || substring(public_url FROM '(?i)/(?:pt-br/)?(?:imovel/[^/?#]+/|p)?([0-9]+)')
+       ELSE platform || ':' || public_url
+   END
+ WHERE canonical_listing_id IS NULL
+    OR canonical_listing_id LIKE '%://%';
 
 DROP INDEX IF EXISTS uq_pev_verified_ical_url;
+DROP INDEX IF EXISTS uq_pev_verified_public_url;
+
+-- Booking multi-unit pousadas share the public hotel URL; unit identity is the iCal hash.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pev_verified_public_url
+    ON property_external_verifications (public_url)
+    WHERE status = 'verified' AND platform <> 'booking';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pev_ical_url_hash
     ON property_external_verifications (ical_url_hash)

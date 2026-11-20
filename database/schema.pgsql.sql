@@ -188,9 +188,11 @@ CREATE INDEX IF NOT EXISTS idx_pev_pending ON property_external_verifications (c
     WHERE status = 'pending_challenge';
 
 -- Um mesmo link público/feed não pode comprovar a propriedade de dois imóveis.
+-- Booking.com multi-unit pousadas share the hotel URL across units; the iCal feed
+-- (unique global hash) is what identifies each unit. Exclude Booking from this index.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pev_verified_public_url
     ON property_external_verifications (public_url)
-    WHERE status = 'verified';
+    WHERE status = 'verified' AND platform <> 'booking';
 
 -- Um mesmo feed .ics não pode existir duas vezes em nenhum imóvel (schema 36).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pev_ical_url_hash

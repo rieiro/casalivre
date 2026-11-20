@@ -109,7 +109,7 @@ final class OtaVerificationService
             throw new InvalidArgumentException('O domínio informado não pertence à plataforma selecionada.');
         }
         $canonicalListingId = self::canonicalizeListingUrl($platform, $publicUrlRaw, $icalUrlRaw);
-        $publicUrl = self::normalizeUrl($publicUrlRaw);
+        $publicUrl = self::normalizeUrl($publicUrlRaw, true);
         $icalUrl = self::normalizeUrl($icalUrlRaw);
         $icalUrlHash = hash('sha256', $icalUrl);
         $now = self::now();
@@ -144,21 +144,7 @@ final class OtaVerificationService
             throw new InvalidArgumentException('Este calendário iCal já está cadastrado ou verificado em outro imóvel.');
         }
 
-        $canonical = db()->prepare(
-            'SELECT pev.property_id, p.user_id, pev.status
-               FROM property_external_verifications pev
-               JOIN properties p ON p.id = pev.property_id
-              WHERE pev.canonical_listing_id = ? AND pev.property_id <> ?'
-        );
-        $canonical->execute([$canonicalListingId, $propertyId]);
-        foreach ($canonical->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            if ((int) $row['user_id'] !== $userId) {
-                throw new InvalidArgumentException('Este anúncio já está verificado ou vinculado por outro anfitrião.');
-            }
-            if ($platform !== 'booking') {
-                throw new InvalidArgumentException('Este anúncio já está verificado em outro imóvel.');
-            }
-        }
+        self::assertCanonicalAvailable($propertyId, $userId, $canonicalListingId, $platform);
 
         // ---------------------------------------------------------- Stage 3: live feed
         $ics = self::fetchIcsFeed($icalUrl);
@@ -186,6 +172,18 @@ final class OtaVerificationService
             $challengeDate,
             $now
         ): int {
+            // TOCTOU guard: serialize challenge creation per user and re-check the daily cap.
+            db()->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$userId]);
+            $attempts = db()->prepare(
+                'SELECT count(*) FROM ota_challenge_attempts
+                  WHERE user_id = ? AND created_at > to_timestamp(?)'
+            );
+            $attempts->execute([$userId, $now - 86400]);
+            if ((int) $attempts->fetchColumn() >= self::MAX_DAILY_CHALLENGES_PER_USER) {
+                throw new InvalidArgumentException(t('ota.err_daily_limit'));
+            }
+            self::assertCanonicalAvailable($propertyId, $userId, $canonicalListingId, $platform);
+
             db()->prepare(
                 'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
                  VALUES (?, ?, ?, to_timestamp(?))'
@@ -214,6 +212,7 @@ final class OtaVerificationService
                     fail_count = 0,
                     last_passive_check_at = NULL,
                     updated_at = EXCLUDED.updated_at
+                 WHERE property_external_verifications.status <> \'verified\'
                  RETURNING id'
             );
             $stmt->execute([
@@ -229,7 +228,11 @@ final class OtaVerificationService
                 $now,
                 $now,
             ]);
-            return (int) $stmt->fetchColumn();
+            $verificationId = $stmt->fetchColumn();
+            if ($verificationId === false) {
+                throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
+            }
+            return (int) $verificationId;
         });
 
         ActivityLog::record(ActivityLog::OTA_VERIFY_START, [
@@ -416,6 +419,21 @@ final class OtaVerificationService
             $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
             $owner->execute([(int) $row['property_id']]);
             $userId = (int) $owner->fetchColumn();
+
+            $canonicalId = (string) ($row['canonical_listing_id'] ?? '');
+            if ($canonicalId !== '') {
+                $conflict = db()->prepare(
+                    "SELECT 1 FROM property_external_verifications pev
+                       JOIN properties p ON p.id = pev.property_id
+                      WHERE pev.canonical_listing_id = ? AND pev.property_id <> ?
+                        AND p.user_id <> ? AND pev.status = 'verified'
+                      LIMIT 1"
+                );
+                $conflict->execute([$canonicalId, (int) $row['property_id'], $userId]);
+                if ($conflict->fetchColumn() !== false) {
+                    throw new InvalidArgumentException('Este anúncio já está verificado ou vinculado por outro anfitrião.');
+                }
+            }
 
             $ledger = db()->prepare(
                 'INSERT INTO ota_credit_ledger (property_id, user_id, verification_id, credits, awarded_at)
@@ -857,7 +875,7 @@ final class OtaVerificationService
     }
 
     /** Conservative normalization for hashing/dedup: lowercase scheme/host, drop :443 and fragments. */
-    public static function normalizeUrl(string $url): string
+    public static function normalizeUrl(string $url, bool $stripQuery = false): string
     {
         $parts = parse_url($url);
         if (!is_array($parts) || !isset($parts['host'])) {
@@ -867,7 +885,10 @@ final class OtaVerificationService
         $host = strtolower((string) $parts['host']);
         $port = isset($parts['port']) && (int) $parts['port'] !== 443 ? ':' . (int) $parts['port'] : '';
         $path = (string) ($parts['path'] ?? '');
-        $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+        if ($stripQuery) {
+            $path = rtrim($path, '/');
+        }
+        $query = (!$stripQuery && isset($parts['query']) && $parts['query'] !== '') ? '?' . $parts['query'] : '';
         return $scheme . '://' . $host . $port . $path . $query;
     }
 
@@ -942,22 +963,50 @@ final class OtaVerificationService
             for ($attempt = 0; $attempt < self::MAX_DATE_PICK_ATTEMPTS; $attempt++) {
                 $offset = self::randomOffset(0, max(0, $totalDays));
                 $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
-                if (in_array($candidate, $excludedDates, true)) {
-                    continue;
+                if (self::isCandidateDateEligible($ics, $candidate, $excludedDates)) {
+                    return $candidate;
                 }
-                $dt = new DateTimeImmutable($candidate . ' 00:00:00', new DateTimeZone('UTC'));
-                $dMinus1 = $dt->modify('-1 day')->format('Y-m-d');
-                $dPlus7 = $dt->modify('+7 days')->format('Y-m-d');
-                if (self::isDateBlockedInIcs($ics, $dMinus1)
-                    || self::isDateBlockedInIcs($ics, $candidate)
-                    || self::isDateBlockedInIcs($ics, $dPlus7)
-                ) {
-                    continue;
+            }
+            // Mostly-booked calendars: scan the whole window deterministically before falling back.
+            for ($offset = 0; $offset <= max(0, $totalDays); $offset++) {
+                $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
+                if (self::isCandidateDateEligible($ics, $candidate, $excludedDates)) {
+                    return $candidate;
                 }
-                return $candidate;
             }
         }
         throw new RuntimeException(t('ota.err_no_open_dates'));
+    }
+
+    /** @param list<string> $excludedDates */
+    private static function isCandidateDateEligible(string $ics, string $candidateYmd, array $excludedDates): bool
+    {
+        if (in_array($candidateYmd, $excludedDates, true)) {
+            return false;
+        }
+        $dt = new DateTimeImmutable($candidateYmd . ' 00:00:00', new DateTimeZone('UTC'));
+        return !self::isDateBlockedInIcs($ics, $dt->modify('-1 day')->format('Y-m-d'))
+            && !self::isDateBlockedInIcs($ics, $candidateYmd)
+            && !self::isDateBlockedInIcs($ics, $dt->modify('+7 days')->format('Y-m-d'));
+    }
+
+    private static function assertCanonicalAvailable(int $propertyId, int $userId, string $canonicalListingId, string $platform): void
+    {
+        $canonical = db()->prepare(
+            'SELECT pev.property_id, p.user_id
+               FROM property_external_verifications pev
+               JOIN properties p ON p.id = pev.property_id
+              WHERE pev.canonical_listing_id = ? AND pev.property_id <> ?'
+        );
+        $canonical->execute([$canonicalListingId, $propertyId]);
+        foreach ($canonical->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if ((int) $row['user_id'] !== $userId) {
+                throw new InvalidArgumentException('Este anúncio já está verificado ou vinculado por outro anfitrião.');
+            }
+            if ($platform !== 'booking') {
+                throw new InvalidArgumentException('Este anúncio já está verificado em outro imóvel.');
+            }
+        }
     }
 
     /** @param array<string, mixed> $row */
