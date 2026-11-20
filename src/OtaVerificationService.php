@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Db.php';
+require_once __DIR__ . '/I18n.php';
 require_once __DIR__ . '/ActivityLog.php';
 require_once __DIR__ . '/CalendarSync.php';
 
@@ -10,10 +11,10 @@ require_once __DIR__ . '/CalendarSync.php';
  * OTA listing ownership verification (iCal challenge-response).
  *
  * The host proves control of an external listing by blocking one future date in the OTA
- * calendar export. We pick a date 1-4 months ahead that is currently open, ask the host to
- * block only that date, and then confirm it appears in the private .ics feed. The public and
- * iCal hosts are allowlisted per platform and the feed is fetched with the same SSRF
- * protections as CalendarSync (HTTPS only, DNS pinning, public IPs only, redirect re-check).
+ * calendar export. A unified pre-save fraud gate validates the URLs, ownership, daily rate,
+ * global iCal uniqueness and the live calendar before anything is persisted; the challenge
+ * date prefers the 14-16 month horizon and falls back to 3-6 and 1-4 months. The iCal URL is
+ * encrypted at rest and a permanent credit ledger prevents farming by deleting rows.
  */
 final class OtaVerificationService
 {
@@ -23,6 +24,9 @@ final class OtaVerificationService
     public const MAX_ICS_BYTES = 2097152; // 2 MB
     public const MAX_DATE_PICK_ATTEMPTS = 10;
     public const ONBOARDING_CREDIT_REWARD = 5;
+    public const MAX_DAILY_CHALLENGES_PER_USER = 5;
+    public const MAX_CHECK_ATTEMPTS = 15;
+    public const PASSIVE_DOWNGRADE_FAIL_DAYS = 3;
 
     /** Test hook: fn(string $url, int $timeout): string. Null uses the SSRF-safe cURL transport. */
     public static ?Closure $httpTransport = null;
@@ -54,17 +58,14 @@ final class OtaVerificationService
         'vrbo' => ['www.vrbo.com', 'vrbo.com', 'www.aluguetemporada.com.br', 'aluguetemporada.com.br'],
     ];
 
-    /**
-     * Validates the platform and both URLs. Throws InvalidArgumentException with a PT-BR message.
-     */
+    /** Legacy URL-only validation (kept for callers/tests): hygiene + allowlist + canonical path. */
     public static function validateUrls(string $platform, string $publicUrl, string $icalUrl): void
     {
         if (!isset(self::PLATFORM_LABELS[$platform])) {
             throw new InvalidArgumentException('Plataforma de verificação não suportada.');
         }
-        if (!CalendarSync::isHttpsUrl($publicUrl) || !CalendarSync::isHttpsUrl($icalUrl)) {
-            throw new InvalidArgumentException('Informe URLs https:// válidas para o anúncio e para o calendário iCal.');
-        }
+        self::validateUrlHygiene($publicUrl);
+        self::validateUrlHygiene($icalUrl);
         $publicHost = strtolower((string) (parse_url($publicUrl, PHP_URL_HOST) ?? ''));
         $icalHost = strtolower((string) (parse_url($icalUrl, PHP_URL_HOST) ?? ''));
         if (!in_array($publicHost, self::PUBLIC_HOSTS[$platform], true)
@@ -72,178 +73,167 @@ final class OtaVerificationService
         ) {
             throw new InvalidArgumentException('O domínio informado não pertence à plataforma selecionada.');
         }
-        if ($platform === 'airbnb') {
-            $publicId = self::extractAirbnbListingId($publicUrl);
-            $icalId = self::extractAirbnbListingId($icalUrl, true);
-            if ($publicId === null || $icalId === null || $publicId !== $icalId) {
-                throw new InvalidArgumentException(
-                    'O ID do anúncio no link público do Airbnb não corresponde ao ID do calendário iCal.'
-                );
-            }
-        }
-    }
-
-    /** Extracts the Airbnb listing id from /rooms/{id}, /h/{id} or /calendar/ical/{id}.ics. */
-    public static function extractAirbnbListingId(string $url, bool $ical = false): ?string
-    {
-        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
-        if ($ical) {
-            return preg_match('#^/calendar/ical/(\d+)\.ics$#', $path, $m) === 1 ? $m[1] : null;
-        }
-        if (preg_match('#^/rooms/(\d+)(?:/|$)#', $path, $m) === 1) {
-            return $m[1];
-        }
-        return preg_match('#/(?:rooms|h)/(\d+)#', $path, $m) === 1 ? $m[1] : null;
+        self::canonicalizeListingUrl($platform, $publicUrl, $icalUrl);
     }
 
     /**
-     * Downloads the private .ics feed. The test hook may return the body or throw RuntimeException.
-     * The real transport mirrors CalendarSync: HTTPS only, public IPs only, DNS pinning, manual
-     * redirects re-validated at every hop, 8 s timeout and a 2 MB streaming cap.
-     */
-    public static function fetchIcsFeed(string $icalUrl): string
-    {
-        if (self::$httpTransport !== null) {
-            try {
-                $body = (string) (self::$httpTransport)($icalUrl, self::FETCH_TIMEOUT_SECONDS);
-            } catch (RuntimeException $e) {
-                throw $e;
-            } catch (Throwable $e) {
-                throw new RuntimeException('Não foi possível baixar o calendário iCal informado.', 0, $e);
-            }
-            return self::acceptFeed($body);
-        }
-
-        if (function_exists('exported_calendar_body')) {
-            $local = exported_calendar_body($icalUrl);
-            if (is_string($local) && $local !== '') {
-                return self::acceptFeed($local);
-            }
-        }
-        if (!function_exists('curl_init')) {
-            throw new RuntimeException('Não foi possível baixar o calendário iCal informado.');
-        }
-
-        $current = $icalUrl;
-        for ($hop = 0; $hop <= CalendarSync::MAX_REDIRECTS; $hop++) {
-            $target = CalendarSync::resolveTarget($current);
-            if (isset($target['error'])) {
-                throw new RuntimeException(self::fetchError((string) $target['error']));
-            }
-            $result = self::request($current, $target);
-            if (isset($result['error'])) {
-                throw new RuntimeException(self::fetchError((string) $result['error']));
-            }
-            [$code, $body, $location] = $result;
-            if ($code >= 300 && $code < 400) {
-                if ($location === '' || $hop === CalendarSync::MAX_REDIRECTS) {
-                    throw new RuntimeException('O calendário iCal redirecionou para um endereço inválido.');
-                }
-                $current = $location;
-                continue;
-            }
-            if ($code !== 200) {
-                throw new RuntimeException('O calendário iCal respondeu com erro HTTP ' . $code . '.');
-            }
-            return self::acceptFeed($body);
-        }
-        throw new RuntimeException('O calendário iCal redirecionou vezes demais.');
-    }
-
-    /**
-     * True when $targetDateYmd is covered by a non-cancelled, opaque VEVENT. DTEND is exclusive.
-     */
-    public static function isDateBlockedInIcs(string $icsContent, string $targetDateYmd): bool
-    {
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDateYmd) !== 1) {
-            return false;
-        }
-        $target = str_replace('-', '', $targetDateYmd);
-        $unfolded = (string) preg_replace("/\r?\n[ \t]/", '', $icsContent);
-        if (preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/is', $unfolded, $matches) === false) {
-            return false;
-        }
-        foreach ($matches[1] as $block) {
-            if (preg_match('/^STATUS\s*:\s*CANCELLED\s*$/im', $block) === 1
-                || preg_match('/^TRANSP\s*:\s*TRANSPARENT\s*$/im', $block) === 1
-            ) {
-                continue;
-            }
-            if (preg_match('/DTSTART(?:;[^:\r\n]*)?:(\d{8})(?:T\d{6}Z?)?/i', $block, $startMatch) !== 1) {
-                continue;
-            }
-            $startYmd = $startMatch[1];
-            $startDt = DateTimeImmutable::createFromFormat('!Ymd', $startYmd, new DateTimeZone('UTC'));
-            if ($startDt === false || $startDt->format('Ymd') !== $startYmd) {
-                continue;
-            }
-            $endYmd = $startYmd;
-            if (preg_match('/DTEND(?:;[^:\r\n]*)?:(\d{8})(?:T\d{6}Z?)?/i', $block, $endMatch) === 1) {
-                $endCandidate = $endMatch[1];
-                $endDt = DateTimeImmutable::createFromFormat('!Ymd', $endCandidate, new DateTimeZone('UTC'));
-                if ($endDt !== false && $endDt->format('Ymd') === $endCandidate) {
-                    $endYmd = $endCandidate;
-                }
-            }
-            if ($endYmd === $startYmd) {
-                // Same-day timestamp event (or no DTEND): the single day is blocked.
-                $endYmd = $startDt->modify('+1 day')->format('Ymd');
-            }
-            if ($endYmd > $startYmd && $target >= $startYmd && $target < $endYmd) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Starts (or restarts) the challenge for one property/platform.
+     * Unified pre-save fraud gate. Nothing is persisted until every stage passes.
      *
      * @return array<string, mixed>
      */
-    public static function startChallenge(int $propertyId, string $platform, string $publicUrl, string $icalUrl): array
-    {
+    public static function validateAndCreateChallenge(
+        int $propertyId,
+        int $userId,
+        string $platform,
+        string $publicUrl,
+        string $icalUrl,
+        bool $consent = true
+    ): array {
+        // ---------------------------------------------------------- Stage 1: input hygiene
+        if (!$consent) {
+            throw new InvalidArgumentException(t('ota.err_consent'));
+        }
         $platform = strtolower(trim($platform));
-        $publicUrl = self::normalizeUrl(trim($publicUrl));
-        $icalUrl = self::normalizeUrl(trim($icalUrl));
-        self::validateUrls($platform, $publicUrl, $icalUrl);
-
-        self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
-
-        $ics = self::fetchIcsFeed($icalUrl);
-        $challengeDate = self::pickOpenDate($ics);
+        if (!isset(self::PLATFORM_LABELS[$platform])) {
+            throw new InvalidArgumentException('Plataforma de verificação não suportada.');
+        }
+        $publicUrlRaw = trim($publicUrl);
+        $icalUrlRaw = trim($icalUrl);
+        self::validateUrlHygiene($publicUrlRaw);
+        self::validateUrlHygiene($icalUrlRaw);
+        $publicHost = strtolower((string) (parse_url($publicUrlRaw, PHP_URL_HOST) ?? ''));
+        $icalHost = strtolower((string) (parse_url($icalUrlRaw, PHP_URL_HOST) ?? ''));
+        if (!in_array($publicHost, self::PUBLIC_HOSTS[$platform], true)
+            || !in_array($icalHost, self::ICAL_HOSTS[$platform], true)
+        ) {
+            throw new InvalidArgumentException('O domínio informado não pertence à plataforma selecionada.');
+        }
+        $canonicalListingId = self::canonicalizeListingUrl($platform, $publicUrlRaw, $icalUrlRaw);
+        $publicUrl = self::normalizeUrl($publicUrlRaw, true);
+        $icalUrl = self::normalizeUrl($icalUrlRaw);
+        $icalUrlHash = hash('sha256', $icalUrl);
         $now = self::now();
 
-        $stmt = db()->prepare(
-            'INSERT INTO property_external_verifications
-                (property_id, platform, public_url, ical_url, status, challenge_date,
-                 challenge_expires_at, last_checked_at, attempts, verified_at, credits_awarded,
-                 created_at, updated_at)
-             VALUES (?, ?, ?, ?, \'pending_challenge\', ?, to_timestamp(?), NULL, 0, NULL, 0,
-                     to_timestamp(?), to_timestamp(?))
-             ON CONFLICT (property_id, platform) DO UPDATE SET
-                public_url = EXCLUDED.public_url,
-                ical_url = EXCLUDED.ical_url,
-                status = \'pending_challenge\',
-                challenge_date = EXCLUDED.challenge_date,
-                challenge_expires_at = EXCLUDED.challenge_expires_at,
-                last_checked_at = NULL,
-                attempts = 0,
-                verified_at = NULL,
-                updated_at = EXCLUDED.updated_at
-             RETURNING id'
+        // ---------------------------------------------------------- Stage 2: DB integrity
+        self::assertPropertyOwner($propertyId, $userId);
+
+        $locked = db()->prepare(
+            "SELECT 1 FROM property_external_verifications
+              WHERE property_id = ? AND platform = ? AND status = 'verified' LIMIT 1"
         );
-        $stmt->execute([
+        $locked->execute([$propertyId, $platform]);
+        if ($locked->fetchColumn() !== false) {
+            throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
+        }
+
+        $attempts = db()->prepare(
+            'SELECT count(*) FROM ota_challenge_attempts
+              WHERE user_id = ? AND created_at > to_timestamp(?)'
+        );
+        $attempts->execute([$userId, $now - 86400]);
+        if ((int) $attempts->fetchColumn() >= self::MAX_DAILY_CHALLENGES_PER_USER) {
+            throw new InvalidArgumentException(t('ota.err_daily_limit'));
+        }
+
+        $sameHash = db()->prepare(
+            'SELECT 1 FROM property_external_verifications
+              WHERE ical_url_hash = ? AND NOT (property_id = ? AND platform = ?) LIMIT 1'
+        );
+        $sameHash->execute([$icalUrlHash, $propertyId, $platform]);
+        if ($sameHash->fetchColumn() !== false) {
+            throw new InvalidArgumentException('Este calendário iCal já está cadastrado ou verificado em outro imóvel.');
+        }
+
+        self::assertCanonicalAvailable($propertyId, $userId, $canonicalListingId, $platform);
+
+        // ---------------------------------------------------------- Stage 3: live feed
+        $ics = self::fetchIcsFeed($icalUrl);
+        $excluded = db()->prepare(
+            "SELECT challenge_date FROM property_external_verifications
+              WHERE property_id = ? AND platform <> ? AND status = 'pending_challenge'
+                AND challenge_date IS NOT NULL"
+        );
+        $excluded->execute([$propertyId, $platform]);
+        $excludedDates = array_map('strval', $excluded->fetchAll(PDO::FETCH_COLUMN));
+        $challengeDate = self::pickOpenDate($ics, $excludedDates);
+        $icsMetadata = self::extractIcsMetadata($ics);
+
+        // ---------------------------------------------------------- Stage 4: commit
+        $encryptedIcalUrl = self::encryptIcalUrl($icalUrl);
+        $verificationId = Db::transactional(db(), static function () use (
+            $userId,
             $propertyId,
             $platform,
             $publicUrl,
-            $icalUrl,
+            $encryptedIcalUrl,
+            $icalUrlHash,
+            $canonicalListingId,
+            $icsMetadata,
             $challengeDate,
-            $now + self::CHALLENGE_TTL_SECONDS,
-            $now,
-            $now,
-        ]);
-        $verificationId = (int) $stmt->fetchColumn();
+            $now
+        ): int {
+            // TOCTOU guard: serialize challenge creation per user and re-check the daily cap.
+            db()->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$userId]);
+            $attempts = db()->prepare(
+                'SELECT count(*) FROM ota_challenge_attempts
+                  WHERE user_id = ? AND created_at > to_timestamp(?)'
+            );
+            $attempts->execute([$userId, $now - 86400]);
+            if ((int) $attempts->fetchColumn() >= self::MAX_DAILY_CHALLENGES_PER_USER) {
+                throw new InvalidArgumentException(t('ota.err_daily_limit'));
+            }
+            self::assertCanonicalAvailable($propertyId, $userId, $canonicalListingId, $platform);
+
+            db()->prepare(
+                'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
+                 VALUES (?, ?, ?, to_timestamp(?))'
+            )->execute([$userId, $propertyId, $platform, $now]);
+
+            $stmt = db()->prepare(
+                'INSERT INTO property_external_verifications
+                    (property_id, platform, public_url, ical_url, status, challenge_date,
+                     challenge_expires_at, last_checked_at, attempts, verified_at, credits_awarded,
+                     canonical_listing_id, ical_url_hash, ics_metadata, fail_count,
+                     last_passive_check_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, \'pending_challenge\', ?, to_timestamp(?), NULL, 0, NULL, 0,
+                         ?, ?, ?, 0, NULL, to_timestamp(?), to_timestamp(?))
+                 ON CONFLICT (property_id, platform) DO UPDATE SET
+                    public_url = EXCLUDED.public_url,
+                    ical_url = EXCLUDED.ical_url,
+                    status = \'pending_challenge\',
+                    challenge_date = EXCLUDED.challenge_date,
+                    challenge_expires_at = EXCLUDED.challenge_expires_at,
+                    last_checked_at = NULL,
+                    attempts = 0,
+                    verified_at = NULL,
+                    canonical_listing_id = EXCLUDED.canonical_listing_id,
+                    ical_url_hash = EXCLUDED.ical_url_hash,
+                    ics_metadata = EXCLUDED.ics_metadata,
+                    fail_count = 0,
+                    last_passive_check_at = NULL,
+                    updated_at = EXCLUDED.updated_at
+                 WHERE property_external_verifications.status <> \'verified\'
+                 RETURNING id'
+            );
+            $stmt->execute([
+                $propertyId,
+                $platform,
+                $publicUrl,
+                $encryptedIcalUrl,
+                $challengeDate,
+                $now + self::CHALLENGE_TTL_SECONDS,
+                $canonicalListingId,
+                $icalUrlHash,
+                $icsMetadata,
+                $now,
+                $now,
+            ]);
+            $verificationId = $stmt->fetchColumn();
+            if ($verificationId === false) {
+                throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
+            }
+            return (int) $verificationId;
+        });
 
         ActivityLog::record(ActivityLog::OTA_VERIFY_START, [
             'imovel_id' => $propertyId,
@@ -252,44 +242,97 @@ final class OtaVerificationService
             'challenge_date' => $challengeDate,
         ]);
 
-        $dateBr = (new DateTimeImmutable($challengeDate, new DateTimeZone('UTC')))->format('d/m/Y');
-        $label = self::PLATFORM_LABELS[$platform];
-
-        return [
-            'verification_id' => $verificationId,
-            'platform' => $platform,
-            'status' => 'pending_challenge',
-            'challenge_date' => $challengeDate,
-            'challenge_date_br' => $dateBr,
-            'challenge_expires_at' => gmdate('Y-m-d H:i:s', $now + self::CHALLENGE_TTL_SECONDS),
-            'message' => sprintf(
-                'Bloqueie apenas o dia %s no seu calendário do %s e clique em Verificar agora.',
-                $dateBr,
-                $label
-            ),
-        ];
+        return self::challengeResult($verificationId, $platform, $challengeDate, $now);
     }
 
-    /**
-     * Checks the feed for the challenge date. Cooldown/expiry are returned as structured statuses
-     * so the API can map them to 429/422 without a 500.
-     *
-     * @return array<string, mixed>
-     */
-    public static function checkChallenge(int $verificationId, bool $bypassCooldown = false): array
+    /** Starts/restarts a challenge for a property; the owner is derived from the property. */
+    public static function startChallenge(int $propertyId, string $platform, string $publicUrl, string $icalUrl): array
+    {
+        $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
+        $owner->execute([$propertyId]);
+        $userId = (int) $owner->fetchColumn();
+        if ($userId <= 0) {
+            throw new InvalidArgumentException('Imóvel não encontrado.');
+        }
+        return self::validateAndCreateChallenge($propertyId, $userId, $platform, $publicUrl, $icalUrl, true);
+    }
+
+    /** Legacy facade: adding now means creating the pending challenge (fraud gate included). */
+    public static function addChallenge(int $propertyId, string $platform, string $publicUrl, string $icalUrl): array
+    {
+        $result = self::startChallenge($propertyId, $platform, $publicUrl, $icalUrl);
+        $result['id'] = (int) $result['verification_id'];
+        return $result;
+    }
+
+    /** Regenerates the challenge for an already saved row. */
+    public static function generateChallenge(int $verificationId): array
     {
         $row = self::findRow($verificationId);
         if ($row === null) {
             throw new InvalidArgumentException('Verificação não encontrada.');
         }
+        if ((string) $row['status'] === 'verified') {
+            throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
+        }
+        $icalUrl = self::decryptIcalUrl((string) $row['ical_url']);
+        if ($icalUrl === '') {
+            throw new InvalidArgumentException('Não foi possível ler a URL do calendário informado.');
+        }
+        return self::startChallenge(
+            (int) $row['property_id'],
+            (string) $row['platform'],
+            (string) $row['public_url'],
+            $icalUrl
+        );
+    }
+
+    /** Removes an unverified/pending row; verified rows are read-only and the ledger is permanent. */
+    public static function removeChallenge(int $verificationId, int $propertyId): bool
+    {
+        $row = self::findForProperty($verificationId, $propertyId);
+        if ($row === null) {
+            return false;
+        }
+        if ((string) $row['status'] === 'verified') {
+            throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
+        }
+        $stmt = db()->prepare('DELETE FROM property_external_verifications WHERE id = ? AND property_id = ?');
+        $stmt->execute([$verificationId, $propertyId]);
+        if ($stmt->rowCount() === 0) {
+            return false;
+        }
+        ActivityLog::record(ActivityLog::OTA_VERIFY_REMOVE, [
+            'imovel_id' => $propertyId,
+            'plataforma' => (string) $row['platform'],
+        ]);
+        return true;
+    }
+
+    /**
+     * Checks the challenge. Only an isolated manual block (D-1 and D+1 open, no guest
+     * reservation) verifies the listing. The credit ledger makes the reward permanent.
+     *
+     * @return array<string, mixed>
+     */
+    public static function checkChallenge(int $verificationId, bool $bypassCooldown = false, ?int $propertyId = null): array
+    {
+        $row = self::findRow($verificationId);
+        if ($row === null || ($propertyId !== null && (int) $row['property_id'] !== $propertyId)) {
+            throw new InvalidArgumentException('Verificação não encontrada.');
+        }
         $now = self::now();
 
         if ((string) $row['status'] === 'verified') {
-            return self::verifiedResult($row, (int) $row['credits_awarded'] === 1 ? 1 : 0, true);
+            return self::verifiedResult($row, (int) $row['credits_awarded'], true);
         }
 
         $expires = strtotime((string) $row['challenge_expires_at']);
-        if ((string) $row['status'] !== 'pending_challenge' || $expires === false || $expires <= $now) {
+        if ((string) $row['status'] !== 'pending_challenge'
+            || $expires === false
+            || $expires <= $now
+            || (int) $row['attempts'] >= self::MAX_CHECK_ATTEMPTS
+        ) {
             db()->prepare(
                 "UPDATE property_external_verifications
                     SET status = 'failed', updated_at = to_timestamp(?)
@@ -298,7 +341,7 @@ final class OtaVerificationService
             return [
                 'status' => 'expired',
                 'verification_id' => $verificationId,
-                'message' => 'O desafio expirou. Inicie uma nova verificação.',
+                'message' => 'O desafio expirou ou atingiu o limite de 15 tentativas. Inicie uma nova verificação.',
             ];
         }
 
@@ -323,16 +366,18 @@ final class OtaVerificationService
               WHERE id = ?'
         )->execute([$now, $now, $verificationId]);
 
-        $ics = self::fetchIcsFeed((string) $row['ical_url']);
-        $blocked = self::isDateBlockedInIcs($ics, (string) $row['challenge_date']);
+        $icalUrl = self::decryptIcalUrl((string) $row['ical_url']);
+        $ics = self::fetchIcsFeed($icalUrl);
+        $challengeDate = (string) $row['challenge_date'];
+        $verdict = self::isIsolatedManualBlockInIcs($ics, $challengeDate);
 
-        if (!$blocked) {
+        if (!$verdict['blocked']) {
             db()->prepare(
                 'UPDATE property_external_verifications
                     SET attempts = attempts + 1, last_checked_at = to_timestamp(?), updated_at = to_timestamp(?)
                   WHERE id = ?'
             )->execute([$now, $now, $verificationId]);
-            $dateBr = self::dateBr((string) $row['challenge_date']);
+            $dateBr = self::dateBr($challengeDate);
             return [
                 'status' => 'not_yet_reflected',
                 'verification_id' => $verificationId,
@@ -342,6 +387,21 @@ final class OtaVerificationService
                     'O bloqueio do dia %s ainda não apareceu no feed iCal. As plataformas (Airbnb, Booking.com, Vrbo) costumam levar de 1 a 5 minutos para atualizar o cache do calendário. Aguarde 60 segundos e tente novamente.',
                     $dateBr
                 ),
+            ];
+        }
+
+        if (!$verdict['isolated'] || $verdict['is_guest_booking']) {
+            db()->prepare(
+                'UPDATE property_external_verifications
+                    SET attempts = attempts + 1, last_checked_at = to_timestamp(?), updated_at = to_timestamp(?)
+                  WHERE id = ?'
+            )->execute([$now, $now, $verificationId]);
+            return [
+                'status' => 'not_isolated_block',
+                'verification_id' => $verificationId,
+                'attempts' => (int) $row['attempts'] + 1,
+                'retry_after' => self::CHECK_COOLDOWN_SECONDS,
+                'message' => sprintf(t('ota.err_not_isolated'), self::dateBr($challengeDate)),
             ];
         }
 
@@ -356,41 +416,51 @@ final class OtaVerificationService
                 return self::verifiedResult($row, (int) $row['credits_awarded'], true);
             }
 
-            $duplicate = db()->prepare(
-                "SELECT 1 FROM property_external_verifications
-                  WHERE property_id <> ? AND id <> ? AND status = 'verified'
-                    AND (public_url = ? OR (ical_url IS NOT NULL AND ical_url = ?))
-                  LIMIT 1"
-            );
-            $duplicate->execute([(int) $row['property_id'], $verificationId, (string) $row['public_url'], (string) $row['ical_url']]);
-            if ($duplicate->fetchColumn() !== false) {
-                throw new InvalidArgumentException('Este link já está verificado em outro imóvel.');
+            $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
+            $owner->execute([(int) $row['property_id']]);
+            $userId = (int) $owner->fetchColumn();
+
+            $canonicalId = (string) ($row['canonical_listing_id'] ?? '');
+            if ($canonicalId !== '') {
+                $conflict = db()->prepare(
+                    "SELECT 1 FROM property_external_verifications pev
+                       JOIN properties p ON p.id = pev.property_id
+                      WHERE pev.canonical_listing_id = ? AND pev.property_id <> ?
+                        AND p.user_id <> ? AND pev.status = 'verified'
+                      LIMIT 1"
+                );
+                $conflict->execute([$canonicalId, (int) $row['property_id'], $userId]);
+                if ($conflict->fetchColumn() !== false) {
+                    throw new InvalidArgumentException('Este anúncio já está verificado ou vinculado por outro anfitrião.');
+                }
             }
 
-            $credited = db()->prepare(
-                'SELECT 1 FROM property_external_verifications
-                  WHERE property_id = ? AND credits_awarded = 1 AND id <> ? LIMIT 1'
+            $ledger = db()->prepare(
+                'INSERT INTO ota_credit_ledger (property_id, user_id, verification_id, credits, awarded_at)
+                 VALUES (?, ?, ?, ?, to_timestamp(?))
+                 ON CONFLICT (property_id) DO NOTHING'
             );
-            $credited->execute([(int) $row['property_id'], $verificationId]);
-            $awardNow = (int) $row['credits_awarded'] === 0 && $credited->fetchColumn() === false;
+            $ledger->execute([
+                (int) $row['property_id'],
+                $userId,
+                $verificationId,
+                self::ONBOARDING_CREDIT_REWARD,
+                $now,
+            ]);
+            $awardNow = $ledger->rowCount() === 1 && (int) $row['credits_awarded'] === 0;
 
             db()->prepare(
                 "UPDATE property_external_verifications
-                    SET status = 'verified', verified_at = to_timestamp(?), last_checked_at = to_timestamp(?),
-                        attempts = attempts + 1, credits_awarded = 1, updated_at = to_timestamp(?)
+                    SET status = 'verified', verified_at = to_timestamp(?),
+                        credits_awarded = 1, fail_count = 0, updated_at = to_timestamp(?)
                   WHERE id = ?"
-            )->execute([$now, $now, $now, $verificationId]);
+            )->execute([$now, $now, $verificationId]);
 
-            if ($awardNow) {
-                $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
-                $owner->execute([(int) $row['property_id']]);
-                $userId = (int) $owner->fetchColumn();
-                if ($userId > 0) {
-                    db()->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
-                        ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
-                    if (self::$creditHook !== null) {
-                        (self::$creditHook)((int) $row['property_id'], $userId, $verificationId);
-                    }
+            if ($awardNow && $userId > 0) {
+                db()->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
+                    ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
+                if (self::$creditHook !== null) {
+                    (self::$creditHook)((int) $row['property_id'], $userId, $verificationId);
                 }
             }
 
@@ -407,94 +477,67 @@ final class OtaVerificationService
     }
 
     /**
-     * Saves (or updates) the listing URLs without generating the challenge date yet.
-     *
-     * @return array{id: int, platform: string, status: string, public_url: string}
-     */
-    public static function addChallenge(int $propertyId, string $platform, string $publicUrl, string $icalUrl): array
-    {
-        $platform = strtolower(trim($platform));
-        $publicUrl = self::normalizeUrl(trim($publicUrl));
-        $icalUrl = self::normalizeUrl(trim($icalUrl));
-        self::validateUrls($platform, $publicUrl, $icalUrl);
-        self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
-
-        // Do not persist a challenge whose calendar has no open date in the 1-4 month window.
-        self::pickOpenDate(self::fetchIcsFeed($icalUrl));
-
-        $now = self::now();
-        $stmt = db()->prepare(
-            "INSERT INTO property_external_verifications
-                (property_id, platform, public_url, ical_url, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'unverified', to_timestamp(?), to_timestamp(?))
-             ON CONFLICT (property_id, platform) DO UPDATE SET
-                public_url = EXCLUDED.public_url,
-                ical_url = EXCLUDED.ical_url,
-                status = 'unverified',
-                challenge_date = NULL,
-                challenge_expires_at = NULL,
-                last_checked_at = NULL,
-                attempts = 0,
-                verified_at = NULL,
-                updated_at = EXCLUDED.updated_at
-             RETURNING id"
-        );
-        $stmt->execute([$propertyId, $platform, $publicUrl, $icalUrl, $now, $now]);
-        $verificationId = (int) $stmt->fetchColumn();
-
-        ActivityLog::record(ActivityLog::OTA_VERIFY_ADD, [
-            'imovel_id' => $propertyId,
-            'plataforma' => $platform,
-            'url' => CalendarSync::logRef($icalUrl),
-        ]);
-
-        return [
-            'id' => $verificationId,
-            'platform' => $platform,
-            'status' => 'unverified',
-            'public_url' => $publicUrl,
-        ];
-    }
-
-    /**
-     * Generates (or regenerates) the open-date challenge for an already saved verification.
+     * Passive daily check of a verified row: 3 consecutive 401/403/404/410 responses downgrade it.
      *
      * @return array<string, mixed>
      */
-    public static function generateChallenge(int $verificationId): array
+    public static function passiveVerifyRow(int $verificationId): array
     {
         $row = self::findRow($verificationId);
         if ($row === null) {
-            throw new InvalidArgumentException('Verificação não encontrada.');
+            return ['status' => 'not_found'];
         }
-        if ((string) $row['status'] === 'verified') {
-            throw new InvalidArgumentException('Este anúncio já está verificado.');
+        if ((string) $row['status'] !== 'verified') {
+            return ['status' => 'skipped'];
         }
-        return self::startChallenge(
-            (int) $row['property_id'],
-            (string) $row['platform'],
-            (string) $row['public_url'],
-            (string) $row['ical_url']
-        );
-    }
+        $now = self::now();
+        $last = $row['last_passive_check_at'] === null ? null : strtotime((string) $row['last_passive_check_at']);
+        if ($last !== null && $last !== false && $last > $now - 86400) {
+            return ['status' => 'not_due'];
+        }
 
-    /** Removes a verification row (already awarded credits stay with the host). */
-    public static function removeChallenge(int $verificationId, int $propertyId): bool
-    {
-        $row = self::findForProperty($verificationId, $propertyId);
-        if ($row === null) {
-            return false;
+        $icalUrl = self::decryptIcalUrl((string) $row['ical_url']);
+        try {
+            self::fetchIcsFeed($icalUrl);
+        } catch (RuntimeException $e) {
+            $code = (int) $e->getCode();
+            if (!in_array($code, [401, 403, 404, 410], true)) {
+                db()->prepare(
+                    'UPDATE property_external_verifications
+                        SET last_passive_check_at = to_timestamp(?), updated_at = to_timestamp(?)
+                      WHERE id = ?'
+                )->execute([$now, $now, $verificationId]);
+                return ['status' => 'error', 'message' => $e->getMessage()];
+            }
+            $failCount = (int) $row['fail_count'] + 1;
+            if ($failCount >= self::PASSIVE_DOWNGRADE_FAIL_DAYS) {
+                db()->prepare(
+                    "UPDATE property_external_verifications
+                        SET status = 'unverified', verified_at = NULL, fail_count = ?,
+                            last_passive_check_at = to_timestamp(?), updated_at = to_timestamp(?)
+                      WHERE id = ?"
+                )->execute([$failCount, $now, $now, $verificationId]);
+                ActivityLog::record(ActivityLog::OTA_VERIFY_DOWNGRADED, [
+                    'imovel_id' => (int) $row['property_id'],
+                    'plataforma' => (string) $row['platform'],
+                    'falhas' => $failCount,
+                ]);
+                return ['status' => 'downgraded', 'fail_count' => $failCount];
+            }
+            db()->prepare(
+                'UPDATE property_external_verifications
+                    SET fail_count = ?, last_passive_check_at = to_timestamp(?), updated_at = to_timestamp(?)
+                  WHERE id = ?'
+            )->execute([$failCount, $now, $now, $verificationId]);
+            return ['status' => 'failed', 'fail_count' => $failCount, 'downgraded' => false];
         }
-        $stmt = db()->prepare('DELETE FROM property_external_verifications WHERE id = ? AND property_id = ?');
-        $stmt->execute([$verificationId, $propertyId]);
-        if ($stmt->rowCount() === 0) {
-            return false;
-        }
-        ActivityLog::record(ActivityLog::OTA_VERIFY_REMOVE, [
-            'imovel_id' => $propertyId,
-            'plataforma' => (string) $row['platform'],
-        ]);
-        return true;
+
+        db()->prepare(
+            'UPDATE property_external_verifications
+                SET fail_count = 0, last_passive_check_at = to_timestamp(?), updated_at = to_timestamp(?)
+              WHERE id = ?'
+        )->execute([$now, $now, $verificationId]);
+        return ['status' => 'ok', 'fail_count' => 0];
     }
 
     /** @return list<array<string, mixed>> */
@@ -511,7 +554,7 @@ final class OtaVerificationService
                 'platform' => (string) $row['platform'],
                 'platform_label' => self::PLATFORM_LABELS[(string) $row['platform']] ?? (string) $row['platform'],
                 'public_url' => (string) $row['public_url'],
-                'ical_url' => self::maskUrl($row['ical_url'] === null ? null : (string) $row['ical_url']),
+                'ical_url' => self::maskUrl(self::decryptIcalUrl((string) ($row['ical_url'] ?? ''))),
                 'status' => (string) $row['status'],
                 'challenge_date' => $row['challenge_date'] === null ? null : (string) $row['challenge_date'],
                 'challenge_date_br' => $row['challenge_date'] === null ? null : self::dateBr((string) $row['challenge_date']),
@@ -521,6 +564,8 @@ final class OtaVerificationService
                 'attempts' => (int) $row['attempts'],
                 'verified_at' => $row['verified_at'] === null ? null : (string) $row['verified_at'],
                 'credits_awarded' => (int) $row['credits_awarded'],
+                'ics_metadata' => $row['ics_metadata'] === null ? null : (string) $row['ics_metadata'],
+                'fail_count' => (int) $row['fail_count'],
             ];
         }
         return $out;
@@ -571,8 +616,266 @@ final class OtaVerificationService
         return $row === false ? null : $row;
     }
 
-    /** Conservative normalization for duplicate detection: lowercase scheme/host, drop the :443 and fragments. */
-    public static function normalizeUrl(string $url): string
+    /** Extracts the Airbnb listing id from /rooms/{id}, /h/{id} or /calendar/ical/{id}.ics. */
+    public static function extractAirbnbListingId(string $url, bool $ical = false): ?string
+    {
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+        if ($ical) {
+            return preg_match('#^/calendar/ical/(\d+)\.ics$#', $path, $m) === 1 ? $m[1] : null;
+        }
+        if (preg_match('#^/rooms/(\d+)(?:/|$)#', $path, $m) === 1) {
+            return $m[1];
+        }
+        return preg_match('#/(?:rooms|h)/(\d+)#', $path, $m) === 1 ? $m[1] : null;
+    }
+
+    /** Canonical listing id per platform; rejects profiles, searches and affiliate links. */
+    public static function canonicalizeListingUrl(string $platform, string $publicUrl, string $icalUrl): string
+    {
+        $publicPath = (string) (parse_url($publicUrl, PHP_URL_PATH) ?? '');
+        $icalPath = (string) (parse_url($icalUrl, PHP_URL_PATH) ?? '');
+        $icalQuery = (string) (parse_url($icalUrl, PHP_URL_QUERY) ?? '');
+
+        if ($platform === 'airbnb') {
+            if (preg_match('#\A/(?:rooms|h)/(\d+)(?:/|\z)#', $publicPath, $pub) !== 1
+                || preg_match('#\A/calendar/ical/(\d+)\.ics\z#', $icalPath, $ical) !== 1
+            ) {
+                throw new InvalidArgumentException('Informe o link direto de um anúncio do Airbnb e o link de exportação .ics.');
+            }
+            if ($pub[1] !== $ical[1]) {
+                throw new InvalidArgumentException('O ID do anúncio no link público do Airbnb não corresponde ao ID do calendário iCal.');
+            }
+            return 'airbnb:' . $pub[1];
+        }
+
+        if ($platform === 'booking') {
+            $icalOk = (preg_match('#\A/v1/export\z#i', $icalPath) === 1 && $icalQuery !== '')
+                || preg_match('#\.ics\z#i', $icalPath) === 1;
+            if (preg_match('#\A/hotel/([a-z]{2})/([a-z0-9][a-z0-9_-]*)(?:\.[a-z]{2}(?:-[a-z]{2})?)?\.html\z#i', $publicPath, $pub) !== 1
+                || !$icalOk
+            ) {
+                throw new InvalidArgumentException('Informe o link direto de um anúncio do Booking.com e o link de exportação do calendário.');
+            }
+            return 'booking:' . strtolower($pub[1] . '/' . $pub[2]);
+        }
+
+        if ($platform === 'vrbo') {
+            if (preg_match('~\A/(?:pt-br/)?(?:imovel/[^/?#]+/|p)?(\d+)[a-z0-9_-]*(?:/|\z)~i', $publicPath, $pub) !== 1
+                || preg_match('#\.ics\z#i', $icalPath) !== 1
+            ) {
+                throw new InvalidArgumentException('Informe o link direto de um anúncio do Vrbo e o link de exportação .ics.');
+            }
+            return 'vrbo:' . $pub[1];
+        }
+
+        throw new InvalidArgumentException('Plataforma de verificação não suportada.');
+    }
+
+    /** @return array{blocked: bool, isolated: bool, is_guest_booking: bool} */
+    public static function isIsolatedManualBlockInIcs(string $icsContent, string $targetDateYmd): array
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDateYmd) !== 1) {
+            return ['blocked' => false, 'isolated' => false, 'is_guest_booking' => false];
+        }
+        $target = str_replace('-', '', $targetDateYmd);
+        $events = self::events($icsContent);
+        $cover = null;
+        foreach ($events as $event) {
+            if ($target >= $event['start'] && $target < $event['end']) {
+                $cover = $event;
+                break;
+            }
+        }
+        if ($cover === null) {
+            return ['blocked' => false, 'isolated' => false, 'is_guest_booking' => false];
+        }
+        $dt = DateTimeImmutable::createFromFormat('!Ymd', $target, new DateTimeZone('UTC'));
+        $prev = $dt === false ? '' : $dt->modify('-1 day')->format('Ymd');
+        $next = $dt === false ? '' : $dt->modify('+1 day')->format('Ymd');
+        $prevBlocked = false;
+        $nextBlocked = false;
+        foreach ($events as $event) {
+            if ($prev !== '' && $prev >= $event['start'] && $prev < $event['end']) {
+                $prevBlocked = true;
+            }
+            if ($next !== '' && $next >= $event['start'] && $next < $event['end']) {
+                $nextBlocked = true;
+            }
+        }
+        $summary = (string) ($cover['summary'] ?? '');
+        return [
+            'blocked' => true,
+            'isolated' => !$prevBlocked && !$nextBlocked,
+            'is_guest_booking' => preg_match('/\A\s*(?:Reserved|Reservado)(?:\s*\([^)]*\))?\s*\z/i', $summary) === 1,
+        ];
+    }
+
+    /** Extracts PRODID / X-WR-CALNAME for admin sanity (never the raw .ics; max 200 chars). */
+    public static function extractIcsMetadata(string $ics): ?string
+    {
+        $unfolded = (string) preg_replace("/\r?\n[ \t]/", '', $ics);
+        $parts = [];
+        foreach (['PRODID', 'X-WR-CALNAME'] as $key) {
+            if (preg_match('/^' . preg_quote($key, '/') . ':(.*)$/mi', $unfolded, $m) === 1) {
+                $value = trim((string) preg_replace('/[\x00-\x1f\x7f]/', '', $m[1]));
+                if ($value !== '') {
+                    $parts[] = $key . ':' . $value;
+                }
+            }
+        }
+        $out = implode(' | ', $parts);
+        if ($out === '') {
+            return null;
+        }
+        return function_exists('mb_substr') ? mb_substr($out, 0, 200) : substr($out, 0, 200);
+    }
+
+    /** AES-256-GCM at rest; other rows/plaintext values pass through decrypt unchanged. */
+    public static function encryptIcalUrl(string $url): string
+    {
+        if ($url === '' || str_starts_with($url, 'enc:v1:')) {
+            return $url;
+        }
+        if (!function_exists('openssl_encrypt')) {
+            throw new RuntimeException('A extensão OpenSSL é necessária para proteger a URL do calendário.');
+        }
+        $iv = random_bytes(12);
+        $tag = '';
+        $cipher = openssl_encrypt($url, 'aes-256-gcm', self::icalKey(), OPENSSL_RAW_DATA, $iv, $tag, '', 16);
+        if (!is_string($cipher)) {
+            throw new RuntimeException('Não foi possível proteger a URL do calendário.');
+        }
+        return 'enc:v1:' . base64_encode($iv . $tag . $cipher);
+    }
+
+    public static function decryptIcalUrl(?string $value): string
+    {
+        $value = (string) $value;
+        if (!str_starts_with($value, 'enc:v1:')) {
+            return $value;
+        }
+        if (!function_exists('openssl_decrypt')) {
+            return '';
+        }
+        $raw = base64_decode(substr($value, 7), true);
+        if (!is_string($raw) || strlen($raw) < 28) {
+            return '';
+        }
+        $plain = openssl_decrypt(
+            substr($raw, 28),
+            'aes-256-gcm',
+            self::icalKey(),
+            OPENSSL_RAW_DATA,
+            substr($raw, 0, 12),
+            substr($raw, 12, 16)
+        );
+        return is_string($plain) ? $plain : '';
+    }
+
+    /** Downloads the private .ics feed with no redirects and a public-IP-only transport. */
+    public static function fetchIcsFeed(string $icalUrl): string
+    {
+        if (self::$httpTransport !== null) {
+            try {
+                $body = (string) (self::$httpTransport)($icalUrl, self::FETCH_TIMEOUT_SECONDS);
+            } catch (RuntimeException $e) {
+                throw $e;
+            } catch (Throwable $e) {
+                throw new RuntimeException('Não foi possível baixar o calendário iCal informado.', 0, $e);
+            }
+            return self::acceptFeed($body);
+        }
+
+        if (function_exists('exported_calendar_body')) {
+            $local = exported_calendar_body($icalUrl);
+            if (is_string($local) && $local !== '') {
+                return self::acceptFeed($local);
+            }
+        }
+        if (!function_exists('curl_init')) {
+            throw new RuntimeException('Não foi possível baixar o calendário iCal informado.');
+        }
+
+        $target = CalendarSync::resolveTarget($icalUrl);
+        if (isset($target['error'])) {
+            throw new RuntimeException(self::fetchError((string) $target['error']));
+        }
+        $result = self::request($icalUrl, $target);
+        if (isset($result['error'])) {
+            throw new RuntimeException(self::fetchError((string) $result['error']));
+        }
+        [$code, $body] = $result;
+        if ($code >= 300 && $code < 400) {
+            throw new RuntimeException(
+                'O calendário iCal não pode redirecionar. Use o link direto de exportação da plataforma.',
+                $code
+            );
+        }
+        if ($code !== 200) {
+            throw new RuntimeException('O calendário iCal respondeu com erro HTTP ' . $code . '.', $code);
+        }
+        return self::acceptFeed($body);
+    }
+
+    /** True when $targetDateYmd is covered by a non-cancelled, opaque VEVENT. DTEND is exclusive. */
+    public static function isDateBlockedInIcs(string $icsContent, string $targetDateYmd): bool
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDateYmd) !== 1) {
+            return false;
+        }
+        $target = str_replace('-', '', $targetDateYmd);
+        foreach (self::events($icsContent) as $event) {
+            if ($target >= $event['start'] && $target < $event['end']) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** @return list<array{start: string, end: string, summary: ?string}> */
+    private static function events(string $icsContent): array
+    {
+        $unfolded = (string) preg_replace("/\r?\n[ \t]/", '', $icsContent);
+        if (preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/is', $unfolded, $matches) === false) {
+            return [];
+        }
+        $out = [];
+        foreach ($matches[1] as $block) {
+            if (preg_match('/^STATUS\s*:\s*CANCELLED\s*$/im', $block) === 1
+                || preg_match('/^TRANSP\s*:\s*TRANSPARENT\s*$/im', $block) === 1
+            ) {
+                continue;
+            }
+            if (preg_match('/DTSTART(?:;[^:\r\n]*)?:(\d{8})(?:T\d{6}Z?)?/i', $block, $startMatch) !== 1) {
+                continue;
+            }
+            $startYmd = $startMatch[1];
+            $startDt = DateTimeImmutable::createFromFormat('!Ymd', $startYmd, new DateTimeZone('UTC'));
+            if ($startDt === false || $startDt->format('Ymd') !== $startYmd) {
+                continue;
+            }
+            $endYmd = $startYmd;
+            if (preg_match('/DTEND(?:;[^:\r\n]*)?:(\d{8})(?:T\d{6}Z?)?/i', $block, $endMatch) === 1) {
+                $candidate = $endMatch[1];
+                $endDt = DateTimeImmutable::createFromFormat('!Ymd', $candidate, new DateTimeZone('UTC'));
+                if ($endDt !== false && $endDt->format('Ymd') === $candidate) {
+                    $endYmd = $candidate;
+                }
+            }
+            if ($endYmd === $startYmd) {
+                $endYmd = $startDt->modify('+1 day')->format('Ymd');
+            }
+            if ($endYmd <= $startYmd) {
+                continue;
+            }
+            $summary = preg_match('/^SUMMARY:(.*)$/mi', $block, $sm) === 1 ? trim($sm[1]) : null;
+            $out[] = ['start' => $startYmd, 'end' => $endYmd, 'summary' => $summary];
+        }
+        return $out;
+    }
+
+    /** Conservative normalization for hashing/dedup: lowercase scheme/host, drop :443 and fragments. */
+    public static function normalizeUrl(string $url, bool $stripQuery = false): string
     {
         $parts = parse_url($url);
         if (!is_array($parts) || !isset($parts['host'])) {
@@ -582,7 +885,10 @@ final class OtaVerificationService
         $host = strtolower((string) $parts['host']);
         $port = isset($parts['port']) && (int) $parts['port'] !== 443 ? ':' . (int) $parts['port'] : '';
         $path = (string) ($parts['path'] ?? '');
-        $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+        if ($stripQuery) {
+            $path = rtrim($path, '/');
+        }
+        $query = (!$stripQuery && isset($parts['query']) && $parts['query'] !== '') ? '?' . $parts['query'] : '';
         return $scheme . '://' . $host . $port . $path . $query;
     }
 
@@ -607,6 +913,102 @@ final class OtaVerificationService
         return $out;
     }
 
+    // ------------------------------------------------------------------ helpers
+
+    private static function validateUrlHygiene(string $url): void
+    {
+        if ($url === ''
+            || strlen($url) > CalendarSync::MAX_URL_LENGTH
+            || preg_match('/[\s\x00-\x1f\x7f]/', $url) === 1
+        ) {
+            throw new InvalidArgumentException('Informe URLs https:// válidas para o anúncio e para o calendário iCal.');
+        }
+        $parts = parse_url($url);
+        if (!is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || empty($parts['host'])
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || (isset($parts['port']) && (int) $parts['port'] !== 443)
+        ) {
+            throw new InvalidArgumentException('Informe URLs https:// válidas para o anúncio e para o calendário iCal.');
+        }
+        $host = strtolower((string) $parts['host']);
+        if (preg_match('/\A[a-z0-9.-]+\z/i', $host) !== 1 || str_contains($host, '..')) {
+            throw new InvalidArgumentException('Informe URLs https:// válidas para o anúncio e para o calendário iCal.');
+        }
+    }
+
+    private static function assertPropertyOwner(int $propertyId, int $userId): void
+    {
+        $stmt = db()->prepare('SELECT user_id, status FROM properties WHERE id = ?');
+        $stmt->execute([$propertyId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)
+            || ($row['status'] ?? 'active') !== 'active'
+            || (int) $row['user_id'] !== $userId
+        ) {
+            throw new InvalidArgumentException('Imóvel não encontrado.');
+        }
+    }
+
+    /** @param list<string> $excludedDates */
+    private static function pickOpenDate(string $ics, array $excludedDates): string
+    {
+        $base = (new DateTimeImmutable('@' . self::now()))->setTimezone(new DateTimeZone('UTC'));
+        foreach ([[14, 16], [3, 6], [1, 4]] as [$minMonths, $maxMonths]) {
+            $minDate = $base->modify('+' . $minMonths . ' months');
+            $maxDate = $base->modify('+' . $maxMonths . ' months');
+            $totalDays = (int) $minDate->diff($maxDate)->days;
+            for ($attempt = 0; $attempt < self::MAX_DATE_PICK_ATTEMPTS; $attempt++) {
+                $offset = self::randomOffset(0, max(0, $totalDays));
+                $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
+                if (self::isCandidateDateEligible($ics, $candidate, $excludedDates)) {
+                    return $candidate;
+                }
+            }
+            // Mostly-booked calendars: scan the whole window deterministically before falling back.
+            for ($offset = 0; $offset <= max(0, $totalDays); $offset++) {
+                $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
+                if (self::isCandidateDateEligible($ics, $candidate, $excludedDates)) {
+                    return $candidate;
+                }
+            }
+        }
+        throw new RuntimeException(t('ota.err_no_open_dates'));
+    }
+
+    /** @param list<string> $excludedDates */
+    private static function isCandidateDateEligible(string $ics, string $candidateYmd, array $excludedDates): bool
+    {
+        if (in_array($candidateYmd, $excludedDates, true)) {
+            return false;
+        }
+        $dt = new DateTimeImmutable($candidateYmd . ' 00:00:00', new DateTimeZone('UTC'));
+        return !self::isDateBlockedInIcs($ics, $dt->modify('-1 day')->format('Y-m-d'))
+            && !self::isDateBlockedInIcs($ics, $candidateYmd)
+            && !self::isDateBlockedInIcs($ics, $dt->modify('+7 days')->format('Y-m-d'));
+    }
+
+    private static function assertCanonicalAvailable(int $propertyId, int $userId, string $canonicalListingId, string $platform): void
+    {
+        $canonical = db()->prepare(
+            'SELECT pev.property_id, p.user_id
+               FROM property_external_verifications pev
+               JOIN properties p ON p.id = pev.property_id
+              WHERE pev.canonical_listing_id = ? AND pev.property_id <> ?'
+        );
+        $canonical->execute([$canonicalListingId, $propertyId]);
+        foreach ($canonical->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if ((int) $row['user_id'] !== $userId) {
+                throw new InvalidArgumentException('Este anúncio já está verificado ou vinculado por outro anfitrião.');
+            }
+            if ($platform !== 'booking') {
+                throw new InvalidArgumentException('Este anúncio já está verificado em outro imóvel.');
+            }
+        }
+    }
+
     /** @param array<string, mixed> $row */
     private static function verifiedResult(array $row, int $creditsAwarded, bool $already): array
     {
@@ -629,6 +1031,25 @@ final class OtaVerificationService
         ];
     }
 
+    /** @return array<string, mixed> */
+    private static function challengeResult(int $verificationId, string $platform, string $challengeDate, int $now): array
+    {
+        $dateBr = self::dateBr($challengeDate);
+        return [
+            'verification_id' => $verificationId,
+            'platform' => $platform,
+            'status' => 'pending_challenge',
+            'challenge_date' => $challengeDate,
+            'challenge_date_br' => $dateBr,
+            'challenge_expires_at' => gmdate('Y-m-d H:i:s', $now + self::CHALLENGE_TTL_SECONDS),
+            'message' => sprintf(
+                'Bloqueie apenas o dia %s no seu calendário do %s e clique em Verificar agora.',
+                $dateBr,
+                self::PLATFORM_LABELS[$platform]
+            ),
+        ];
+    }
+
     private static function dateBr(string $ymd): string
     {
         $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $ymd, new DateTimeZone('UTC'));
@@ -641,20 +1062,6 @@ final class OtaVerificationService
         return $ts === false ? $value : gmdate('d/m/Y H:i', $ts);
     }
 
-    private static function assertUrlsFree(int $propertyId, string $publicUrl, string $icalUrl): void
-    {
-        $taken = db()->prepare(
-            "SELECT 1 FROM property_external_verifications
-              WHERE property_id <> ? AND status IN ('verified', 'pending_challenge')
-                AND (public_url = ? OR (ical_url IS NOT NULL AND ical_url = ?))
-              LIMIT 1"
-        );
-        $taken->execute([$propertyId, $publicUrl, $icalUrl]);
-        if ($taken->fetchColumn() !== false) {
-            throw new InvalidArgumentException('Este link já está verificado em outro imóvel.');
-        }
-    }
-
     /** @return array<string, mixed>|null */
     private static function findRow(int $verificationId): ?array
     {
@@ -664,34 +1071,16 @@ final class OtaVerificationService
         return $row === false ? null : $row;
     }
 
-    /** Picks an open date in the +1..+4 month window; throws when the calendar is fully blocked. */
-    private static function pickOpenDate(string $ics): string
-    {
-        $base = (new DateTimeImmutable('@' . self::now()))->setTimezone(new DateTimeZone('UTC'));
-        $minDate = $base->modify('+1 month');
-        $maxDate = $base->modify('+4 months');
-        $totalDays = (int) $minDate->diff($maxDate)->days;
-        for ($attempt = 0; $attempt < self::MAX_DATE_PICK_ATTEMPTS; $attempt++) {
-            $offset = self::randomOffset(0, max(0, $totalDays));
-            $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
-            if (!self::isDateBlockedInIcs($ics, $candidate)) {
-                return $candidate;
-            }
-        }
-        throw new RuntimeException(
-            'Não foi possível encontrar uma data livre entre 1 e 4 meses no futuro no calendário informado.'
-        );
-    }
-
     private static function acceptFeed(string $body): string
     {
         if (strlen($body) > self::MAX_ICS_BYTES) {
             throw new RuntimeException('O calendário iCal excedeu o tamanho máximo permitido.');
         }
-        if (!str_contains($body, 'BEGIN:VCALENDAR')) {
+        $clean = ltrim($body, "\xEF\xBB\xBF \t\r\n");
+        if (!str_starts_with($clean, 'BEGIN:VCALENDAR')) {
             throw new RuntimeException('O calendário iCal informado não é válido.');
         }
-        return $body;
+        return $clean;
     }
 
     private static function fetchError(string $error): string
@@ -706,6 +1095,13 @@ final class OtaVerificationService
         };
     }
 
+    private static function icalKey(): string
+    {
+        Db::loadEnv();
+        $salt = (string) getenv('LOG_SALT') . '|' . (string) getenv('GEO_SALT') . '|casalivre-ota-ical-v1';
+        return hash('sha256', $salt, true);
+    }
+
     private static function now(): int
     {
         return self::$clock !== null ? (int) (self::$clock)() : time();
@@ -717,10 +1113,10 @@ final class OtaVerificationService
     }
 
     /**
-     * SSRF-safe request pinned to the already-validated IP.
+     * SSRF-safe request pinned to the already-validated IP, no redirect following.
      *
      * @param array{host: string, port: int, ip: string} $target
-     * @return array{0: int, 1: string, 2: string}|array{error: string, http: int}
+     * @return array{0: int, 1: string}|array{error: string, http: int}
      */
     private static function request(string $url, array $target): array
     {
@@ -760,7 +1156,6 @@ final class OtaVerificationService
         $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $errno = curl_errno($ch);
         $primaryIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
-        $location = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: '');
         if ($tooBig) {
             return ['error' => 'too_big', 'http' => $code];
         }
@@ -778,6 +1173,6 @@ final class OtaVerificationService
         if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !CalendarSync::isPublicIp($primaryIp))) {
             return ['error' => 'private_ip', 'http' => $code];
         }
-        return [$code, $buffer, $location];
+        return [$code, $buffer];
     }
 }

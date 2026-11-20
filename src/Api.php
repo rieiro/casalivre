@@ -682,11 +682,13 @@ function handle_api(string $path, string $method): void
         $user = api_require_user($user);
         $property = api_owned_property_by_ref($user, $m[1]);
         try {
-            $result = OtaVerificationService::addChallenge(
+            $result = OtaVerificationService::validateAndCreateChallenge(
                 (int) $property['id'],
+                (int) $user['id'],
                 (string) ($body['platform'] ?? ''),
                 (string) ($body['public_url'] ?? ''),
-                (string) ($body['ical_url'] ?? '')
+                (string) ($body['ical_url'] ?? ''),
+                (bool) ($body['consent'] ?? false)
             );
         } catch (InvalidArgumentException $e) {
             api_error(422, $e->getMessage());
@@ -715,8 +717,12 @@ function handle_api(string $path, string $method): void
     if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)$#', $path, $m) && $method === 'DELETE') {
         $user = api_require_user($user);
         $property = api_owned_property_by_ref($user, $m[1]);
-        if (!OtaVerificationService::removeChallenge((int) $m[2], (int) $property['id'])) {
-            api_error(404, 'Verificação não encontrada.');
+        try {
+            if (!OtaVerificationService::removeChallenge((int) $m[2], (int) $property['id'])) {
+                api_error(404, 'Verificação não encontrada.');
+            }
+        } catch (InvalidArgumentException $e) {
+            api_error(422, $e->getMessage());
         }
         json_out(200, ['ok' => true]);
     }
@@ -725,11 +731,13 @@ function handle_api(string $path, string $method): void
         $user = api_require_user($user);
         $property = api_owned_property_by_ref($user, $m[1]);
         try {
-            $result = OtaVerificationService::startChallenge(
+            $result = OtaVerificationService::validateAndCreateChallenge(
                 (int) $property['id'],
+                (int) $user['id'],
                 (string) ($body['platform'] ?? ''),
                 (string) ($body['public_url'] ?? ''),
-                (string) ($body['ical_url'] ?? '')
+                (string) ($body['ical_url'] ?? ''),
+                (bool) ($body['consent'] ?? false)
             );
         } catch (InvalidArgumentException $e) {
             api_error(422, $e->getMessage());
@@ -746,7 +754,7 @@ function handle_api(string $path, string $method): void
             api_error(404, 'Verificação não encontrada.');
         }
         try {
-            $result = OtaVerificationService::checkChallenge((int) $m[2]);
+            $result = OtaVerificationService::checkChallenge((int) $m[2], false, (int) $property['id']);
         } catch (InvalidArgumentException $e) {
             api_error(404, $e->getMessage());
         } catch (RuntimeException $e) {

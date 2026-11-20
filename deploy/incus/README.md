@@ -230,7 +230,8 @@ Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempo
 1. applies `ops/dev-env/pg-roles.sql` and sets the app/log/retention passwords from `secrets/app.env`;
 2. loads `database/schema.pgsql.sql` only when `public.users` is missing; on an existing database it
    applies the idempotent `database/migrations/migration_*.sql` in order (schema 35 adds
-   `property_external_verifications` and `users.quote_credits`), then grants the runtime roles;
+   `property_external_verifications` and `users.quote_credits`; schema 36 adds the OTA fraud gate,
+   `ota_credit_ledger` and `ota_challenge_attempts`), then grants the runtime roles;
 3. allows `cl_logw`/`cl_retention_job` over TLS from `10.10.20.11` and reloads PostgreSQL;
 4. streams the repo into `/srv/app` (excluding `.git`, `.env*`, `deploy/`, `tests/`, `storage/`) as
    `root:appuser` read-only, recreates `storage/cache`, `storage/db`, `storage/logs`, `storage/mail`
@@ -241,7 +242,10 @@ Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempo
 7. installs/refreshes the daily `logrotate` service (`logs-setup.sh`);
 8. installs the runit workers/one-shots and enables them (mail/image carry the `cl_app` credentials).
    `casalivre-ota-verify` runs `scripts/check_pending_ota_verifications.php` every 5 minutes
-   (`OTA_VERIFY_INTERVAL`, default `300`) and logs to `/var/log/casalivre/ota-verify`;
+   (`OTA_VERIFY_INTERVAL`, default `300`) and logs to `/var/log/casalivre/ota-verify`; the same
+   job also performs the daily passive check of verified rows and downgrades the badge after 3
+   consecutive days of 401/403/404/410 responses (the permanent `ota_credit_ledger` prevents
+   credit farming);
 9. publishes `public/assets`, `public/uploads`, the app media uploads and `storage/tiles/brasil.pmtiles`
    to the active edge's `/srv/static`, then reloads nginx.
 

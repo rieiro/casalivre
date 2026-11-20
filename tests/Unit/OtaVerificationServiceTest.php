@@ -104,8 +104,8 @@ final class OtaVerificationServiceTest extends TestCase
             'END:VEVENT',
             'BEGIN:VEVENT',
             'UID:blocked-window',
-            'DTSTART;VALUE=DATE:20261220',
-            'DTEND;VALUE=DATE:20261221',
+            'DTSTART;VALUE=DATE:20280120',
+            'DTEND;VALUE=DATE:20280121',
             'SUMMARY:First pick is blocked',
             'END:VEVENT',
             'END:VCALENDAR',
@@ -155,11 +155,11 @@ final class OtaVerificationServiceTest extends TestCase
     {
         $queue = $offsets;
         $last = $offsets === [] ? 0 : (int) $offsets[0];
-        OtaVerificationService::$randomInt = static function () use (&$queue, &$last): int {
+        OtaVerificationService::$randomInt = static function (int $min, int $max) use (&$queue, &$last): int {
             if ($queue !== []) {
                 $last = (int) array_shift($queue);
             }
-            return $last;
+            return max($min, min($max, $last));
         };
     }
 
@@ -171,7 +171,7 @@ final class OtaVerificationServiceTest extends TestCase
             'BEGIN:VEVENT',
             'UID:all-dates-blocked',
             'DTSTART;VALUE=DATE:20261201',
-            'DTEND;VALUE=DATE:20270430',
+            'DTEND;VALUE=DATE:20280501',
             'SUMMARY:No open dates in the challenge window',
             'END:VEVENT',
             'END:VCALENDAR',
@@ -200,6 +200,58 @@ final class OtaVerificationServiceTest extends TestCase
             } catch (Throwable) {
             }
         }
+    }
+
+
+    /** @param list<array{0: string, 1: string, 2?: string}> $events */
+    private function icsWithEvents(array $events, string $prodid = '-//CasaLivre//Test//EN', string $name = 'Casa Teste'): string
+    {
+        $lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:' . $prodid, 'X-WR-CALNAME:' . $name];
+        foreach ($events as $i => $event) {
+            $lines[] = 'BEGIN:VEVENT';
+            $lines[] = 'UID:test-event-' . $i;
+            $lines[] = 'DTSTART;VALUE=DATE:' . $event[0];
+            $lines[] = 'DTEND;VALUE=DATE:' . $event[1];
+            if (isset($event[2])) {
+                $lines[] = 'SUMMARY:' . $event[2];
+            }
+            $lines[] = 'END:VEVENT';
+        }
+        $lines[] = 'END:VCALENDAR';
+        $lines[] = '';
+        return implode("\r\n", $lines);
+    }
+
+    /** @return array{0: array{id:int,user_id:int}, 1: array{id:int,user_id:int}} */
+    private function twoPropertiesSameOwner(): array
+    {
+        $owner = $this->pdo->query(
+            "SELECT user_id FROM properties WHERE status = 'active'
+              GROUP BY user_id HAVING count(*) >= 2 ORDER BY user_id LIMIT 1"
+        )->fetchColumn();
+        $this->assertNotFalse($owner, 'seed database needs two active properties with the same owner');
+        $stmt = $this->pdo->prepare(
+            "SELECT id, user_id FROM properties WHERE status = 'active' AND user_id = ? ORDER BY id LIMIT 2"
+        );
+        $stmt->execute([(int) $owner]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertCount(2, $rows);
+        return [
+            ['id' => (int) $rows[0]['id'], 'user_id' => (int) $rows[0]['user_id']],
+            ['id' => (int) $rows[1]['id'], 'user_id' => (int) $rows[1]['user_id']],
+        ];
+    }
+
+    /** @return array{id:int,user_id:int} */
+    private function propertyOfAnotherOwner(int $userId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, user_id FROM properties WHERE status = 'active' AND user_id <> ? ORDER BY id LIMIT 1"
+        );
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($row, 'seed database needs a property owned by another host');
+        return ['id' => (int) $row['id'], 'user_id' => (int) $row['user_id']];
     }
 
     public function testIsDateBlockedInIcsHandlesAllDayAndUtcTimestampFormats(): void
@@ -262,9 +314,11 @@ final class OtaVerificationServiceTest extends TestCase
 
     public function testStartChallengePicksOpenDateOneToFourMonthsAhead(): void
     {
+        // Updated: 2026-11 - Requirement changed from a 1-4 month window to a 14-16 month
+        // primary window with 3-6 and 1-4 fallbacks; this test covers the primary window.
         OtaVerificationService::$clock = static fn (): int => self::T0;
         OtaVerificationService::$httpTransport = fn (): string => $this->airbnbIcs();
-        $this->fixedRandom([0, 90]); // first pick (2026-12-20) is blocked, second (2027-03-20) is open
+        $this->fixedRandom([0, 90]); // first pick (2028-01-20) is blocked; retry clamps to 2028-03-20
 
         $property = $this->activeProperty();
         $result = OtaVerificationService::startChallenge(
@@ -274,8 +328,8 @@ final class OtaVerificationServiceTest extends TestCase
             'https://www.airbnb.com/calendar/ical/12345678.ics?t=secret-token'
         );
 
-        $this->assertSame('2027-03-20', $result['challenge_date']);
-        $this->assertSame('20/03/2027', $result['challenge_date_br']);
+        $this->assertSame('2028-03-20', $result['challenge_date']);
+        $this->assertSame('20/03/2028', $result['challenge_date_br']);
         $this->assertSame('pending_challenge', $result['status']);
         $this->assertGreaterThan(0, (int) $result['verification_id']);
 
@@ -283,7 +337,7 @@ final class OtaVerificationServiceTest extends TestCase
         $row->execute([(int) $result['verification_id']]);
         $stored = $row->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('pending_challenge', $stored['status']);
-        $this->assertSame('2027-03-20', (string) $stored['challenge_date']);
+        $this->assertSame('2028-03-20', (string) $stored['challenge_date']);
         $this->assertSame(0, (int) $stored['attempts']);
         $this->assertSame(0, (int) $stored['credits_awarded']);
 
@@ -299,7 +353,7 @@ final class OtaVerificationServiceTest extends TestCase
             $this->addToAssertionCount(1); // shared dev DB login cannot SET ROLE; test-pg.sh covers it
         } else {
             $this->assertSame('airbnb', $payload['plataforma']);
-            $this->assertSame('2027-03-20', $payload['challenge_date']);
+            $this->assertSame('2028-03-20', $payload['challenge_date']);
             $this->assertStringContainsString('www.airbnb.com#', (string) $payload['url']);
             $this->assertStringNotContainsString('secret-token', (string) $payload['url'], 'iCal token must never be logged');
         }
@@ -393,21 +447,22 @@ final class OtaVerificationServiceTest extends TestCase
             (int) $this->pdo->query('SELECT quote_credits FROM users WHERE id = ' . $property['user_id'])->fetchColumn()
         );
 
-        // Re-verification keeps credits_awarded = 1 and never pays again.
+        // Updated: 2026-11 - Verified rows are now locked by the fraud gate; a new challenge is rejected.
         OtaVerificationService::$httpTransport = fn (): string => $this->bookingIcs(false);
-        $restart = OtaVerificationService::startChallenge(
-            $property['id'],
-            'booking',
-            'https://www.booking.com/hotel/br/casa-livre.html',
-            'https://ical.booking.com/v1/export?t=secret-token'
-        );
+        try {
+            OtaVerificationService::startChallenge(
+                $property['id'],
+                'booking',
+                'https://www.booking.com/hotel/br/casa-livre.html',
+                'https://ical.booking.com/v1/export?t=secret-token'
+            );
+            $this->fail('a verified platform must be locked for changes');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('já está verificado e bloqueado', $e->getMessage());
+        }
         $this->assertSame(1, (int) $this->pdo->query(
-            'SELECT credits_awarded FROM property_external_verifications WHERE id = ' . (int) $restart['verification_id']
+            'SELECT credits_awarded FROM property_external_verifications WHERE id = ' . $verificationId
         )->fetchColumn());
-        OtaVerificationService::$httpTransport = fn (): string => $this->bookingIcs(true, (string) $restart['challenge_date']);
-        $recheck = OtaVerificationService::checkChallenge((int) $restart['verification_id']);
-        $this->assertSame('verified', $recheck['status']);
-        $this->assertFalse($recheck['credits_awarded']);
         $this->assertSame(1, $hookCalls);
         $this->assertSame(
             $creditsAfter,
@@ -462,7 +517,8 @@ final class OtaVerificationServiceTest extends TestCase
             );
             $this->fail('the same verified Airbnb link must not verify a second property');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('já está verificado', $e->getMessage());
+            // Updated: 2026-11 - The global iCal-hash gate reports the calendar already registered.
+            $this->assertStringContainsString('já está cadastrado ou verificado', $e->getMessage());
         }
 
         // A different public URL on the same iCal export is still a duplicate.
@@ -485,7 +541,8 @@ final class OtaVerificationServiceTest extends TestCase
             );
             $this->fail('the same verified iCal URL must not verify a second property');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('já está verificado', $e->getMessage());
+            // Updated: 2026-11 - Same iCal export is rejected by the global hash gate.
+            $this->assertStringContainsString('já está cadastrado ou verificado', $e->getMessage());
         }
     }
 
@@ -505,30 +562,33 @@ final class OtaVerificationServiceTest extends TestCase
         $added = OtaVerificationService::addChallenge($property['id'], 'airbnb', $publicUrl, $icalUrl);
         $verificationId = (int) $added['id'];
         $this->assertGreaterThan(0, $verificationId);
-        $this->assertSame('unverified', $added['status']);
+        // Updated: 2026-11 - addChallenge now runs the full fraud gate and creates pending_challenge.
+        $this->assertSame('pending_challenge', $added['status']);
+        $this->assertSame('2028-03-20', $added['challenge_date']);
 
         $row = $this->pdo->prepare('SELECT * FROM property_external_verifications WHERE id = ?');
         $row->execute([$verificationId]);
         $stored = $row->fetch(PDO::FETCH_ASSOC);
-        $this->assertSame('unverified', $stored['status']);
-        $this->assertNull($stored['challenge_date']);
+        $this->assertSame('pending_challenge', $stored['status']);
+        $this->assertSame('2028-03-20', (string) $stored['challenge_date']);
 
         $generated = OtaVerificationService::generateChallenge($verificationId);
         $this->assertSame('pending_challenge', $generated['status']);
         $this->assertSame($verificationId, (int) $generated['verification_id']);
-        $this->assertSame('2027-03-20', $generated['challenge_date']);
+        $this->assertSame('2028-03-20', $generated['challenge_date']);
 
         $rows = OtaVerificationService::listForProperty($property['id']);
         $this->assertCount(1, $rows);
         $this->assertSame('pending_challenge', $rows[0]['status']);
-        $this->assertSame('20/03/2027', $rows[0]['challenge_date_br']);
+        $this->assertSame('20/03/2028', $rows[0]['challenge_date_br']);
 
         $other = $this->activeProperty(1);
         try {
             OtaVerificationService::addChallenge($other['id'], 'airbnb', $publicUrl, $icalUrl);
             $this->fail('a pending challenge must block the same link on another property');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('já está verificado', $e->getMessage());
+            // Updated: 2026-11 - The global hash gate message.
+            $this->assertStringContainsString('já está cadastrado ou verificado', $e->getMessage());
         }
 
         $this->assertTrue(OtaVerificationService::removeChallenge($verificationId, $property['id']));
@@ -570,12 +630,583 @@ final class OtaVerificationServiceTest extends TestCase
             );
             $this->fail('a fully blocked calendar must not add the challenge');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('1 e 4 meses', $e->getMessage());
+            $this->assertStringContainsString('datas livres no horizonte', $e->getMessage());
         }
 
         $this->assertSame([], OtaVerificationService::listForProperty($property['id']));
         $count = $this->pdo->prepare('SELECT count(*) FROM property_external_verifications WHERE property_id = ?');
         $count->execute([$property['id']]);
         $this->assertSame(0, (int) $count->fetchColumn(), 'no row may exist when no date is available');
+    }
+
+    public function testStage1RejectsMissingConsentPmsDomainsProfileUrlsAndCustomPorts(): void
+    {
+        $property = $this->activeProperty();
+        $public = 'https://www.airbnb.com/rooms/12345678';
+        $ical = 'https://www.airbnb.com/calendar/ical/12345678.ics';
+
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $property['id'],
+                $property['user_id'],
+                'airbnb',
+                $public,
+                $ical,
+                false
+            );
+            $this->fail('missing consent must be rejected');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('autoriza', $e->getMessage());
+        }
+
+        $invalid = [
+            ['airbnb', 'https://stays.net/rooms/12345678', $ical],
+            ['airbnb', 'https://www.airbnb.com/users/show/12345678', $ical],
+            ['airbnb', 'https://www.airbnb.com:8443/rooms/12345678', $ical],
+            ['airbnb', $public, 'https://stays.net/calendar/ical/12345678.ics'],
+            ['booking', 'https://www.booking.com/searchresults.html', 'https://ical.booking.com/v1/export?t=x'],
+            ['vrbo', 'https://www.vrbo.com/', 'https://www.vrbo.com/icalendar/123.ics'],
+        ];
+        foreach ($invalid as [$platform, $publicUrl, $icalUrl]) {
+            try {
+                OtaVerificationService::validateAndCreateChallenge(
+                    $property['id'],
+                    $property['user_id'],
+                    $platform,
+                    $publicUrl,
+                    $icalUrl,
+                    true
+                );
+                $this->fail('Stage 1 must reject: ' . $platform . ' ' . $publicUrl);
+            } catch (InvalidArgumentException $e) {
+                $this->assertNotSame('', $e->getMessage());
+            }
+        }
+
+        $count = $this->pdo->prepare('SELECT count(*) FROM property_external_verifications WHERE property_id = ?');
+        $count->execute([$property['id']]);
+        $this->assertSame(0, (int) $count->fetchColumn());
+    }
+
+    public function testStage2EnforcesDailyRateLimitGlobalIcalHashAndBookingMultiUnitPousadaRule(): void
+    {
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $this->fixedRandom([60]);
+
+        [$a, $b] = $this->twoPropertiesSameOwner();
+        $c = $this->propertyOfAnotherOwner($a['user_id']);
+        $userId = $a['user_id'];
+
+        // Daily cap: rows survive challenge deletion, so pre-seed five attempts.
+        $attempt = $this->pdo->prepare(
+            'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
+             VALUES (?, ?, ?, to_timestamp(?))'
+        );
+        for ($i = 0; $i < OtaVerificationService::MAX_DAILY_CHALLENGES_PER_USER; $i++) {
+            $attempt->execute([$userId, $a['id'], 'airbnb', self::T0]);
+        }
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $a['id'],
+                $userId,
+                'airbnb',
+                'https://www.airbnb.com/rooms/900001',
+                'https://www.airbnb.com/calendar/ical/900001.ics'
+            );
+            $this->fail('the sixth challenge in 24h must be rejected');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('Limite diário', $e->getMessage());
+        }
+        $this->pdo->prepare('DELETE FROM ota_challenge_attempts WHERE user_id = ?')->execute([$userId]);
+
+        // Global iCal hash: the same feed cannot be registered anywhere else.
+        $vrboIcal = 'https://www.vrbo.com/icalendar/777.ics';
+        $this->pdo->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, canonical_listing_id,
+                 ical_url_hash, credits_awarded, created_at, updated_at)
+             VALUES (?, 'vrbo', 'https://www.vrbo.com/777', ?, 'verified', 'vrbo:777', ?, 1, now(), now())"
+        )->execute([$a['id'], $vrboIcal, hash('sha256', $vrboIcal)]);
+
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $b['id'],
+                $userId,
+                'vrbo',
+                'https://www.vrbo.com/888',
+                $vrboIcal
+            );
+            $this->fail('the same iCal feed must not be registered twice');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('já está cadastrado ou verificado', $e->getMessage());
+        }
+
+        // Booking multi-unit pousada: same host may share the canonical hotel id with distinct feeds.
+        $pousadaPublic = 'https://www.booking.com/hotel/br/pousada.html';
+        $unitA = 'https://ical.booking.com/v1/export?t=unit-a';
+        $this->pdo->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, canonical_listing_id,
+                 ical_url_hash, credits_awarded, created_at, updated_at)
+             VALUES (?, 'booking', ?, ?, 'verified', 'booking:br/pousada', ?, 1, now(), now())"
+        )->execute([$a['id'], $pousadaPublic, $unitA, hash('sha256', $unitA)]);
+
+        $allowed = OtaVerificationService::validateAndCreateChallenge(
+            $b['id'],
+            $userId,
+            'booking',
+            $pousadaPublic,
+            'https://ical.booking.com/v1/export?t=unit-b'
+        );
+        $this->assertSame('pending_challenge', $allowed['status']);
+        $this->assertGreaterThan(0, (int) $allowed['verification_id']);
+
+        // Defect 1 regression: the second unit verifies without uq_pev_verified_public_url failing.
+        $allowedDate = (string) $allowed['challenge_date'];
+        $allowedDt = new DateTimeImmutable($allowedDate . ' 00:00:00', new DateTimeZone('UTC'));
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$allowedDt->format('Ymd'), $allowedDt->modify('+1 day')->format('Ymd'), 'Host block'],
+        ]);
+        $verifiedUnitB = OtaVerificationService::checkChallenge((int) $allowed['verification_id'], true, $b['id']);
+        $this->assertSame('verified', $verifiedUnitB['status']);
+
+        // A different host still cannot claim the same canonical listing.
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $c['id'],
+                $c['user_id'],
+                'booking',
+                $pousadaPublic,
+                'https://ical.booking.com/v1/export?t=unit-c'
+            );
+            $this->fail('another host must not claim the same canonical listing');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('outro anfitrião', $e->getMessage());
+        }
+    }
+
+    public function testStage3RequiresDMinus1DAndDPlus7OpenAndExtractsIcsMetadata(): void
+    {
+        $property = $this->activeProperty();
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        // 2028-01-20 is the primary candidate; its D+7 (2028-01-27) is blocked, so the retry picks the window max.
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents(
+            [['20280127', '20280128', 'Reserved']],
+            '-//Booking.com//Test//EN',
+            'Casa Teste'
+        );
+        $this->fixedRandom([0, 60]);
+
+        $result = OtaVerificationService::validateAndCreateChallenge(
+            $property['id'],
+            $property['user_id'],
+            'booking',
+            'https://www.booking.com/hotel/br/test.html',
+            'https://ical.booking.com/v1/export?t=metadata'
+        );
+        $this->assertSame('2028-03-20', $result['challenge_date']);
+
+        $row = $this->pdo->prepare('SELECT * FROM property_external_verifications WHERE id = ?');
+        $row->execute([(int) $result['verification_id']]);
+        $stored = $row->fetch(PDO::FETCH_ASSOC);
+        $this->assertStringContainsString('PRODID:-//Booking.com//Test//EN', (string) $stored['ics_metadata']);
+        $this->assertStringContainsString('X-WR-CALNAME:Casa Teste', (string) $stored['ics_metadata']);
+        $this->assertLessThanOrEqual(200, strlen((string) $stored['ics_metadata']));
+        $this->assertStringStartsWith('enc:v1:', (string) $stored['ical_url']);
+        $plain = 'https://ical.booking.com/v1/export?t=metadata';
+        $this->assertSame($plain, OtaVerificationService::decryptIcalUrl((string) $stored['ical_url']));
+        $this->assertSame(hash('sha256', $plain), (string) $stored['ical_url_hash']);
+    }
+
+    public function testCheckChallengeRequiresIsolatedManualBlockAndRejectsGuestReservedSummaryOrMaxAttempts(): void
+    {
+        $property = $this->activeProperty();
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $this->fixedRandom([60]);
+
+        $start = OtaVerificationService::startChallenge(
+            $property['id'],
+            'booking',
+            'https://www.booking.com/hotel/br/isolated.html',
+            'https://ical.booking.com/v1/export?t=isolated'
+        );
+        $verificationId = (int) $start['verification_id'];
+        $date = (string) $start['challenge_date'];
+        $dt = new DateTimeImmutable($date . ' 00:00:00', new DateTimeZone('UTC'));
+
+        // D-1 also blocked -> not an isolated manual block.
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$dt->modify('-1 day')->format('Ymd'), $dt->modify('+1 day')->format('Ymd'), 'Host block'],
+        ]);
+        $notIsolated = OtaVerificationService::checkChallenge($verificationId, true, $property['id']);
+        $this->assertSame('not_isolated_block', $notIsolated['status']);
+
+        // D only, but the event is a guest reservation.
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$dt->format('Ymd'), $dt->modify('+1 day')->format('Ymd'), 'Reserved (guest)'],
+        ]);
+        $guest = OtaVerificationService::checkChallenge($verificationId, true, $property['id']);
+        $this->assertSame('not_isolated_block', $guest['status']);
+
+        // D only, manual host block -> verified.
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$dt->format('Ymd'), $dt->modify('+1 day')->format('Ymd'), 'Host block'],
+        ]);
+        $done = OtaVerificationService::checkChallenge($verificationId, true, $property['id']);
+        $this->assertSame('verified', $done['status']);
+
+        // Max attempts: a row at 15 attempts expires without another fetch.
+        $ical = 'https://www.vrbo.com/icalendar/999.ics';
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, challenge_date,
+                 challenge_expires_at, attempts, canonical_listing_id, ical_url_hash, created_at, updated_at)
+             VALUES (?, 'vrbo', 'https://www.vrbo.com/999', ?, 'pending_challenge', ?,
+                     to_timestamp(?), ?, 'vrbo:999', ?, now(), now())
+             RETURNING id"
+        );
+        $stmt->execute([
+            $property['id'],
+            $ical,
+            $date,
+            self::T0 + 3600,
+            OtaVerificationService::MAX_CHECK_ATTEMPTS,
+            hash('sha256', $ical),
+        ]);
+        $maxId = (int) $stmt->fetchColumn();
+        $expired = OtaVerificationService::checkChallenge($maxId, true, $property['id']);
+        $this->assertSame('expired', $expired['status']);
+        $this->assertStringContainsString('limite de 15', $expired['message']);
+    }
+
+    public function testPermanentCreditLedgerPreventsCreditFarmingAfterRowDeletion(): void
+    {
+        $property = $this->activeProperty();
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $this->fixedRandom([60]);
+        $hookCalls = 0;
+        OtaVerificationService::$creditHook = static function () use (&$hookCalls): void {
+            $hookCalls++;
+        };
+        $creditsBefore = (int) $this->pdo->query(
+            'SELECT quote_credits FROM users WHERE id = ' . $property['user_id']
+        )->fetchColumn();
+
+        $start = OtaVerificationService::startChallenge(
+            $property['id'],
+            'booking',
+            'https://www.booking.com/hotel/br/ledger.html',
+            'https://ical.booking.com/v1/export?t=ledger'
+        );
+        $date = (string) $start['challenge_date'];
+        $dt = new DateTimeImmutable($date . ' 00:00:00', new DateTimeZone('UTC'));
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$dt->format('Ymd'), $dt->modify('+1 day')->format('Ymd'), 'Host block'],
+        ]);
+        $verified = OtaVerificationService::checkChallenge((int) $start['verification_id']);
+        $this->assertSame('verified', $verified['status']);
+        $this->assertTrue($verified['credits_awarded']);
+        $creditsAfter = (int) $this->pdo->query(
+            'SELECT quote_credits FROM users WHERE id = ' . $property['user_id']
+        )->fetchColumn();
+        $this->assertSame($creditsBefore + OtaVerificationService::ONBOARDING_CREDIT_REWARD, $creditsAfter);
+        $this->assertSame(1, $hookCalls);
+
+        // Simulate a rogue/legacy deletion of the verified row: the ledger must survive.
+        $this->pdo->prepare('DELETE FROM property_external_verifications WHERE id = ?')
+            ->execute([(int) $start['verification_id']]);
+        $ledger = $this->pdo->prepare('SELECT credits FROM ota_credit_ledger WHERE property_id = ?');
+        $ledger->execute([$property['id']]);
+        $this->assertSame(OtaVerificationService::ONBOARDING_CREDIT_REWARD, (int) $ledger->fetchColumn());
+
+        // A brand new verification on the same property must not pay again.
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $second = OtaVerificationService::startChallenge(
+            $property['id'],
+            'booking',
+            'https://www.booking.com/hotel/br/ledger.html',
+            'https://ical.booking.com/v1/export?t=ledger'
+        );
+        $secondDate = (string) $second['challenge_date'];
+        $dt2 = new DateTimeImmutable($secondDate . ' 00:00:00', new DateTimeZone('UTC'));
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            [$dt2->format('Ymd'), $dt2->modify('+1 day')->format('Ymd'), 'Host block'],
+        ]);
+        $reverified = OtaVerificationService::checkChallenge((int) $second['verification_id']);
+        $this->assertSame('verified', $reverified['status']);
+        $this->assertFalse($reverified['credits_awarded']);
+        $this->assertSame(1, $hookCalls);
+        $this->assertSame(
+            $creditsAfter,
+            (int) $this->pdo->query('SELECT quote_credits FROM users WHERE id = ' . $property['user_id'])->fetchColumn()
+        );
+    }
+
+    public function testPassiveSyncDowngradesVerifiedListingAfter3ConsecutiveDaysOfHttp404or410(): void
+    {
+        $property = $this->activeProperty();
+        $now = self::T0;
+        OtaVerificationService::$clock = static function () use (&$now): int {
+            return $now;
+        };
+
+        $ical = 'https://ical.booking.com/v1/export?t=passive';
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, challenge_date,
+                 challenge_expires_at, verified_at, credits_awarded, canonical_listing_id,
+                 ical_url_hash, fail_count, last_passive_check_at, created_at, updated_at)
+             VALUES (?, 'booking', 'https://www.booking.com/hotel/br/passive.html', ?, 'verified',
+                     '2028-03-20', to_timestamp(?), to_timestamp(?), 1, 'booking:br/passive', ?, 0, NULL,
+                     now(), now())
+             RETURNING id"
+        );
+        $stmt->execute([
+            $property['id'],
+            $ical,
+            self::T0 + 3600,
+            self::T0,
+            hash('sha256', $ical),
+        ]);
+        $verificationId = (int) $stmt->fetchColumn();
+
+        OtaVerificationService::$httpTransport = static function (): string {
+            throw new RuntimeException('not found', 404);
+        };
+        $day1 = OtaVerificationService::passiveVerifyRow($verificationId);
+        $this->assertSame('failed', $day1['status']);
+        $this->assertSame(1, $day1['fail_count']);
+
+        // A valid 200 resets the consecutive failure counter.
+        $now += 86400;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $reset = OtaVerificationService::passiveVerifyRow($verificationId);
+        $this->assertSame('ok', $reset['status']);
+
+        $now += 86400;
+        OtaVerificationService::$httpTransport = static function (): string {
+            throw new RuntimeException('not found', 404);
+        };
+        $day3 = OtaVerificationService::passiveVerifyRow($verificationId);
+        $this->assertSame(1, $day3['fail_count']);
+
+        $now += 86400;
+        OtaVerificationService::$httpTransport = static function (): string {
+            throw new RuntimeException('not found', 404);
+        };
+        $day4 = OtaVerificationService::passiveVerifyRow($verificationId);
+        $this->assertSame(2, $day4['fail_count']);
+
+        $now += 86400;
+        OtaVerificationService::$httpTransport = static function (): string {
+            throw new RuntimeException('gone', 410);
+        };
+        $day5 = OtaVerificationService::passiveVerifyRow($verificationId);
+        $this->assertSame('downgraded', $day5['status']);
+
+        $row = $this->pdo->prepare('SELECT status, verified_at, fail_count FROM property_external_verifications WHERE id = ?');
+        $row->execute([$verificationId]);
+        $stored = $row->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('unverified', $stored['status']);
+        $this->assertNull($stored['verified_at']);
+        $this->assertSame(3, (int) $stored['fail_count']);
+    }
+
+    public function testPickOpenDateScansTheWindowWhenRandomAttemptsAreBlocked(): void
+    {
+        $property = $this->activeProperty();
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
+            ['20280101', '20280210'], // blocks through 2028-02-09
+            ['20280219', '20280501'], // blocks from 2028-02-19
+        ]);
+        $this->fixedRandom([0]); // every random attempt hits the blocked 2028-01-20
+
+        $result = OtaVerificationService::validateAndCreateChallenge(
+            $property['id'],
+            $property['user_id'],
+            'booking',
+            'https://www.booking.com/hotel/br/scan.html',
+            'https://ical.booking.com/v1/export?t=scan'
+        );
+        // The deterministic scan finds the first date whose D-1, D and D+7 are open.
+        $this->assertSame('2028-02-11', $result['challenge_date']);
+        $this->assertSame('pending_challenge', $result['status']);
+    }
+
+    public function testPublicUrlIsStoredWithoutQueryFragmentOrTrailingSlash(): void
+    {
+        $property = $this->activeProperty();
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $this->fixedRandom([60]);
+
+        $result = OtaVerificationService::validateAndCreateChallenge(
+            $property['id'],
+            $property['user_id'],
+            'airbnb',
+            'https://www.airbnb.com/rooms/12345678/?affiliate=aff&check_in=2027#frag',
+            'https://www.airbnb.com/calendar/ical/12345678.ics?t=secret'
+        );
+        $row = $this->pdo->prepare('SELECT public_url, ical_url FROM property_external_verifications WHERE id = ?');
+        $row->execute([(int) $result['verification_id']]);
+        $stored = $row->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('https://www.airbnb.com/rooms/12345678', (string) $stored['public_url']);
+        $this->assertSame(
+            'https://www.airbnb.com/calendar/ical/12345678.ics?t=secret',
+            OtaVerificationService::decryptIcalUrl((string) $stored['ical_url'])
+        );
+    }
+
+    public function testStage4RechecksDailyLimitAfterTheNetworkCall(): void
+    {
+        $property = $this->activeProperty();
+        $userId = $property['user_id'];
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        $this->fixedRandom([60]);
+
+        // Simulate a concurrent request that consumes the daily cap during the 8s fetch.
+        OtaVerificationService::$httpTransport = function () use ($property, $userId): string {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
+                 VALUES (?, ?, ?, to_timestamp(?))'
+            );
+            for ($i = 0; $i < OtaVerificationService::MAX_DAILY_CHALLENGES_PER_USER; $i++) {
+                $stmt->execute([$userId, $property['id'], 'booking', self::T0]);
+            }
+            return $this->icsWithEvents([]);
+        };
+
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $property['id'],
+                $userId,
+                'booking',
+                'https://www.booking.com/hotel/br/race-daily.html',
+                'https://ical.booking.com/v1/export?t=race-daily'
+            );
+            $this->fail('the transaction must re-check the daily limit after the fetch');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('Limite diário', $e->getMessage());
+        }
+
+        $count = $this->pdo->prepare(
+            "SELECT count(*) FROM property_external_verifications WHERE property_id = ? AND platform = 'booking'"
+        );
+        $count->execute([$property['id']]);
+        $this->assertSame(0, (int) $count->fetchColumn());
+    }
+
+    public function testStage4RejectsAConcurrentlyVerifiedPlatform(): void
+    {
+        $property = $this->activeProperty();
+        $public = 'https://www.booking.com/hotel/br/race-lock.html';
+        $ical = 'https://ical.booking.com/v1/export?t=race-lock';
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        $this->fixedRandom([60]);
+
+        // Stage 2 passes, then the row becomes verified while the network fetch runs.
+        OtaVerificationService::$httpTransport = function () use ($property, $public, $ical): string {
+            $this->pdo->prepare(
+                "INSERT INTO property_external_verifications
+                    (property_id, platform, public_url, ical_url, status, canonical_listing_id,
+                     ical_url_hash, credits_awarded, created_at, updated_at)
+                 VALUES (?, 'booking', ?, ?, 'verified', 'booking:br/race-lock', ?, 1, now(), now())"
+            )->execute([$property['id'], $public, $ical, hash('sha256', $ical)]);
+            return $this->icsWithEvents([]);
+        };
+
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $property['id'],
+                $property['user_id'],
+                'booking',
+                $public,
+                $ical
+            );
+            $this->fail('a concurrently verified row must block the pending upsert');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('já está verificado e bloqueado', $e->getMessage());
+        }
+        $row = $this->pdo->prepare(
+            "SELECT status FROM property_external_verifications WHERE property_id = ? AND platform = 'booking'"
+        );
+        $row->execute([$property['id']]);
+        $this->assertSame('verified', $row->fetchColumn());
+    }
+
+    public function testStage4RejectsAConcurrentCrossHostCanonicalListing(): void
+    {
+        [$a] = $this->twoPropertiesSameOwner();
+        $other = $this->propertyOfAnotherOwner($a['user_id']);
+        $public = 'https://www.booking.com/hotel/br/race-canonical.html';
+        $ical = 'https://ical.booking.com/v1/export?t=race-canonical';
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        $this->fixedRandom([60]);
+
+        OtaVerificationService::$httpTransport = function () use ($other, $public): string {
+            $otherIcal = 'https://ical.booking.com/v1/export?t=race-canonical-other';
+            $this->pdo->prepare(
+                "INSERT INTO property_external_verifications
+                    (property_id, platform, public_url, ical_url, status, canonical_listing_id,
+                     ical_url_hash, credits_awarded, created_at, updated_at)
+                 VALUES (?, 'booking', ?, ?, 'verified', 'booking:br/race-canonical', ?, 1, now(), now())"
+            )->execute([$other['id'], $public, $otherIcal, hash('sha256', $otherIcal)]);
+            return $this->icsWithEvents([]);
+        };
+
+        try {
+            OtaVerificationService::validateAndCreateChallenge(
+                $a['id'],
+                $a['user_id'],
+                'booking',
+                $public,
+                $ical
+            );
+            $this->fail('the transaction must re-check the canonical listing lock');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('outro anfitrião', $e->getMessage());
+        }
+    }
+
+    public function testCheckChallengeRejectsAConcurrentCrossHostCanonicalVerification(): void
+    {
+        [$a] = $this->twoPropertiesSameOwner();
+        $other = $this->propertyOfAnotherOwner($a['user_id']);
+        $public = 'https://www.booking.com/hotel/br/race-check.html';
+        $ical = 'https://ical.booking.com/v1/export?t=race-check';
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([]);
+        $this->fixedRandom([60]);
+
+        $start = OtaVerificationService::startChallenge($a['id'], 'booking', $public, $ical);
+        $date = (string) $start['challenge_date'];
+        $dt = new DateTimeImmutable($date . ' 00:00:00', new DateTimeZone('UTC'));
+
+        OtaVerificationService::$httpTransport = function () use ($other, $public, $dt): string {
+            $otherIcal = 'https://ical.booking.com/v1/export?t=race-check-other';
+            $this->pdo->prepare(
+                "INSERT INTO property_external_verifications
+                    (property_id, platform, public_url, ical_url, status, canonical_listing_id,
+                     ical_url_hash, credits_awarded, created_at, updated_at)
+                 VALUES (?, 'booking', ?, ?, 'verified', 'booking:br/race-check', ?, 1, now(), now())"
+            )->execute([$other['id'], $public, $otherIcal, hash('sha256', $otherIcal)]);
+            return $this->icsWithEvents([
+                [$dt->format('Ymd'), $dt->modify('+1 day')->format('Ymd'), 'Host block'],
+            ]);
+        };
+
+        try {
+            OtaVerificationService::checkChallenge((int) $start['verification_id'], true, $a['id']);
+            $this->fail('checking must re-check the canonical listing lock');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('outro anfitrião', $e->getMessage());
+        }
+        $row = $this->pdo->prepare('SELECT status FROM property_external_verifications WHERE id = ?');
+        $row->execute([(int) $start['verification_id']]);
+        $this->assertSame('pending_challenge', $row->fetchColumn());
     }
 }

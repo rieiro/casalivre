@@ -67,6 +67,12 @@ $otaStatusMeta = static function (string $status): array {
                 <input id="ota-ical-url" class="prop-form-input" type="url" maxlength="2048" placeholder="https://.../*.ics" data-ota-ical-url>
                 <p class="prop-form-hint"><?= e(t('ota.ical_url_hint')) ?></p>
             </div>
+            <div class="prop-form-field">
+                <label class="prop-checkbox-label" for="ota-consent">
+                    <input id="ota-consent" type="checkbox" value="1" data-ota-consent>
+                    <span><?= e(t('ota.consent_label')) ?></span>
+                </label>
+            </div>
             <div class="prop-ota-actions">
                 <button type="button" class="btn-dash-action primary is-off" data-ota-add disabled><?= e(t('ota.add_btn')) ?></button>
                 <p class="prop-form-hint" data-ota-message hidden></p>
@@ -109,7 +115,7 @@ $otaStatusMeta = static function (string $status): array {
                                     <div class="sync-actions">
                                         <button type="button" class="primary" data-ota-generate<?= $otaShowGenerate ? '' : ' hidden' ?>><?= e(t('ota.generate_btn')) ?></button>
                                         <button type="button" class="primary" data-ota-check<?= $otaShowCheck ? '' : ' hidden' ?>><?= e(t('ota.check_btn')) ?></button>
-                                        <button type="button" class="danger" data-ota-remove><?= e(t('ota.remove_btn')) ?></button>
+                                        <button type="button" class="danger" data-ota-remove<?= $otaKind === 'verified' ? ' hidden' : '' ?>><?= e(t('ota.remove_btn')) ?></button>
                                     </div>
                                 </td>
                             </tr>

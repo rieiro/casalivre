@@ -105,6 +105,7 @@
         const otaPlatform = otaRoot.querySelector('[data-ota-platform]');
         const otaPublic = otaRoot.querySelector('[data-ota-public-url]');
         const otaIcal = otaRoot.querySelector('[data-ota-ical-url]');
+        const otaConsent = otaRoot.querySelector('[data-ota-consent]');
         const otaAdd = otaRoot.querySelector('[data-ota-add]');
         const otaMessage = otaRoot.querySelector('[data-ota-message]');
         const otaTimers = new WeakMap();
@@ -119,7 +120,8 @@
             const ready = !!(otaPlatform && otaPublic && otaIcal)
                 && String(otaPlatform.value || '').trim() !== ''
                 && String(otaPublic.value || '').trim() !== ''
-                && String(otaIcal.value || '').trim() !== '';
+                && String(otaIcal.value || '').trim() !== ''
+                && !!(otaConsent && otaConsent.checked);
             otaAdd.disabled = !ready;
             otaAdd.classList.toggle('is-off', !ready);
         };
@@ -149,7 +151,7 @@
                 el('td', {}, el('div', { className: 'sync-actions' },
                     el('button', { type: 'button', className: 'primary', 'data-ota-generate': '', hidden: !showGenerate }, ds.otaGenerateLabel || ''),
                     el('button', { type: 'button', className: 'primary', 'data-ota-check': '', hidden: !showCheck }, ds.otaCheckLabel || ''),
-                    el('button', { type: 'button', className: 'danger', 'data-ota-remove': '' }, ds.otaRemoveLabel || ''))));
+                    el('button', { type: 'button', className: 'danger', 'data-ota-remove': '', hidden: status === 'verified' }, ds.otaRemoveLabel || ''))));
         };
         const otaLoadRows = async function () {
             if (!otaTbody) return;
@@ -248,23 +250,25 @@
         if (otaPlatform) otaPlatform.addEventListener('change', otaSyncAdd);
         if (otaPublic) otaPublic.addEventListener('input', otaSyncAdd);
         if (otaIcal) otaIcal.addEventListener('input', otaSyncAdd);
+        if (otaConsent) otaConsent.addEventListener('change', otaSyncAdd);
         otaSyncAdd();
 
         if (otaAdd) {
             otaAdd.addEventListener('click', async function () {
                 otaAdd.disabled = true;
                 try {
-                    await CL.api(otaBase, {
+                    const res = await CL.api(otaBase, {
                         method: 'POST',
                         body: {
                             platform: String(otaPlatform ? otaPlatform.value : ''),
                             public_url: String(otaPublic ? otaPublic.value : '').trim(),
-                            ical_url: String(otaIcal ? otaIcal.value : '').trim()
+                            ical_url: String(otaIcal ? otaIcal.value : '').trim(),
+                            consent: !!(otaConsent && otaConsent.checked)
                         }
                     });
                     if (otaIcal) otaIcal.value = '';
                     if (otaPublic) otaPublic.value = '';
-                    otaShowMessage(ds.otaAdded || '');
+                    otaShowMessage((res && res.verification && res.verification.message) || ds.otaAdded || '');
                     await otaLoadRows();
                 } catch (e) {
                     otaShowMessage((e && e.message) || '');
