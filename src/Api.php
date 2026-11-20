@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/RequestLog.php';
 require_once __DIR__ . '/GooglePlacesService.php';
 require_once __DIR__ . '/Acoes/GooglePlaceVerify.php';
+require_once __DIR__ . '/IcalExportService.php';
 require_once __DIR__ . '/OtaVerificationService.php';
 
 function json_out(int $status, array $data): never
@@ -646,6 +647,73 @@ function handle_api(string $path, string $method): void
         HouseRepository::markFeedPending((int) $property['id'], (int) $m[2]);
         CalendarFlash::set(t('cal.sync_requested'), 'ok');
         json_out(200, ['ok' => true, 'message' => t('cal.sync_requested'), 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+    }
+
+    // Exportação iCal por plataforma (links 64-hex individuais + toggles do imóvel).
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical-exports$#', $path, $m) && $method === 'GET') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $data = IcalExportService::listForProperty((int) $property['id']);
+        json_out(200, ['ok' => true, 'base_url' => request_base() . '/ical/export/'] + $data);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical-exports/settings$#', $path, $m) && $method === 'PUT') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $normalize = static function (mixed $value): ?bool {
+            if (is_bool($value)) {
+                return $value;
+            }
+            if ($value === 1 || $value === '1') {
+                return true;
+            }
+            if ($value === 0 || $value === '0') {
+                return false;
+            }
+            return null;
+        };
+        $manual = $normalize($body['ical_export_manual_blocks'] ?? null);
+        $imported = $normalize($body['ical_export_imported_events'] ?? null);
+        if ($manual === null || $imported === null) {
+            api_error(422, 'Valores de exportação inválidos.');
+        }
+        json_out(200, [
+            'ok' => true,
+            'settings' => IcalExportService::updateSettings(
+                (int) $property['id'],
+                (int) $user['id'],
+                $manual,
+                $imported
+            ),
+        ]);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical-exports$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        try {
+            $export = IcalExportService::createExport(
+                (int) $property['id'],
+                (int) $user['id'],
+                (string) ($body['target_platform'] ?? ''),
+                isset($body['label']) ? (string) $body['label'] : null
+            );
+        } catch (InvalidArgumentException $e) {
+            api_error(422, $e->getMessage());
+        }
+        json_out(200, [
+            'ok' => true,
+            'export' => $export + ['url' => request_base() . '/ical/export/' . $export['token'] . '.ics'],
+        ]);
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical-exports/(\d+)$#', $path, $m) && $method === 'DELETE') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        if (!IcalExportService::revokeExport((int) $property['id'], (int) $user['id'], (int) $m[2])) {
+            api_error(404, 'Link de exportação não encontrado.');
+        }
+        json_out(200, ['ok' => true]);
     }
 
     // Exportar ICS: somente pelo ical_hash secreto (32 hex). O hash público não exporta mais.

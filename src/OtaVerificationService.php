@@ -27,6 +27,8 @@ final class OtaVerificationService
     public const MAX_DAILY_CHALLENGES_PER_USER = 5;
     public const MAX_CHECK_ATTEMPTS = 15;
     public const PASSIVE_DOWNGRADE_FAIL_DAYS = 3;
+    /** Retention of the daily-rate log; the 5/day cap only reads the last 24h. */
+    public const CHALLENGE_ATTEMPTS_RETENTION_DAYS = 7;
 
     /** Test hook: fn(string $url, int $timeout): string. Null uses the SSRF-safe cURL transport. */
     public static ?Closure $httpTransport = null;
@@ -538,6 +540,14 @@ final class OtaVerificationService
               WHERE id = ?'
         )->execute([$now, $now, $verificationId]);
         return ['status' => 'ok', 'fail_count' => 0];
+    }
+
+    /** Deletes challenge-rate rows older than the retention window (keeps the 24h cap intact). */
+    public static function purgeOldChallengeAttempts(): int
+    {
+        $stmt = db()->prepare('DELETE FROM ota_challenge_attempts WHERE created_at < to_timestamp(?)');
+        $stmt->execute([self::now() - self::CHALLENGE_ATTEMPTS_RETENTION_DAYS * 86400]);
+        return $stmt->rowCount();
     }
 
     /** @return list<array<string, mixed>> */

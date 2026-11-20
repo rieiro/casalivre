@@ -88,6 +88,12 @@ final class ActivityLog
     public const OTA_VERIFY_REMOVE = 56;
     /** Selo OTA rebaixado após 3 dias seguidos de falha no check passivo (401/403/404/410). Admin. */
     public const OTA_VERIFY_DOWNGRADED = 57;
+    /** Link de exportação iCal criado (Host/Gestor). Admin. */
+    public const ICAL_EXPORT_CREATE = 58;
+    /** Link de exportação iCal revogado (Host/Gestor). Admin. */
+    public const ICAL_EXPORT_REVOKE = 59;
+    /** Toggles de exportação iCal do imóvel alterados (Host/Gestor). Admin. */
+    public const ICAL_EXPORT_SETTINGS = 60;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -147,6 +153,9 @@ final class ActivityLog
         self::OTA_VERIFY_ADD => 'Desafio de verificação adicionado',
         self::OTA_VERIFY_REMOVE => 'Desafio de verificação removido',
         self::OTA_VERIFY_DOWNGRADED => 'Verificação OTA rebaixada por falha passiva',
+        self::ICAL_EXPORT_CREATE => 'Link de exportação iCal criado',
+        self::ICAL_EXPORT_REVOKE => 'Link de exportação iCal revogado',
+        self::ICAL_EXPORT_SETTINGS => 'Configuração de exportação iCal alterada',
     ];
 
     public const ADMIN = 'admin';
@@ -186,6 +195,9 @@ final class ActivityLog
         self::OTA_VERIFY_ADD => self::ADMIN,
         self::OTA_VERIFY_REMOVE => self::ADMIN,
         self::OTA_VERIFY_DOWNGRADED => self::ADMIN,
+        self::ICAL_EXPORT_CREATE => self::ADMIN,
+        self::ICAL_EXPORT_REVOKE => self::ADMIN,
+        self::ICAL_EXPORT_SETTINGS => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -517,6 +529,9 @@ final class ActivityLog
         self::OTA_VERIFY_ADD => ['imovel_id', 'plataforma', 'url'],
         self::OTA_VERIFY_REMOVE => ['imovel_id', 'plataforma'],
         self::OTA_VERIFY_DOWNGRADED => ['imovel_id', 'plataforma', 'falhas'],
+        self::ICAL_EXPORT_CREATE => ['imovel_id', 'plataforma', 'label'],
+        self::ICAL_EXPORT_REVOKE => ['imovel_id', 'export_id', 'plataforma'],
+        self::ICAL_EXPORT_SETTINGS => ['imovel_id', 'ical_export_manual_blocks', 'ical_export_imported_events'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 
@@ -535,6 +550,7 @@ final class ActivityLog
         'grupo', 'nome', 'papel', 'dominio',
         'quote_hash', 'total_price', 'tax_percent', 'special_offer',
         'plataforma', 'challenge_date', 'creditos', 'falhas',
+        'ical_export_manual_blocks', 'ical_export_imported_events', 'target_platform', 'label',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

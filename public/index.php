@@ -30,6 +30,7 @@ require_once __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
 require_once __DIR__ . '/../src/CalendarSync.php';
 require_once __DIR__ . '/../src/Api.php';
+require_once __DIR__ . '/../src/IcalExportService.php';
 require_once __DIR__ . '/../src/ActivityLog.php';
 ActivityLog::beginRequest();
 require_once __DIR__ . '/../src/PublicListing.php';
@@ -173,7 +174,7 @@ function cors_allowed_origins(): array
 /** Rotas GET públicas e somente leitura que o HEAD pode reaproveitar (sem token, auditoria ou escrita). */
 function head_permitido(string $path): bool
 {
-    return preg_match('#^/(?:busca(?:/mapa)?|imove(?:is|l)/[a-f0-9]{16}|imovel/[a-z0-9-]+|pagamento/[a-f0-9]{16,32}|pagamento/intencao/[a-f0-9]{16,32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
+    return preg_match('#^/(?:busca(?:/mapa)?|imove(?:is|l)/[a-f0-9]{16}|imovel/[a-z0-9-]+|pagamento/[a-f0-9]{16,32}|pagamento/intencao/[a-f0-9]{16,32}|g/[a-z0-9-]{1,40}(?:/|/busca|/busca/mapa|/imoveis/[a-f0-9]{16})?|entrar|cadastro|senha/esqueci|ical/export/[a-f0-9]{64}\.ics|llms\\.txt|llms-full\\.txt|openapi\\.json|mcp|api/(?:busca|cidades|ceps|imoveis/[a-f0-9]{16})|api/v1/agent/(?:search|properties/[a-f0-9]{16}(?:/quote)?))?$#', $path) === 1;
 }
 
 function casa_privado(string $path, string $method): bool
@@ -207,6 +208,9 @@ function casa_privado(string $path, string $method): bool
         return true;
     }
     if (preg_match('#^/api/properties/[^/]+/verifications(/|$)#', $path) === 1) {
+        return true;
+    }
+    if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical-exports(/|$)#', $path) === 1) {
         return true;
     }
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
@@ -1527,6 +1531,26 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
             'view' => $viewName,
         ] : null,
     ]);
+    return null;
+}
+
+if (preg_match('#^/ical/export/([a-f0-9]{64})\.ics$#', $path, $m) && $method === 'GET') {
+    $rendered = IcalExportService::renderIcsForToken($m[1]);
+    if ($rendered === null) {
+        http_response_code(404);
+        exit('Não encontrado');
+    }
+    $property = $rendered['property'];
+    $noHost = GrupoResolvedor::imovelNoHost(property_ref($property), $_SERVER['HTTP_HOST'] ?? null);
+    if ($noHost[0] && $noHost[1] === null) {
+        http_response_code(404);
+        exit('Não encontrado');
+    }
+    header('Content-Type: text/calendar; charset=utf-8');
+    header('Content-Disposition: inline; filename="casalivre-' . property_ref($property) . '.ics"');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    echo $rendered['ics'];
     return null;
 }
 

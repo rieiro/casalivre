@@ -9,6 +9,9 @@ $monthCount = ((int) $limit->format('Y') - (int) $cursor->format('Y')) * 12 + ((
 $today = date('Y-m-d');
 $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
+require_once dirname(__DIR__) . '/src/IcalExportService.php';
+$icalExportData = IcalExportService::listForProperty((int) $property['id']);
+$icalExportBase = request_base() . '/ical/export/';
 ?>
 <section class="wrap">
     <h1 class="cal-title" data-cal-title><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>
@@ -193,11 +196,87 @@ $feeds = $feeds ?? [];
             <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
         </form>
     </div>
-    <?php $exportUrl = request_base() . '/ical/' . HouseRepository::ensureIcalHash($property); ?>
-    <div class="panel mt-16">
-        <label><?= e(t('cal.export_link')) ?>
-            <input readonly value="<?= e($exportUrl) ?>" data-select-on-click>
-        </label>
+    <div
+        class="panel mt-16 ical-export-panel"
+        data-ical-export
+        data-saved="<?= e(t('ical.settings_saved')) ?>"
+        data-copied="<?= e(t('ical.copied')) ?>"
+        data-copy-error="<?= e(t('ical.copy_error')) ?>"
+        data-revoke-confirm="<?= e(t('ical.revoke_confirm')) ?>"
+        data-error-settings="<?= e(t('ical.error_settings')) ?>"
+        data-error-create="<?= e(t('ical.error_create')) ?>"
+        data-error-revoke="<?= e(t('ical.error_revoke')) ?>"
+    >
+        <h2><?= e(t('ical.export_title')) ?></h2>
+        <p class="muted fine"><?= e(t('ical.export_subtitle')) ?></p>
+
+        <div class="ical-export-settings">
+            <label class="prop-checkbox-label">
+                <input type="checkbox" value="1" data-ical-export-setting="manual"<?= $icalExportData['settings']['ical_export_manual_blocks'] ? ' checked' : '' ?>>
+                <span><?= e(t('ical.manual_blocks')) ?></span>
+            </label>
+            <label class="prop-checkbox-label">
+                <input type="checkbox" value="1" data-ical-export-setting="imported"<?= $icalExportData['settings']['ical_export_imported_events'] ? ' checked' : '' ?>>
+                <span><?= e(t('ical.imported_events')) ?></span>
+            </label>
+            <p class="muted fine"><?= e(t('ical.imported_hint')) ?></p>
+        </div>
+
+        <form class="ical-export-form" data-ical-export-form>
+            <label><?= e(t('ical.platform')) ?>
+                <select name="target_platform">
+                    <?php foreach (IcalExportService::PLATFORMS as $icalPlatform): ?>
+                        <option value="<?= e($icalPlatform) ?>"><?= e(t('ical.platform_' . $icalPlatform)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label><?= e(t('ical.label')) ?>
+                <input name="label" maxlength="60" placeholder="<?= e(t('ical.label')) ?>">
+            </label>
+            <button class="primary" type="submit"><?= e(t('ical.generate')) ?></button>
+        </form>
+
+        <div class="sync-scroll">
+            <table class="sync-table ical-export-table">
+                <thead>
+                    <tr>
+                        <th><?= e(t('ical.col_platform')) ?></th>
+                        <th><?= e(t('ical.col_link')) ?></th>
+                        <th><?= e(t('ical.col_last')) ?></th>
+                        <th><?= e(t('ical.col_actions')) ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($icalExportData['exports'] === []): ?>
+                        <tr><td colspan="4" class="muted"><?= e(t('ical.empty')) ?></td></tr>
+                    <?php endif; ?>
+                    <?php foreach ($icalExportData['exports'] as $icalExport): ?>
+                        <?php
+                        $icalPlatform = (string) $icalExport['target_platform'];
+                        $icalLink = $icalExportBase . $icalExport['token'] . '.ics';
+                        ?>
+                        <tr>
+                            <td>
+                                <strong><?= e(t('ical.platform_' . $icalPlatform)) ?></strong>
+                                <?php if ($icalExport['label'] !== null && $icalExport['label'] !== ''): ?>
+                                    <br><span class="muted fine"><?= e((string) $icalExport['label']) ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <div class="ical-export-link">
+                                    <input readonly value="<?= e($icalLink) ?>" data-ical-export-link data-select-on-click>
+                                    <button class="primary" type="button" data-ical-export-copy><?= e(t('ical.copy')) ?></button>
+                                </div>
+                            </td>
+                            <td class="<?= $icalExport['stale'] ? 'ical-export-stale' : '' ?>"><?= e((string) $icalExport['last_fetched_label']) ?></td>
+                            <td>
+                                <button class="danger" type="button" data-ical-export-revoke data-export-id="<?= (int) $icalExport['id'] ?>"><?= e(t('ical.revoke')) ?></button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
     <?php if (is_array($restore ?? null)): ?>
         <div hidden data-cal-restore data-start="<?= e((string) ($restore['inicio'] ?? '')) ?>" data-end="<?= e((string) ($restore['fim'] ?? '')) ?>" data-view="<?= e((string) ($restore['view'] ?? 'day')) ?>"></div>

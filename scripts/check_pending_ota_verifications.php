@@ -14,6 +14,7 @@ require_once $root . '/src/helpers.php';
 require_once $root . '/src/ActivityLog.php';
 require_once $root . '/src/QueueWorker.php';
 require_once $root . '/src/OtaVerificationService.php';
+require_once $root . '/src/IcalExportService.php';
 Db::loadEnv();
 
 @mkdir($root . '/storage', 0700, true);
@@ -24,7 +25,7 @@ if (!flock($lock, LOCK_EX | LOCK_NB)) {
 }
 
 $now = time();
-$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'passive_checked' => 0, 'downgraded' => 0, 'errors' => 0];
+$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'passive_checked' => 0, 'downgraded' => 0, 'attempts_purged' => 0, 'exports_purged' => 0, 'errors' => 0];
 
 try {
     $expired = db()->prepare(
@@ -83,12 +84,16 @@ try {
         }
     }
 
+    // Retenção: tentativas antigas do limite diário e links de exportação revogados.
+    $report['attempts_purged'] = OtaVerificationService::purgeOldChallengeAttempts();
+    $report['exports_purged'] = IcalExportService::purgeRevokedExports();
+
 } catch (Throwable $e) {
     fwrite(STDERR, 'check_pending_ota_verifications: ' . $e->getMessage() . "\n");
     exit(0);
 }
 
 foreach ($report as $key => $count) {
-    echo str_pad($key, 12) . $count . "\n";
+    echo str_pad($key, 16) . $count . "\n";
 }
 exit(0);

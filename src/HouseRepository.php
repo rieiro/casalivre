@@ -547,6 +547,7 @@ SQL;
             return 'url';
         }
         $urlHash = hash('sha256', $url);
+        $sourcePlatform = self::detectSourcePlatform($url);
         $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url_hash = ?');
         $exists->execute([$propertyId, $urlHash]);
         if ($exists->fetchColumn()) {
@@ -557,7 +558,7 @@ SQL;
         if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
             return 'limit';
         }
-        $row = self::takeFreeSlot($propertyId, CalendarSync::encryptUrl($url), $title, $urlHash);
+        $row = self::takeFreeSlot($propertyId, CalendarSync::encryptUrl($url), $title, $urlHash, $sourcePlatform);
         if ($row !== null) {
             return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
         }
@@ -754,10 +755,10 @@ SQL;
     }
 
     /** @return array{id: int|string, url: string, title: string}|null */
-    private static function takeFreeSlot(int $propertyId, string $url, string $title, string $urlHash): ?array
+    private static function takeFreeSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform): ?array
     {
         for ($attempt = 0; $attempt < self::ADD_SLOT_ATTEMPTS; $attempt++) {
-            $row = self::insertFeedSlot($propertyId, $url, $title, $urlHash);
+            $row = self::insertFeedSlot($propertyId, $url, $title, $urlHash, $sourcePlatform);
             if ($row !== null) {
                 return $row;
             }
@@ -765,17 +766,38 @@ SQL;
         return null;
     }
 
-    private static function insertFeedSlot(int $propertyId, string $url, string $title, string $urlHash): ?array
+    private static function insertFeedSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform): ?array
     {
-        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, url_hash, title)
-            SELECT ?, s.slot, ?, ?, ?
+        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, url_hash, title, source_platform)
+            SELECT ?, s.slot, ?, ?, ?, ?
             FROM (SELECT min(g)::smallint AS slot FROM generate_series(1, ' . self::FEED_SLOTS . ') g
                   WHERE NOT EXISTS (SELECT 1 FROM calendar_feeds f WHERE f.property_id = ? AND f.slot = g)) s
             WHERE s.slot IS NOT NULL
             ON CONFLICT DO NOTHING
             RETURNING id, url, title';
-        $rows = ReturningWrite::query($sql, [$propertyId, $url, $urlHash, $title, $propertyId]);
+        $rows = ReturningWrite::query($sql, [$propertyId, $url, $urlHash, $title, $sourcePlatform, $propertyId]);
         return $rows[0] ?? null;
+    }
+
+    /** Source platform of an imported feed, used to prevent iCal export echo loops. */
+    public static function detectSourcePlatform(string $url): string
+    {
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === '') {
+            return 'other';
+        }
+        if ($host === 'airbnb.com' || $host === 'airbnb.com.br' || str_ends_with($host, '.airbnb.com') || str_ends_with($host, '.airbnb.com.br')) {
+            return 'airbnb';
+        }
+        if ($host === 'booking.com' || str_ends_with($host, '.booking.com')) {
+            return 'booking';
+        }
+        if (in_array($host, ['vrbo.com', 'www.vrbo.com', 'aluguetemporada.com.br', 'www.aluguetemporada.com.br'], true)
+            || str_ends_with($host, '.vrbo.com')
+        ) {
+            return 'vrbo';
+        }
+        return 'other';
     }
 
     public static function addReview(int $propertyId, string $author, int $score, string $comment): void
