@@ -208,16 +208,7 @@ final class OtaVerificationService
         $icalUrl = self::normalizeUrl(trim($icalUrl));
         self::validateUrls($platform, $publicUrl, $icalUrl);
 
-        $taken = db()->prepare(
-            "SELECT 1 FROM property_external_verifications
-              WHERE property_id <> ? AND status IN ('verified', 'pending_challenge')
-                AND (public_url = ? OR (ical_url IS NOT NULL AND ical_url = ?))
-              LIMIT 1"
-        );
-        $taken->execute([$propertyId, $publicUrl, $icalUrl]);
-        if ($taken->fetchColumn() !== false) {
-            throw new InvalidArgumentException('Este link já está verificado em outro imóvel.');
-        }
+        self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
 
         $ics = self::fetchIcsFeed($icalUrl);
         $now = self::now();
@@ -433,6 +424,94 @@ final class OtaVerificationService
         });
     }
 
+    /**
+     * Saves (or updates) the listing URLs without generating the challenge date yet.
+     *
+     * @return array{id: int, platform: string, status: string, public_url: string}
+     */
+    public static function addChallenge(int $propertyId, string $platform, string $publicUrl, string $icalUrl): array
+    {
+        $platform = strtolower(trim($platform));
+        $publicUrl = self::normalizeUrl(trim($publicUrl));
+        $icalUrl = self::normalizeUrl(trim($icalUrl));
+        self::validateUrls($platform, $publicUrl, $icalUrl);
+        self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
+
+        $now = self::now();
+        $stmt = db()->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'unverified', to_timestamp(?), to_timestamp(?))
+             ON CONFLICT (property_id, platform) DO UPDATE SET
+                public_url = EXCLUDED.public_url,
+                ical_url = EXCLUDED.ical_url,
+                status = 'unverified',
+                challenge_date = NULL,
+                challenge_expires_at = NULL,
+                last_checked_at = NULL,
+                attempts = 0,
+                verified_at = NULL,
+                updated_at = EXCLUDED.updated_at
+             RETURNING id"
+        );
+        $stmt->execute([$propertyId, $platform, $publicUrl, $icalUrl, $now, $now]);
+        $verificationId = (int) $stmt->fetchColumn();
+
+        ActivityLog::record(ActivityLog::OTA_VERIFY_ADD, [
+            'imovel_id' => $propertyId,
+            'plataforma' => $platform,
+            'url' => CalendarSync::logRef($icalUrl),
+        ]);
+
+        return [
+            'id' => $verificationId,
+            'platform' => $platform,
+            'status' => 'unverified',
+            'public_url' => $publicUrl,
+        ];
+    }
+
+    /**
+     * Generates (or regenerates) the open-date challenge for an already saved verification.
+     *
+     * @return array<string, mixed>
+     */
+    public static function generateChallenge(int $verificationId): array
+    {
+        $row = self::findRow($verificationId);
+        if ($row === null) {
+            throw new InvalidArgumentException('Verificação não encontrada.');
+        }
+        if ((string) $row['status'] === 'verified') {
+            throw new InvalidArgumentException('Este anúncio já está verificado.');
+        }
+        return self::startChallenge(
+            (int) $row['property_id'],
+            (string) $row['platform'],
+            (string) $row['public_url'],
+            (string) $row['ical_url']
+        );
+    }
+
+    /** Removes a verification row (already awarded credits stay with the host). */
+    public static function removeChallenge(int $verificationId, int $propertyId): bool
+    {
+        $row = self::findForProperty($verificationId, $propertyId);
+        if ($row === null) {
+            return false;
+        }
+        $stmt = db()->prepare('DELETE FROM property_external_verifications WHERE id = ? AND property_id = ?');
+        $stmt->execute([$verificationId, $propertyId]);
+        if ($stmt->rowCount() === 0) {
+            return false;
+        }
+        ActivityLog::record(ActivityLog::OTA_VERIFY_REMOVE, [
+            'imovel_id' => $propertyId,
+            'plataforma' => (string) $row['platform'],
+        ]);
+        return true;
+    }
+
     /** @return list<array<string, mixed>> */
     public static function listForProperty(int $propertyId): array
     {
@@ -453,6 +532,7 @@ final class OtaVerificationService
                 'challenge_date_br' => $row['challenge_date'] === null ? null : self::dateBr((string) $row['challenge_date']),
                 'challenge_expires_at' => $row['challenge_expires_at'] === null ? null : (string) $row['challenge_expires_at'],
                 'last_checked_at' => $row['last_checked_at'] === null ? null : (string) $row['last_checked_at'],
+                'last_checked_at_br' => $row['last_checked_at'] === null ? null : self::dateTimeBr((string) $row['last_checked_at']),
                 'attempts' => (int) $row['attempts'],
                 'verified_at' => $row['verified_at'] === null ? null : (string) $row['verified_at'],
                 'credits_awarded' => (int) $row['credits_awarded'],
@@ -568,6 +648,26 @@ final class OtaVerificationService
     {
         $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $ymd, new DateTimeZone('UTC'));
         return $dt === false ? $ymd : $dt->format('d/m/Y');
+    }
+
+    private static function dateTimeBr(string $value): string
+    {
+        $ts = strtotime($value);
+        return $ts === false ? $value : gmdate('d/m/Y H:i', $ts);
+    }
+
+    private static function assertUrlsFree(int $propertyId, string $publicUrl, string $icalUrl): void
+    {
+        $taken = db()->prepare(
+            "SELECT 1 FROM property_external_verifications
+              WHERE property_id <> ? AND status IN ('verified', 'pending_challenge')
+                AND (public_url = ? OR (ical_url IS NOT NULL AND ical_url = ?))
+              LIMIT 1"
+        );
+        $taken->execute([$propertyId, $publicUrl, $icalUrl]);
+        if ($taken->fetchColumn() !== false) {
+            throw new InvalidArgumentException('Este link já está verificado em outro imóvel.');
+        }
     }
 
     /** @return array<string, mixed>|null */

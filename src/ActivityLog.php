@@ -82,6 +82,10 @@ final class ActivityLog
     public const OTA_VERIFY_START = 53;
     /** Anúncio comprovado em plataforma parceira (bloqueio do dia visível no iCal). Admin. */
     public const OTA_VERIFY_VERIFIED = 54;
+    /** Desafio iCal adicionado/atualizado no painel (URLs e plataforma), antes de gerar a data. Admin. */
+    public const OTA_VERIFY_ADD = 55;
+    /** Desafio iCal removido pelo anfitrião. Admin. */
+    public const OTA_VERIFY_REMOVE = 56;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -138,6 +142,8 @@ final class ActivityLog
         self::RESERVATION_CONFIRM => 'Confirmação de reserva de cotação',
         self::OTA_VERIFY_START => 'Início de verificação de anúncio em plataforma parceira',
         self::OTA_VERIFY_VERIFIED => 'Anúncio verificado em plataforma parceira',
+        self::OTA_VERIFY_ADD => 'Desafio de verificação adicionado',
+        self::OTA_VERIFY_REMOVE => 'Desafio de verificação removido',
     ];
 
     public const ADMIN = 'admin';
@@ -174,6 +180,8 @@ final class ActivityLog
         self::RESERVATION_CONFIRM => self::ADMIN,
         self::OTA_VERIFY_START => self::ADMIN,
         self::OTA_VERIFY_VERIFIED => self::ADMIN,
+        self::OTA_VERIFY_ADD => self::ADMIN,
+        self::OTA_VERIFY_REMOVE => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -502,6 +510,8 @@ final class ActivityLog
         self::RESERVATION_CONFIRM => ['checkin', 'checkout', 'total', 'motivo'],
         self::OTA_VERIFY_START => ['imovel_id', 'plataforma', 'url', 'challenge_date'],
         self::OTA_VERIFY_VERIFIED => ['imovel_id', 'plataforma', 'data', 'creditos'],
+        self::OTA_VERIFY_ADD => ['imovel_id', 'plataforma', 'url'],
+        self::OTA_VERIFY_REMOVE => ['imovel_id', 'plataforma'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 

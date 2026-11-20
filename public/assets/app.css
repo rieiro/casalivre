@@ -4792,16 +4792,23 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     }
 }
 
-/* OTA listing verification: host dashboard challenge flow. */
-.prop-ota-status-row {
+/* OTA listing verification: host dashboard (add + table) and public badge. */
+.prop-ota-section {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px dashed var(--line);
 }
-.prop-ota-status-label {
-    font-size: 0.85rem;
-    color: var(--muted);
+.prop-ota-section:last-of-type {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+.prop-ota-section-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ink);
 }
 .prop-ota-status-badge {
     display: inline-flex;
@@ -4824,38 +4831,33 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     background: #e8f5ee;
     color: var(--ok);
 }
+.prop-ota-status-badge.is-failed {
+    border-color: var(--danger-line);
+    background: var(--danger-bg);
+    color: var(--danger);
+}
 .prop-ota-actions {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     flex-wrap: wrap;
 }
-.prop-ota-challenge-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.9rem 1rem;
-    border: 1px solid var(--notice-line);
-    border-radius: 0.75rem;
-    background: var(--notice-bg);
+.prop-ota-table {
+    min-width: 640px;
 }
-.prop-ota-step {
-    margin: 0;
-    font-weight: 600;
-    color: var(--ink);
+.prop-ota-table td {
+    vertical-align: top;
 }
-.prop-ota-verified-box {
+.prop-ota-table [hidden] {
+    display: none !important;
+}
+.prop-ota-table .sync-actions {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 0.35rem;
-    padding: 0.9rem 1rem;
-    border: 1px solid #a7d8bd;
-    border-radius: 0.75rem;
-    background: #e8f5ee;
 }
-.prop-ota-verified-title {
-    color: var(--ok);
-    font-size: 0.95rem;
+.prop-ota-table .sync-actions button {
+    white-space: nowrap;
 }
 .prop-ota-help {
     display: flex;
@@ -4895,9 +4897,8 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     .prop-ota-actions .btn-dash-action {
         width: 100%;
     }
-    .prop-ota-status-row {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 0.25rem;
+    .prop-ota-table {
+        min-width: 560px;
+        font-size: 0.8rem;
     }
 }

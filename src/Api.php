@@ -678,6 +678,47 @@ function handle_api(string $path, string $method): void
         ]);
     }
 
+    if (preg_match('#^/api/properties/([^/]+)/verifications$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property_by_ref($user, $m[1]);
+        try {
+            $result = OtaVerificationService::addChallenge(
+                (int) $property['id'],
+                (string) ($body['platform'] ?? ''),
+                (string) ($body['public_url'] ?? ''),
+                (string) ($body['ical_url'] ?? '')
+            );
+        } catch (InvalidArgumentException $e) {
+            api_error(422, $e->getMessage());
+        }
+        json_out(200, ['ok' => true, 'verification' => $result]);
+    }
+
+    if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)/generate$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property_by_ref($user, $m[1]);
+        if (OtaVerificationService::findForProperty((int) $m[2], (int) $property['id']) === null) {
+            api_error(404, 'Verificação não encontrada.');
+        }
+        try {
+            $result = OtaVerificationService::generateChallenge((int) $m[2]);
+        } catch (InvalidArgumentException $e) {
+            api_error(422, $e->getMessage());
+        } catch (RuntimeException $e) {
+            api_error(422, $e->getMessage());
+        }
+        json_out(200, ['ok' => true] + $result);
+    }
+
+    if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)$#', $path, $m) && $method === 'DELETE') {
+        $user = api_require_user($user);
+        $property = api_owned_property_by_ref($user, $m[1]);
+        if (!OtaVerificationService::removeChallenge((int) $m[2], (int) $property['id'])) {
+            api_error(404, 'Verificação não encontrada.');
+        }
+        json_out(200, ['ok' => true]);
+    }
+
     if (preg_match('#^/api/properties/([^/]+)/verifications/start$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
         $property = api_owned_property_by_ref($user, $m[1]);

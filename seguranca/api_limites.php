@@ -21,7 +21,10 @@ return [
     // Validar o Google Place ID no painel: 10 tentativas por 10 min por IP.
     ['POST', '#^/api/google-place/verificar$#', 10, 600, '/api/google-place/verificar'],
     // Verificação de anúncio em plataforma parceira: 10 desafios/10 min e 30 checagens/min por IP.
+    ['POST', '#^/api/properties/[^/]+/verifications$#', 10, 600, '/api/properties/*/verifications/add'],
     ['POST', '#^/api/properties/[^/]+/verifications/start$#', 10, 600, '/api/properties/*/verifications/start'],
+    ['POST', '#^/api/properties/[^/]+/verifications/\d+/generate$#', 10, 600, '/api/properties/*/verifications/generate'],
+    ['DELETE', '#^/api/properties/[^/]+/verifications/\d+$#', 20, 600, '/api/properties/*/verifications/remove'],
     ['POST', '#^/api/properties/[^/]+/verifications/\d+/check$#', 30, 60, '/api/properties/*/verifications/check'],
     // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
     ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],

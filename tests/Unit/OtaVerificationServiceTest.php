@@ -468,4 +468,68 @@ final class OtaVerificationServiceTest extends TestCase
             $this->assertStringContainsString('já está verificado', $e->getMessage());
         }
     }
+
+    public function testAddGenerateAndRemoveChallengeFlow(): void
+    {
+        $this->assertSame(55, ActivityLog::OTA_VERIFY_ADD);
+        $this->assertSame(56, ActivityLog::OTA_VERIFY_REMOVE);
+
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->airbnbIcs();
+        $this->fixedRandom([60]);
+
+        $property = $this->activeProperty();
+        $publicUrl = 'https://www.airbnb.com/rooms/12345678';
+        $icalUrl = 'https://www.airbnb.com/calendar/ical/12345678.ics';
+
+        $added = OtaVerificationService::addChallenge($property['id'], 'airbnb', $publicUrl, $icalUrl);
+        $verificationId = (int) $added['id'];
+        $this->assertGreaterThan(0, $verificationId);
+        $this->assertSame('unverified', $added['status']);
+
+        $row = $this->pdo->prepare('SELECT * FROM property_external_verifications WHERE id = ?');
+        $row->execute([$verificationId]);
+        $stored = $row->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('unverified', $stored['status']);
+        $this->assertNull($stored['challenge_date']);
+
+        $generated = OtaVerificationService::generateChallenge($verificationId);
+        $this->assertSame('pending_challenge', $generated['status']);
+        $this->assertSame($verificationId, (int) $generated['verification_id']);
+        $this->assertSame('2028-03-20', $generated['challenge_date']);
+
+        $rows = OtaVerificationService::listForProperty($property['id']);
+        $this->assertCount(1, $rows);
+        $this->assertSame('pending_challenge', $rows[0]['status']);
+        $this->assertSame('20/03/2028', $rows[0]['challenge_date_br']);
+
+        $other = $this->activeProperty(1);
+        try {
+            OtaVerificationService::addChallenge($other['id'], 'airbnb', $publicUrl, $icalUrl);
+            $this->fail('a pending challenge must block the same link on another property');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('já está verificado', $e->getMessage());
+        }
+
+        $this->assertTrue(OtaVerificationService::removeChallenge($verificationId, $property['id']));
+        $this->assertFalse(OtaVerificationService::removeChallenge($verificationId, $property['id']));
+        $this->assertSame([], OtaVerificationService::listForProperty($property['id']));
+    }
+
+    public function testAddChallengeRejectsUrlsOfAnotherPlatform(): void
+    {
+        $property = $this->activeProperty();
+        try {
+            OtaVerificationService::addChallenge(
+                $property['id'],
+                'airbnb',
+                'https://www.booking.com/hotel/br/casa.html',
+                'https://ical.booking.com/v1/export?t=x'
+            );
+            $this->fail('booking URLs must not be accepted for the airbnb platform');
+        } catch (InvalidArgumentException $e) {
+            $this->assertNotSame('', $e->getMessage());
+        }
+        $this->assertSame([], OtaVerificationService::listForProperty($property['id']));
+    }
 }
