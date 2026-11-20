@@ -8,6 +8,18 @@ $cleaningFee = (int) ($property['cleaning_fee'] ?? 0);
 $backUrl = safe_search_return((string) ($_GET['volta'] ?? ''));
 
 $amenityIcons = Amenities::ICONS;
+
+// Fallback server-side (sem JS): a página com use_api é montada pelo property.js, que recebe o mesmo
+// google_reputation pelo GET /api/imoveis/{hash}. Sem chave/cache/falha do Google, $googleReputation fica null.
+$googleReputation = null;
+if (empty($use_api) && !empty($property['google_place_id'])) {
+    require_once dirname(__DIR__) . '/src/GooglePlacesService.php';
+    $googleReputation = GooglePlacesService::getReputation((string) $property['google_place_id'], current_locale());
+}
+$googleAuthorInitial = static function (string $name): string {
+    $initial = function_exists('mb_substr') ? mb_substr($name, 0, 1) : substr($name, 0, 1);
+    return function_exists('mb_strtoupper') ? mb_strtoupper($initial) : strtoupper($initial);
+};
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/gallery-lightbox.css')) ?>">
 <section class="wrap prop-view-page" id="property-detail">
@@ -175,6 +187,43 @@ $amenityIcons = Amenities::ICONS;
                     </ul>
                 </div>
 
+                <?php if (is_array($googleReputation)): ?>
+                    <!-- Google Maps reputation (atribuição obrigatória; links só para hosts oficiais do Google) -->
+                    <div class="prop-view-card prop-google-reputation-card">
+                        <div class="prop-google-header">
+                            <h2 class="prop-view-card-title"><?= e(t('prop.google_reviews_title')) ?></h2>
+                            <a class="prop-google-view-link" href="<?= e($googleReputation['google_maps_uri']) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('prop.google_view_on_maps')) ?> ↗</a>
+                        </div>
+                        <div class="prop-google-score-box">
+                            <?php if ($googleReputation['rating'] !== null && (int) $googleReputation['user_rating_count'] > 0): ?>
+                                <span class="prop-google-score">★ <?= number_format((float) $googleReputation['rating'], 1, ',', '.') ?></span>
+                                <span class="prop-google-score-label"><?= e(sprintf(t('prop.google_reviews_count'), (int) $googleReputation['user_rating_count'])) ?></span>
+                            <?php else: ?>
+                                <span class="prop-google-score-label"><?= e(t('prop.google_reviews_empty')) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($googleReputation['reviews'] !== []): ?>
+                            <div class="prop-google-reviews-grid">
+                                <?php foreach ($googleReputation['reviews'] as $googleReview): ?>
+                                    <div class="prop-google-review-item">
+                                        <div class="prop-google-review-head">
+                                            <span class="prop-google-avatar" aria-hidden="true"><?= e($googleAuthorInitial((string) $googleReview['author'])) ?></span>
+                                            <div class="prop-google-review-author">
+                                                <strong><?= e($googleReview['author']) ?></strong>
+                                                <span class="prop-google-review-time"><?= e($googleReview['relative_time']) ?></span>
+                                            </div>
+                                        </div>
+                                        <span class="prop-google-review-stars"><?= str_repeat('★', max(1, min(5, (int) $googleReview['rating']))) ?></span>
+                                        <?php if ((string) $googleReview['text'] !== ''): ?>
+                                            <p class="prop-google-review-text"><?= e($googleReview['text']) ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                        <a class="prop-google-attribution" href="<?= e($googleReputation['google_maps_uri']) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('prop.google_reviews_title')) ?> · <?= e(t('prop.google_attribution')) ?></a>
+                    </div>
+                <?php endif; ?>
 
             </div>
 

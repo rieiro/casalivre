@@ -46,6 +46,52 @@
         }
     });
 
+    // "Testar Place ID": valida e pré-visualiza a reputação do Google sem salvar o imóvel.
+    // Clique duplo não dispara duas requisições (trava + janela de 400 ms).
+    const googlePlaceInput = form.querySelector('[data-google-place-input]');
+    const googlePlaceButton = form.querySelector('[data-verify-google-place]');
+    const googlePlaceStatus = form.querySelector('[data-google-place-status]');
+    if (googlePlaceInput && googlePlaceButton && googlePlaceStatus) {
+        let googlePlaceBusy = false;
+        let googlePlaceLastClick = 0;
+        const showGooglePlaceStatus = function (text, ok) {
+            googlePlaceStatus.textContent = String(text || '');
+            googlePlaceStatus.hidden = false;
+            googlePlaceStatus.classList.toggle('is-ok', ok === true);
+            googlePlaceStatus.classList.toggle('is-error', ok === false);
+        };
+        googlePlaceButton.addEventListener('click', async function () {
+            const now = Date.now();
+            if (googlePlaceBusy || now - googlePlaceLastClick < 400) return;
+            googlePlaceLastClick = now;
+            const value = String(googlePlaceInput.value || '').trim();
+            if (value === '') {
+                showGooglePlaceStatus(googlePlaceButton.dataset.empty || '', false);
+                return;
+            }
+            googlePlaceBusy = true;
+            googlePlaceButton.disabled = true;
+            try {
+                const res = await CL.api('/api/google-place/verificar', {
+                    method: 'POST',
+                    body: { google_place_id: value }
+                });
+                const rep = (res && res.google_reputation) || {};
+                const rating = (rep.rating === null || rep.rating === undefined)
+                    ? '-'
+                    : Number(rep.rating).toFixed(1).replace('.', ',');
+                const count = String(Math.max(0, Number(rep.user_rating_count || 0)));
+                const template = String(googlePlaceButton.dataset.ok || '');
+                showGooglePlaceStatus(template.replace('%s', rating).replace('%d', count), true);
+            } catch (e) {
+                showGooglePlaceStatus((e && e.message) || '', false);
+            } finally {
+                googlePlaceBusy = false;
+                googlePlaceButton.disabled = false;
+            }
+        });
+    }
+
     if (!editing || !hash) return;
 
     function showToast(type, title, message) {

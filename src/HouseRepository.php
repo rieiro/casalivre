@@ -61,9 +61,9 @@ SQL;
             $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
             $stmt = db()->prepare('INSERT INTO properties (
                 user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
-                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, pix_key, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, pix_key, status');
+                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, pix_key, google_place_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, pix_key, google_place_id, status');
             $stmt->execute([
                 $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
                 $house['address'], $house['cep'] ?? '', $house['street'] ?? '', $house['address_number'] ?? '', $house['address_complement'] ?? '',
@@ -71,7 +71,7 @@ SQL;
                 $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
                 self::calendarMonths($house),
                 max(0, (int) ($house['cleaning_fee'] ?? 0)),
-                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, (string) ($house['pix_key'] ?? ''), date('Y-m-d H:i:s'),
+                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, (string) ($house['pix_key'] ?? ''), $house['google_place_id'] ?? null, date('Y-m-d H:i:s'),
             ]);
             $row = $stmt->fetch();
             $row['city'] = self::cityText($placeId);
@@ -178,10 +178,11 @@ SQL;
                 'garage' => $house['garage'],
                 'amenities' => $house['amenities'] ?? '{}',
                 'pix_key' => (string) ($house['pix_key'] ?? ''),
+                'google_place_id' => $house['google_place_id'] ?? null,
             ], 'id = ? AND (user_id = ? OR group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \'gestor\'))', [$id, $userId, $userId], ['id'], [
                 'title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee',
                 'bedrooms', 'beds', 'rooms', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time',
-                'pool', 'bbq', 'garage', 'amenities', 'pix_key', 'status',
+                'pool', 'bbq', 'garage', 'amenities', 'pix_key', 'google_place_id', 'status',
             ]));
         });
     }

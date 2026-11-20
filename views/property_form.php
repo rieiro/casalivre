@@ -37,6 +37,9 @@ $roomLayout = Rooms::forForm($posted, $current ?: null);
 
 $latValue = array_key_exists('lat', $posted) ? (string) $posted['lat'] : (isset($current['lat']) ? (string) (float) $current['lat'] : '');
 $lngValue = array_key_exists('lng', $posted) ? (string) $posted['lng'] : (isset($current['lng']) ? (string) (float) $current['lng'] : '');
+$googlePlaceIdValue = (string) (is_string($posted['google_place_id'] ?? null)
+    ? $posted['google_place_id']
+    : ($current['google_place_id'] ?? ''));
 $cityParts = explode(',', $cityValue);
 $cityKnown = $cityValue !== '' && count($cityParts) >= 2 ? CityRepository::exactCity(trim($cityParts[0]), trim($cityParts[1])) : null;
 $initialCityLat = isset($cityKnown['lat']) ? (string) (float) $cityKnown['lat'] : '-27.5954';
@@ -292,6 +295,28 @@ if ($latValue === '' && $lngValue === '') {
                     </div>
                 </div>
                 <p class="prop-form-hint"><?= e(sprintf(t('form.calendar_months_hint'), (string) $calendarLimit)) ?></p>
+            </div>
+        </div>
+
+        <!-- CARD: Reputação no Google Maps -->
+        <div class="prop-form-card">
+            <div class="prop-form-card-head">
+                <span class="prop-form-card-icon" aria-hidden="true">⭐</span>
+                <div>
+                    <h2 class="prop-form-card-title"><?= e(t('form.google_title')) ?></h2>
+                    <p class="prop-form-card-subtitle"><?= e(t('form.google_subtitle')) ?></p>
+                </div>
+            </div>
+            <div class="prop-form-card-body">
+                <div class="prop-form-field">
+                    <label class="prop-form-label" for="field-google-place-id"><?= e(t('form.google_place_id')) ?></label>
+                    <div class="prop-google-input-row">
+                        <input id="field-google-place-id" class="prop-form-input" name="google_place_id" maxlength="128" pattern="[A-Za-z0-9_\-]{10,128}" value="<?= e($googlePlaceIdValue) ?>" placeholder="Ex: ChIJN1t_tDeuEmsRUsoyG83frY4" data-google-place-input>
+                        <button type="button" class="btn-dash-action" id="btn-verify-google-place" data-verify-google-place data-ok="<?= e(t('form.google_verify_ok')) ?>" data-empty="<?= e(t('err.google_place_id')) ?>"><?= e(t('form.google_verify_btn')) ?></button>
+                    </div>
+                    <p class="prop-form-hint"><?= e(t('form.google_place_hint')) ?></p>
+                    <p class="prop-form-hint" id="google-place-verify-status" data-google-place-status hidden></p>
+                </div>
             </div>
         </div>
 
