@@ -7,6 +7,7 @@ require_once __DIR__ . '/Rooms.php';
 require_once __DIR__ . '/PhotoStorage.php';
 require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/CityRepository.php';
+require_once __DIR__ . '/GooglePlacesService.php';
 
 final class HouseService
 {
@@ -43,6 +44,13 @@ final class HouseService
         $typeError = self::typeError($input);
         if ($typeError !== null) {
             return ['error' => $typeError];
+        }
+        // Place ID do Google Maps: formato estrito (sem URL, query ou path traversal) antes de qualquer uso.
+        $googlePlace = GooglePlacesService::validatePlaceId(
+            $input['google_place_id'] ?? ($current['google_place_id'] ?? null)
+        );
+        if (!$googlePlace['ok']) {
+            return ['error' => $googlePlace['error']];
         }
         $title = trim(self::strField($input, 'title'));
         $description = trim(self::strField($input, 'description'));
@@ -141,6 +149,7 @@ final class HouseService
             'garage' => !empty($amenities['garage']) ? 1 : 0,
             'amenities' => json_encode($amenities, JSON_UNESCAPED_UNICODE),
             'pix_key' => trim((string) ($input['pix_key'] ?? ($current['pix_key'] ?? ''))),
+            'google_place_id' => $googlePlace['value'],
         ];
     }
 
@@ -168,6 +177,12 @@ final class HouseService
         if ($changed === []) {
             return ['error' => t('err.house_missing')];
         }
+        // Reputação do Google é efêmera: trocar/remover o Place ID invalida o cache do valor anterior.
+        $oldPlaceId = (string) ($changed[0]['old']['google_place_id'] ?? '');
+        $newPlaceId = (string) ($changed[0]['new']['google_place_id'] ?? '');
+        if ($oldPlaceId !== $newPlaceId && $oldPlaceId !== '') {
+            GooglePlacesService::invalidateCache($oldPlaceId);
+        }
         $removed = HouseRepository::clearBlockedAfter($id, max_calendar_day($fields));
         if ($removed !== []) {
             $audit = HouseRepository::nightAudit($removed);
@@ -184,6 +199,7 @@ final class HouseService
     {
         return [
             'pix_key' => (string) ($current['pix_key'] ?? ''),
+            'google_place_id' => (string) ($current['google_place_id'] ?? ''),
             'titulo' => (string) ($current['title'] ?? ''),
             'descricao' => (string) ($current['description'] ?? ''),
             'cidade' => (string) ($current['city'] ?? ''),

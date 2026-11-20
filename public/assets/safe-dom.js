@@ -23,6 +23,11 @@ window.CL = {
             }
             if (CL.PROPS[name]) {
                 node[CL.PROPS[name]] = v;
+            } else if (name === 'data-external-google-href') {
+                // Links oficiais do Google Maps (atribuição obrigatória): abre em nova aba sem referrer.
+                node.setAttribute('href', CL.safeGoogleMapsHref(v));
+                node.setAttribute('target', '_blank');
+                node.setAttribute('rel', 'noopener noreferrer');
             } else if (CL.URL_ATTRS.includes(name)) {
                 // Atributos de URL: só caminhos relativos do site (safeHref); <img src> ainda só /uploads/.
                 const url = CL.safeHref(v);
@@ -283,5 +288,11 @@ window.CL = {
         // Só caminho relativo ao site: "/x". Recusa "//host" e "/\\host" (o navegador trata \\ como /) e
         // espaços/controles (o navegador remove TAB/LF da URL: "/\t/host" viraria "//host").
         return /^\/(?![\/\\])/.test(h) && !/[\s\x00-\x1f\x7f]/.test(h) ? h : '#';
+    },
+    // Links do Google Maps (googleMapsUri): só os hosts oficiais; o resto vira '#'.
+    // A API só devolve https://maps.google.com/... ou https://www.google.com/maps/...
+    safeGoogleMapsHref(href) {
+        const h = String(href || '');
+        return /^https:\/\/(www\.google\.com\/maps\/|maps\.google\.com\/)\S+$/.test(h) && !/[\s\x00-\x1f\x7f]/.test(h) ? h : '#';
     },
 };

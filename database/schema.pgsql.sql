@@ -135,9 +135,25 @@ CREATE TABLE IF NOT EXISTS properties (
     audit_hold TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     pix_key TEXT NOT NULL DEFAULT '',
+    -- Place ID do Google Maps (New v1). Apenas o identificador; a reputação fica no cache efêmero abaixo.
+    google_place_id TEXT NULL CHECK (google_place_id IS NULL OR google_place_id ~ '^[A-Za-z0-9_-]{10,128}$'),
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
     group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
+
+-- Schema 34: cache efêmero (TTL máximo de 24h, ToS do Google) da reputação do Google Places.
+-- Nunca persistir nota/avaliações em properties: a linha expira e é apagada.
+CREATE TABLE IF NOT EXISTS google_places_cache (
+    place_id          TEXT PRIMARY KEY CHECK (place_id ~ '^[A-Za-z0-9_-]{10,128}$'),
+    rating            DOUBLE PRECISION NULL CHECK (rating IS NULL OR (rating >= 1.0 AND rating <= 5.0)),
+    user_rating_count INTEGER NOT NULL DEFAULT 0 CHECK (user_rating_count >= 0),
+    google_maps_uri   TEXT NULL,
+    reviews_json      JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(reviews_json) = 'array'),
+    fetched_at        TIMESTAMPTZ NOT NULL DEFAULT statement_timestamp(),
+    expires_at        TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_google_places_cache_expires ON google_places_cache (expires_at);
 
 CREATE UNIQUE INDEX IF NOT EXISTS properties_ical_hash ON properties (ical_hash);
 CREATE UNIQUE INDEX IF NOT EXISTS properties_public_hash ON properties (public_hash);

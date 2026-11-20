@@ -8,6 +8,7 @@ require_once __DIR__ . '/HouseRepository.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/CepRepository.php';
 require_once __DIR__ . '/Api.php';
+require_once __DIR__ . '/GooglePlacesService.php';
 
 /**
  * Shared public representation of a property (ADR/Architecture §3 & §4).
@@ -45,6 +46,11 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
         'neighborhood' => house_neighborhood($house),
         'rating' => $score !== null ? round((float) $score, 1) : null,
         'rating_count' => $ratingCount,
+        // Reputação efêmera do Google (null sem chave, cache expirado ou falha do upstream).
+        'google_reputation' => GooglePlacesService::getReputation(
+            isset($house['google_place_id']) ? (string) $house['google_place_id'] : null,
+            current_locale()
+        ),
         'quote' => $quote,
         'photos' => $photos,
         'amenities' => $amenities,

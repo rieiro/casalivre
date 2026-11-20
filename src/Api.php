@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/RequestLog.php';
+require_once __DIR__ . '/GooglePlacesService.php';
+require_once __DIR__ . '/Acoes/GooglePlaceVerify.php';
 
 function json_out(int $status, array $data): never
 {
@@ -106,6 +108,7 @@ function api_public_house(array $house): array
         'beds' => (int) $house['beds'],
         'max_guests' => (int) $house['max_guests'],
         'nightly_price' => (int) $house['nightly_price'],
+        'google_place_id' => (string) ($house['google_place_id'] ?? ''),
         'checkin_time' => $house['checkin_time'],
         'checkout_time' => $house['checkout_time'],
         'min_nights' => (int) $house['min_nights'],
@@ -387,7 +390,22 @@ function handle_api(string $path, string $method): void
             'quiet_hours_from' => $noiseFrom,
             'quiet_hours_until' => $noiseUntil,
             'blocked_days' => HouseRepository::calendarDaysUntil($id, max_calendar_day($house)),
+            'google_reputation' => GooglePlacesService::getReputation(
+                isset($house['google_place_id']) ? (string) $house['google_place_id'] : null,
+                current_locale()
+            ),
         ]);
+    }
+
+    // Validar/pré-visualizar um Google Place ID (painel do anfitrião). Mesmo balde de 10/10min por IP.
+    if ($path === '/api/google-place/verificar' && $method === 'POST') {
+        $user = api_require_user($user);
+        $res = GooglePlaceVerify::run((int) $user['id'], $body['google_place_id'] ?? null, current_locale());
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
+            api_error($res->tipo === 'indisponivel' ? 503 : 422, (string) $res->mensagem);
+        }
+        json_out(200, ['ok' => true, 'google_reputation' => $res->dados['google_reputation'] ?? null]);
     }
 
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method === 'POST') {

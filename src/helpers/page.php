@@ -38,6 +38,11 @@ function page_data_script(string $csrf): string
             'gallery.prev' => t('gallery.prev'),
             'gallery.next' => t('gallery.next'),
             'gallery.photo' => t('gallery.photo'),
+            'prop.google_reviews_title' => t('prop.google_reviews_title'),
+            'prop.google_reviews_count' => t('prop.google_reviews_count'),
+            'prop.google_reviews_empty' => t('prop.google_reviews_empty'),
+            'prop.google_view_on_maps' => t('prop.google_view_on_maps'),
+            'prop.google_attribution' => t('prop.google_attribution'),
         ],
     ];
     return '<script type="application/json" id="page-data">'

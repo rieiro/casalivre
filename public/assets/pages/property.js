@@ -807,13 +807,68 @@
                 el("ul", { className: "prop-view-rules-list" }, ...rulesList)
             );
 
+            // 8b. Google Maps reputation (ephemeral cache; null when unavailable)
+            const googleRep = (data.google_reputation && typeof data.google_reputation === "object")
+                ? data.google_reputation
+                : null;
+            let googleCard = null;
+            if (googleRep) {
+                const gi18n = (page && page.i18n) || {};
+                const gi = function (key, fallback) {
+                    return String(gi18n[key] || fallback);
+                };
+                const mapsUri = String(googleRep.google_maps_uri || "");
+                const edge = " ↗";
+                const viewLink = el("a", {
+                    className: "prop-google-view-link",
+                    "data-external-google-href": mapsUri
+                }, gi("prop.google_view_on_maps", "Verificar avaliações no Google Maps") + edge);
+                const repRating = (googleRep.rating === null || googleRep.rating === undefined)
+                    ? null
+                    : Number(googleRep.rating);
+                const repCount = Math.max(0, Number(googleRep.user_rating_count || 0));
+                const scoreBox = (repRating !== null && repCount > 0)
+                    ? el("div", { className: "prop-google-score-box" },
+                        el("span", { className: "prop-google-score" }, "★ " + repRating.toFixed(1).replace(".", ",")),
+                        el("span", { className: "prop-google-score-label" },
+                            gi("prop.google_reviews_count", "%d avaliações verificadas no Google").replace("%d", String(repCount))))
+                    : el("div", { className: "prop-google-score-box" },
+                        el("span", { className: "prop-google-score-label" },
+                            gi("prop.google_reviews_empty", "Avaliado no Google Maps")));
+                const reviewItems = Array.isArray(googleRep.reviews)
+                    ? googleRep.reviews.slice(0, 3).map(function (review) {
+                        const r = (review && typeof review === "object") ? review : {};
+                        const author = String(r.author || "Google User");
+                        const initial = (author.trim().charAt(0) || "G").toUpperCase();
+                        const stars = Math.max(1, Math.min(5, Number(r.rating || 5)));
+                        return el("div", { className: "prop-google-review-item" },
+                            el("div", { className: "prop-google-review-head" },
+                                el("span", { className: "prop-google-avatar", "aria-hidden": "true" }, initial),
+                                el("div", { className: "prop-google-review-author" },
+                                    el("strong", {}, author),
+                                    el("span", { className: "prop-google-review-time" }, String(r.relative_time || "")))),
+                            el("span", { className: "prop-google-review-stars" }, "★".repeat(stars)),
+                            (r.text ? el("p", { className: "prop-google-review-text" }, String(r.text)) : null));
+                    })
+                    : [];
+                googleCard = el("div", { className: "prop-view-card prop-google-reputation-card" },
+                    el("div", { className: "prop-google-header" },
+                        el("h2", { className: "prop-view-card-title" }, gi("prop.google_reviews_title", "Avaliações no Google")),
+                        viewLink),
+                    scoreBox,
+                    (reviewItems.length > 0 ? el("div", { className: "prop-google-reviews-grid" }, ...reviewItems) : null),
+                    el("a", { className: "prop-google-attribution", "data-external-google-href": mapsUri },
+                        gi("prop.google_reviews_title", "Google Reviews") + " · " + gi("prop.google_attribution", "Powered by Google")));
+            }
+
             // 9. Left Main Column
             const mainCol = el("div", { className: "prop-view-main-col" },
                 hostCard,
                 perksBar,
                 descriptionCard,
                 amenitiesBox,
-                rulesCard
+                rulesCard,
+                googleCard
             );
 
             // 10. Right Sticky Sidebar (Booking Card)

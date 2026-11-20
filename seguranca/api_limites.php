@@ -18,6 +18,8 @@ return [
     ['POST', '#^/api/users$#', 10, 3600, '/cadastro'],
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/avaliar$#', 10, 3600, '/api/imoveis/*/avaliar'],
     ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
+    // Validar o Google Place ID no painel: 10 tentativas por 10 min por IP.
+    ['POST', '#^/api/google-place/verificar$#', 10, 600, '/api/google-place/verificar'],
     // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).
     ['POST', '#^/imoveis/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
     // Avaliação pelo formulário web: mesmo balde da API (10 por hora por IP, somando os dois).
