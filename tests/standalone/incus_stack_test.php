@@ -344,8 +344,9 @@ echo "incus stack: ota verification deploy\n";
 $jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
 t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
     '04-jumpstart-app.sh applies incremental migrations on an existing database');
-t_ok(str_contains($jumpstartOta, 'migration_035_ota_verifications.sql'),
-    '04-jumpstart-app.sh documents the schema 35 migration');
+// Updated: 2026-11 - The schema upgrade now goes up to migration_036_ota_fraud_gate.sql.
+t_ok(str_contains($jumpstartOta, 'migration_036_ota_fraud_gate.sql'),
+    '04-jumpstart-app.sh documents the schema 36 migration');
 t_ok(str_contains($jumpstartOta, 'casalivre-ota-verify'),
     '04-jumpstart-app.sh installs casalivre-ota-verify');
 t_ok(str_contains($jumpstartOta, 'check_pending_ota_verifications.php'),
@@ -359,5 +360,15 @@ t_ok(str_contains($verifyOta, 'property_external_verifications'),
     'verify-stack.sh checks the schema 35 table');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'casalivre-ota-verify'),
     'README documents casalivre-ota-verify');
+
+echo "incus stack: ota fraud gate deploy\n";
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_036_ota_fraud_gate.sql'),
+    'migration_036_ota_fraud_gate.sql exists');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_036_ota_fraud_gate.sql'),
+    '04-jumpstart-app.sh mentions the schema 36 migration');
+t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'ota_credit_ledger'),
+    'verify-stack.sh checks the credit ledger');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'ota_credit_ledger'),
+    'README documents the credit ledger');
 
 t_done();

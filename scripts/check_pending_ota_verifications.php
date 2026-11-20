@@ -24,7 +24,7 @@ if (!flock($lock, LOCK_EX | LOCK_NB)) {
 }
 
 $now = time();
-$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'errors' => 0];
+$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'passive_checked' => 0, 'downgraded' => 0, 'errors' => 0];
 
 try {
     $expired = db()->prepare(
@@ -61,6 +61,28 @@ try {
             fwrite(STDERR, 'check_pending_ota_verifications: verificação ' . (int) $id . ': ' . $e->getMessage() . "\n");
         }
     }
+    // Verificação passiva (1x/dia): 3 falhas 401/403/404/410 rebaixam o selo.
+    $passive = db()->prepare(
+        "SELECT id FROM property_external_verifications
+          WHERE status = 'verified'
+            AND (last_passive_check_at IS NULL OR last_passive_check_at <= to_timestamp(?))
+          ORDER BY last_passive_check_at ASC NULLS FIRST, id ASC
+          LIMIT 50"
+    );
+    $passive->execute([$now - 86400]);
+    foreach ($passive->fetchAll(PDO::FETCH_COLUMN) as $id) {
+        $report['passive_checked']++;
+        try {
+            $result = OtaVerificationService::passiveVerifyRow((int) $id);
+            if (($result['status'] ?? '') === 'downgraded') {
+                $report['downgraded']++;
+            }
+        } catch (Throwable $e) {
+            $report['errors']++;
+            fwrite(STDERR, 'check_pending_ota_verifications: passiva ' . (int) $id . ': ' . $e->getMessage() . "\n");
+        }
+    }
+
 } catch (Throwable $e) {
     fwrite(STDERR, 'check_pending_ota_verifications: ' . $e->getMessage() . "\n");
     exit(0);

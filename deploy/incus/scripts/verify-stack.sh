@@ -81,9 +81,16 @@ if incus exec "$DB" -- su - postgres -c \
   if incus exec "$DB" -- su - postgres -c \
     "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.property_external_verifications') IS NOT NULL\"" 2>/dev/null \
     | grep -qx t; then
-    ok "property_external_verifications table is present (schema 35)"
+    ok "property_external_verifications table is present (schema 35+)"
   else
     bad "property_external_verifications table is missing"
+  fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.ota_credit_ledger') IS NOT NULL\"" 2>/dev/null \
+    | grep -qx t; then
+    ok "ota_credit_ledger table is present (schema 36)"
+  else
+    bad "ota_credit_ledger table is missing"
   fi
 fi
 

@@ -377,6 +377,8 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('otaPlatform', $js);
         $this->assertStringContainsString('otaPublic', $js);
         $this->assertStringContainsString('otaIcal', $js);
+        $this->assertStringContainsString('otaConsent', $js);
+        $this->assertStringContainsString('consent:', $js);
 
         $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
         $this->assertMatchesRegularExpression('/<button[^>]*data-ota-add[^>]*disabled[^>]*>/', $partial);

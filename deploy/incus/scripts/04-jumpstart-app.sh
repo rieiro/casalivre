@@ -102,7 +102,7 @@ if [ "$(scalar "SELECT to_regclass('public.users') IS NULL")" = "t" ]; then
   incus file push "$REPO_DIR/database/schema.pgsql.sql" "$DB/tmp/jumpstart/schema.pgsql.sql"
   psql_db '-f /tmp/jumpstart/schema.pgsql.sql' >/dev/null
 else
-  log "schema already present; applying idempotent migrations (up to migration_035_ota_verifications.sql)"
+  log "schema already present; applying idempotent migrations (up to migration_036_ota_fraud_gate.sql)"
   for mig in "$REPO_DIR"/database/migrations/migration_*.sql; do
     [ -f "$mig" ] || continue
     mname="$(basename "$mig")"
