@@ -43,6 +43,10 @@ function page_data_script(string $csrf): string
             'prop.google_reviews_empty' => t('prop.google_reviews_empty'),
             'prop.google_view_on_maps' => t('prop.google_view_on_maps'),
             'prop.google_attribution' => t('prop.google_attribution'),
+            'ota.badge' => t('ota.badge'),
+            'ota.platform_airbnb' => t('ota.platform_airbnb'),
+            'ota.platform_booking' => t('ota.platform_booking'),
+            'ota.platform_vrbo' => t('ota.platform_vrbo'),
         ],
     ];
     return '<script type="application/json" id="page-data">'

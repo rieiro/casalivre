@@ -78,6 +78,10 @@ final class ActivityLog
     public const QUOTE_CREATE = 51;
     /** Confirmação de reserva de cotação (Hóspede/Admin). Admin. */
     public const RESERVATION_CONFIRM = 52;
+    /** Início do desafio iCal de verificação de anúncio em plataforma parceira (Host/Gestor). Admin. */
+    public const OTA_VERIFY_START = 53;
+    /** Anúncio comprovado em plataforma parceira (bloqueio do dia visível no iCal). Admin. */
+    public const OTA_VERIFY_VERIFIED = 54;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -132,6 +136,8 @@ final class ActivityLog
         self::CALENDAR_FEED_FAIL => 'Falha permanente na sincronização de calendário externo',
         self::QUOTE_CREATE => 'Criação de cotação de reserva',
         self::RESERVATION_CONFIRM => 'Confirmação de reserva de cotação',
+        self::OTA_VERIFY_START => 'Início de verificação de anúncio em plataforma parceira',
+        self::OTA_VERIFY_VERIFIED => 'Anúncio verificado em plataforma parceira',
     ];
 
     public const ADMIN = 'admin';
@@ -166,6 +172,8 @@ final class ActivityLog
         self::CALENDAR_FEED_FAIL => self::ADMIN,
         self::QUOTE_CREATE => self::ADMIN,
         self::RESERVATION_CONFIRM => self::ADMIN,
+        self::OTA_VERIFY_START => self::ADMIN,
+        self::OTA_VERIFY_VERIFIED => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -492,6 +500,8 @@ final class ActivityLog
         self::CALENDAR_FEED_FAIL => ['feed_id'],
         self::QUOTE_CREATE => ['checkin', 'checkout', 'total', 'pix_key'],
         self::RESERVATION_CONFIRM => ['checkin', 'checkout', 'total', 'motivo'],
+        self::OTA_VERIFY_START => ['imovel_id', 'plataforma', 'url', 'challenge_date'],
+        self::OTA_VERIFY_VERIFIED => ['imovel_id', 'plataforma', 'data', 'creditos'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 
@@ -509,6 +519,7 @@ final class ActivityLog
         'last_synced_at', 'senha', 'quantidade', 'created_at', 'old', 'new', 'campos_alterados', 'tema',
         'grupo', 'nome', 'papel', 'dominio',
         'quote_hash', 'total_price', 'tax_percent', 'special_offer',
+        'plataforma', 'challenge_date', 'creditos',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

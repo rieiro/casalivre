@@ -4791,3 +4791,113 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
         font-size: 1.6rem;
     }
 }
+
+/* OTA listing verification: host dashboard challenge flow. */
+.prop-ota-status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.prop-ota-status-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.prop-ota-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--muted);
+}
+.prop-ota-status-badge.is-pending {
+    border-color: var(--notice-line);
+    background: var(--notice-bg);
+    color: #7a5b00;
+}
+.prop-ota-status-badge.is-verified {
+    border-color: #a7d8bd;
+    background: #e8f5ee;
+    color: var(--ok);
+}
+.prop-ota-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.prop-ota-challenge-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--notice-line);
+    border-radius: 0.75rem;
+    background: var(--notice-bg);
+}
+.prop-ota-step {
+    margin: 0;
+    font-weight: 600;
+    color: var(--ink);
+}
+.prop-ota-verified-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid #a7d8bd;
+    border-radius: 0.75rem;
+    background: #e8f5ee;
+}
+.prop-ota-verified-title {
+    color: var(--ok);
+    font-size: 0.95rem;
+}
+.prop-ota-help {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--line);
+}
+.prop-ota-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.prop-ota-badge {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid #a7d8bd;
+    background: #e8f5ee;
+    color: var(--ok);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+.prop-ota-platforms {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+@media (max-width: 768px) {
+    .prop-ota-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .prop-ota-actions .btn-dash-action {
+        width: 100%;
+    }
+    .prop-ota-status-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}

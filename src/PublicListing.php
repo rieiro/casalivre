@@ -9,6 +9,7 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/CepRepository.php';
 require_once __DIR__ . '/Api.php';
 require_once __DIR__ . '/GooglePlacesService.php';
+require_once __DIR__ . '/OtaVerificationService.php';
 
 /**
  * Shared public representation of a property (ADR/Architecture §3 & §4).
@@ -51,6 +52,8 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
             isset($house['google_place_id']) ? (string) $house['google_place_id'] : null,
             current_locale()
         ),
+        // Selo "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
+        'ota_verifications' => OtaVerificationService::listVerifiedForProperty($id),
         'quote' => $quote,
         'photos' => $photos,
         'amenities' => $amenities,

@@ -92,6 +92,115 @@
         });
     }
 
+    // Verificação de anúncio em plataformas parceiras (iCal challenge-response).
+    const otaRoot = form.querySelector('[data-ota-root]');
+    if (otaRoot) {
+        const otaStart = otaRoot.querySelector('[data-ota-start]');
+        const otaCheck = otaRoot.querySelector('[data-ota-check]');
+        const otaPlatform = otaRoot.querySelector('[data-ota-platform]');
+        const otaPublic = otaRoot.querySelector('[data-ota-public-url]');
+        const otaIcal = otaRoot.querySelector('[data-ota-ical-url]');
+        const otaStatusLabel = otaRoot.querySelector('[data-ota-status-label]');
+        const otaMessage = otaRoot.querySelector('[data-ota-message]');
+        const otaChallenge = otaRoot.querySelector('[data-ota-challenge-box]');
+        const otaStep = otaRoot.querySelector('[data-ota-step]');
+        const otaVerified = otaRoot.querySelector('[data-ota-verified-box]');
+        let otaVerificationId = Number(otaRoot.dataset.otaVerificationId || 0);
+        let otaTimer = null;
+        const otaBase = '/api/properties/' + encodeURIComponent(hash) + '/verifications';
+        const otaShowMessage = function (text) {
+            if (!otaMessage) return;
+            otaMessage.textContent = String(text || '');
+            otaMessage.hidden = !text;
+        };
+        const otaSetStatus = function (text, kind) {
+            if (!otaStatusLabel) return;
+            otaStatusLabel.textContent = String(text || '');
+            otaStatusLabel.className = 'prop-ota-status-badge is-' + kind;
+        };
+        const otaStartCooldown = function (seconds) {
+            if (!otaCheck) return;
+            if (otaTimer) { clearInterval(otaTimer); otaTimer = null; }
+            let left = Math.max(1, Number(seconds) || 60);
+            const original = otaRoot.dataset.otaCheckLabel || otaCheck.textContent;
+            const render = function () {
+                otaCheck.textContent = String(otaRoot.dataset.otaCooldown || 'Verificar novamente em %ds...')
+                    .replace('%d', String(left));
+            };
+            otaCheck.disabled = true;
+            render();
+            otaTimer = setInterval(function () {
+                left -= 1;
+                if (left <= 0) {
+                    clearInterval(otaTimer);
+                    otaTimer = null;
+                    otaCheck.disabled = false;
+                    otaCheck.textContent = original;
+                    return;
+                }
+                render();
+            }, 1000);
+        };
+        if (otaStart) {
+            otaStart.addEventListener('click', async function () {
+                otaStart.disabled = true;
+                const original = otaStart.textContent;
+                try {
+                    const res = await CL.api(otaBase + '/start', {
+                        method: 'POST',
+                        body: {
+                            platform: String(otaPlatform ? otaPlatform.value : ''),
+                            public_url: String(otaPublic ? otaPublic.value : '').trim(),
+                            ical_url: String(otaIcal ? otaIcal.value : '').trim()
+                        }
+                    });
+                    otaVerificationId = Number(res.verification_id || 0);
+                    otaRoot.dataset.otaVerificationId = String(otaVerificationId);
+                    otaSetStatus(otaRoot.dataset.otaStatusPending || '', 'pending');
+                    if (otaChallenge) otaChallenge.hidden = false;
+                    if (otaVerified) otaVerified.hidden = true;
+                    if (otaStep) otaStep.textContent = String(res.message || '');
+                    otaShowMessage(res.message || '');
+                } catch (e) {
+                    otaShowMessage((e && e.message) || '');
+                } finally {
+                    otaStart.disabled = false;
+                    otaStart.textContent = original;
+                }
+            });
+        }
+        if (otaCheck) {
+            otaCheck.addEventListener('click', async function () {
+                if (!otaVerificationId) return;
+                otaCheck.disabled = true;
+                const original = otaRoot.dataset.otaCheckLabel || otaCheck.textContent;
+                otaCheck.textContent = otaRoot.dataset.otaChecking || 'Verificando...';
+                try {
+                    const res = await CL.api(otaBase + '/' + otaVerificationId + '/check', { method: 'POST' });
+                    otaShowMessage(res.message || '');
+                    if (res.status === 'verified') {
+                        otaSetStatus(otaRoot.dataset.otaStatusVerified || '', 'verified');
+                        if (otaChallenge) otaChallenge.hidden = true;
+                        if (otaVerified) otaVerified.hidden = false;
+                        otaCheck.disabled = false;
+                        otaCheck.textContent = original;
+                    } else {
+                        otaSetStatus(otaRoot.dataset.otaStatusPending || '', 'pending');
+                        otaStartCooldown(res.retry_after || 60);
+                    }
+                } catch (e) {
+                    otaShowMessage((e && e.message) || '');
+                    if (e && e.status === 429 && e.data && e.data.retry_after) {
+                        otaStartCooldown(e.data.retry_after);
+                    } else {
+                        otaCheck.disabled = false;
+                        otaCheck.textContent = original;
+                    }
+                }
+            });
+        }
+    }
+
     if (!editing || !hash) return;
 
     function showToast(type, title, message) {

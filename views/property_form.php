@@ -384,6 +384,7 @@ if ($latValue === '' && $lngValue === '') {
     </form>
 
     <?php if ($editing): ?>
+        <?php require __DIR__ . '/partials/ota_verification.php'; ?>
         <?php
         $uploadFile = ini_bytes((string) ini_get('upload_max_filesize'));
         $uploadPost = ini_bytes((string) ini_get('post_max_size'));

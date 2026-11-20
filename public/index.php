@@ -118,7 +118,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 
 return Seguranca::pipeline(
     [
-        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'google_place_id'],
+        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'google_place_id', 'public_url', 'ical_url'],
         'sem_csrf' => [
             '/mcp',
             '#^/api/v1/agent/properties/[a-f0-9]{16}/intent$#',
@@ -204,6 +204,9 @@ function casa_privado(string $path, string $method): bool
         return true;
     }
     if ($path === '/api/google-place/verificar') {
+        return true;
+    }
+    if (preg_match('#^/api/properties/[^/]+/verifications(/|$)#', $path) === 1) {
         return true;
     }
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
