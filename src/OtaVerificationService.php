@@ -211,26 +211,8 @@ final class OtaVerificationService
         self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
 
         $ics = self::fetchIcsFeed($icalUrl);
+        $challengeDate = self::pickOpenDate($ics);
         $now = self::now();
-        $base = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('UTC'));
-        $minDate = $base->modify('+1 month');
-        $maxDate = $base->modify('+4 months');
-        $totalDays = (int) $minDate->diff($maxDate)->days;
-
-        $challengeDate = null;
-        for ($attempt = 0; $attempt < self::MAX_DATE_PICK_ATTEMPTS; $attempt++) {
-            $offset = self::randomOffset(0, max(0, $totalDays));
-            $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
-            if (!self::isDateBlockedInIcs($ics, $candidate)) {
-                $challengeDate = $candidate;
-                break;
-            }
-        }
-        if ($challengeDate === null) {
-            throw new RuntimeException(
-                'Não foi possível encontrar uma data livre entre 1 e 4 meses no futuro no calendário informado.'
-            );
-        }
 
         $stmt = db()->prepare(
             'INSERT INTO property_external_verifications
@@ -436,6 +418,9 @@ final class OtaVerificationService
         $icalUrl = self::normalizeUrl(trim($icalUrl));
         self::validateUrls($platform, $publicUrl, $icalUrl);
         self::assertUrlsFree($propertyId, $publicUrl, $icalUrl);
+
+        // Do not persist a challenge whose calendar has no open date in the 1-4 month window.
+        self::pickOpenDate(self::fetchIcsFeed($icalUrl));
 
         $now = self::now();
         $stmt = db()->prepare(
@@ -677,6 +662,25 @@ final class OtaVerificationService
         $stmt->execute([$verificationId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row === false ? null : $row;
+    }
+
+    /** Picks an open date in the +1..+4 month window; throws when the calendar is fully blocked. */
+    private static function pickOpenDate(string $ics): string
+    {
+        $base = (new DateTimeImmutable('@' . self::now()))->setTimezone(new DateTimeZone('UTC'));
+        $minDate = $base->modify('+1 month');
+        $maxDate = $base->modify('+4 months');
+        $totalDays = (int) $minDate->diff($maxDate)->days;
+        for ($attempt = 0; $attempt < self::MAX_DATE_PICK_ATTEMPTS; $attempt++) {
+            $offset = self::randomOffset(0, max(0, $totalDays));
+            $candidate = $minDate->modify('+' . $offset . ' days')->format('Y-m-d');
+            if (!self::isDateBlockedInIcs($ics, $candidate)) {
+                return $candidate;
+            }
+        }
+        throw new RuntimeException(
+            'Não foi possível encontrar uma data livre entre 1 e 4 meses no futuro no calendário informado.'
+        );
     }
 
     private static function acceptFeed(string $body): string

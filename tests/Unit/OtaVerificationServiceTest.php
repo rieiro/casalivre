@@ -154,9 +154,29 @@ final class OtaVerificationServiceTest extends TestCase
     private function fixedRandom(array $offsets): void
     {
         $queue = $offsets;
-        OtaVerificationService::$randomInt = static function () use (&$queue): int {
-            return $queue === [] ? 0 : (int) array_shift($queue);
+        $last = $offsets === [] ? 0 : (int) $offsets[0];
+        OtaVerificationService::$randomInt = static function () use (&$queue, &$last): int {
+            if ($queue !== []) {
+                $last = (int) array_shift($queue);
+            }
+            return $last;
         };
+    }
+
+    private function fullyBlockedIcs(): string
+    {
+        return implode("\r\n", [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'BEGIN:VEVENT',
+            'UID:all-dates-blocked',
+            'DTSTART;VALUE=DATE:20261201',
+            'DTEND;VALUE=DATE:20270430',
+            'SUMMARY:No open dates in the challenge window',
+            'END:VEVENT',
+            'END:VCALENDAR',
+            '',
+        ]);
     }
 
     /**
@@ -531,5 +551,31 @@ final class OtaVerificationServiceTest extends TestCase
             $this->assertNotSame('', $e->getMessage());
         }
         $this->assertSame([], OtaVerificationService::listForProperty($property['id']));
+    }
+
+    public function testAddChallengeDoesNotInsertWhenNoOpenDateExists(): void
+    {
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        OtaVerificationService::$httpTransport = fn (): string => $this->fullyBlockedIcs();
+        $this->fixedRandom([0]);
+
+        $property = $this->activeProperty();
+
+        try {
+            OtaVerificationService::addChallenge(
+                $property['id'],
+                'airbnb',
+                'https://www.airbnb.com/rooms/12345678',
+                'https://www.airbnb.com/calendar/ical/12345678.ics'
+            );
+            $this->fail('a fully blocked calendar must not add the challenge');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('1 e 4 meses', $e->getMessage());
+        }
+
+        $this->assertSame([], OtaVerificationService::listForProperty($property['id']));
+        $count = $this->pdo->prepare('SELECT count(*) FROM property_external_verifications WHERE property_id = ?');
+        $count->execute([$property['id']]);
+        $this->assertSame(0, (int) $count->fetchColumn(), 'no row may exist when no date is available');
     }
 }

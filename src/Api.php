@@ -690,6 +690,8 @@ function handle_api(string $path, string $method): void
             );
         } catch (InvalidArgumentException $e) {
             api_error(422, $e->getMessage());
+        } catch (RuntimeException $e) {
+            api_error(422, $e->getMessage());
         }
         json_out(200, ['ok' => true, 'verification' => $result]);
     }
