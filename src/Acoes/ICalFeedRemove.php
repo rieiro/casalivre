@@ -24,7 +24,7 @@ final class ICalFeedRemove
             'imovel_id' => $propertyId,
             'feed_id' => $feedId,
         ], [
-            'feed' => CalendarSync::logFeed($gone['feed']),
+            'feed' => $gone['feed'], // removeFeed já devolve a URL redigida via logRef
             'link' => CalendarSync::logRef($gone['link'][0]['old']['external_ical_url'] ?? null),
             'noites' => $released['anterior'],
         ], [

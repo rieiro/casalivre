@@ -730,46 +730,15 @@ final class OtaVerificationService
         return function_exists('mb_substr') ? mb_substr($out, 0, 200) : substr($out, 0, 200);
     }
 
-    /** AES-256-GCM at rest; other rows/plaintext values pass through decrypt unchanged. */
+    /** AES-256-GCM at rest; delegates to the shared CalendarSync implementation. */
     public static function encryptIcalUrl(string $url): string
     {
-        if ($url === '' || str_starts_with($url, 'enc:v1:')) {
-            return $url;
-        }
-        if (!function_exists('openssl_encrypt')) {
-            throw new RuntimeException('A extensão OpenSSL é necessária para proteger a URL do calendário.');
-        }
-        $iv = random_bytes(12);
-        $tag = '';
-        $cipher = openssl_encrypt($url, 'aes-256-gcm', self::icalKey(), OPENSSL_RAW_DATA, $iv, $tag, '', 16);
-        if (!is_string($cipher)) {
-            throw new RuntimeException('Não foi possível proteger a URL do calendário.');
-        }
-        return 'enc:v1:' . base64_encode($iv . $tag . $cipher);
+        return CalendarSync::encryptUrl($url);
     }
 
     public static function decryptIcalUrl(?string $value): string
     {
-        $value = (string) $value;
-        if (!str_starts_with($value, 'enc:v1:')) {
-            return $value;
-        }
-        if (!function_exists('openssl_decrypt')) {
-            return '';
-        }
-        $raw = base64_decode(substr($value, 7), true);
-        if (!is_string($raw) || strlen($raw) < 28) {
-            return '';
-        }
-        $plain = openssl_decrypt(
-            substr($raw, 28),
-            'aes-256-gcm',
-            self::icalKey(),
-            OPENSSL_RAW_DATA,
-            substr($raw, 0, 12),
-            substr($raw, 12, 16)
-        );
-        return is_string($plain) ? $plain : '';
+        return CalendarSync::decryptUrl($value);
     }
 
     /** Downloads the private .ics feed with no redirects and a public-IP-only transport. */

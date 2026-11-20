@@ -514,7 +514,7 @@ SQL;
         $stmt->execute([$propertyId]);
         $rows = [];
         foreach ($stmt->fetchAll() as $row) {
-            $row['url'] = self::maskFeedUrl((string) $row['url']);
+            $row['url'] = self::maskFeedUrl(CalendarSync::decryptUrl((string) $row['url']));
             $row['fail_count'] = (int) $row['fail_count'];
             $row['stopped'] = self::pgBool($row['stopped']);
             $rows[] = $row;
@@ -546,8 +546,9 @@ SQL;
         if (!CalendarSync::isHttpsUrl($url)) {
             return 'url';
         }
-        $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url = ?');
-        $exists->execute([$propertyId, $url]);
+        $urlHash = hash('sha256', $url);
+        $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url_hash = ?');
+        $exists->execute([$propertyId, $urlHash]);
         if ($exists->fetchColumn()) {
             return 'duplicate';
         }
@@ -556,11 +557,11 @@ SQL;
         if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
             return 'limit';
         }
-        $row = self::takeFreeSlot($propertyId, $url, $title);
+        $row = self::takeFreeSlot($propertyId, CalendarSync::encryptUrl($url), $title, $urlHash);
         if ($row !== null) {
             return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
         }
-        $exists->execute([$propertyId, $url]);
+        $exists->execute([$propertyId, $urlHash]);
         return $exists->fetchColumn() ? 'duplicate' : 'limit';
     }
 
@@ -594,7 +595,9 @@ SQL;
                 ->execute([$propertyId]);
             $link = self::syncExternalUrl($propertyId, $userId);
             $pdo->commit();
-            return ['feed' => $deleted[0]['old'], 'link' => $link, 'nights' => $nights];
+            $feed = $deleted[0]['old'];
+            $feed['url'] = CalendarSync::logRef(CalendarSync::decryptUrl((string) ($feed['url'] ?? '')));
+            return ['feed' => $feed, 'link' => $link, 'nights' => $nights];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -605,12 +608,16 @@ SQL;
 
     public static function syncExternalUrl(int $propertyId, int $userId): array
     {
+        $first = db()->prepare('SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id LIMIT 1');
+        $first->execute([$propertyId]);
+        $raw = $first->fetchColumn();
+        $stored = $raw === false ? '' : CalendarSync::encryptUrl(CalendarSync::decryptUrl((string) $raw));
         $json = 'json_build_object';
         $sql = 'UPDATE ' . ReturningWrite::q('properties')
             . ' SET ' . ReturningWrite::q('audit_hold') . ' = ' . $json . "('external_ical_url', " . ReturningWrite::q('external_ical_url') . '), '
-            . ReturningWrite::q('external_ical_url') . " = COALESCE((SELECT url FROM calendar_feeds WHERE property_id = ? ORDER BY id LIMIT 1), '')"
+            . ReturningWrite::q('external_ical_url') . ' = ?'
             . ' WHERE id = ? AND (user_id = ? OR group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = \'gestor\')) RETURNING ' . ReturningWrite::q('audit_hold') . ', ' . ReturningWrite::q('external_ical_url');
-        $rows = ReturningWrite::query($sql, [$propertyId, $propertyId, $userId, $userId]);
+        $rows = ReturningWrite::query($sql, [$stored, $propertyId, $userId, $userId]);
         if ($rows === []) {
             return [];
         }
@@ -642,7 +649,7 @@ SQL;
         return [
             'id' => (int) $row['id'],
             'property_id' => (int) $row['property_id'],
-            'url' => (string) $row['url'],
+            'url' => CalendarSync::decryptUrl((string) $row['url']),
             'active' => self::pgBool($row['active']),
             'prev_due' => $row['prev_due'] !== null ? (string) $row['prev_due'] : null,
             'last_synced_at' => $row['last_synced_at'] !== null ? (string) $row['last_synced_at'] : null,
@@ -747,10 +754,10 @@ SQL;
     }
 
     /** @return array{id: int|string, url: string, title: string}|null */
-    private static function takeFreeSlot(int $propertyId, string $url, string $title): ?array
+    private static function takeFreeSlot(int $propertyId, string $url, string $title, string $urlHash): ?array
     {
         for ($attempt = 0; $attempt < self::ADD_SLOT_ATTEMPTS; $attempt++) {
-            $row = self::insertFeedSlot($propertyId, $url, $title);
+            $row = self::insertFeedSlot($propertyId, $url, $title, $urlHash);
             if ($row !== null) {
                 return $row;
             }
@@ -758,16 +765,16 @@ SQL;
         return null;
     }
 
-    private static function insertFeedSlot(int $propertyId, string $url, string $title): ?array
+    private static function insertFeedSlot(int $propertyId, string $url, string $title, string $urlHash): ?array
     {
-        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, title)
-            SELECT ?, s.slot, ?, ?
+        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, url_hash, title)
+            SELECT ?, s.slot, ?, ?, ?
             FROM (SELECT min(g)::smallint AS slot FROM generate_series(1, ' . self::FEED_SLOTS . ') g
                   WHERE NOT EXISTS (SELECT 1 FROM calendar_feeds f WHERE f.property_id = ? AND f.slot = g)) s
             WHERE s.slot IS NOT NULL
             ON CONFLICT DO NOTHING
             RETURNING id, url, title';
-        $rows = ReturningWrite::query($sql, [$propertyId, $url, $title, $propertyId]);
+        $rows = ReturningWrite::query($sql, [$propertyId, $url, $urlHash, $title, $propertyId]);
         return $rows[0] ?? null;
     }
 

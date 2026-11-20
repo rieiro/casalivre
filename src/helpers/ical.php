@@ -92,7 +92,7 @@ function import_ics(int $propertyId, string $body): array
     $body = preg_replace("/\r?\n[ \t]/", '', $body) ?? $body;
     $house = HouseRepository::find($propertyId);
     $max = max_calendar_day($house ?: null);
-    $today = date('Y-m-d');
+    $today = gmdate('Y-m-d');
     $matched = preg_match_all('/BEGIN:VEVENT(.*?)END:VEVENT/s', $body, $events);
     if ($matched === false) {
         return ['error' => 'too_big'];
@@ -105,7 +105,7 @@ function import_ics(int $propertyId, string $body): array
         return ['nights' => [], 'origins' => []];
     }
     $ymd = static function (string $raw): ?DateTimeImmutable {
-        $dt = DateTimeImmutable::createFromFormat('!Ymd', $raw);
+        $dt = DateTimeImmutable::createFromFormat('!Ymd', $raw, new DateTimeZone('UTC'));
         $errors = DateTimeImmutable::getLastErrors();
         if (!$dt instanceof DateTimeImmutable) {
             return null;
@@ -115,8 +115,8 @@ function import_ics(int $propertyId, string $body): array
         }
         return $dt->format('Ymd') === $raw ? $dt : null;
     };
-    $windowStart = new DateTimeImmutable($today);
-    $windowEnd = (new DateTimeImmutable($max))->modify('+1 day');
+    $windowStart = new DateTimeImmutable($today . ' 00:00:00', new DateTimeZone('UTC'));
+    $windowEnd = (new DateTimeImmutable($max . ' 00:00:00', new DateTimeZone('UTC')))->modify('+1 day');
     $nights = [];
     $origins = [];
     $seen = [];
@@ -127,7 +127,7 @@ function import_ics(int $propertyId, string $body): array
         if (preg_match('/UID:casalivre-' . $propertyId . '-/', $event)) {
             continue;
         }
-        if (preg_match('/(?:^|[\r\n])STATUS:CANCELLED/i', $event)) {
+        if (preg_match('/(?:^|[\r\n])\s*(?:STATUS\s*:\s*CANCELLED|TRANSP\s*:\s*TRANSPARENT)\b/i', $event)) {
             continue;
         }
         if (!preg_match('/DTSTART(?:;[^:\r\n]*)?:(\d{8})/', $event, $startMatch)) {

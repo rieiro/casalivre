@@ -344,9 +344,13 @@ echo "incus stack: ota verification deploy\n";
 $jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
 t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
     '04-jumpstart-app.sh applies incremental migrations on an existing database');
-// Updated: 2026-11 - The schema upgrade now goes up to migration_036_ota_fraud_gate.sql.
-t_ok(str_contains($jumpstartOta, 'migration_036_ota_fraud_gate.sql'),
-    '04-jumpstart-app.sh documents the schema 36 migration');
+// Updated: 2026-11 - The schema upgrade now goes up to migration_037_ical_hardening.sql.
+t_ok(str_contains($jumpstartOta, 'migration_037_ical_hardening.sql'),
+    '04-jumpstart-app.sh documents the schema 37 migration');
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_037_ical_hardening.sql'),
+    'migration_037_ical_hardening.sql exists');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'), 'url_hash'),
+    'schema documents calendar_feeds.url_hash');
 t_ok(str_contains($jumpstartOta, 'casalivre-ota-verify'),
     '04-jumpstart-app.sh installs casalivre-ota-verify');
 t_ok(str_contains($jumpstartOta, 'check_pending_ota_verifications.php'),
@@ -364,8 +368,9 @@ t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'
 echo "incus stack: ota fraud gate deploy\n";
 t_ok(is_file(CL_ROOT . '/database/migrations/migration_036_ota_fraud_gate.sql'),
     'migration_036_ota_fraud_gate.sql exists');
-t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_036_ota_fraud_gate.sql'),
-    '04-jumpstart-app.sh mentions the schema 36 migration');
+// Updated: 2026-11 - The jumpstart now applies migrations up to schema 37.
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_037_ical_hardening.sql'),
+    '04-jumpstart-app.sh mentions the schema 37 migration');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'ota_credit_ledger'),
     'verify-stack.sh checks the credit ledger');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'ota_credit_ledger'),
