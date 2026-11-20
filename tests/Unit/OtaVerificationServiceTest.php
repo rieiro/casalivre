@@ -104,8 +104,8 @@ final class OtaVerificationServiceTest extends TestCase
             'END:VEVENT',
             'BEGIN:VEVENT',
             'UID:blocked-window',
-            'DTSTART;VALUE=DATE:20280120',
-            'DTEND;VALUE=DATE:20280121',
+            'DTSTART;VALUE=DATE:20261220',
+            'DTEND;VALUE=DATE:20261221',
             'SUMMARY:First pick is blocked',
             'END:VEVENT',
             'END:VCALENDAR',
@@ -240,11 +240,11 @@ final class OtaVerificationServiceTest extends TestCase
         }
     }
 
-    public function testStartChallengePicksOpenDate14To16MonthsAhead(): void
+    public function testStartChallengePicksOpenDateOneToFourMonthsAhead(): void
     {
         OtaVerificationService::$clock = static fn (): int => self::T0;
         OtaVerificationService::$httpTransport = fn (): string => $this->airbnbIcs();
-        $this->fixedRandom([0, 60]); // first pick (2028-01-20) is blocked, second (2028-03-20) is open
+        $this->fixedRandom([0, 90]); // first pick (2026-12-20) is blocked, second (2027-03-20) is open
 
         $property = $this->activeProperty();
         $result = OtaVerificationService::startChallenge(
@@ -254,8 +254,8 @@ final class OtaVerificationServiceTest extends TestCase
             'https://www.airbnb.com/calendar/ical/12345678.ics?t=secret-token'
         );
 
-        $this->assertSame('2028-03-20', $result['challenge_date']);
-        $this->assertSame('20/03/2028', $result['challenge_date_br']);
+        $this->assertSame('2027-03-20', $result['challenge_date']);
+        $this->assertSame('20/03/2027', $result['challenge_date_br']);
         $this->assertSame('pending_challenge', $result['status']);
         $this->assertGreaterThan(0, (int) $result['verification_id']);
 
@@ -263,7 +263,7 @@ final class OtaVerificationServiceTest extends TestCase
         $row->execute([(int) $result['verification_id']]);
         $stored = $row->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('pending_challenge', $stored['status']);
-        $this->assertSame('2028-03-20', (string) $stored['challenge_date']);
+        $this->assertSame('2027-03-20', (string) $stored['challenge_date']);
         $this->assertSame(0, (int) $stored['attempts']);
         $this->assertSame(0, (int) $stored['credits_awarded']);
 
@@ -279,7 +279,7 @@ final class OtaVerificationServiceTest extends TestCase
             $this->addToAssertionCount(1); // shared dev DB login cannot SET ROLE; test-pg.sh covers it
         } else {
             $this->assertSame('airbnb', $payload['plataforma']);
-            $this->assertSame('2028-03-20', $payload['challenge_date']);
+            $this->assertSame('2027-03-20', $payload['challenge_date']);
             $this->assertStringContainsString('www.airbnb.com#', (string) $payload['url']);
             $this->assertStringNotContainsString('secret-token', (string) $payload['url'], 'iCal token must never be logged');
         }
@@ -476,7 +476,7 @@ final class OtaVerificationServiceTest extends TestCase
 
         OtaVerificationService::$clock = static fn (): int => self::T0;
         OtaVerificationService::$httpTransport = fn (): string => $this->airbnbIcs();
-        $this->fixedRandom([60]);
+        $this->fixedRandom([90]);
 
         $property = $this->activeProperty();
         $publicUrl = 'https://www.airbnb.com/rooms/12345678';
@@ -496,12 +496,12 @@ final class OtaVerificationServiceTest extends TestCase
         $generated = OtaVerificationService::generateChallenge($verificationId);
         $this->assertSame('pending_challenge', $generated['status']);
         $this->assertSame($verificationId, (int) $generated['verification_id']);
-        $this->assertSame('2028-03-20', $generated['challenge_date']);
+        $this->assertSame('2027-03-20', $generated['challenge_date']);
 
         $rows = OtaVerificationService::listForProperty($property['id']);
         $this->assertCount(1, $rows);
         $this->assertSame('pending_challenge', $rows[0]['status']);
-        $this->assertSame('20/03/2028', $rows[0]['challenge_date_br']);
+        $this->assertSame('20/03/2027', $rows[0]['challenge_date_br']);
 
         $other = $this->activeProperty(1);
         try {

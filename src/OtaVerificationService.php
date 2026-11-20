@@ -10,7 +10,7 @@ require_once __DIR__ . '/CalendarSync.php';
  * OTA listing ownership verification (iCal challenge-response).
  *
  * The host proves control of an external listing by blocking one future date in the OTA
- * calendar export. We pick a date 14-16 months ahead that is currently open, ask the host to
+ * calendar export. We pick a date 1-4 months ahead that is currently open, ask the host to
  * block only that date, and then confirm it appears in the private .ics feed. The public and
  * iCal hosts are allowlisted per platform and the feed is fetched with the same SSRF
  * protections as CalendarSync (HTTPS only, DNS pinning, public IPs only, redirect re-check).
@@ -213,8 +213,8 @@ final class OtaVerificationService
         $ics = self::fetchIcsFeed($icalUrl);
         $now = self::now();
         $base = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone('UTC'));
-        $minDate = $base->modify('+14 months');
-        $maxDate = $base->modify('+16 months');
+        $minDate = $base->modify('+1 month');
+        $maxDate = $base->modify('+4 months');
         $totalDays = (int) $minDate->diff($maxDate)->days;
 
         $challengeDate = null;
@@ -228,7 +228,7 @@ final class OtaVerificationService
         }
         if ($challengeDate === null) {
             throw new RuntimeException(
-                'Não foi possível encontrar uma data livre entre 14 e 16 meses no futuro no calendário informado.'
+                'Não foi possível encontrar uma data livre entre 1 e 4 meses no futuro no calendário informado.'
             );
         }
 
