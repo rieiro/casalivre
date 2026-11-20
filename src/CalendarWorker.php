@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ActivityLog.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/WorkerRecycling.php';
 
 /**
  * One calendar-sync process. Claims one due feed, fetches outside any transaction, then imports
@@ -35,7 +36,7 @@ final class CalendarWorker
     /** Monotonic hrtime(true) of the last alert scan. */
     private static int $alertsCheckedAt = 0;
 
-    public static function run(bool $once, ?string $fixtureBase = null): int
+    public static function run(bool $once, ?string $fixtureBase = null, ?WorkerRecycling $recycling = null): int
     {
         $stop = false;
         if (function_exists('pcntl_async_signals')) {
@@ -68,8 +69,14 @@ final class CalendarWorker
                 QueueWorkerLoop::halt($what, 'calendar-worker');
                 return 1;
             }
-            if (!$once && !$stop && $feed === null) {
-                sleep(self::IDLE_SECONDS);
+            if (!$once && !$stop) {
+                if ($feed !== null) {
+                    $recycling?->recordJobs();
+                }
+                $recycling?->terminateIfDue('calendar-worker');
+                if ($feed === null) {
+                    sleep(self::IDLE_SECONDS);
+                }
             }
         } while (!$once && !$stop);
         return 0;
