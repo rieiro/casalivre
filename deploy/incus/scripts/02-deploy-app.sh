@@ -40,11 +40,26 @@ for _ in $(seq 1 10); do
   sleep 1
 done
 incus exec "$CONTAINER" -- sh -c 'printf "nameserver 10.10.10.1\n" > /etc/resolv.conf'
-incus exec "$CONTAINER" -- ip addr replace 10.10.10.20/24 dev eth0
-incus exec "$CONTAINER" -- ip link set eth0 up
-incus exec "$CONTAINER" -- ip route replace default via 10.10.10.1 dev eth0
-incus exec "$CONTAINER" -- ip addr replace 10.10.20.11/24 dev eth1
-incus exec "$CONTAINER" -- ip link set eth1 up
+# Persist both static addresses in-guest: the bridges have DHCP disabled and the Void image runs
+# dhclient at boot, which wipes Incus' static addresses. Stage 1 (core-services) applies them
+# before php-fpm/pgbouncer start; /run is a fresh tmpfs every boot.
+incus exec "$CONTAINER" -- sh -c 'cat > /etc/runit/core-services/09-casalivre-net.sh' <<'NET'
+# CasaLivre: static addresses for both NICs (incusbr-dmz and incusbr-int have DHCP disabled).
+ip link set eth0 up
+ip addr replace 10.10.10.20/24 dev eth0
+ip route replace default via 10.10.10.1 dev eth0
+ip link set eth1 up
+ip addr replace 10.10.20.11/24 dev eth1
+# /run is a fresh tmpfs every boot.
+mkdir -p /run/casalivre-pgbouncer
+if id _pgbouncer >/dev/null 2>&1; then
+    chown _pgbouncer:_pgbouncer /run/casalivre-pgbouncer
+fi
+chmod 755 /run/casalivre-pgbouncer
+NET
+incus exec "$CONTAINER" -- chmod 0644 /etc/runit/core-services/09-casalivre-net.sh
+incus exec "$CONTAINER" -- sh /etc/runit/core-services/09-casalivre-net.sh
+incus exec "$CONTAINER" -- sh -c 'sv down dhclient-eth0 2>/dev/null || true; rm -f /var/service/dhclient-eth0'
 if [ -r "$CA_BUNDLE" ]; then
   incus file push "$CA_BUNDLE" "$CONTAINER/etc/ssl/certs/ca-certificates.crt"
   incus file push "$CA_BUNDLE" "$CONTAINER/root/ca-bundle.crt"

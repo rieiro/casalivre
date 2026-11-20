@@ -55,6 +55,9 @@ if [ -z "$EDGE" ]; then
 fi
 [ -n "$EDGE" ] && [ "$(state_of "$EDGE")" = "RUNNING" ] || die "no active nginx-prod-* container found"
 
+# The DMZ bridge has DHCP disabled; persist the edge's static address and nginx pidfile before publishing.
+EDGE="$EDGE" "$SCRIPT_DIR/07-edge-static-network.sh"
+
 # Never publish into a live-dev bind: /srv/app would be the host git tree, and the chown/chmod
 # below would rewrite the working copy's ownership and modes through the idmapped mount.
 DEV_MARKER="$ROOT_DIR/../infra-nginx-hardened/artifacts/state/dev-live"
