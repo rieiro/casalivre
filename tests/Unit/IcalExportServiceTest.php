@@ -238,4 +238,31 @@ final class IcalExportServiceTest extends TestCase
         $this->assertStringStartsWith('enc:v1:', (string) $stored['url']);
         $this->assertSame(hash('sha256', $url), (string) $stored['url_hash']);
     }
+
+    public function testRetentionPurgesOnlyOldRevokedExports(): void
+    {
+        $insert = $this->pdo->prepare(
+            'INSERT INTO property_ical_exports (property_id, target_platform, label, token, revoked_at)
+             VALUES (?, ?, NULL, ?, ?)'
+        );
+        $insert->execute([$this->propertyId, 'airbnb', str_repeat('a', 64), null]);
+        $insert->execute([
+            $this->propertyId,
+            'booking',
+            str_repeat('b', 64),
+            gmdate('Y-m-d H:i:sP', $this->now - 91 * 86400),
+        ]);
+        $insert->execute([
+            $this->propertyId,
+            'vrbo',
+            str_repeat('c', 64),
+            gmdate('Y-m-d H:i:sP', $this->now - 10 * 86400),
+        ]);
+
+        $this->assertSame(1, IcalExportService::purgeRevokedExports());
+        $rows = $this->pdo->query(
+            'SELECT token FROM property_ical_exports WHERE property_id = ' . $this->propertyId . ' ORDER BY token'
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $this->assertSame([str_repeat('a', 64), str_repeat('c', 64)], $rows);
+    }
 }

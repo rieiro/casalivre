@@ -1209,4 +1209,27 @@ final class OtaVerificationServiceTest extends TestCase
         $row->execute([(int) $start['verification_id']]);
         $this->assertSame('pending_challenge', $row->fetchColumn());
     }
+
+    public function testRetentionPurgesOldChallengeAttemptsOnly(): void
+    {
+        $property = $this->activeProperty();
+        $now = self::T0;
+        OtaVerificationService::$clock = static fn (): int => $now;
+        $insert = $this->pdo->prepare(
+            'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
+             VALUES (?, ?, ?, to_timestamp(?))'
+        );
+        $insert->execute([$property['user_id'], $property['id'], 'airbnb', $now - 8 * 86400]);
+        $insert->execute([$property['user_id'], $property['id'], 'booking', $now - 86400]);
+
+        $this->assertSame(1, OtaVerificationService::purgeOldChallengeAttempts());
+        $count = $this->pdo->prepare('SELECT count(*) FROM ota_challenge_attempts WHERE user_id = ?');
+        $count->execute([$property['user_id']]);
+        $this->assertSame(1, (int) $count->fetchColumn());
+        $old = $this->pdo->prepare(
+            'SELECT count(*) FROM ota_challenge_attempts WHERE created_at <= to_timestamp(?)'
+        );
+        $old->execute([$now - 7 * 86400]);
+        $this->assertSame(0, (int) $old->fetchColumn());
+    }
 }

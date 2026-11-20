@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS property_ical_exports (
 
 CREATE INDEX IF NOT EXISTS idx_pie_property ON property_ical_exports (property_id);
 CREATE INDEX IF NOT EXISTS idx_pie_active_token ON property_ical_exports (token) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_pie_revoked ON property_ical_exports (revoked_at) WHERE revoked_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_oca_created ON ota_challenge_attempts (created_at);
 
 DO $$
 BEGIN

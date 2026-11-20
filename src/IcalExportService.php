@@ -18,6 +18,8 @@ final class IcalExportService
 {
     public const PLATFORMS = ['airbnb', 'booking', 'vrbo', 'cleaner', 'other'];
     public const OTA_PLATFORMS = ['airbnb', 'booking', 'vrbo'];
+    /** Revoked links are kept this long for abuse investigation, then deleted. */
+    public const REVOKED_EXPORT_RETENTION_DAYS = 90;
 
     /** Test hook: fn(): int unix timestamp. Null uses time(). */
     public static ?Closure $clock = null;
@@ -301,6 +303,17 @@ final class IcalExportService
         }
         $lines[] = 'END:VCALENDAR';
         return implode("\r\n", $lines) . "\r\n";
+    }
+
+    /** Deletes revoked export links past the retention window; active links are untouched. */
+    public static function purgeRevokedExports(): int
+    {
+        $stmt = db()->prepare(
+            'DELETE FROM property_ical_exports
+              WHERE revoked_at IS NOT NULL AND revoked_at < to_timestamp(?)'
+        );
+        $stmt->execute([self::now() - self::REVOKED_EXPORT_RETENTION_DAYS * 86400]);
+        return $stmt->rowCount();
     }
 
     /** @return array{0: string, 1: bool} */

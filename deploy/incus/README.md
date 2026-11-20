@@ -247,7 +247,8 @@ Run it after `stack-up.sh` (or after `00`+`01`+`02`+edge `00..03`). It is idempo
    (`OTA_VERIFY_INTERVAL`, default `300`) and logs to `/var/log/casalivre/ota-verify`; the same
    job also performs the daily passive check of verified rows and downgrades the badge after 3
    consecutive days of 401/403/404/410 responses (the permanent `ota_credit_ledger` prevents
-   credit farming);
+   credit farming). It also applies retention: challenge-rate rows older than 7 days and
+   revoked export links older than 90 days are deleted (audit logs keep the events);
 9. publishes `public/assets`, `public/uploads`, the app media uploads and `storage/tiles/brasil.pmtiles`
    to the active edge's `/srv/static`, then reloads nginx.
 
