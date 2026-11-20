@@ -129,8 +129,23 @@ for _ in $(seq 1 10); do
   fi
   sleep 1
 done
-incus exec "$CONTAINER" -- ip addr replace 10.10.20.10/24 dev eth0
-incus exec "$CONTAINER" -- ip link set eth0 up
+# Persist the static address in-guest: the internal bridge has DHCP disabled and the Void image
+# runs dhclient at boot, which wipes Incus' static address. Stage 1 (core-services) applies it
+# before postgresql starts; /run is a fresh tmpfs every boot.
+incus exec "$CONTAINER" -- sh -c 'cat > /etc/runit/core-services/09-casalivre-net.sh' <<'NET'
+# CasaLivre: static address on the air-gapped internal bridge (DHCP disabled).
+ip link set eth0 up
+ip addr replace 10.10.20.10/24 dev eth0
+# /run is a fresh tmpfs every boot.
+mkdir -p /run/postgresql
+if id postgres >/dev/null 2>&1; then
+    chown postgres:postgres /run/postgresql
+fi
+chmod 755 /run/postgresql
+NET
+incus exec "$CONTAINER" -- chmod 0644 /etc/runit/core-services/09-casalivre-net.sh
+incus exec "$CONTAINER" -- sh /etc/runit/core-services/09-casalivre-net.sh
+incus exec "$CONTAINER" -- sh -c 'sv down dhclient-eth0 2>/dev/null || true; rm -f /var/service/dhclient-eth0'
 
 # Void service defaults: pin PGROOT to the persistent volume and enforce SCRAM for host auth.
 cat > "$tmp/void-default" <<EOF

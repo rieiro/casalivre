@@ -38,6 +38,14 @@ single Incus host.
 `acl-internal` allows only TCP `5432` from `10.10.20.11/32` to `10.10.20.10/32` and drops everything
 else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning.
 
+Both bridges have DHCP disabled, so every address must be static **inside** the guest: the Void
+images ship a `dhclient-eth0` service that would wipe Incus' address on boot. `01-deploy-db.sh` and
+`02-deploy-app.sh` install a stage-1 runit core service (`/etc/runit/core-services/09-casalivre-net.sh`)
+that applies the IPs/routes and recreates the `/run` dirs (`postgresql`, `casalivre-pgbouncer`)
+before any service starts, and remove the DHCP client. The edge gets the same treatment from
+`07-edge-static-network.sh` (static `/etc/network/interfaces` plus an OpenRC pidfile nginx can own).
+All three survive a reboot without host-side help.
+
 ## Layout
 
 | Path | Purpose |
@@ -56,7 +64,8 @@ else. `db-pg` has no default gateway and never gets a DMZ NIC after provisioning
 | `scripts/valkey-setup.sh` | Installs/repairs `valkey` + `php8.4-redis`, renders the ACL/secret and starts the socket service. |
 | `scripts/logs-setup.sh` | Installs logrotate + `casalivre-logrotate` for the file logs PHP-FPM/alerts write directly. |
 | `scripts/pgbouncer-setup.sh` | Installs/renders the loopback PgBouncer session pool and its TLS/auth files. |
-| `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh`. |
+| `scripts/07-edge-static-network.sh` | Persists the edge's static IP and nginx pidfile in the guest (survives reboots). |
+| `scripts/stack-up.sh` | `00` → `01` → `02` → edge `00-init-host.sh` → `07` static network. |
 | `scripts/06-backup-data.sh` | Host-level data backup: DB dump, host uploads/secrets and the media volume. |
 | `scripts/verify-stack.sh` | End-to-end isolation/IP/service/port checks (PASS/FAIL). |
 
@@ -178,7 +187,8 @@ sudo DMZ_NETWORK=incusbr-dmz ./../infra-nginx-hardened/scripts/00-init-host.sh
 # build + stage + cut over with that module's 01/02/03 scripts
 ```
 
-Or use the orchestrator, which runs steps 1–4 in order:
+Or use the orchestrator, which runs steps 1–4 in order (and then `07-edge-static-network.sh`, so
+the edge keeps its static address after a reboot):
 
 ```bash
 sudo APP_DB_PASSWORD='<secret>' PRIMARY_DOMAIN=example.com \

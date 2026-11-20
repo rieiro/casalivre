@@ -31,6 +31,7 @@ $required = [
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
     'scripts/logs-setup.sh', 'scripts/06-backup-data.sh', 'scripts/pgbouncer-setup.sh',
+    'scripts/07-edge-static-network.sh',
 ];
 foreach ($required as $rel) {
     t_ok(is_file("$root/$rel"), "exists: $rel");
@@ -47,6 +48,7 @@ $scripts = [
     'scripts/03-upgrade-pg-major.sh', 'scripts/stack-up.sh', 'scripts/verify-stack.sh',
     'scripts/04-jumpstart-app.sh', 'scripts/05-dev-live.sh', 'scripts/valkey-setup.sh',
     'scripts/logs-setup.sh', 'scripts/06-backup-data.sh', 'scripts/pgbouncer-setup.sh',
+    'scripts/07-edge-static-network.sh',
     'containers/db-pg/provision.sh', 'containers/app-php/provision.sh',
 ];
 foreach ($scripts as $rel) {
@@ -316,5 +318,26 @@ t_ok(str_contains(incus_read('scripts/03-upgrade-pg-major.sh'), 'casalivre-pgbou
     '03-upgrade-pg-major.sh recycles pgbouncer after the DB swap');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'PgBouncer'),
     'README documents PgBouncer');
+
+echo "incus stack: static boot network\n";
+foreach (['scripts/01-deploy-db.sh' => '/run/postgresql',
+    'scripts/02-deploy-app.sh' => '/run/casalivre-pgbouncer'] as $rel => $runDir) {
+    $src = incus_read($rel);
+    t_ok(str_contains($src, '/etc/runit/core-services/09-casalivre-net.sh'),
+        "$rel installs the stage-1 static network service");
+    t_ok(str_contains($src, 'ip addr replace'), "$rel applies the static address");
+    t_ok(str_contains($src, 'rm -f /var/service/dhclient-eth0'),
+        "$rel disables the guest DHCP client");
+    t_ok(str_contains($src, $runDir), "$rel recreates $runDir at boot");
+}
+$edgeNet = incus_read('scripts/07-edge-static-network.sh');
+foreach (['iface eth0 inet static', 'openrc.pid', '/etc/network/interfaces',
+    'rc-service networking', 'rc-service nginx-hardened'] as $n) {
+    t_ok(str_contains($edgeNet, $n), "07-edge-static-network.sh has $n");
+}
+t_ok(str_contains(incus_read('scripts/stack-up.sh'), '07-edge-static-network.sh'),
+    'stack-up.sh applies the edge static network');
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), '07-edge-static-network.sh'),
+    '04-jumpstart-app.sh applies the edge static network');
 
 t_done();

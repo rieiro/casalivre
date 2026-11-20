@@ -28,6 +28,9 @@ log "3/5 application tier"
 log "4/5 edge host initialization (../infra-nginx-hardened/scripts/00-init-host.sh)"
 "$EDGE_DIR/scripts/00-init-host.sh"
 
+log "4b/5 edge static network (survives reboot)"
+"$SCRIPT_DIR/07-edge-static-network.sh"
+
 log "5/5 verification"
 "$SCRIPT_DIR/verify-stack.sh"
 
