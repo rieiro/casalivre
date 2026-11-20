@@ -861,6 +861,23 @@
                         gi("prop.google_reviews_title", "Google Reviews") + " · " + gi("prop.google_attribution", "Powered by Google")));
             }
 
+            // 8c. OTA verified badge (partner platforms)
+            const otaVerifiedList = Array.isArray(data.ota_verifications) ? data.ota_verifications : [];
+            let otaCard = null;
+            if (otaVerifiedList.length > 0) {
+                const oi18n = (page && page.i18n) || {};
+                const oi = function (key, fallback) {
+                    return String(oi18n[key] || fallback);
+                };
+                const otaLabels = otaVerifiedList.map(function (v) {
+                    const platform = String((v && v.platform) || "");
+                    return oi("ota.platform_" + platform, String((v && v.platform_label) || platform));
+                });
+                otaCard = el("div", { className: "prop-view-card prop-ota-card" },
+                    el("span", { className: "prop-ota-badge" }, "✓ " + oi("ota.badge", "Anúncio Verificado em Plataformas Parceiras")),
+                    el("p", { className: "prop-ota-platforms" }, otaLabels.join(" · ")));
+            }
+
             // 9. Left Main Column
             const mainCol = el("div", { className: "prop-view-main-col" },
                 hostCard,
@@ -868,7 +885,8 @@
                 descriptionCard,
                 amenitiesBox,
                 rulesCard,
-                googleCard
+                googleCard,
+                otaCard
             );
 
             // 10. Right Sticky Sidebar (Booking Card)

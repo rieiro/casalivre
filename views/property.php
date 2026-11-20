@@ -9,6 +9,10 @@ $backUrl = safe_search_return((string) ($_GET['volta'] ?? ''));
 
 $amenityIcons = Amenities::ICONS;
 
+// Selo público "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
+require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
+$otaVerifications = OtaVerificationService::listVerifiedForProperty((int) ($property['id'] ?? 0));
+
 // Fallback server-side (sem JS): a página com use_api é montada pelo property.js, que recebe o mesmo
 // google_reputation pelo GET /api/imoveis/{hash}. Sem chave/cache/falha do Google, $googleReputation fica null.
 $googleReputation = null;
@@ -222,6 +226,21 @@ $googleAuthorInitial = static function (string $name): string {
                             </div>
                         <?php endif; ?>
                         <a class="prop-google-attribution" href="<?= e($googleReputation['google_maps_uri']) ?>" target="_blank" rel="noopener noreferrer"><?= e(t('prop.google_reviews_title')) ?> · <?= e(t('prop.google_attribution')) ?></a>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($otaVerifications !== []): ?>
+                    <div class="prop-view-card prop-ota-card">
+                        <span class="prop-ota-badge">✓ <?= e(t('ota.badge')) ?></span>
+                        <p class="prop-ota-platforms">
+                            <?php
+                            $otaPlatformLabels = [];
+                            foreach ($otaVerifications as $otaVerifiedRow) {
+                                $otaPlatformLabels[] = t('ota.platform_' . (string) $otaVerifiedRow['platform']);
+                            }
+                            echo e(implode(' · ', $otaPlatformLabels));
+                            ?>
+                        </p>
                     </div>
                 <?php endif; ?>
 

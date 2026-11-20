@@ -336,4 +336,29 @@ if (is_resource($sock)) {
     fclose($sock);
 }
 
+echo "OTA verification service\n";
+$otaRun = "$root/casalivre-ota-verify/run";
+$otaFinish = "$root/casalivre-ota-verify/finish";
+$otaLog = "$root/casalivre-ota-verify/log/run";
+foreach ([$otaRun, $otaFinish, $otaLog] as $path) {
+    $rel = substr($path, strlen(CL_ROOT) + 1);
+    t_ok(is_file($path) && is_executable($path), "$rel exists and is executable");
+    $syntaxOut2 = [];
+    $syntaxCode2 = 0;
+    exec('sh -n ' . escapeshellarg($path) . ' 2>&1', $syntaxOut2, $syntaxCode2);
+    t_eq(0, $syntaxCode2, "$rel: sh -n" . ($syntaxOut2 === [] ? '' : ': ' . implode(' ', $syntaxOut2)));
+}
+$otaRunSrc = (string) file_get_contents($otaRun);
+t_ok(str_contains($otaRunSrc, 'chpst -u') && str_contains($otaRunSrc, 'scripts/check_pending_ota_verifications.php'), 'ota run: chpst + check_pending_ota_verifications.php');
+t_ok(str_contains($otaRunSrc, '-d zend.exception_ignore_args=1'), 'ota run: php does not keep exception arguments');
+t_ok(str_contains($otaRunSrc, 'OTA_VERIFY_INTERVAL') && str_contains($otaRunSrc, 'sleep'), 'ota run: configurable interval sleep');
+$otaFinishSrc = (string) file_get_contents($otaFinish);
+t_ok(str_starts_with($otaFinishSrc, "#!/bin/sh\n"), 'ota finish: sh shebang');
+t_eq(1, substr_count($otaFinishSrc, 'exec '), 'ota finish: a single exec');
+t_ok(str_contains($otaFinishSrc, 'casalivre-resolve') && str_contains($otaFinishSrc, 'casalivre-finish casalivre-ota-verify 300'), 'ota finish: resolve + finish helper');
+$otaLogSrc = (string) file_get_contents($otaLog);
+t_ok(str_starts_with($otaLogSrc, "#!/bin/sh\n"), 'ota log run: sh shebang');
+t_eq(1, substr_count($otaLogSrc, 'exec '), 'ota log run: a single exec');
+t_ok(str_contains($otaLogSrc, 'casalivre-resolve') && str_contains($otaLogSrc, 'casalivre-svlogd casalivre-ota-verify /var/log/casalivre/ota-verify'), 'ota log run: resolve + svlogd helper');
+
 t_done();

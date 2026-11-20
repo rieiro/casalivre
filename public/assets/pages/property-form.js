@@ -92,6 +92,206 @@
         });
     }
 
+    // Verificação de anúncio em plataformas parceiras: adicionar, gerar, checar e remover.
+    // A tabela é dirigida por data-ota-*; cada linha carrega o seu verification id, então o
+    // "Verificar agora" sempre usa o id correto (inclusive depois de gerar o desafio).
+    // A ficha OTA fica DEPOIS do </form> do imóvel: buscar no documento, não dentro de form.
+    const otaRoot = document.querySelector('[data-ota-root]');
+    if (otaRoot) {
+        const el = CL.el;
+        const ds = otaRoot.dataset;
+        const otaBase = '/api/properties/' + encodeURIComponent(hash) + '/verifications';
+        const otaTbody = otaRoot.querySelector('[data-ota-tbody]');
+        const otaPlatform = otaRoot.querySelector('[data-ota-platform]');
+        const otaPublic = otaRoot.querySelector('[data-ota-public-url]');
+        const otaIcal = otaRoot.querySelector('[data-ota-ical-url]');
+        const otaAdd = otaRoot.querySelector('[data-ota-add]');
+        const otaMessage = otaRoot.querySelector('[data-ota-message]');
+        const otaTimers = new WeakMap();
+
+        const otaShowMessage = function (text) {
+            if (!otaMessage) return;
+            otaMessage.textContent = String(text || '');
+            otaMessage.hidden = !text;
+        };
+        const otaSyncAdd = function () {
+            if (!otaAdd) return;
+            const ready = !!(otaPlatform && otaPublic && otaIcal)
+                && String(otaPlatform.value || '').trim() !== ''
+                && String(otaPublic.value || '').trim() !== ''
+                && String(otaIcal.value || '').trim() !== '';
+            otaAdd.disabled = !ready;
+            otaAdd.classList.toggle('is-off', !ready);
+        };
+        const otaStatusInfo = function (status) {
+            if (status === 'pending_challenge') return { kind: 'pending', label: ds.otaStatusPending || '' };
+            if (status === 'verified') return { kind: 'verified', label: ds.otaStatusVerified || '' };
+            if (status === 'failed') return { kind: 'failed', label: ds.otaStatusFailed || '' };
+            return { kind: 'unverified', label: ds.otaStatusUnverified || '' };
+        };
+        const otaRenderRow = function (row) {
+            const status = String(row.status || 'unverified');
+            const info = otaStatusInfo(status);
+            const showGenerate = status === 'unverified' || status === 'failed';
+            const showCheck = status === 'pending_challenge';
+            return el('tr', {
+                'data-ota-row': '',
+                'data-ota-verification-id': String(row.id || ''),
+                'data-ota-status': status
+            },
+                el('td', {},
+                    el('strong', {}, String(row.platform_label || row.platform || '')),
+                    el('br'),
+                    el('span', { className: 'muted fine' }, String(row.public_url || ''))),
+                el('td', {}, el('span', { className: 'prop-ota-status-badge is-' + info.kind, 'data-ota-row-status': '' }, info.label)),
+                el('td', { 'data-ota-row-date': '' }, String(row.challenge_date_br || ds.otaNever || '—')),
+                el('td', { 'data-ota-row-checked': '' }, String(row.last_checked_at_br || ds.otaNever || '—')),
+                el('td', {}, el('div', { className: 'sync-actions' },
+                    el('button', { type: 'button', className: 'primary', 'data-ota-generate': '', hidden: !showGenerate }, ds.otaGenerateLabel || ''),
+                    el('button', { type: 'button', className: 'primary', 'data-ota-check': '', hidden: !showCheck }, ds.otaCheckLabel || ''),
+                    el('button', { type: 'button', className: 'danger', 'data-ota-remove': '' }, ds.otaRemoveLabel || ''))));
+        };
+        const otaLoadRows = async function () {
+            if (!otaTbody) return;
+            try {
+                const res = await CL.api(otaBase);
+                const rows = Array.isArray(res.verifications) ? res.verifications : [];
+                otaTbody.replaceChildren();
+                if (rows.length === 0) {
+                    otaTbody.appendChild(el('tr', {}, el('td', { colspan: '5', className: 'muted' }, ds.otaEmpty || '')));
+                    return;
+                }
+                rows.forEach(function (row) {
+                    otaTbody.appendChild(otaRenderRow(row));
+                });
+            } catch (e) {
+                otaShowMessage((e && e.message) || '');
+            }
+        };
+        const otaCooldown = function (button, seconds) {
+            if (!button) return;
+            const previous = otaTimers.get(button);
+            if (previous) clearInterval(previous);
+            let left = Math.max(1, Number(seconds) || 60);
+            const render = function () {
+                button.textContent = String(ds.otaCooldown || 'Verificar novamente em %ds...').replace('%d', String(left));
+            };
+            button.disabled = true;
+            render();
+            const timer = setInterval(function () {
+                left -= 1;
+                if (left <= 0) {
+                    clearInterval(timer);
+                    otaTimers.delete(button);
+                    button.disabled = false;
+                    button.textContent = ds.otaCheckLabel || '';
+                    return;
+                }
+                render();
+            }, 1000);
+            otaTimers.set(button, timer);
+        };
+        const otaGenerate = async function (button, id) {
+            button.disabled = true;
+            try {
+                const res = await CL.api(otaBase + '/' + id + '/generate', { method: 'POST' });
+                otaShowMessage(res.message || '');
+                await otaLoadRows();
+            } catch (e) {
+                otaShowMessage((e && e.message) || '');
+                button.disabled = false;
+            }
+        };
+        const otaCheck = async function (button, id) {
+            button.disabled = true;
+            button.textContent = ds.otaChecking || 'Verificando...';
+            try {
+                const res = await CL.api(otaBase + '/' + id + '/check', { method: 'POST' });
+                otaShowMessage(res.message || '');
+                if (res.status === 'verified' || res.status === 'expired') {
+                    await otaLoadRows();
+                    return;
+                }
+                otaCooldown(button, res.retry_after || 60);
+            } catch (e) {
+                otaShowMessage((e && e.message) || '');
+                if (e && e.status === 429 && e.data && e.data.retry_after) {
+                    otaCooldown(button, e.data.retry_after);
+                } else {
+                    button.disabled = false;
+                    button.textContent = ds.otaCheckLabel || '';
+                }
+            }
+        };
+        const otaRemove = async function (button, id) {
+            const confirmed = (window.CL && typeof window.CL.confirm === 'function')
+                ? await window.CL.confirm({
+                    title: ds.otaRemoveLabel || '',
+                    message: ds.otaRemoveConfirm || '',
+                    confirmText: ds.otaRemoveLabel || '',
+                    cancelText: 'Cancelar',
+                    danger: true
+                })
+                : true;
+            if (!confirmed) return;
+            button.disabled = true;
+            try {
+                await CL.api(otaBase + '/' + id, { method: 'DELETE' });
+                otaShowMessage(ds.otaRemoved || '');
+                await otaLoadRows();
+            } catch (e) {
+                otaShowMessage((e && e.message) || '');
+                button.disabled = false;
+            }
+        };
+
+        if (otaPlatform) otaPlatform.addEventListener('change', otaSyncAdd);
+        if (otaPublic) otaPublic.addEventListener('input', otaSyncAdd);
+        if (otaIcal) otaIcal.addEventListener('input', otaSyncAdd);
+        otaSyncAdd();
+
+        if (otaAdd) {
+            otaAdd.addEventListener('click', async function () {
+                otaAdd.disabled = true;
+                try {
+                    await CL.api(otaBase, {
+                        method: 'POST',
+                        body: {
+                            platform: String(otaPlatform ? otaPlatform.value : ''),
+                            public_url: String(otaPublic ? otaPublic.value : '').trim(),
+                            ical_url: String(otaIcal ? otaIcal.value : '').trim()
+                        }
+                    });
+                    if (otaIcal) otaIcal.value = '';
+                    if (otaPublic) otaPublic.value = '';
+                    otaShowMessage(ds.otaAdded || '');
+                    await otaLoadRows();
+                } catch (e) {
+                    otaShowMessage((e && e.message) || '');
+                } finally {
+                    otaSyncAdd();
+                }
+            });
+        }
+
+        if (otaTbody) {
+            otaTbody.addEventListener('click', function (ev) {
+                const button = ev.target.closest('button');
+                const row = button ? button.closest('[data-ota-row]') : null;
+                if (!button || !row) return;
+                const id = Number(row.getAttribute('data-ota-verification-id') || 0);
+                if (!id) return;
+                if (button.hasAttribute('data-ota-generate')) {
+                    otaGenerate(button, id);
+                } else if (button.hasAttribute('data-ota-check')) {
+                    otaCheck(button, id);
+                } else if (button.hasAttribute('data-ota-remove')) {
+                    otaRemove(button, id);
+                }
+            });
+        }
+    }
+
     if (!editing || !hash) return;
 
     function showToast(type, title, message) {

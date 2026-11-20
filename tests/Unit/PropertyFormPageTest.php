@@ -368,4 +368,28 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('showToast', $js);
         $this->assertStringContainsString('Fotos excluídas com sucesso', $js);
     }
+
+    public function testOtaAddButtonIsDocumentScopedAndEnabledOnlyWithThreeFields(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringContainsString("document.querySelector('[data-ota-root]')", $js);
+        $this->assertStringNotContainsString("form.querySelector('[data-ota-root]')", $js);
+        $this->assertStringContainsString('otaPlatform', $js);
+        $this->assertStringContainsString('otaPublic', $js);
+        $this->assertStringContainsString('otaIcal', $js);
+
+        $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
+        $this->assertMatchesRegularExpression('/<button[^>]*data-ota-add[^>]*disabled[^>]*>/', $partial);
+    }
+
+    public function testOtaAddClearsBothUrlInputsAfterSuccess(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertMatchesRegularExpression('/otaPublic\.value\s*=\s*\'\'/', $js);
+        $this->assertMatchesRegularExpression('/otaIcal\.value\s*=\s*\'\'/', $js);
+
+        $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-public-url[^>]*value="/', $partial);
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-ical-url[^>]*value="/', $partial);
+    }
 }
