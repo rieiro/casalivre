@@ -9,6 +9,8 @@ require_once dirname(__DIR__, 2) . "/conta/Geo/CityRepository.php";
 require_once dirname(__DIR__, 2) . "/src/SearchQuery.php";
 require_once dirname(__DIR__, 2) . "/src/SearchSql.php";
 require_once dirname(__DIR__, 2) . "/src/SearchService.php";
+require_once dirname(__DIR__, 2) . "/src/ListingSearch.php";
+require_once dirname(__DIR__, 2) . "/src/Settings.php";
 
 final class SearchPaginationTest extends TestCase
 {
@@ -27,6 +29,32 @@ final class SearchPaginationTest extends TestCase
         if ($this->pdo->inTransaction()) {
             $this->pdo->rollBack();
         }
+    }
+
+    /** Deterministic fixtures inside the test transaction: 100 Aliança/PE + 1 Saquarema. */
+    private function seedFixtures(): void
+    {
+        $place = CityRepository::resolve('Aliança, PE')['place'];
+        $this->assertIsArray($place, 'Aliança, PE must resolve');
+        $cityId = (int) $place['id'];
+        $this->assertNotNull(CityRepository::byId(4937), 'Saquarema (4937) must exist');
+
+        $user = $this->pdo->query("SELECT id FROM users WHERE status = 'active' ORDER BY id LIMIT 1")->fetchColumn();
+        $this->assertNotFalse($user, 'a user is required to seed properties');
+
+        $this->pdo->prepare('DELETE FROM listing_search WHERE city_place_id IN (?, ?)')->execute([$cityId, 4937]);
+        $this->pdo->prepare('DELETE FROM properties WHERE city_place_id IN (?, ?)')->execute([$cityId, 4937]);
+
+        $insert = $this->pdo->prepare(
+            'INSERT INTO properties (user_id, title, description, summary, city_place_id, address, lat, lng, bedrooms, beds, max_guests, nightly_price, min_nights, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id'
+        );
+        for ($i = 0; $i < 100; $i++) {
+            $insert->execute([(int) $user, 'Aliança ' . $i, 'Descrição', 'Resumo', $cityId, 'Rua ' . $i, -7.6, -35.2, 2, 2, 2, 200, 1, 'active']);
+            ListingSearch::sync((int) $insert->fetchColumn());
+        }
+        $insert->execute([(int) $user, 'Saquarema 1', 'Descrição', 'Resumo', 4937, 'Rua 1', -22.9, -42.5, 2, 3, 3, 300, 2, 'active']);
+        ListingSearch::sync((int) $insert->fetchColumn());
     }
 
     public function testSearchQueryParsesPagination(): void
@@ -49,11 +77,15 @@ final class SearchPaginationTest extends TestCase
 
     public function testSearchSqlBatchWithOffset(): void
     {
+        // Updated: 2026-11 - seed fixtures in transaction and use dynamic future dates.
+        $this->seedFixtures();
         $place = CityRepository::resolve("Aliança, PE")["place"];
         $this->assertIsArray($place);
+        $checkin = gmdate('Y-m-d', strtotime('+15 days'));
+        $checkout = gmdate('Y-m-d', strtotime('+19 days'));
 
-        $batch1 = SearchSql::batch($place, null, 2, null, "2026-12-01", "2026-12-05", null, 20, 0.0, SearchQuery::SORT_RELEVANCE, 0);
-        $batch2 = SearchSql::batch($place, null, 2, null, "2026-12-01", "2026-12-05", null, 20, 0.0, SearchQuery::SORT_RELEVANCE, 20);
+        $batch1 = SearchSql::batch($place, null, 2, null, $checkin, $checkout, null, 20, 0.0, SearchQuery::SORT_RELEVANCE, 0);
+        $batch2 = SearchSql::batch($place, null, 2, null, $checkin, $checkout, null, 20, 0.0, SearchQuery::SORT_RELEVANCE, 20);
 
         $this->assertCount(20, $batch1);
         $this->assertCount(20, $batch2);
@@ -66,19 +98,25 @@ final class SearchPaginationTest extends TestCase
 
     public function testSearchSqlTotalCount(): void
     {
+        // Updated: 2026-11 - seed fixtures in transaction and use dynamic future dates.
+        $this->seedFixtures();
         $place = CityRepository::resolve("Aliança, PE")["place"];
         $this->assertIsArray($place);
+        $checkin = gmdate('Y-m-d', strtotime('+15 days'));
+        $checkout = gmdate('Y-m-d', strtotime('+19 days'));
 
-        $totalCount = SearchSql::totalCount($place, null, 2, null, "2026-12-01", "2026-12-05", 0.0);
+        $totalCount = SearchSql::totalCount($place, null, 2, null, $checkin, $checkout, 0.0);
         $this->assertSame(100, $totalCount);
     }
 
     public function testSearchServicePaginationWithCityDatesAndGuests(): void
     {
+        // Updated: 2026-11 - seed fixtures in transaction and use dynamic future dates.
+        $this->seedFixtures();
         $requestBase = [
             "localidade" => "Aliança, PE",
-            "checkin" => "2026-12-01",
-            "checkout" => "2026-12-05",
+            "checkin" => gmdate('Y-m-d', strtotime('+15 days')),
+            "checkout" => gmdate('Y-m-d', strtotime('+19 days')),
             "hospedes" => "2",
         ];
 
@@ -128,14 +166,17 @@ final class SearchPaginationTest extends TestCase
     }
     public function testSearchRespectsMinNightsAndKeepsCountCoherent(): void
     {
+        // Updated: 2026-11 - seed fixtures in transaction and use dynamic future dates.
+        $this->seedFixtures();
         $place = CityRepository::byId(4937);
         $this->assertNotNull($place, "Saquarema (4937) must exist");
+        $checkin = gmdate('Y-m-d', strtotime('+15 days'));
 
         // 1 night stay when min_nights is 2: total and items must both be 0
         $q1 = SearchQuery::fromRequest([
             "local_id" => "4937",
-            "checkin" => "2026-11-19",
-            "checkout" => "2026-11-20",
+            "checkin" => $checkin,
+            "checkout" => gmdate('Y-m-d', strtotime($checkin . ' +1 day')),
             "hospedes" => "3",
         ]);
         $res1 = SearchService::search($q1, null);
@@ -146,8 +187,8 @@ final class SearchPaginationTest extends TestCase
         // 2 nights stay: property meets min_nights, total and items must both be 1
         $q2 = SearchQuery::fromRequest([
             "local_id" => "4937",
-            "checkin" => "2026-11-19",
-            "checkout" => "2026-11-21",
+            "checkin" => $checkin,
+            "checkout" => gmdate('Y-m-d', strtotime($checkin . ' +2 days')),
             "hospedes" => "3",
         ]);
         $res2 = SearchService::search($q2, null);
@@ -160,8 +201,12 @@ final class SearchPaginationTest extends TestCase
     }
     public function testSearchJsHasValidSyntax(): void
     {
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        if ($node === '') {
+            $this->markTestSkipped('Node is not installed.');
+        }
         $jsPath = dirname(__DIR__, 2) . "/public/assets/pages/search.js";
-        exec("node -c " . escapeshellarg($jsPath), $output, $returnCode);
+        exec(escapeshellarg($node) . " -c " . escapeshellarg($jsPath), $output, $returnCode);
         $this->assertSame(0, $returnCode, "search.js must have valid syntax with no duplicate identifier errors");
     }
 }

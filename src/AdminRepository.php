@@ -445,7 +445,7 @@ final class AdminRepository
         if ($table === null) {
             return 0;
         }
-        $stmt = db()->prepare("UPDATE {$table} SET status = 'pending', attempts = 0, last_error = NULL WHERE status = 'failed'");
+        $stmt = db()->prepare("UPDATE {$table} SET status = 'pending', attempts = 0, last_error = '' WHERE status = 'failed'");
         $stmt->execute();
         return $stmt->rowCount();
     }

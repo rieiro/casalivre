@@ -92,16 +92,25 @@ final class QuoteAuditLogTest extends TestCase
             ]
         );
 
-        $this->pdo->exec("SET ROLE casalivre_retention");
-        $st = $this->pdo->prepare("
-            SELECT code, retention_class, actor_kind, payload::text as payload, after_value::text as after_value
-            FROM audit.audit_log
-            WHERE code = 51 AND payload->>'imovel_id' = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-        ");
-        $st->execute([(string) $propertyId]);
-        $row = $st->fetch(PDO::FETCH_ASSOC);
+        $st = $this->pdo->prepare('SELECT status FROM quotes WHERE quote_hash = ?');
+        $st->execute([$quote['quote_hash']]);
+        $this->assertSame('pending', $st->fetchColumn(), 'quote row written before the audit read');
+
+        $reader = $this->auditReader();
+        if ($reader === null) {
+            $this->markTestSkipped('Requires casalivre_retention role / TEST_PG_DSN to read audit.audit_log.');
+        }
+        try {
+            $row = $this->auditRow($reader, "
+                SELECT code, retention_class, actor_kind, payload::text as payload, after_value::text as after_value
+                FROM audit.audit_log
+                WHERE code = 51 AND payload->>'imovel_id' = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            ", [(string) $propertyId]);
+        } finally {
+            $this->closeAuditReader($reader);
+        }
 
         $this->assertNotEmpty($row, 'Audit log row for QUOTE_CREATE must be recorded in audit.audit_log');
         $this->assertSame('admin', $row['retention_class']);
@@ -161,16 +170,21 @@ final class QuoteAuditLogTest extends TestCase
             ['status' => 'confirmed', 'quote_hash' => $hash]
         );
 
-        $this->pdo->exec("SET ROLE casalivre_retention");
-        $st = $this->pdo->prepare("
-            SELECT code, retention_class, payload::text as payload, before_value::text as before_value, after_value::text as after_value
-            FROM audit.audit_log
-            WHERE code = 52 AND payload->>'imovel_id' = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-        ");
-        $st->execute([(string) $propertyId]);
-        $row = $st->fetch(PDO::FETCH_ASSOC);
+        $reader = $this->auditReader();
+        if ($reader === null) {
+            $this->markTestSkipped('Requires casalivre_retention role / TEST_PG_DSN to read audit.audit_log.');
+        }
+        try {
+            $row = $this->auditRow($reader, "
+                SELECT code, retention_class, payload::text as payload, before_value::text as before_value, after_value::text as after_value
+                FROM audit.audit_log
+                WHERE code = 52 AND payload->>'imovel_id' = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            ", [(string) $propertyId]);
+        } finally {
+            $this->closeAuditReader($reader);
+        }
 
         $this->assertNotEmpty($row, 'Audit log row for RESERVATION_CONFIRM must be recorded in audit.audit_log');
         $this->assertSame('admin', $row['retention_class']);
@@ -181,5 +195,65 @@ final class QuoteAuditLogTest extends TestCase
         $after = json_decode((string) $row['after_value'], true);
         $this->assertSame('confirmed', $after['status']);
         $this->assertSame($hash, $after['quote_hash']);
+    }
+
+    /**
+     * Opens a retention-capable reader. First tries SET ROLE inside a savepoint so a failure
+     * cannot abort the test transaction; then falls back to TEST_PG_DSN when configured.
+     *
+     * @return array{0: PDO, 1: bool}|null PDO and whether it is a dedicated connection
+     */
+    private function auditReader(): ?array
+    {
+        $this->pdo->exec('SAVEPOINT audit_read');
+        try {
+            $this->pdo->exec('SET ROLE casalivre_retention');
+            return [$this->pdo, false];
+        } catch (PDOException $e) {
+            $this->pdo->exec('ROLLBACK TO SAVEPOINT audit_read');
+            $this->pdo->exec('RELEASE SAVEPOINT audit_read');
+            if ((string) $e->getCode() !== '42501') {
+                throw $e;
+            }
+        }
+
+        // A separate connection cannot see this test's uncommitted audit rows. Only use it outside a transaction.
+        $dsn = (string) getenv('TEST_PG_DSN');
+        if ($dsn === '' || $this->pdo->inTransaction()) {
+            return null;
+        }
+        $pdo = new PDO($dsn, getenv('TEST_PG_USER') ?: null, getenv('TEST_PG_PASSWORD') ?: null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        try {
+            $pdo->exec('SET ROLE casalivre_retention');
+        } catch (PDOException $e) {
+            if ((string) $e->getCode() === '42501') {
+                return null;
+            }
+            throw $e;
+        }
+        return [$pdo, true];
+    }
+
+    /** @param array{0: PDO, 1: bool} $reader */
+    private function closeAuditReader(array $reader): void
+    {
+        [$pdo, $own] = $reader;
+        if ($own) {
+            $pdo->exec('RESET ROLE');
+            return;
+        }
+        $this->pdo->exec('RESET ROLE');
+        $this->pdo->exec('RELEASE SAVEPOINT audit_read');
+    }
+
+    /** @param array{0: PDO, 1: bool} $reader */
+    private function auditRow(array $reader, string $sql, array $params): array|false
+    {
+        $st = $reader[0]->prepare($sql);
+        $st->execute($params);
+        return $st->fetch(PDO::FETCH_ASSOC);
     }
 }

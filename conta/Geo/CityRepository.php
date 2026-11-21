@@ -16,8 +16,11 @@ final class CityRepository
      */
     private const NEIGHBORHOOD_COUNT = 61543;
 
-    /** OSM POIs in database/places_pois.json.bz2. ensure skips the file once the table has this many. */
-    private const POI_COUNT = 8030;
+    /**
+     * Unique OSM POIs after (parent, folded name) dedup. The artifact has 8030 entries, but
+     * "Cachoeira Tombo D'água" appears twice under Campos dos Goytacazes/RJ (ASCII apostrophe and U+2019).
+     */
+    private const POI_COUNT = 8029;
 
     /** City popularity by "UF|name_fold". Every other city is 70. Neighborhoods stay 0. Produto 2026-10-25. */
     private const CITY_POPULARITY_DEFAULT = 70;

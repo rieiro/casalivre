@@ -15,7 +15,10 @@ final class QuoteRepository
         if (self::$ensured) {
             return;
         }
-        self::$ensured = true;
+        if ((bool) db()->query("SELECT to_regclass('public.quotes') IS NOT NULL")->fetchColumn()) {
+            self::$ensured = true;
+            return;
+        }
         db()->exec("CREATE TABLE IF NOT EXISTS quotes (
             id SERIAL PRIMARY KEY,
             quote_hash VARCHAR(32) UNIQUE NOT NULL,
@@ -35,6 +38,7 @@ final class QuoteRepository
         )");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_hash ON quotes (quote_hash)");
         db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_property ON quotes (property_id)");
+        self::$ensured = true;
     }
 
     public static function cleanupExpired(?int $propertyId = null): void

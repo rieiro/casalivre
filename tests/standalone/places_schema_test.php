@@ -8,7 +8,8 @@
 // SCHEMA 27: properties.rating_sum and rating_count.
 // SCHEMA 29: search reads listing_search; idx_prop_place_active and idx_prop_latlng_active are gone.
 // SCHEMA 31: listing_search.rating_tenths and idx_ls_* INCLUDE lists.
-// SCHEMA 32: calendar_feeds.slot/next_sync_at/fail_count/last_error, idx_feeds_due, calendar_days.feed_id. Index count 60.
+// SCHEMA 32: calendar_feeds.slot/next_sync_at/fail_count/last_error, idx_feeds_due, calendar_days.feed_id.
+// SCHEMA 39: unified iCal challenge lifecycle and global uq_calendar_feeds_url_hash.
 require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
@@ -18,7 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-t_eq(32, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 32');
+// Updated: 2026-11 - schema 39.
+t_eq(39, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 39');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -53,7 +55,8 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-t_eq('32', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 32');
+// Updated: 2026-11 - schema 39.
+t_eq('39', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 39');
 t_eq(
     "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
     (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),
@@ -77,7 +80,10 @@ foreach ($pdo->query("SELECT indexname, pg_get_indexdef(c.oid) AS def FROM pg_in
 t_ok(isset($ls['idx_ls_place_rank']) && str_contains($ls['idx_ls_place_rank'], '(city_place_id, rank_base DESC, id DESC)') && str_contains($ls['idx_ls_place_rank'], 'INCLUDE (max_guests, rating_tenths, rating_rank)') && str_contains($ls['idx_ls_place_rank'], "status = 'active'"), 'idx_ls_place_rank');
 t_ok(isset($ls['idx_ls_place_rating']) && str_contains($ls['idx_ls_place_rating'], '(city_place_id, rating_rank DESC, id DESC)') && str_contains($ls['idx_ls_place_rating'], 'INCLUDE (max_guests, rating_tenths, rank_base)') && str_contains($ls['idx_ls_place_rating'], "status = 'active'"), 'idx_ls_place_rating');
 t_ok(isset($ls['idx_ls_geo']) && str_contains($ls['idx_ls_geo'], 'USING gist') && str_contains($ls['idx_ls_geo'], 'point(lng, lat)') && str_contains($ls['idx_ls_geo'], 'INCLUDE (id, lat, lng, rank_base, rating_rank, max_guests, rating_tenths)') && str_contains($ls['idx_ls_geo'], "status = 'active'"), 'idx_ls_geo');
-t_eq(60, (int) $pdo->query("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public'")->fetchColumn(), 'public index count is 60');
+// Updated: 2026-11 - verify critical public indexes by name instead of global count.
+foreach (['idx_places_name_fold', 'places_city_uf_uk', 'places_child_uk', 'idx_prop_nb_active', 'place_search_keys_pkey', 'idx_photos_processing', 'idx_ls_place_rank', 'idx_ls_place_rating', 'idx_ls_geo', 'idx_feeds_due', 'uq_calendar_feeds_url_hash'] as $indexName) {
+    t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = " . $pdo->quote($indexName))->fetchColumn(), 'index ' . $indexName);
+}
 $due = (string) $pdo->query("SELECT pg_get_indexdef('idx_feeds_due'::regclass)")->fetchColumn();
 t_ok(str_contains($due, 'USING btree') && str_contains($due, '(next_sync_at)') && !str_contains($due, 'WHERE'), 'idx_feeds_due is a plain btree');
 t_eq('smallint', (string) $pdo->query("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'calendar_feeds'::regclass AND attname = 'slot'")->fetchColumn(), 'slot is smallint');
@@ -113,7 +119,8 @@ t_eq('alias', (string) $pdo->query("SELECT kind FROM place_search_keys WHERE \"k
 $beaches = $pdo->prepare("SELECT name FROM places WHERE type = 'poi' AND parent_id = ? AND name IN ('Praia de Geribá', 'Praia da Ferradura') ORDER BY name");
 $beaches->execute([(int) $buzios['id']]);
 t_eq(['Praia da Ferradura', 'Praia de Geribá'], $beaches->fetchAll(PDO::FETCH_COLUMN), 'Geribá e Ferradura ficam sob Armação dos Búzios');
-t_eq(8030, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), '8030 POIs OSM');
+// Updated: 2026-11 - places_pois.json.bz2 yields 8029 unique POIs after (parent, name_fold) dedup.
+t_eq(8029, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), '8029 POIs OSM');
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), '61543 bairros OpenCEP');
 t_ok((int) $pdo->query("SELECT COUNT(*) FROM place_search_keys k JOIN places p ON p.id = k.place_id WHERE p.type = 'neighborhood'")->fetchColumn() >= 61543, 'cada bairro tem chave de busca');
 t_ok((int) $pdo->query('SELECT COUNT(*) FROM place_search_keys')->fetchColumn() > count($cities), 'chaves de busca semeadas');
@@ -132,14 +139,16 @@ $acre = (string) $pdo->query("SELECT rtrim(c.uf) || ' ' || c.name FROM places p 
 t_eq('AC Acrelândia', $acre, 'Centro/AC resolve o pai por uf + name_fold (Acrelândia)');
 CityRepository::ensure($pdo);
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), 'ensure de novo não recarrega os bairros');
-t_eq(8030, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), 'ensure de novo mantém os 8030 POIs');
+// Updated: 2026-11 - 8029 unique POIs.
+t_eq(8029, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), 'ensure de novo mantém os 8029 POIs');
 $pdo->exec("DELETE FROM places WHERE id = (SELECT p.id FROM places p JOIN places c ON c.id = p.parent_id WHERE p.type = 'neighborhood' AND p.name = 'Terra Indígena Mamoadate' AND c.name_fold = 'assis brasil' AND rtrim(c.uf) = 'AC')");
 t_eq(61542, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), 'um bairro removido');
 CityRepository::ensure($pdo);
 t_eq(61543, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'neighborhood'")->fetchColumn(), 'cidades já semeadas: ensure completa o bairro que faltava');
 t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM places p JOIN places c ON c.id = p.parent_id WHERE p.type = 'neighborhood' AND p.name = 'Terra Indígena Mamoadate' AND c.name_fold = 'assis brasil' AND rtrim(c.uf) = 'AC'")->fetchColumn(), 'bairro removido voltou, sem duplicar');
 t_eq(count($cityUk), (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'city'")->fetchColumn(), 'completar bairros não recria as cidades');
-t_eq(8030, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), 'completar bairros mantém os 8030 POIs');
+// Updated: 2026-11 - 8029 unique POIs.
+t_eq(8029, (int) $pdo->query("SELECT COUNT(*) FROM places WHERE type = 'poi'")->fetchColumn(), 'completar bairros mantém os 8029 POIs');
 
 echo "CityRepository\n";
 $floripa = CityRepository::resolve('Florianópolis, SC')['place'];

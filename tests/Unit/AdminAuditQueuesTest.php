@@ -55,9 +55,24 @@ final class AdminAuditQueuesTest extends TestCase
         $this->assertArrayHasKey("mail_queue", $res->dados);
         $this->assertArrayHasKey("services", $res->dados);
 
-        // Test retry failed
+        // Test retry failed: image_queue.last_error is NOT NULL DEFAULT '', so the reset must use ''.
+        $now = date('Y-m-d H:i:s');
+        $insert = $this->pdo->prepare(
+            "INSERT INTO image_queue (photo_id, status, attempts, last_error, next_attempt_at, created_at, updated_at)
+             VALUES (1, 'failed', 2, 'boom', ?, ?, ?) RETURNING id"
+        );
+        $insert->execute([$now, $now, $now]);
+        $failedId = (int) $insert->fetchColumn();
+
         $retryRes = AdminQueues::retry($adminUser, "image_queue");
         $this->assertSame("ok", $retryRes->tipo);
+
+        $row = $this->pdo->prepare('SELECT status, attempts, last_error FROM image_queue WHERE id = ?');
+        $row->execute([$failedId]);
+        $retried = $row->fetch(PDO::FETCH_ASSOC) ?: [];
+        $this->assertSame('pending', (string) ($retried['status'] ?? ''), 'retry sets status=pending');
+        $this->assertSame(0, (int) ($retried['attempts'] ?? -1), 'retry resets attempts');
+        $this->assertSame('', (string) ($retried['last_error'] ?? 'x'), 'retry clears last_error without violating NOT NULL');
     }
 
     public function testAuditAndQueuesRejectNonAdmin(): void
