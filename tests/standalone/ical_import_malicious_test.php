@@ -221,8 +221,9 @@ $cases = [
     ['array URL', ['external_ical_url' => ['https://a'], 'feed_title' => 'x'], 422],
     ['number title', ['external_ical_url' => 'https://127.0.0.1/a.ics', 'feed_title' => 5], 422],
     ['URL with CRLF', ['external_ical_url' => "https://127.0.0.1/\r\nX-Evil: 1", 'feed_title' => 'x'], 422],
-    ['loopback URL + client ics_body', ['external_ical_url' => 'https://127.0.0.1/a.ics', 'feed_title' => 'loop', 'ics_body' => $cal($ev($ymd(30)))], 200],
-    ['metadata URL', ['external_ical_url' => 'https://169.254.169.254/latest/meta-data/', 'feed_title' => 'meta'], 200],
+    // Updated: 2026-11 - add-feed now fetches the URL, so SSRF targets are refused instead of stored.
+    ['loopback URL + client ics_body', ['external_ical_url' => 'https://127.0.0.1/a.ics', 'feed_title' => 'loop', 'ics_body' => $cal($ev($ymd(30)))], 422],
+    ['metadata URL', ['external_ical_url' => 'https://169.254.169.254/latest/meta-data/', 'feed_title' => 'meta'], 422],
     ['100 KB URL', ['external_ical_url' => 'https://127.0.0.1/' . bin2hex(random_bytes(50000)), 'feed_title' => 'long'], 422],
 ];
 foreach ($cases as [$label, $payload, $okStatus]) {
@@ -232,12 +233,12 @@ foreach ($cases as [$label, $payload, $okStatus]) {
     t_eq($okStatus, $resp['status'], $label);
     if ($label === 'loopback URL + client ics_body') {
         $json = json_decode($resp['body'], true) ?: [];
-        t_eq(0, $json['importadas'] ?? null, 'client ics_body imports nothing');
+        t_eq(null, $json['importadas'] ?? null, 'client ics_body imports nothing (request rejected)');
     }
 }
 t_eq([], t_blocked_days((int) $owner['house_id']), 'nothing blocked by saved feeds or by the client ics_body');
 $feeds = HouseRepository::feeds((int) $owner['house_id']);
-t_eq(2, count($feeds), 'only the loopback and metadata URLs were saved; the 100 KB URL was rejected');
+t_eq(0, count($feeds), 'the SSRF URLs are refused before any feed is saved');
 @unlink($jar);
 
 t_done();

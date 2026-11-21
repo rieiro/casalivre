@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 require_once dirname(__DIR__, 2) . '/src/Db.php';
 require_once dirname(__DIR__, 2) . '/src/CalendarSync.php';
 require_once dirname(__DIR__, 2) . '/src/IcalExportService.php';
+require_once dirname(__DIR__, 2) . '/src/OtaVerificationService.php';
 require_once dirname(__DIR__, 2) . '/src/HouseRepository.php';
 require_once dirname(__DIR__, 2) . '/src/helpers.php';
 
@@ -228,7 +229,11 @@ final class IcalExportServiceTest extends TestCase
         $this->assertSame('other', HouseRepository::detectSourcePlatform('https://pms.example.test/feed.ics'));
 
         $url = 'https://www.airbnb.com/calendar/ical/777.ics';
+        // Updated: 2026-11 - addFeed fetches the feed to start the unified ownership challenge.
+        OtaVerificationService::$httpTransport = static fn (): string =>
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CasaLivre//Test//EN\r\nEND:VCALENDAR\r\n";
         $created = HouseRepository::addFeed($this->propertyId, $this->userId, $url, 'Auto Detect');
+        OtaVerificationService::$httpTransport = null;
         $this->assertIsArray($created);
         $feedId = (int) $created['feed']['id'];
         $row = $this->pdo->prepare('SELECT url, url_hash, source_platform FROM calendar_feeds WHERE id = ?');

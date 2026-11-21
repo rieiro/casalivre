@@ -6,6 +6,8 @@
 require __DIR__ . '/lib.php';
 require __DIR__ . '/char_helpers.php';
 t_temp_db();
+// The test process and the php -S child must derive the same feed-URL key.
+putenv('GEO_SALT=' . str_repeat('t', 64));
 $owner = t_seed_owner();
 $srcWeb = t_seed_owner();
 $srcApi = t_seed_owner();
@@ -88,15 +90,18 @@ $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
 t_eq(200, $r['status'], 'web: import OK 200 (tela do calendário)');
 $logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'web: import grava só CALENDAR_FEED_ADD (o worker sincroniza)');
+// Updated: 2026-11 - add-feed now syncs immediately while the ownership challenge is pending.
+t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'web: import grava CALENDAR_FEED_ADD');
 t_ok(str_contains($r['body'], e(t('cal.feed_added'))), 'web: aviso de feed adicionado');
-t_ok(!isset($blocked($hid)[$day(20)]), 'DB: o pedido não bloqueia noites');
-t_eq(null, $feeds()[0]['last_status'], 'DB: feed web ainda sem last_status');
+t_eq(1, isset($blocked($hid)[$day(20)]) ? 1 : 0, 'DB: o pedido importa a noite e mantém o feed pendente');
+t_eq('OK', $feeds()[0]['last_status'], 'DB: feed web já sincronizou');
+t_eq('pending_verification', $feeds()[0]['status'], 'DB: feed web segue aguardando o desafio');
 
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
 t_eq(200, $r['status'], 'web: feed duplicado 200 (mensagem)');
-t_ok(str_contains($r['body'], 'class="alert error"') && str_contains($r['body'], e(t('cal.feed_duplicate'))), 'web: duplicado mostra o erro');
+// Updated: 2026-11 - duplicate URLs are rejected globally with the sharing-neutral message.
+t_ok(str_contains($r['body'], e(t('cal.duplicate_feed_global'))), 'web: duplicado mostra o erro global');
 // Paridade (PR B): recusa não grava CALENDAR_FEED_ADD (o feed não foi salvo), nos dois canais.
 t_eq([], c_codes($act, $m), 'web: duplicado não grava');
 $m = c_mark($act);
@@ -125,14 +130,16 @@ t_eq([422, ['external_ical_url' => t('cal.url_required')]], [$r['status'], $r['j
 t_eq([], c_codes($act, $m), 'API: url/title antigos não gravam');
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);
 t_eq(200, $r['status'], 'API: import OK 200');
-t_eq([true, 0], [$r['json']['ok'] ?? null, $r['json']['importadas'] ?? null], 'API: {ok, importadas:0} (sem download)');
+// Updated: 2026-11 - the feed is downloaded and imported during the add request.
+t_eq([true, 1], [$r['json']['ok'] ?? null, $r['json']['importadas'] ?? null], 'API: {ok, importadas:1}');
 t_ok(!isset($r['json']['status']), 'API: sem campo status');
 $logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'API: import grava só CALENDAR_FEED_ADD');
-t_ok(!isset($blocked($hid)[$day(30)]), 'DB: o pedido não bloqueia a noite');
+t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'API: import grava CALENDAR_FEED_ADD');
+t_eq(1, isset($blocked($hid)[$day(30)]) ? 1 : 0, 'DB: o pedido importa a noite');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);
-t_eq([409, ['external_ical_url' => t('cal.feed_duplicate')]], [$r['status'], $r['json']['erros'] ?? null], 'API: duplicado 409 com a mensagem da web');
+// Updated: 2026-11 - global duplicate is a 422 with the neutral message.
+t_eq([422, ['external_ical_url' => t('cal.duplicate_feed_global')]], [$r['status'], $r['json']['erros'] ?? null], 'API: duplicado 422 com a mensagem global');
 $r = c_api('POST', $base, $api, ['external_ical_url' => 'https://feeds.example/y.ics', 'feed_title' => ''], $csrf, $jar);
 t_eq([422, ['feed_title' => t('cal.feed_title_required')]], [$r['status'], $r['json']['erros'] ?? null], 'API: sem título 422 erros.feed_title');
 $r = c_api('POST', $base, $api, ['external_ical_url' => '', 'feed_title' => 'Vazio'], $csrf, $jar);
@@ -144,9 +151,12 @@ t_eq([422, ['external_ical_url' => t('cal.url_https')]], [$r['status'], $r['json
 t_eq([], c_codes($act, $m), 'API: porta recusada não grava');
 t_eq(2, count($feeds()), 'DB: 2 feeds (web e API), ambos pendentes');
 
-$byUrl = static function (string $url) use ($feeds): int {
-    foreach ($feeds() as $f) {
-        if ($f['url'] === $url) {
+// Updated: 2026-11 - feeds() masks the URL; look up the real (encrypted) value in the table.
+$byUrl = static function (string $url) use ($hid): int {
+    $stmt = db()->prepare('SELECT id, url FROM calendar_feeds WHERE property_id = ? ORDER BY id');
+    $stmt->execute([$hid]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $f) {
+        if (CalendarSync::decryptUrl((string) $f['url']) === $url) {
             return (int) $f['id'];
         }
     }
@@ -154,14 +164,17 @@ $byUrl = static function (string $url) use ($feeds): int {
 };
 $webId = $byUrl($urlWeb);
 $apiId = $byUrl($urlApi);
-$ins = db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id) VALUES (?, ?, 1, ?, ?)');
+// Updated: 2026-11 - the nights already exist from the immediate import; upsert keeps the scenario.
+$ins = db()->prepare('INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id) VALUES (?, ?, 1, ?, ?)
+    ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = EXCLUDED.origin, feed_id = EXCLUDED.feed_id');
 $ins->execute([$hid, $day(20), 'sync', $webId]);
 $ins->execute([$hid, $day(21), 'sync', $webId]);
 $ins->execute([$hid, $day(30), 'reserva', $apiId]);
-db()->prepare("UPDATE calendar_feeds SET last_status = 'NOK', last_error = 'private_ip', next_sync_at = 'infinity' WHERE id = ?")->execute([$webId]);
+// Updated: 2026-11 - the unified status column drives the badge and the error reason.
+db()->prepare("UPDATE calendar_feeds SET status = 'error', last_status = 'NOK', last_error = 'private_ip', next_sync_at = 'infinity' WHERE id = ?")->execute([$webId]);
 $g = t_http('GET', $base . $cal, null, [], $jar);
-t_ok(str_contains($g['body'], e(t('cal.status_stopped'))) && str_contains($g['body'], e(t('cal.err_url'))) && !str_contains($g['body'], 'private_ip'), 'web: feed parado mostra o texto da URL, não o código');
-db()->prepare('UPDATE calendar_feeds SET last_status = NULL, last_error = NULL, next_sync_at = now() WHERE id = ?')->execute([$webId]);
+t_ok(str_contains($g['body'], e(t('cal.status_error'))) && str_contains($g['body'], e(t('cal.err_url'))) && !str_contains($g['body'], 'private_ip'), 'web: feed com erro mostra o texto da URL, não o código');
+db()->prepare("UPDATE calendar_feeds SET status = 'pending_verification', last_status = 'OK', last_error = NULL, next_sync_at = now() WHERE id = ?")->execute([$webId]);
 
 echo "calendário: noites travadas pela sincronização (conflito)\n";
 $m = c_mark($act);

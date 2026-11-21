@@ -249,4 +249,30 @@
             });
         });
     }
+
+    // Verificar a titularidade de um feed iCal (desafio unificado no calendário).
+    document.querySelectorAll('form[action*="/ical/"][action*="/verificar"]').forEach(function (form) {
+        form.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            const match = form.action.match(/\/ical\/(\d+)\/verificar/);
+            if (!match) return;
+            const button = form.querySelector('button[type="submit"]');
+            if (button) button.disabled = true;
+            try {
+                const res = await CL.api('/api/imoveis/' + ref + '/ical/' + match[1] + '/verificar', {
+                    method: 'POST',
+                    error: 'Erro ao verificar calendário'
+                });
+                if (window.CL && typeof CL.toast === 'function') {
+                    CL.toast('success', 'Calendário verificado', res.message || 'Verificação concluída.');
+                }
+                window.location.reload();
+            } catch (e) {
+                if (window.CL && typeof CL.toast === 'function') {
+                    CL.toast('error', 'Verificação', (e && e.message) || 'Não foi possível verificar o calendário.');
+                }
+                if (button) button.disabled = false;
+            }
+        });
+    });
 })();

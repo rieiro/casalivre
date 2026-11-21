@@ -15,6 +15,7 @@ require_once $root . '/src/ActivityLog.php';
 require_once $root . '/src/QueueWorker.php';
 require_once $root . '/src/OtaVerificationService.php';
 require_once $root . '/src/IcalExportService.php';
+require_once $root . '/src/HouseRepository.php';
 Db::loadEnv();
 
 @mkdir($root . '/storage', 0700, true);
@@ -29,26 +30,25 @@ $report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'pas
 
 try {
     $expired = db()->prepare(
-        "UPDATE property_external_verifications
-            SET status = 'failed', updated_at = to_timestamp(?)
-          WHERE status = 'pending_challenge' AND challenge_expires_at <= to_timestamp(?)"
+        "SELECT count(*) FROM calendar_feeds
+          WHERE status = 'pending_verification' AND challenge_expires_at <= to_timestamp(?)"
     );
-    $expired->execute([$now, $now]);
-    $report['expired'] = $expired->rowCount();
+    $expired->execute([$now]);
+    $report['expired'] = (int) $expired->fetchColumn();
 
     $stmt = db()->prepare(
-        "SELECT id FROM property_external_verifications
-          WHERE status = 'pending_challenge'
+        "SELECT id, property_id FROM calendar_feeds
+          WHERE status = 'pending_verification'
             AND challenge_expires_at > to_timestamp(?)
             AND (last_checked_at IS NULL OR last_checked_at <= to_timestamp(?))
           ORDER BY last_checked_at ASC NULLS FIRST, id ASC
           LIMIT 50"
     );
     $stmt->execute([$now, $now - OtaVerificationService::CHECK_COOLDOWN_SECONDS]);
-    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $report['checked']++;
         try {
-            $result = OtaVerificationService::checkChallenge((int) $id, true);
+            $result = HouseRepository::verifyFeed((int) $row['property_id'], (int) $row['id'], true);
             $status = (string) ($result['status'] ?? '');
             if ($status === 'verified') {
                 $report['verified']++;
@@ -59,13 +59,14 @@ try {
             }
         } catch (Throwable $e) {
             $report['errors']++;
-            fwrite(STDERR, 'check_pending_ota_verifications: verificação ' . (int) $id . ': ' . $e->getMessage() . "\n");
+            fwrite(STDERR, 'check_pending_ota_verifications: feed ' . (int) $row['id'] . ': ' . $e->getMessage() . "\n");
         }
     }
-    // Verificação passiva (1x/dia): 3 falhas 401/403/404/410 rebaixam o selo.
+
+    // Verificação passiva (1x/dia): 3 falhas 401/403/404/410 rebaixam o selo do feed verificado.
     $passive = db()->prepare(
-        "SELECT id FROM property_external_verifications
-          WHERE status = 'verified'
+        "SELECT id FROM calendar_feeds
+          WHERE status = 'active' AND verified_at IS NOT NULL
             AND (last_passive_check_at IS NULL OR last_passive_check_at <= to_timestamp(?))
           ORDER BY last_passive_check_at ASC NULLS FIRST, id ASC
           LIMIT 50"
@@ -74,7 +75,7 @@ try {
     foreach ($passive->fetchAll(PDO::FETCH_COLUMN) as $id) {
         $report['passive_checked']++;
         try {
-            $result = OtaVerificationService::passiveVerifyRow((int) $id);
+            $result = HouseRepository::passiveVerifyFeed((int) $id);
             if (($result['status'] ?? '') === 'downgraded') {
                 $report['downgraded']++;
             }

@@ -45,24 +45,6 @@ function api_owned_property(array $user, string $hash): array
     }
 }
 
-/** Imóvel do painel por id numérico ou public_hash de 16 hex, exigindo que o usuário o gerencie. */
-function api_owned_property_by_ref(array $user, string $idOrRef): array
-{
-    $idOrRef = trim($idOrRef);
-    try {
-        if (ctype_digit($idOrRef)) {
-            $propertyId = (int) $idOrRef;
-        } elseif (preg_match('/^[a-f0-9]{16}$/', $idOrRef) === 1) {
-            $propertyId = HouseRepository::idFromPublicRefOrFail($idOrRef);
-        } else {
-            api_error(404, 'Imóvel não encontrado.');
-        }
-        return HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
-    } catch (Throwable) {
-        api_error(404, 'Imóvel não encontrado.');
-    }
-}
-
 function api_body(): array
 {
     $raw = raw_body();
@@ -614,7 +596,7 @@ function handle_api(string $path, string $method): void
         $res = ICalImport::run($property, (int) $user['id'], $body['external_ical_url'] ?? null, $body['feed_title'] ?? null);
         $res->registrar();
         if (isset($res->dados['erros'])) {
-            api_error($res->tipo === 'duplicate' ? 409 : 422, (string) $res->mensagem, $res->dados['erros']);
+            api_error(422, (string) $res->mensagem, $res->dados['erros']);
         }
         // Aviso para a tela do calendário depois do reload do JS (flash na sessão, não ?msg= na URL).
         CalendarFlash::set((string) $res->mensagem, $res->tipo === 'ok' ? 'ok' : 'error');
@@ -735,104 +717,37 @@ function handle_api(string $path, string $method): void
         api_error(404, 'Não encontrado.');
     }
 
-    // Verificação de anúncio em plataformas parceiras (iCal challenge-response).
-    if (preg_match('#^/api/properties/([^/]+)/verifications$#', $path, $m) && $method === 'GET') {
+    // Verificar a titularidade de um feed iCal já cadastrado (desafio unificado no calendário).
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/verificar$#', $path, $m) && $method === 'POST') {
         $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
+        $property = api_owned_property($user, $m[1]);
+        $result = HouseRepository::verifyFeed((int) $property['id'], (int) $m[2]);
+        $status = (string) ($result['status'] ?? '');
+        if ($status === 'not_found') {
+            api_error(404, 'Calendário não encontrado.');
+        }
+        if ($status === 'cooldown') {
+            header('Retry-After: ' . (int) ($result['retry_after'] ?? 60));
+            api_error(429, (string) ($result['message'] ?? 'Aguarde para tentar novamente.'));
+        }
+        if ($status !== 'verified') {
+            api_error(422, (string) ($result['message'] ?? 'A verificação ainda não foi concluída.'));
+        }
+        $feeds = HouseRepository::feeds((int) $property['id']);
+        $safeFeed = null;
+        foreach ($feeds as $row) {
+            if ((int) $row['id'] === (int) $m[2]) {
+                $safeFeed = $row;
+                break;
+            }
+        }
         json_out(200, [
             'ok' => true,
-            'verifications' => OtaVerificationService::listForProperty((int) $property['id']),
-            'badge_unlocked' => OtaVerificationService::hasVerifiedPlatform((int) $property['id']),
+            'verified' => true,
+            'feed' => $safeFeed,
+            'feeds' => $feeds,
+            'message' => (string) ($result['message'] ?? ''),
         ]);
-    }
-
-    if (preg_match('#^/api/properties/([^/]+)/verifications$#', $path, $m) && $method === 'POST') {
-        $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
-        try {
-            $result = OtaVerificationService::validateAndCreateChallenge(
-                (int) $property['id'],
-                (int) $user['id'],
-                (string) ($body['platform'] ?? ''),
-                (string) ($body['public_url'] ?? ''),
-                (string) ($body['ical_url'] ?? ''),
-                (bool) ($body['consent'] ?? false)
-            );
-        } catch (InvalidArgumentException $e) {
-            api_error(422, $e->getMessage());
-        } catch (RuntimeException $e) {
-            api_error(422, $e->getMessage());
-        }
-        json_out(200, ['ok' => true, 'verification' => $result]);
-    }
-
-    if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)/generate$#', $path, $m) && $method === 'POST') {
-        $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
-        if (OtaVerificationService::findForProperty((int) $m[2], (int) $property['id']) === null) {
-            api_error(404, 'Verificação não encontrada.');
-        }
-        try {
-            $result = OtaVerificationService::generateChallenge((int) $m[2]);
-        } catch (InvalidArgumentException $e) {
-            api_error(422, $e->getMessage());
-        } catch (RuntimeException $e) {
-            api_error(422, $e->getMessage());
-        }
-        json_out(200, ['ok' => true] + $result);
-    }
-
-    if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)$#', $path, $m) && $method === 'DELETE') {
-        $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
-        try {
-            if (!OtaVerificationService::removeChallenge((int) $m[2], (int) $property['id'])) {
-                api_error(404, 'Verificação não encontrada.');
-            }
-        } catch (InvalidArgumentException $e) {
-            api_error(422, $e->getMessage());
-        }
-        json_out(200, ['ok' => true]);
-    }
-
-    if (preg_match('#^/api/properties/([^/]+)/verifications/start$#', $path, $m) && $method === 'POST') {
-        $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
-        try {
-            $result = OtaVerificationService::validateAndCreateChallenge(
-                (int) $property['id'],
-                (int) $user['id'],
-                (string) ($body['platform'] ?? ''),
-                (string) ($body['public_url'] ?? ''),
-                (string) ($body['ical_url'] ?? ''),
-                (bool) ($body['consent'] ?? false)
-            );
-        } catch (InvalidArgumentException $e) {
-            api_error(422, $e->getMessage());
-        } catch (RuntimeException $e) {
-            api_error(422, $e->getMessage());
-        }
-        json_out(200, ['ok' => true] + $result);
-    }
-
-    if (preg_match('#^/api/properties/([^/]+)/verifications/(\d+)/check$#', $path, $m) && $method === 'POST') {
-        $user = api_require_user($user);
-        $property = api_owned_property_by_ref($user, $m[1]);
-        if (OtaVerificationService::findForProperty((int) $m[2], (int) $property['id']) === null) {
-            api_error(404, 'Verificação não encontrada.');
-        }
-        try {
-            $result = OtaVerificationService::checkChallenge((int) $m[2], false, (int) $property['id']);
-        } catch (InvalidArgumentException $e) {
-            api_error(404, $e->getMessage());
-        } catch (RuntimeException $e) {
-            api_error(422, $e->getMessage());
-        }
-        if (($result['status'] ?? '') === 'cooldown') {
-            header('Retry-After: ' . (int) $result['retry_after']);
-            json_out(429, ['ok' => false, 'error' => $result['message']] + $result);
-        }
-        json_out(200, ['ok' => true] + $result);
     }
 
     api_error(404, 'Rota não encontrada.');

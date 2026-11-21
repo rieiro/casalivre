@@ -469,6 +469,14 @@ final class OtaVerificationServiceTest extends TestCase
             (int) $this->pdo->query('SELECT quote_credits FROM users WHERE id = ' . $property['user_id'])->fetchColumn()
         );
 
+        // Updated: 2026-11 - Verified status is derived from calendar_feeds (unified challenge).
+        $this->pdo->prepare('DELETE FROM calendar_feeds WHERE property_id = ?')->execute([$property['id']]);
+        $feedIcal = 'https://ical.booking.com/v1/export?t=legacy-ota';
+        $this->pdo->prepare(
+            "INSERT INTO calendar_feeds
+                (property_id, slot, url, url_hash, title, source_platform, status, verified_at, next_sync_at, last_status)
+             VALUES (?, 1, ?, ?, 'Booking.com', 'booking', 'active', to_timestamp(?), now(), 'PENDENTE')"
+        )->execute([$property['id'], $feedIcal, hash('sha256', $feedIcal), self::T0]);
         $verified = OtaVerificationService::listVerifiedForProperty($property['id']);
         $this->assertNotEmpty($verified);
         $this->assertSame('booking', $verified[0]['platform']);

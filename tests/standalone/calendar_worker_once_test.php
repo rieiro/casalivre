@@ -11,7 +11,7 @@ $feed = HouseRepository::addFeed((int) $owner['house_id'], (int) $owner['user_id
 t_ok(is_array($feed), 'feed do export');
 
 $run = static function (string $extra = '') use ($owner): array {
-    exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(CL_ROOT . '/scripts/calendar-worker.php') . ' --once ' . $extra . ' 2>&1', $out, $code);
+    exec(escapeshellarg(PHP_BINARY) . ' -d allow_url_fopen=1 ' . escapeshellarg(CL_ROOT . '/scripts/calendar-worker.php') . ' --once ' . $extra . ' 2>&1', $out, $code);
     return [$code, implode("\n", $out)];
 };
 
@@ -59,6 +59,8 @@ for ($i = 0; $i < 50 && @file_get_contents($base . '/cal.ics') === false; $i++) 
 db()->exec("UPDATE calendar_feeds SET next_sync_at = 'infinity'");
 $remote = HouseRepository::addFeed((int) $owner['house_id'], (int) $owner['user_id'], 'https://feeds.example/cal.ics?t=SEGREDO', 'Remoto');
 t_ok(is_array($remote), 'feed do php -S');
+// Updated: 2026-11 - add-feed imports immediately and leases the next sync; make the fixture due now.
+db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 second' WHERE id = ?")->execute([(int) $remote['feed']['id']]);
 [$code, $text] = $run('--fixture ' . $base);
 t_eq(0, $code, 'worker --fixture sai 0');
 t_ok(!str_contains($text, 'SEGREDO'), 'a saída não ecoa o token');
@@ -72,14 +74,27 @@ t_eq('0600', substr(sprintf('%o', fileperms(CL_ROOT . '/storage/logs/calendar-sy
 
 echo "loopback recusado\n";
 db()->exec("UPDATE calendar_feeds SET next_sync_at = 'infinity'");
-$loop = HouseRepository::addFeed((int) $owner['house_id'], (int) $owner['user_id'], 'https://127.0.0.1/secret.ics', 'Loop');
-t_ok(is_array($loop), 'feed loopback é gravado (a checagem de IP é no fetch)');
+// Updated: 2026-11 - add-feed now fetches, so the SSRF guard rejects the URL before storing it.
+$refused = false;
+try {
+    HouseRepository::addFeed((int) $owner['house_id'], (int) $owner['user_id'], 'https://127.0.0.1/secret.ics', 'Loop');
+} catch (RuntimeException $e) {
+    $refused = true;
+}
+t_ok($refused, 'addFeed recusa o loopback antes de gravar');
+$loopUrl = 'https://127.0.0.1/secret.ics';
+$loopIns = db()->prepare("INSERT INTO calendar_feeds
+    (property_id, slot, url, url_hash, title, status, verified_at, next_sync_at, last_status)
+    VALUES (?, 3, ?, ?, 'Loop legado', 'active', now(), now() - interval '1 second', 'PENDENTE')
+    RETURNING id");
+$loopIns->execute([(int) $owner['house_id'], CalendarSync::encryptUrl($loopUrl), hash('sha256', $loopUrl)]);
+$loopId = (int) $loopIns->fetchColumn();
 [$code] = $run();
 t_eq(0, $code, 'recusa SSRF não derruba o worker');
-$err = db()->query('SELECT last_error FROM calendar_feeds WHERE id = ' . (int) $loop['feed']['id'])->fetchColumn();
+$err = db()->query('SELECT last_error FROM calendar_feeds WHERE id = ' . $loopId)->fetchColumn();
 t_eq('private_ip', $err, '127.0.0.1 vira private_ip');
 $blocked = db()->prepare('SELECT COUNT(*) FROM calendar_days WHERE property_id = ? AND feed_id = ?');
-$blocked->execute([$owner['house_id'], (int) $loop['feed']['id']]);
+$blocked->execute([$owner['house_id'], $loopId]);
 t_eq(0, (int) $blocked->fetchColumn(), 'o loopback não importa noites');
 
 t_done();

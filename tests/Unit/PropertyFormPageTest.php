@@ -369,29 +369,28 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('Fotos excluídas com sucesso', $js);
     }
 
-    public function testOtaAddButtonIsDocumentScopedAndEnabledOnlyWithThreeFields(): void
+    public function testPropertyEditLinksToCalendarVerificationInsteadOfInlineChallenge(): void
     {
+        // Updated: 2026-11 - The OTA challenge moved from Property Edit to the Calendar page.
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
-        $this->assertStringContainsString("document.querySelector('[data-ota-root]')", $js);
-        $this->assertStringNotContainsString("form.querySelector('[data-ota-root]')", $js);
-        $this->assertStringContainsString('otaPlatform', $js);
-        $this->assertStringContainsString('otaPublic', $js);
-        $this->assertStringContainsString('otaIcal', $js);
-        $this->assertStringContainsString('otaConsent', $js);
-        $this->assertStringContainsString('consent:', $js);
+        $this->assertStringNotContainsString('[data-ota-root]', $js);
+        $this->assertFileDoesNotExist(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
 
-        $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
-        $this->assertMatchesRegularExpression('/<button[^>]*data-ota-add[^>]*disabled[^>]*>/', $partial);
+        $view = (string) file_get_contents(dirname(__DIR__, 2) . '/views/property_form.php');
+        $this->assertStringContainsString("t('form.unverified_banner')", $view);
+        $this->assertStringContainsString("t('form.verify_now')", $view);
+        $this->assertStringContainsString('calendario#sincronizar-calendario', $view);
+        $this->assertStringContainsString("t('form.verified_badge')", $view);
     }
 
-    public function testOtaAddClearsBothUrlInputsAfterSuccess(): void
+    public function testCalendarVerificationHandlerReplacesTheOldPropertyEditFlow(): void
     {
-        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
-        $this->assertMatchesRegularExpression('/otaPublic\.value\s*=\s*\'\'/', $js);
-        $this->assertMatchesRegularExpression('/otaIcal\.value\s*=\s*\'\'/', $js);
+        // Updated: 2026-11 - Verification now lives in the calendar feed table.
+        $calendarJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('/verificar', $calendarJs);
+        $this->assertStringContainsString('data-ical-export', $calendarJs);
 
-        $partial = (string) file_get_contents(dirname(__DIR__, 2) . '/views/partials/ota_verification.php');
-        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-public-url[^>]*value="/', $partial);
-        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-ota-ical-url[^>]*value="/', $partial);
+        $propertyJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringNotContainsString('otaPublic', $propertyJs);
     }
 }

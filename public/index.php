@@ -207,10 +207,10 @@ function casa_privado(string $path, string $method): bool
     if ($path === '/api/google-place/verificar') {
         return true;
     }
-    if (preg_match('#^/api/properties/[^/]+/verifications(/|$)#', $path) === 1) {
+    if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical-exports(/|$)#', $path) === 1) {
         return true;
     }
-    if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical-exports(/|$)#', $path) === 1) {
+    if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical(/|$)#', $path) === 1) {
         return true;
     }
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
@@ -1591,6 +1591,21 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
         'message_tone' => $messageTone,
     ]);
     return null;
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/verificar$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findManageableOrFail(
+        (int) $user['id'],
+        HouseRepository::idFromPublicRefOrFail($m[1])
+    );
+    $res = HouseRepository::verifyFeed((int) $property['id'], (int) $m[2]);
+    CalendarFlash::set(
+        (string) ($res['message'] ?? ''),
+        ((string) ($res['status'] ?? '')) === 'verified' ? 'ok' : 'error'
+    );
+    redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m)) {

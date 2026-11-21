@@ -7,9 +7,10 @@ require_once __DIR__ . '/TextoBruto.php';
 
 /**
  * Cadastro de um feed iCal (web POST /imoveis/{hash}/ical/importar e
- * API POST /api/imoveis/{hash}/ical/importar). Não baixa o .ics: o worker sincroniza.
+ * API POST /api/imoveis/{hash}/ical/importar). Baixa o .ics na hora para escolher o desafio de
+ * titularidade e já importa as noites; o worker mantém a sincronização.
  *
- * Desfechos (tipo): vazio | tipo | url | title | limit (422) | duplicate (409) | ok.
+ * Desfechos (tipo): vazio | tipo | url | fetch | title | limit (422) | duplicate (422) | ok.
  * url e título chegam BRUTOS. Só https:// na porta 443, até CalendarSync::MAX_URL_LENGTH.
  * Logs: recusa não grava nada; com o feed salvo, só CALENDAR_FEED_ADD (o CALENDAR_SYNC é do worker).
  */
@@ -32,12 +33,19 @@ final class ICalImport
         if (!CalendarSync::isHttpsUrl($url)) {
             return self::recusa('url', 'external_ical_url', t('cal.url_https'));
         }
-        $error = HouseRepository::addFeed($propertyId, $userId, $url, $feedTitle);
+        try {
+            $error = HouseRepository::addFeed($propertyId, $userId, $url, $feedTitle);
+        } catch (RuntimeException $e) {
+            return self::recusa('fetch', 'external_ical_url', $e->getMessage());
+        }
         if ($error === 'limit') {
             return self::recusa('limit', 'external_ical_url', t('cal.feed_limit'));
         }
         if ($error === 'duplicate') {
-            return self::recusa('duplicate', 'external_ical_url', t('cal.feed_duplicate'));
+            return self::recusa('duplicate', 'external_ical_url', t('cal.duplicate_feed_global'));
+        }
+        if ($error === 'daily_limit') {
+            return self::recusa('limit', 'external_ical_url', t('ota.err_daily_limit'));
         }
         if ($error === 'title') {
             return self::recusa('title', 'feed_title', t('cal.feed_title_required'));
@@ -52,7 +60,7 @@ final class ICalImport
             null,
             is_array($error) ? ['feed' => CalendarSync::logFeed($error['feed']), 'link' => CalendarSync::logRef($error['link'][0]['new']['external_ical_url'] ?? null)] : null,
         ]];
-        return new Resultado('ok', $message, ['importadas' => 0], $events);
+        return new Resultado('ok', $message, ['importadas' => is_array($error) ? (int) ($error['imported'] ?? 0) : 0], $events);
     }
 
     private static function recusa(string $tipo, string $campo, string $message): Resultado

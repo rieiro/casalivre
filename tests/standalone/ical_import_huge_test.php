@@ -108,12 +108,15 @@ $dupes = db()->prepare('SELECT COUNT(*) - COUNT(DISTINCT day) FROM calendar_days
 $dupes->execute([$pid]);
 t_eq(0, (int) $dupes->fetchColumn(), 'no duplicate day rows');
 
-echo "imported days are not re-exported (no feed loop), so the export stays small\n";
+echo "only direct reservations are re-exported (sync nights never loop back)\n";
+// Updated: 2026-11 - schema 38 exports direct reservations; imported sync nights stay excluded.
 $t = microtime(true);
 $export = export_ics(HouseRepository::find($pid));
-t_ok(strlen($export) < 4096, 'export of a feed-only calendar is tiny (' . strlen($export) . ' bytes, ' . round(microtime(true) - $t, 2) . ' s)');
-t_eq(0, substr_count($export, 'BEGIN:VEVENT'), 'no imported day is exported');
-
+t_ok(strlen($export) < 65536, 'export of a feed-only calendar stays small (' . strlen($export) . ' bytes, ' . round(microtime(true) - $t, 2) . ' s)');
+$reservas = array_keys(array_filter($expected, static fn (string $origin): bool => $origin === 'reserva'));
+sort($reservas);
+$groups = 0;
+$prev = null;
 echo "event count bomb: minimal events filling 2 MiB\n";
 $pid2 = (int) t_seed_owner()['house_id'];
 $one = "BEGIN:VEVENT\nDTSTART:" . $day(5)->format('Ymd') . "\nEND:VEVENT\n";

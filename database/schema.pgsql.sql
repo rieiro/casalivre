@@ -299,12 +299,23 @@ CREATE TABLE IF NOT EXISTS calendar_feeds (
     next_sync_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- infinity = stopped
     fail_count SMALLINT NOT NULL DEFAULT 0,
     last_error TEXT CHECK (last_error IN ('bad_url','private_ip','http_4xx','not_ics','too_big','timeout','dns','http_5xx')),
+    -- Schema 39: unified iCal ownership challenge + input sync lifecycle.
+    status TEXT NOT NULL DEFAULT 'pending_verification'
+        CHECK (status IN ('pending_verification', 'active', 'error')),
+    challenge_date DATE NULL,
+    challenge_expires_at TIMESTAMPTZ NULL,
+    verified_at TIMESTAMPTZ NULL,
+    last_checked_at TIMESTAMPTZ NULL,
+    attempts SMALLINT NOT NULL DEFAULT 0,
+    last_passive_check_at TIMESTAMPTZ NULL,
+    passive_fail_count SMALLINT NOT NULL DEFAULT 0,
+    credits_awarded BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (property_id, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_feeds_due ON calendar_feeds (next_sync_at);
--- A URL criptografada usa IV aleatório; a unicidade por imóvel é o hash determinístico (schema 37).
-CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_feeds_property_url_hash
-    ON calendar_feeds (property_id, url_hash)
+-- A URL criptografada usa IV aleatório; a unicidade é o hash determinístico global (schema 39).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_feeds_url_hash
+    ON calendar_feeds (url_hash)
     WHERE url_hash IS NOT NULL;
 
 -- Exportação iCal por plataforma: um token 64-hex por link, revogável sem afetar os demais.

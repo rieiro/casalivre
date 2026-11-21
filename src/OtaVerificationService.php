@@ -589,19 +589,19 @@ final class OtaVerificationService
     public static function listVerifiedForProperty(int $propertyId): array
     {
         $stmt = db()->prepare(
-            "SELECT platform, public_url, verified_at
-               FROM property_external_verifications
-              WHERE property_id = ? AND status = 'verified'
-              ORDER BY verified_at DESC, id DESC"
+            'SELECT source_platform, title, verified_at
+               FROM calendar_feeds
+              WHERE property_id = ? AND verified_at IS NOT NULL
+              ORDER BY verified_at DESC, id DESC'
         );
         $stmt->execute([$propertyId]);
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $platform = (string) $row['platform'];
+            $platform = (string) ($row['source_platform'] ?? 'other');
             $out[] = [
                 'platform' => $platform,
                 'platform_label' => self::PLATFORM_LABELS[$platform] ?? $platform,
-                'public_url' => (string) $row['public_url'],
+                'title' => (string) ($row['title'] ?? ''),
                 'verified_at' => (string) $row['verified_at'],
             ];
         }
@@ -611,7 +611,7 @@ final class OtaVerificationService
     public static function hasVerifiedPlatform(int $propertyId): bool
     {
         $stmt = db()->prepare(
-            "SELECT 1 FROM property_external_verifications WHERE property_id = ? AND status = 'verified' LIMIT 1"
+            'SELECT 1 FROM calendar_feeds WHERE property_id = ? AND verified_at IS NOT NULL LIMIT 1'
         );
         $stmt->execute([$propertyId]);
         return $stmt->fetchColumn() !== false;
@@ -754,6 +754,17 @@ final class OtaVerificationService
     /** Downloads the private .ics feed with no redirects and a public-IP-only transport. */
     public static function fetchIcsFeed(string $icalUrl): string
     {
+        // Standalone harness: deterministic bodies for .example hosts; real SSRF guards still apply elsewhere.
+        $fixture = getenv('T_ICS_BODY_FILE');
+        if (is_string($fixture) && $fixture !== '' && is_file($fixture)) {
+            $host = strtolower((string) (parse_url($icalUrl, PHP_URL_HOST) ?? ''));
+            if ($host === 'example' || str_ends_with($host, '.example')) {
+                $body = file_get_contents($fixture);
+                if (is_string($body) && $body !== '') {
+                    return self::acceptFeed($body);
+                }
+            }
+        }
         if (self::$httpTransport !== null) {
             try {
                 $body = (string) (self::$httpTransport)($icalUrl, self::FETCH_TIMEOUT_SECONDS);
@@ -853,22 +864,10 @@ final class OtaVerificationService
         return $out;
     }
 
-    /** Conservative normalization for hashing/dedup: lowercase scheme/host, drop :443 and fragments. */
+    /** Shared canonical URL helper (CalendarSync). */
     public static function normalizeUrl(string $url, bool $stripQuery = false): string
     {
-        $parts = parse_url($url);
-        if (!is_array($parts) || !isset($parts['host'])) {
-            return $url;
-        }
-        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
-        $host = strtolower((string) $parts['host']);
-        $port = isset($parts['port']) && (int) $parts['port'] !== 443 ? ':' . (int) $parts['port'] : '';
-        $path = (string) ($parts['path'] ?? '');
-        if ($stripQuery) {
-            $path = rtrim($path, '/');
-        }
-        $query = (!$stripQuery && isset($parts['query']) && $parts['query'] !== '') ? '?' . $parts['query'] : '';
-        return $scheme . '://' . $host . $port . $path . $query;
+        return CalendarSync::normalizeUrl($url, $stripQuery);
     }
 
     /** Masks the query string (iCal exports carry private tokens). */
@@ -1081,9 +1080,45 @@ final class OtaVerificationService
         return hash('sha256', $salt, true);
     }
 
-    private static function now(): int
+    public static function now(): int
     {
         return self::$clock !== null ? (int) (self::$clock)() : time();
+    }
+
+    /**
+     * Fetches a feed and picks an open future challenge date (add-feed flow).
+     *
+     * @return array{ics: string, challenge_date: string}
+     */
+    public static function prepareFeedChallenge(string $icalUrl): array
+    {
+        $ics = self::fetchIcsFeed($icalUrl);
+        return ['ics' => $ics, 'challenge_date' => self::pickOpenDate($ics, [])];
+    }
+
+    /** Awards the permanent onboarding credits for a verified feed (ledger idempotent). */
+    public static function awardFeedCredits(int $propertyId, int $feedId): bool
+    {
+        $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
+        $owner->execute([$propertyId]);
+        $userId = (int) $owner->fetchColumn();
+        $ledger = db()->prepare(
+            'INSERT INTO ota_credit_ledger (property_id, user_id, verification_id, credits, awarded_at)
+             VALUES (?, ?, ?, ?, to_timestamp(?))
+             ON CONFLICT (property_id) DO NOTHING'
+        );
+        $ledger->execute([$propertyId, $userId, $feedId, self::ONBOARDING_CREDIT_REWARD, self::now()]);
+        if ($ledger->rowCount() !== 1) {
+            return false;
+        }
+        if ($userId > 0) {
+            db()->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
+                ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
+            if (self::$creditHook !== null) {
+                (self::$creditHook)($propertyId, $userId, $feedId);
+            }
+        }
+        return true;
     }
 
     private static function randomOffset(int $min, int $max): int

@@ -1,5 +1,7 @@
 <?php
 $editing = (bool) ($property ?? false);
+require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
+$isPropertyVerified = $editing ? OtaVerificationService::hasVerifiedPlatform((int) ($property['id'] ?? 0)) : false;
 $posted = $posted ?? [];
 $current = is_array($property ?? null) ? $property : [];
 $titleValue = (string) ($posted['title'] ?? ($current['title'] ?? ''));
@@ -67,6 +69,17 @@ if ($latValue === '' && $lngValue === '') {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <div><strong>Atenção:</strong> <?= e($error) ?></div>
         </div>
+    <?php endif; ?>
+
+    <?php if ($editing): ?>
+        <?php if ($isPropertyVerified): ?>
+            <div class="prop-verify-badge" role="status">✓ <?= e(t('form.verified_badge')) ?></div>
+        <?php else: ?>
+            <div class="prop-verify-banner" role="status">
+                <span><?= e(t('form.unverified_banner')) ?></span>
+                <a class="btn-dash-action primary" href="/imoveis/<?= e(property_ref($property)) ?>/calendario#sincronizar-calendario"><?= e(t('form.verify_now')) ?></a>
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <form class="prop-form-main" id="property-form" method="post" action="<?= $editing ? '/imoveis/' . e(property_ref($property)) : '/imoveis' ?>" data-editing="<?= $editing ? '1' : '0' ?>" data-hash="<?= $editing ? e(property_ref($property)) : '' ?>" data-script-error="<?= e(t('form.script_error')) ?>">
@@ -384,7 +397,6 @@ if ($latValue === '' && $lngValue === '') {
     </form>
 
     <?php if ($editing): ?>
-        <?php require __DIR__ . '/partials/ota_verification.php'; ?>
         <?php
         $uploadFile = ini_bytes((string) ini_get('upload_max_filesize'));
         $uploadPost = ini_bytes((string) ini_get('post_max_size'));

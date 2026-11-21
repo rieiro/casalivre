@@ -6,6 +6,9 @@ require_once __DIR__ . '/ReturningWrite.php';
 require_once __DIR__ . '/ImovelNaoEncontrado.php';
 require_once __DIR__ . '/ListingSearch.php';
 require_once __DIR__ . '/CalendarSync.php';
+require_once __DIR__ . '/OtaVerificationService.php';
+require_once __DIR__ . '/ActivityLog.php';
+require_once __DIR__ . '/helpers/ical.php';
 
 final class HouseRepository
 {
@@ -34,16 +37,20 @@ final class HouseRepository
      * The worker skips active=false. SKIP LOCKED: two workers cannot claim the same row.
      */
     public const CLAIM_DUE_FEED_SQL = <<<'SQL'
-UPDATE calendar_feeds f SET next_sync_at = now() + CASE WHEN c.active THEN interval '10 minutes' ELSE interval '1 day' END
-FROM (SELECT f2.id, (p.status = 'active' AND u.status = 'active') AS active,
-             f2.next_sync_at AS prev_due, f2.last_synced_at
+-- MATERIALIZED: without it the subquery is rescanned under SKIP LOCKED and one claim updates several rows.
+WITH c AS MATERIALIZED (
+    SELECT f2.id, (p.status = 'active' AND u.status = 'active') AS active,
+           f2.next_sync_at AS prev_due, f2.last_synced_at
       FROM calendar_feeds f2
       JOIN properties p ON p.id = f2.property_id
       JOIN users u ON u.id = p.user_id
-      WHERE f2.next_sync_at <= now()
-      ORDER BY (f2.last_status = 'PENDENTE') DESC, f2.next_sync_at ASC
-      LIMIT 1
-      FOR UPDATE OF f2 SKIP LOCKED) c
+     WHERE f2.status IN ('pending_verification', 'active') AND f2.next_sync_at <= now()
+     ORDER BY (f2.last_status = 'PENDENTE') DESC, f2.next_sync_at ASC
+     LIMIT 1
+     FOR UPDATE OF f2 SKIP LOCKED
+)
+UPDATE calendar_feeds f SET next_sync_at = now() + CASE WHEN c.active THEN interval '10 minutes' ELSE interval '1 day' END
+FROM c
 WHERE f.id = c.id
 RETURNING f.id, f.property_id, f.url, c.active, c.prev_due, c.last_synced_at
 SQL;
@@ -509,6 +516,8 @@ SQL;
     public static function feeds(int $propertyId): array
     {
         $stmt = db()->prepare("SELECT id, property_id, title, url, last_status, last_synced_at, last_error, fail_count,
+            status, challenge_date, challenge_expires_at, verified_at, last_checked_at, attempts,
+            passive_fail_count, credits_awarded, source_platform,
             next_sync_at = 'infinity' AS stopped
             FROM calendar_feeds WHERE property_id = ? ORDER BY id");
         $stmt->execute([$propertyId]);
@@ -516,6 +525,9 @@ SQL;
         foreach ($stmt->fetchAll() as $row) {
             $row['url'] = self::maskFeedUrl(CalendarSync::decryptUrl((string) $row['url']));
             $row['fail_count'] = (int) $row['fail_count'];
+            $row['attempts'] = (int) ($row['attempts'] ?? 0);
+            $row['passive_fail_count'] = (int) ($row['passive_fail_count'] ?? 0);
+            $row['credits_awarded'] = self::pgBool($row['credits_awarded'] ?? false);
             $row['stopped'] = self::pgBool($row['stopped']);
             $rows[] = $row;
         }
@@ -543,13 +555,15 @@ SQL;
         if ($title === '' || $titleLen > 40) {
             return 'title';
         }
-        if (!CalendarSync::isHttpsUrl($url)) {
+        $normalized = CalendarSync::normalizeUrl($url);
+        if (!CalendarSync::isHttpsUrl($normalized)) {
             return 'url';
         }
-        $urlHash = hash('sha256', $url);
-        $sourcePlatform = self::detectSourcePlatform($url);
-        $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE property_id = ? AND url_hash = ?');
-        $exists->execute([$propertyId, $urlHash]);
+        $urlHash = hash('sha256', $normalized);
+        $sourcePlatform = self::detectSourcePlatform($normalized);
+        // Global duplicate (never reveal which property/account owns the URL).
+        $exists = db()->prepare('SELECT 1 FROM calendar_feeds WHERE url_hash = ?');
+        $exists->execute([$urlHash]);
         if ($exists->fetchColumn()) {
             return 'duplicate';
         }
@@ -558,12 +572,64 @@ SQL;
         if ((int) $stmt->fetchColumn() >= self::FEED_SLOTS) {
             return 'limit';
         }
-        $row = self::takeFreeSlot($propertyId, CalendarSync::encryptUrl($url), $title, $urlHash, $sourcePlatform);
-        if ($row !== null) {
-            return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId)];
+        $attempts = db()->prepare(
+            'SELECT count(*) FROM ota_challenge_attempts WHERE user_id = ? AND created_at > to_timestamp(?)'
+        );
+        $attempts->execute([$userId, OtaVerificationService::now() - 86400]);
+        if ((int) $attempts->fetchColumn() >= OtaVerificationService::MAX_DAILY_CHALLENGES_PER_USER) {
+            return 'daily_limit';
         }
-        $exists->execute([$propertyId, $urlHash]);
-        return $exists->fetchColumn() ? 'duplicate' : 'limit';
+
+        $prepared = OtaVerificationService::prepareFeedChallenge($normalized);
+        $now = OtaVerificationService::now();
+        try {
+            $row = Db::transactional(db(), static function () use (
+                $propertyId,
+                $userId,
+                $normalized,
+                $title,
+                $urlHash,
+                $sourcePlatform,
+                $prepared,
+                $now
+            ): ?array {
+                $row = self::takeFreeSlot(
+                    $propertyId,
+                    CalendarSync::encryptUrl($normalized),
+                    $title,
+                    $urlHash,
+                    $sourcePlatform,
+                    (string) $prepared['challenge_date'],
+                    $now
+                );
+                if ($row !== null) {
+                    db()->prepare(
+                        'INSERT INTO ota_challenge_attempts (user_id, property_id, platform, created_at)
+                         VALUES (?, ?, ?, to_timestamp(?))'
+                    )->execute([$userId, $propertyId, $sourcePlatform, $now]);
+                }
+                return $row;
+            });
+        } catch (PDOException $e) {
+            if ((string) $e->getCode() === '23505') {
+                return 'duplicate';
+            }
+            throw $e;
+        }
+        if ($row === null) {
+            $exists->execute([$urlHash]);
+            return $exists->fetchColumn() ? 'duplicate' : 'limit';
+        }
+        $feedId = (int) $row['id'];
+        $imported = 0;
+        $parsed = import_ics($propertyId, (string) $prepared['ics']);
+        if (!isset($parsed['error'])) {
+            self::importFeed($propertyId, $feedId, $parsed['nights'], $parsed['origins'], 0);
+            $imported = count($parsed['nights']);
+            db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '10 minutes' WHERE id = ?")
+                ->execute([$feedId]);
+        }
+        return ['feed' => $row, 'link' => self::syncExternalUrl($propertyId, $userId), 'imported' => $imported];
     }
 
     /**
@@ -632,7 +698,8 @@ SQL;
     /** Owner re-save / retry: due now, failure counters cleared. Not called when the owner unblocks a night. */
     public static function markFeedPending(int $propertyId, int $feedId): void
     {
-        db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 second', fail_count = 0, last_error = NULL, last_status = 'PENDENTE'
+        db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 second', fail_count = 0, last_error = NULL, last_status = 'PENDENTE',
+                status = CASE WHEN verified_at IS NULL THEN 'pending_verification' ELSE 'active' END
             WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
     }
 
@@ -667,17 +734,15 @@ SQL;
      */
     public static function importFeed(int $propertyId, int $feedId, array $nights, array $origins, int $jitterSeconds): ?array
     {
-        $pdo = db();
-        $pdo->beginTransaction();
-        try {
+        return Db::transactional(db(), static function () use ($propertyId, $feedId, $nights, $origins, $jitterSeconds): ?array {
+            $pdo = db();
             $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
             $check = $pdo->prepare('SELECT 1 FROM calendar_feeds WHERE id = ? AND property_id = ? FOR KEY SHARE');
             $check->execute([$feedId, $propertyId]);
             if ($check->fetchColumn() === false) {
-                $pdo->rollBack();
                 return null;
             }
-            $today = date('Y-m-d');
+            $today = gmdate('Y-m-d');
             $free = $pdo->prepare("UPDATE calendar_days SET blocked = 0, origin = '', feed_id = NULL
                 WHERE property_id = ? AND feed_id = ? AND day >= ? AND day <> ALL (CAST(? AS date[]))");
             $free->execute([$propertyId, $feedId, $today, self::pgDateArray($nights)]);
@@ -702,17 +767,186 @@ SQL;
                     WHERE property_id = ? AND id <> ? AND next_sync_at > now() AND next_sync_at < 'infinity'")
                     ->execute([$propertyId, $feedId]);
             }
+            // A successful import never mutates status/verified_at: only the ownership challenge does.
             $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now() + interval '30 minutes' + (? * interval '1 second'),
                 fail_count = 0, last_error = NULL, last_status = 'OK', last_synced_at = now()
                 WHERE id = ?")->execute([$jitterSeconds, $feedId]);
-            $pdo->commit();
             return ['freed' => $freed, 'written' => $written];
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
+        });
+    }
+
+    /**
+     * Checks the ownership challenge of one feed and promotes it to active only on success.
+     *
+     * @return array<string, mixed>
+     */
+    public static function verifyFeed(int $propertyId, int $feedId, bool $bypassCooldown = false): array
+    {
+        $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ?');
+        $stmt->execute([$feedId, $propertyId]);
+        $feed = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($feed)) {
+            return ['status' => 'not_found'];
         }
+        // Only a completed challenge proves ownership; legacy sync feeds may be active with verified_at NULL.
+        if ($feed['verified_at'] !== null) {
+            return ['status' => 'verified', 'verified' => true, 'feed' => $feed, 'message' => t('cal.feed_already_verified')];
+        }
+        $now = OtaVerificationService::now();
+        $expires = $feed['challenge_expires_at'] === null ? false : strtotime((string) $feed['challenge_expires_at']);
+        if ($feed['challenge_date'] === null || $expires === false || $expires <= $now) {
+            return [
+                'status' => 'expired',
+                'feed' => $feed,
+                'message' => 'O desafio expirou. Remova este calendário e adicione-o novamente para gerar outro.',
+            ];
+        }
+        if (!$bypassCooldown && $feed['last_checked_at'] !== null) {
+            $last = strtotime((string) $feed['last_checked_at']);
+            if ($last !== false && $now - $last < OtaVerificationService::CHECK_COOLDOWN_SECONDS) {
+                $retry = OtaVerificationService::CHECK_COOLDOWN_SECONDS - ($now - $last);
+                return [
+                    'status' => 'cooldown',
+                    'retry_after' => $retry,
+                    'feed' => $feed,
+                    'message' => sprintf('Aguarde %d segundos antes de verificar novamente.', $retry),
+                ];
+            }
+        }
+        db()->prepare(
+            'UPDATE calendar_feeds SET last_checked_at = to_timestamp(?), attempts = attempts + 1
+              WHERE id = ? AND property_id = ?'
+        )->execute([$now, $feedId, $propertyId]);
+
+        $url = CalendarSync::decryptUrl((string) $feed['url']);
+        try {
+            $ics = OtaVerificationService::fetchIcsFeed($url);
+        } catch (RuntimeException $e) {
+            return ['status' => 'error', 'feed' => $feed, 'message' => $e->getMessage()];
+        }
+        $date = (string) $feed['challenge_date'];
+        $verdict = OtaVerificationService::isIsolatedManualBlockInIcs($ics, $date);
+        if (!$verdict['blocked']) {
+            return [
+                'status' => 'not_yet_reflected',
+                'feed' => $feed,
+                'message' => sprintf(
+                    'O bloqueio do dia %s ainda não apareceu no seu calendário. Aguarde alguns minutos e tente novamente.',
+                    self::dateBr($date)
+                ),
+            ];
+        }
+        if (!$verdict['isolated'] || $verdict['is_guest_booking']) {
+            return [
+                'status' => 'not_isolated_block',
+                'feed' => $feed,
+                'message' => sprintf(t('ota.err_not_isolated'), self::dateBr($date)),
+            ];
+        }
+
+        return Db::transactional(db(), static function () use ($propertyId, $feedId, $ics, $now): array {
+            $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
+            $lock->execute([$feedId, $propertyId]);
+            $row = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                return ['status' => 'not_found'];
+            }
+            if ($row['verified_at'] !== null) {
+                return ['status' => 'verified', 'verified' => true, 'feed' => $row, 'message' => t('cal.feed_already_verified')];
+            }
+            db()->prepare(
+                "UPDATE calendar_feeds
+                    SET status = 'active', verified_at = to_timestamp(?), last_checked_at = to_timestamp(?),
+                        fail_count = 0, passive_fail_count = 0, last_error = NULL, last_status = 'PENDENTE',
+                        next_sync_at = to_timestamp(?), credits_awarded = TRUE
+                  WHERE id = ? AND property_id = ?"
+            )->execute([$now, $now, $now + 600, $feedId, $propertyId]);
+
+            $awarded = OtaVerificationService::awardFeedCredits($propertyId, $feedId);
+            $parsed = import_ics($propertyId, $ics);
+            if (!isset($parsed['error'])) {
+                self::importFeed($propertyId, $feedId, $parsed['nights'], $parsed['origins'], 0);
+                db()->prepare('UPDATE calendar_feeds SET next_sync_at = to_timestamp(?) WHERE id = ?')
+                    ->execute([$now + 600, $feedId]);
+            }
+            ActivityLog::record(ActivityLog::OTA_VERIFY_VERIFIED, [
+                'imovel_id' => $propertyId,
+                'plataforma' => (string) ($row['source_platform'] ?? 'other'),
+                'data' => (string) $row['challenge_date'],
+                'creditos' => $awarded ? OtaVerificationService::ONBOARDING_CREDIT_REWARD : 0,
+            ]);
+            $fresh = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ?');
+            $fresh->execute([$feedId]);
+            return [
+                'status' => 'verified',
+                'verified' => true,
+                'credits_awarded' => $awarded,
+                'feed' => $fresh->fetch(PDO::FETCH_ASSOC) ?: $row,
+                'message' => t('cal.feed_verified'),
+            ];
+        });
+    }
+
+    /**
+     * Daily passive check of a verified feed; 3 consecutive 401/403/404/410 downgrade it.
+     *
+     * @return array<string, mixed>
+     */
+    public static function passiveVerifyFeed(int $feedId): array
+    {
+        $stmt = db()->prepare(
+            "SELECT * FROM calendar_feeds WHERE id = ? AND status = 'active' AND verified_at IS NOT NULL"
+        );
+        $stmt->execute([$feedId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return ['status' => 'skipped'];
+        }
+        $now = OtaVerificationService::now();
+        $last = $row['last_passive_check_at'] === null ? null : strtotime((string) $row['last_passive_check_at']);
+        if ($last !== null && $last !== false && $last > $now - 86400) {
+            return ['status' => 'not_due'];
+        }
+        try {
+            OtaVerificationService::fetchIcsFeed(CalendarSync::decryptUrl((string) $row['url']));
+        } catch (RuntimeException $e) {
+            $code = (int) $e->getCode();
+            if (!in_array($code, [401, 403, 404, 410], true)) {
+                db()->prepare(
+                    'UPDATE calendar_feeds SET last_passive_check_at = to_timestamp(?) WHERE id = ?'
+                )->execute([$now, $feedId]);
+                return ['status' => 'error', 'message' => $e->getMessage()];
+            }
+            $fail = (int) $row['passive_fail_count'] + 1;
+            if ($fail >= OtaVerificationService::PASSIVE_DOWNGRADE_FAIL_DAYS) {
+                db()->prepare(
+                    "UPDATE calendar_feeds
+                        SET status = 'pending_verification', verified_at = NULL, passive_fail_count = ?,
+                            last_passive_check_at = to_timestamp(?)
+                      WHERE id = ?"
+                )->execute([$fail, $now, $feedId]);
+                ActivityLog::record(ActivityLog::OTA_VERIFY_DOWNGRADED, [
+                    'imovel_id' => (int) $row['property_id'],
+                    'plataforma' => (string) ($row['source_platform'] ?? 'other'),
+                    'falhas' => $fail,
+                ]);
+                return ['status' => 'downgraded', 'fail_count' => $fail];
+            }
+            db()->prepare(
+                'UPDATE calendar_feeds SET passive_fail_count = ?, last_passive_check_at = to_timestamp(?) WHERE id = ?'
+            )->execute([$fail, $now, $feedId]);
+            return ['status' => 'failed', 'fail_count' => $fail, 'downgraded' => false];
+        }
+        db()->prepare(
+            'UPDATE calendar_feeds SET passive_fail_count = 0, last_passive_check_at = to_timestamp(?) WHERE id = ?'
+        )->execute([$now, $feedId]);
+        return ['status' => 'ok', 'fail_count' => 0];
+    }
+
+    private static function dateBr(string $ymd): string
+    {
+        $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $ymd, new DateTimeZone('UTC'));
+        return $dt === false ? $ymd : $dt->format('d/m/Y');
     }
 
     /**
@@ -722,10 +956,11 @@ SQL;
     {
         if (in_array($code, self::PERMANENT_FEED_ERRORS, true)) {
             $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
-                next_sync_at = 'infinity' WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
+                status = 'error', next_sync_at = 'infinity' WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
             $params = [$code, $feedId];
         } else {
             $sql = "UPDATE calendar_feeds SET fail_count = fail_count + 1, last_error = ?, last_status = 'NOK', last_synced_at = now(),
+                status = CASE WHEN fail_count + 1 >= " . self::FAIL_STOP . " THEN 'error' ELSE status END,
                 next_sync_at = CASE WHEN fail_count + 1 >= " . self::FAIL_STOP . " THEN 'infinity'
                     ELSE now() + interval '30 minutes' * LEAST(power(2, fail_count), 12) + (? * interval '1 second') END
                 WHERE id = ? RETURNING fail_count, next_sync_at = 'infinity' AS stopped";
@@ -755,10 +990,10 @@ SQL;
     }
 
     /** @return array{id: int|string, url: string, title: string}|null */
-    private static function takeFreeSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform): ?array
+    private static function takeFreeSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform, string $challengeDate, int $now): ?array
     {
         for ($attempt = 0; $attempt < self::ADD_SLOT_ATTEMPTS; $attempt++) {
-            $row = self::insertFeedSlot($propertyId, $url, $title, $urlHash, $sourcePlatform);
+            $row = self::insertFeedSlot($propertyId, $url, $title, $urlHash, $sourcePlatform, $challengeDate, $now);
             if ($row !== null) {
                 return $row;
             }
@@ -766,16 +1001,28 @@ SQL;
         return null;
     }
 
-    private static function insertFeedSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform): ?array
+    private static function insertFeedSlot(int $propertyId, string $url, string $title, string $urlHash, string $sourcePlatform, string $challengeDate, int $now): ?array
     {
-        $sql = 'INSERT INTO calendar_feeds (property_id, slot, url, url_hash, title, source_platform)
-            SELECT ?, s.slot, ?, ?, ?, ?
+        $sql = 'INSERT INTO calendar_feeds
+                (property_id, slot, url, url_hash, title, source_platform, status, challenge_date,
+                 challenge_expires_at, next_sync_at, last_status)
+            SELECT ?, s.slot, ?, ?, ?, ?, \'pending_verification\', ?, to_timestamp(?), to_timestamp(?), \'PENDENTE\'
             FROM (SELECT min(g)::smallint AS slot FROM generate_series(1, ' . self::FEED_SLOTS . ') g
                   WHERE NOT EXISTS (SELECT 1 FROM calendar_feeds f WHERE f.property_id = ? AND f.slot = g)) s
             WHERE s.slot IS NOT NULL
             ON CONFLICT DO NOTHING
-            RETURNING id, url, title';
-        $rows = ReturningWrite::query($sql, [$propertyId, $url, $urlHash, $title, $sourcePlatform, $propertyId]);
+            RETURNING id, url, title, status, challenge_date';
+        $rows = ReturningWrite::query($sql, [
+            $propertyId,
+            $url,
+            $urlHash,
+            $title,
+            $sourcePlatform,
+            $challengeDate,
+            $now + 259200,
+            $now,
+            $propertyId,
+        ]);
         return $rows[0] ?? null;
     }
 

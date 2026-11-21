@@ -18,6 +18,13 @@ if (getenv('CASALIVRE_ENV_FILE') === false) {
     putenv('CASALIVRE_ENV_FILE=' . $__tEnv);
     register_shutdown_function(static fn () => @unlink($__tEnv));
 }
+// Feed fetch fixture: .example hosts return this .ics so add-feed tests never touch the network.
+if (getenv('T_ICS_BODY_FILE') === false) {
+    $__tIcs = tempnam(sys_get_temp_dir(), 'clics');
+    file_put_contents($__tIcs, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CasaLivre//Teste//PT-BR\r\nEND:VCALENDAR\r\n");
+    putenv('T_ICS_BODY_FILE=' . $__tIcs);
+    register_shutdown_function(static fn () => @unlink($__tIcs));
+}
 
 // Limite por IP (IpRateLimiter, Valkey): cada execução usa um namespace próprio de chaves (cl:rl:t<hex>:...),
 // gravado em T_RATELIMIT_NS_FILE (herdado por php -S e subprocessos; tests/standalone/router.php relê a cada

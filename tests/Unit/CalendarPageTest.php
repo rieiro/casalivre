@@ -486,4 +486,65 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-legend-desktop\s*\{\s*display:\s*none;\s*\}/s', $css);
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.cal-legend-mobile\s*\{[^}]*display:\s*flex;/s', $css);
     }
+
+    public function testCalendarRendersUnifiedFeedStatusVerifyAndChallengeRow(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'cleaning_fee' => 0,
+            'nightly_price' => 200,
+            'min_nights' => 2,
+            'calendar_months' => 3,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 11,
+                'title' => 'Airbnb',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'pending_verification',
+                'challenge_date' => '2026-12-24',
+                'last_synced_at' => null,
+                'last_error' => null,
+                'fail_count' => 0,
+                'stopped' => false,
+            ],
+            [
+                'id' => 12,
+                'title' => 'Booking.com',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'active',
+                'challenge_date' => null,
+                'last_synced_at' => gmdate('Y-m-d H:i:s'),
+                'last_error' => null,
+                'fail_count' => 0,
+                'stopped' => false,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString(t('cal.status_pending_verification'), $html);
+        $this->assertStringContainsString(t('cal.status_active'), $html);
+        $this->assertStringContainsString('sync-badge is-pending', $html);
+        $this->assertStringContainsString('sync-badge is-active', $html);
+        // The verify action and the 24/12/2026 challenge hint live in the calendar feed table.
+        $this->assertStringContainsString('/ical/11/verificar', $html);
+        $this->assertStringContainsString('/ical/11/excluir', $html);
+        $this->assertStringContainsString('/ical/12/sincronizar', $html);
+        $this->assertStringContainsString('sync-challenge-row', $html);
+        $this->assertStringContainsString('24/12/2026', $html);
+        $this->assertStringContainsString('colspan="4"', $html);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('/verificar', $js);
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertStringContainsString('.sync-challenge-row', $css);
+        $this->assertStringContainsString('.sync-badge.is-pending', $css);
+    }
 }

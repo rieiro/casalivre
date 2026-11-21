@@ -4947,3 +4947,84 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
         flex-wrap: wrap;
     }
 }
+
+/* Desafio de titularidade unificado (calendário). */
+.sync-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--muted);
+}
+.sync-badge.is-pending {
+    border-color: var(--notice-line);
+    background: var(--notice-bg);
+    color: #7a5b00;
+}
+.sync-badge.is-active {
+    border-color: #a7d8bd;
+    background: #e8f5ee;
+    color: var(--ok);
+}
+.sync-badge.is-error {
+    border-color: var(--danger-line);
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+.btn-verify {
+    background: var(--sand);
+    border-color: var(--sand);
+    color: var(--ink);
+}
+.btn-verify:hover {
+    background: #f0b400;
+    border-color: #f0b400;
+}
+.btn-remove-outline {
+    background: transparent;
+    border: 1px solid var(--danger-line);
+    color: var(--danger);
+}
+.btn-remove-outline:hover {
+    background: var(--danger-bg);
+}
+.sync-challenge-row td {
+    background: var(--notice-bg);
+    border-left: 3px solid var(--notice-line);
+    font-size: 0.85rem;
+    color: var(--ink);
+}
+.prop-verify-banner,
+.prop-verify-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0.75rem 0;
+    padding: 0.85rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.9rem;
+}
+.prop-verify-banner {
+    border: 1px solid var(--notice-line);
+    background: var(--notice-bg);
+    color: #7a5b00;
+}
+.prop-verify-badge {
+    align-self: flex-start;
+    border: 1px solid #a7d8bd;
+    background: #e8f5ee;
+    color: var(--ok);
+    font-weight: 700;
+}
+@media (max-width: 768px) {
+    .prop-verify-banner {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

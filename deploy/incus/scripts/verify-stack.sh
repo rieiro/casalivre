@@ -99,6 +99,13 @@ if incus exec "$DB" -- su - postgres -c \
   else
     bad "property_ical_exports table is missing"
   fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='calendar_feeds' AND column_name IN ('status','verified_at')\"" 2>/dev/null \
+    | grep -qx 2; then
+    ok "calendar_feeds has the unified status/verified_at columns (schema 39)"
+  else
+    bad "calendar_feeds is missing the unified status/verified_at columns"
+  fi
 fi
 
 echo "== valkey =="

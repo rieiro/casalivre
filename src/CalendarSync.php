@@ -321,6 +321,33 @@ final class CalendarSync
         return [$code, $buffer, $location];
     }
 
+    /** Canonical URL for hashing/dedup: lowercase scheme/host, sorted query, no fragment/default port. */
+    public static function normalizeUrl(string $url, bool $stripQuery = false): string
+    {
+        $parts = parse_url(trim($url));
+        if (!is_array($parts) || !isset($parts['host'])) {
+            return trim($url);
+        }
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        $host = strtolower((string) $parts['host']);
+        $port = isset($parts['port']) && (int) $parts['port'] !== 443 ? ':' . (int) $parts['port'] : '';
+        $path = (string) ($parts['path'] ?? '');
+        if ($stripQuery) {
+            return $scheme . '://' . $host . $port . rtrim($path, '/');
+        }
+        $query = '';
+        if (isset($parts['query']) && $parts['query'] !== '') {
+            parse_str($parts['query'], $params);
+            if ($params !== []) {
+                ksort($params);
+                $query = '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+            } else {
+                $query = '?' . $parts['query'];
+            }
+        }
+        return $scheme . '://' . $host . $port . $path . $query;
+    }
+
     /** AES-256-GCM at rest (enc:v1:); legacy plaintext URLs pass through decrypt unchanged. */
     public static function encryptUrl(string $url): string
     {
