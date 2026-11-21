@@ -123,102 +123,103 @@ $icalExportBase = request_base() . '/ical/export/';
         </form>
     </div>
     <div class="sync-board" id="sincronizar-calendario">
-        <h2><?= e(t('cal.sync')) ?></h2>
-        <div class="sync-scroll">
-            <table class="sync-table">
-                <thead>
-                    <tr>
-                        <th><?= e(t('cal.col_title')) ?></th>
-                        <th><?= e(t('cal.col_status')) ?></th>
-                        <th><?= e(t('cal.col_synced')) ?></th>
-                        <th><?= e(t('cal.col_actions')) ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (!$feeds): ?>
-                        <tr><td colspan="4" class="muted"><?= e(t('cal.feed_empty')) ?></td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($feeds as $feed): ?>
-                        <?php
-                        $feedStatus = (string) ($feed['status'] ?? 'active');
-                        $statusLabel = match ($feedStatus) {
-                            'pending_verification' => t('cal.status_pending_verification'),
-                            'error' => t('cal.status_error'),
-                            default => t('cal.status_active'),
-                        };
-                        $statusClass = match ($feedStatus) {
-                            'pending_verification' => 'is-pending',
-                            'error' => 'is-error',
-                            default => 'is-active',
-                        };
-                        $reason = match ((string) ($feed['last_error'] ?? '')) {
-                            'bad_url', 'private_ip' => t('cal.err_url'),
-                            'http_4xx' => t('cal.err_http'),
-                            'not_ics' => t('cal.err_ics'),
-                            'too_big' => t('cal.err_size'),
-                            'timeout' => t('cal.err_timeout'),
-                            'dns' => t('cal.err_dns'),
-                            'http_5xx' => t('cal.err_server'),
-                            default => '',
-                        };
-                        $syncedAt = (string) ($feed['last_synced_at'] ?? '');
-                        $synced = $syncedAt !== '' ? strtotime($syncedAt . ' UTC') : false;
-                        $challengeBr = '';
-                        if ($feedStatus === 'pending_verification' && !empty($feed['challenge_date'])) {
-                            $challengeDt = DateTimeImmutable::createFromFormat('!Y-m-d', (string) $feed['challenge_date'], new DateTimeZone('UTC'));
-                            $challengeBr = $challengeDt === false ? '' : $challengeDt->format('d/m/Y');
-                        }
-                        $feedId = (int) $feed['id'];
-                        ?>
+        <div class="panel">
+            <h2><?= e(t('cal.sync')) ?></h2>
+            <div class="sync-scroll">
+                <table class="sync-table">
+                    <thead>
                         <tr>
-                            <td><strong><?= e((string) ($feed['title'] ?? '')) ?></strong></td>
-                            <td>
-                                <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
-                                <?php if ($feedStatus === 'error' && $reason !== ''): ?>
-                                    <br><span class="muted fine"><?= e($reason) ?></span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?= $synced === false
-                                    ? '—'
-                                    : max(0, (int) floor((time() - $synced) / 60)) . ' ' . e(t('cal.minutes_ago')) ?>
-                            </td>
-                            <td>
-                                <div class="sync-actions">
-                                    <?php if ($feedStatus === 'pending_verification'): ?>
-                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/verificar">
-                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                            <button class="primary btn-verify" type="submit"><?= e(t('cal.verify')) ?></button>
-                                        </form>
-                                    <?php else: ?>
-                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/sincronizar">
-                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                            <button class="primary" type="submit"><?= e($feedStatus === 'error' ? t('cal.try_again') : t('cal.sync_now')) ?></button>
-                                        </form>
-                                    <?php endif; ?>
-                                    <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir">
-                                        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                        <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>
-                                    </form>
-                                </div>
-                            </td>
+                            <th><?= e(t('cal.col_title')) ?></th>
+                            <th><?= e(t('cal.col_status')) ?></th>
+                            <th><?= e(t('cal.col_synced')) ?></th>
+                            <th><?= e(t('cal.col_actions')) ?></th>
                         </tr>
-                        <?php if ($feedStatus === 'pending_verification' && $challengeBr !== ''): ?>
-                            <tr class="sync-challenge-row">
-                                <td colspan="4">
-                                    <?= e(t('cal.challenge_before')) ?>
-                                    <strong><?= e($challengeBr) ?></strong>
-                                    <?= e(t('cal.challenge_between')) ?>
-                                    <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
-                                    <?= e(t('cal.challenge_after')) ?>
+                    </thead>
+                    <tbody>
+                        <?php if (!$feeds): ?>
+                            <tr><td colspan="4" class="muted"><?= e(t('cal.feed_empty')) ?></td></tr>
+                        <?php endif; ?>
+                        <?php foreach ($feeds as $feed): ?>
+                            <?php
+                            $feedStatus = (string) ($feed['status'] ?? 'active');
+                            $statusLabel = match ($feedStatus) {
+                                'pending_verification' => t('cal.status_pending_verification'),
+                                'error' => t('cal.status_error'),
+                                default => t('cal.status_active'),
+                            };
+                            $statusClass = match ($feedStatus) {
+                                'pending_verification' => 'is-pending',
+                                'error' => 'is-error',
+                                default => 'is-active',
+                            };
+                            $reason = match ((string) ($feed['last_error'] ?? '')) {
+                                'bad_url', 'private_ip' => t('cal.err_url'),
+                                'http_4xx' => t('cal.err_http'),
+                                'not_ics' => t('cal.err_ics'),
+                                'too_big' => t('cal.err_size'),
+                                'timeout' => t('cal.err_timeout'),
+                                'dns' => t('cal.err_dns'),
+                                'http_5xx' => t('cal.err_server'),
+                                default => '',
+                            };
+                            $syncedAt = (string) ($feed['last_synced_at'] ?? '');
+                            $synced = $syncedAt !== '' ? strtotime($syncedAt . ' UTC') : false;
+                            $challengeBr = '';
+                            if ($feedStatus === 'pending_verification' && !empty($feed['challenge_date'])) {
+                                $challengeDt = DateTimeImmutable::createFromFormat('!Y-m-d', (string) $feed['challenge_date'], new DateTimeZone('UTC'));
+                                $challengeBr = $challengeDt === false ? '' : $challengeDt->format('d/m/Y');
+                            }
+                            $feedId = (int) $feed['id'];
+                            ?>
+                            <tr>
+                                <td><strong><?= e((string) ($feed['title'] ?? '')) ?></strong></td>
+                                <td>
+                                    <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
+                                    <?php if ($feedStatus === 'error' && $reason !== ''): ?>
+                                        <br><span class="muted fine"><?= e($reason) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?= $synced === false
+                                        ? '—'
+                                        : max(0, (int) floor((time() - $synced) / 60)) . ' ' . e(t('cal.minutes_ago')) ?>
+                                </td>
+                                <td>
+                                    <div class="sync-actions">
+                                        <?php if ($feedStatus === 'pending_verification'): ?>
+                                            <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/verificar">
+                                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                <button class="primary btn-verify" type="submit"><?= e(t('cal.verify')) ?></button>
+                                            </form>
+                                        <?php else: ?>
+                                            <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/sincronizar">
+                                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                <button class="primary" type="submit"><?= e($feedStatus === 'error' ? t('cal.try_again') : t('cal.sync_now')) ?></button>
+                                            </form>
+                                        <?php endif; ?>
+                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir">
+                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                            <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                            <?php if ($feedStatus === 'pending_verification' && $challengeBr !== ''): ?>
+                                <tr class="sync-challenge-row">
+                                    <td colspan="4">
+                                        <?= e(t('cal.challenge_before')) ?>
+                                        <strong><?= e($challengeBr) ?></strong>
+                                        <?= e(t('cal.challenge_between')) ?>
+                                        <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
+                                        <?= e(t('cal.challenge_after')) ?>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
         <form class="panel" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>">
             <h2><?= e(t('cal.add_feed')) ?></h2>
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">

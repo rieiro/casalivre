@@ -145,15 +145,19 @@
             ev.preventDefault();
             const match = form.action.match(/\/ical\/(\d+)\/sincronizar/);
             if (!match) return;
+            const button = form.querySelector('button[type="submit"]');
+            if (button) button.disabled = true;
             try {
                 const res = await CL.api('/api/imoveis/' + ref + '/ical/' + match[1] + '/sincronizar', { method: 'POST', error: 'Erro ao sincronizar' });
                 if (window.CL && typeof window.CL.toast === 'function') {
                     CL.toast('success', 'Sincronização', res.message || 'Sincronização iniciada. Os dados serão atualizados em alguns segundos.');
                 }
+                window.location.reload();
             } catch (e) {
                 if (window.CL && typeof window.CL.toast === 'function') {
                     CL.toast('error', 'Erro na sincronização', e.message || 'Falha ao iniciar sincronização.');
                 }
+                if (button) button.disabled = false;
             }
         });
     });

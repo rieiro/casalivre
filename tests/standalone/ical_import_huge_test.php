@@ -117,6 +117,13 @@ $reservas = array_keys(array_filter($expected, static fn (string $origin): bool 
 sort($reservas);
 $groups = 0;
 $prev = null;
+foreach ($reservas as $iso) {
+    if ($prev === null || (new DateTimeImmutable($prev))->modify('+1 day')->format('Y-m-d') !== $iso) {
+        $groups++;
+    }
+    $prev = $iso;
+}
+t_eq($groups, substr_count($export, 'BEGIN:VEVENT'), 'only contiguous reservation groups are exported');
 echo "event count bomb: minimal events filling 2 MiB\n";
 $pid2 = (int) t_seed_owner()['house_id'];
 $one = "BEGIN:VEVENT\nDTSTART:" . $day(5)->format('Ymd') . "\nEND:VEVENT\n";

@@ -547,4 +547,48 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('.sync-challenge-row', $css);
         $this->assertStringContainsString('.sync-badge.is-pending', $css);
     }
+
+    public function testCalendarSyncBoardKeepsPanelWrapperAndBalancedMarkup(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 11,
+            'title' => 'Airbnb',
+            'url' => 'https://www.airbnb.com/••••',
+            'status' => 'pending_verification',
+            'challenge_date' => '2026-12-24',
+            'last_synced_at' => null,
+            'last_error' => null,
+            'fail_count' => 0,
+            'stopped' => false,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertMatchesRegularExpression(
+            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h2>/s',
+            $html
+        );
+
+        $start = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
+        $this->assertNotFalse($start);
+        $this->assertSame(1, preg_match('/<div\s+class="panel mt-16 ical-export-panel"/', $html, $m, PREG_OFFSET_CAPTURE, $start));
+        $slice = substr($html, $start, (int) $m[0][1] - $start);
+
+        $this->assertStringContainsString('class="sync-table"', $slice);
+        $this->assertStringContainsString('data-feed-form', $slice);
+        $this->assertSame(substr_count($slice, '<div'), substr_count($slice, '</div>'), 'sync-board must have balanced div tags');
+        $this->assertMatchesRegularExpression('/<\/form>\s*<\/div>\s*<div\s+class="panel mt-16 ical-export-panel"/s', $html);
+    }
 }

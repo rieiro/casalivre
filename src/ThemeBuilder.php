@@ -81,7 +81,9 @@ final class ThemeBuilder
         $out = rtrim(self::outDir(), '/');
         $extra = [];
         foreach (array_merge(glob("$out/*.css") ?: [], glob("$out/*/*") ?: []) as $f) {
-            if (is_file($f) && !isset($expected['files'][$f])) {
+            // build-assets.php compresses every manifest JSON/CSS/JS; the .gz sibling is derived, not orphaned.
+            $generatedGz = str_ends_with($f, '.gz') && isset($expected['files'][substr($f, 0, -3)]);
+            if (is_file($f) && !isset($expected['files'][$f]) && !$generatedGz) {
                 $extra[] = $f;
             }
         }

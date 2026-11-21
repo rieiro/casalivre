@@ -11,6 +11,11 @@ declare(strict_types=1);
 const CL_ROOT = __DIR__ . '/../..';
 require_once __DIR__ . '/php_cmd.php';
 
+// Test fixture branches (e.g. T_ICS_BODY_FILE) are gated on APP_ENV=testing.
+if (getenv('APP_ENV') === false) {
+    putenv('APP_ENV=testing');
+}
+
 // Isola os testes do .env real da raiz: Db::loadEnv lê CASALIVRE_ENV_FILE (herdado por php -S e
 // subprocessos). Padrão: um .env vazio temporário; um teste pode apontar para o seu antes de subir o servidor.
 if (getenv('CASALIVRE_ENV_FILE') === false) {

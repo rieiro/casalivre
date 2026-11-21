@@ -584,7 +584,7 @@ final class OtaVerificationService
     /**
      * Public, token-free view of the verified listings of a property.
      *
-     * @return list<array{platform: string, platform_label: string, public_url: string, verified_at: string}>
+     * @return list<array{platform: string, platform_label: string, title: string, verified_at: string}>
      */
     public static function listVerifiedForProperty(int $propertyId): array
     {
@@ -756,7 +756,8 @@ final class OtaVerificationService
     {
         // Standalone harness: deterministic bodies for .example hosts; real SSRF guards still apply elsewhere.
         $fixture = getenv('T_ICS_BODY_FILE');
-        if (is_string($fixture) && $fixture !== '' && is_file($fixture)) {
+        $testing = strtolower(trim((string) getenv('APP_ENV'))) === 'testing';
+        if ($testing && is_string($fixture) && $fixture !== '' && is_file($fixture)) {
             $host = strtolower((string) (parse_url($icalUrl, PHP_URL_HOST) ?? ''));
             if ($host === 'example' || str_ends_with($host, '.example')) {
                 $body = file_get_contents($fixture);
