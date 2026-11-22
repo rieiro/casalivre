@@ -7,7 +7,7 @@ require __DIR__ . '/lib.php';
 require_once CL_ROOT . '/src/Db.php';
 require_once CL_ROOT . '/src/CityRepository.php';
 
-t_temp_db();
+t_temp_db(false); // Bootstrap test: verifies POI seeding from an empty DB.
 $pdo = db();
 
 $poiCount = (new ReflectionClass(CityRepository::class))->getReflectionConstant('POI_COUNT')->getValue();

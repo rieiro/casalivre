@@ -95,18 +95,152 @@ function t_backdate(string $file): void
 
 /**
  * Prepara um banco temporário (DB_DSN) com o schema do projeto (PostgreSQL only, #137). Exige TEST_PG_DSN
- * (ex.: pgsql:host=/run/pg;dbname=postgres; ops/dev-env/test-pg.sh define): cria casalivre_t_<pid>_<rand>, carrega
- * schema.pgsql.sql, roda o migrate e apaga SÓ esse banco no fim. Deve ser chamado antes de qualquer acesso a db().
- * Retorna o DSN do banco.
+ * (ex.: pgsql:host=/run/pg;dbname=postgres; ops/dev-env/test-pg.sh define): cria casalivre_t_<pid>_<rand>,
+ * clona o banco template cacheado (ou carrega schema + migrate quando $useTemplate = false) e apaga SÓ esse
+ * banco no fim. Deve ser chamado antes de qualquer acesso a db(). Retorna o DSN do banco.
  */
-function t_temp_db(): string
+function t_temp_db(bool $useTemplate = true): string
 {
     $pgAdmin = (string) getenv('TEST_PG_DSN');
     if ($pgAdmin === '') {
         fwrite(STDERR, "TEST_PG_DSN is required (PostgreSQL only): run ops/dev-env/test-pg.sh or set TEST_PG_DSN/TEST_PG_USER.\n");
         exit(2);
     }
-    return t_temp_pg($pgAdmin);
+    return t_temp_pg($pgAdmin, $useTemplate);
+}
+
+/** Replace or append dbname= inside a PostgreSQL PDO DSN. */
+function t_pg_dsn_with_db(string $baseDsn, string $dbName): string
+{
+    return preg_match('/dbname=[^;]+/', $baseDsn)
+        ? (string) preg_replace('/dbname=[^;]+/', 'dbname=' . $dbName, $baseDsn)
+        : $baseDsn . ';dbname=' . $dbName;
+}
+
+/**
+ * Deterministic fingerprint for the standalone test template DB.
+ * Any edit to schema DDL, migrations, settings, i18n messages, audit actions, or place seeds rotates the key.
+ */
+function t_pg_template_hash(): string
+{
+    $files = [
+        'database/schema.pgsql.sql',
+        'src/Db.php',
+        'src/Settings.php',
+        'src/I18n.php',
+        'src/ActivityLog.php',
+        'src/CityRepository.php',
+        'conta/Geo/CityRepository.php',
+        'database/messages.php',
+        'database/cities.json',
+        'database/city_aliases.json',
+        'database/places_neighborhoods.json.bz2',
+        'database/places_pois.json.bz2',
+    ];
+    $ctx = hash_init('sha256');
+    foreach ($files as $rel) {
+        $path = CL_ROOT . '/' . $rel;
+        if (is_file($path)) {
+            hash_update($ctx, $rel . ':' . (string) hash_file('sha256', $path) . "\n");
+        }
+    }
+    return hash_final($ctx);
+}
+
+/** Seed a freshly created temp database using an isolated local PDO (never leaves Db::$conn open on templates). */
+function t_pg_seed_fresh(string $dsn, ?string $user, ?string $pass): void
+{
+    $opts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+    $pdo = new PDO($dsn, $user, $pass, $opts);
+    $pdo->exec('SET synchronous_commit = off');
+    $pdo->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
+
+    require_once CL_ROOT . '/src/Db.php';
+    require_once CL_ROOT . '/src/Settings.php';
+    require_once CL_ROOT . '/src/I18n.php';
+    require_once CL_ROOT . '/src/CityRepository.php';
+    require_once CL_ROOT . '/src/ActivityLog.php';
+
+    $pdo->beginTransaction();
+    try {
+        $pdo->exec('CREATE TABLE IF NOT EXISTS schema_meta (skey TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        Settings::seed($pdo);
+        I18n::seed($pdo);
+        CityRepository::ensure($pdo);
+        ActivityLog::seedActions($pdo);
+        $pdo->prepare(
+            "INSERT INTO schema_meta (skey, value) VALUES ('schema_version', ?)
+             ON CONFLICT (skey) DO UPDATE SET value = excluded.value"
+        )->execute([(string) Db::SCHEMA_VERSION]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $pdo = null;
+        throw $e;
+    }
+    $pdo = null;
+    gc_collect_cycles();
+}
+
+/** Ensure no backend stays attached to a staging/template DB before RENAME/TEMPLATE clone. */
+function t_pg_wait_idle(PDO $admin, string $dbName): void
+{
+    $st = $admin->prepare(
+        'SELECT pid FROM pg_stat_activity WHERE datname = ? AND pid <> pg_backend_pid()'
+    );
+    for ($i = 0; $i < 40; $i++) {
+        $st->execute([$dbName]);
+        $pids = $st->fetchAll(PDO::FETCH_COLUMN);
+        if ($pids === []) {
+            return;
+        }
+        foreach ($pids as $pid) {
+            try {
+                t_pg_terminate_backend($admin, (int) $pid);
+            } catch (Throwable) {
+            }
+        }
+        usleep(50000);
+    }
+}
+
+/** Return the cached template database name, building it once under advisory lock when missing or stale. */
+function t_pg_ensure_template(PDO $admin, string $adminDsn, ?string $user, ?string $pass): string
+{
+    $tplName = 'casalivre_t_tpl_' . substr(t_pg_template_hash(), 0, 12);
+    $rebuild = getenv('T_PG_REBUILD_TEMPLATE') === '1';
+
+    $admin->query('SELECT pg_advisory_lock(1129272400)');
+    try {
+        if ($rebuild) {
+            t_pg_drop($adminDsn, $tplName);
+        }
+        $exists = $admin->prepare('SELECT 1 FROM pg_database WHERE datname = ?');
+        $exists->execute([$tplName]);
+        if ($exists->fetchColumn() !== false) {
+            return $tplName;
+        }
+
+        $staging = $tplName . '_b_' . bin2hex(random_bytes(2));
+        $admin->exec("CREATE DATABASE $staging");
+        try {
+            $stagingDsn = t_pg_dsn_with_db($adminDsn, $staging);
+            t_pg_seed_fresh($stagingDsn, $user, $pass);
+            t_pg_wait_idle($admin, $staging);
+            $admin->exec("ALTER DATABASE $staging RENAME TO $tplName");
+        } catch (Throwable $e) {
+            t_pg_drop($adminDsn, $staging);
+            throw $e;
+        }
+        return $tplName;
+    } finally {
+        try {
+            $admin->query('SELECT pg_advisory_unlock(1129272400)');
+        } catch (Throwable) {
+        }
+    }
 }
 
 /** Banco PG temporário VAZIO (sem schema, sem DB_DSN): cria e apaga no shutdown. Retorna o DSN. */
@@ -118,29 +252,48 @@ function t_temp_pg_empty(): string
         exit(2);
     }
     $name = 'casalivre_t_' . getmypid() . '_' . bin2hex(random_bytes(3));
-    t_pg_admin($adminDsn)->exec("CREATE DATABASE $name");
+    $admin = t_pg_admin($adminDsn);
+    $admin->exec("CREATE DATABASE $name");
+    try {
+        $admin->exec("ALTER DATABASE $name SET synchronous_commit = off");
+    } catch (Throwable) {
+    }
     register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
-    return preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
+    return t_pg_dsn_with_db($adminDsn, $name);
 }
 
-/** Banco PG temporário: cria, carrega o schema, migra (seeds + versão) e apaga no shutdown. */
-function t_temp_pg(string $adminDsn): string
+/** Banco PG temporário: clona do template cacheado (ou carrega do zero se $useTemplate=false) e apaga no shutdown. */
+function t_temp_pg(string $adminDsn, bool $useTemplate = true): string
 {
     $opts = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
     $user = getenv('TEST_PG_USER') ?: null;
     $pass = getenv('TEST_PG_PASSWORD') ?: null;
     $name = 'casalivre_t_' . getmypid() . '_' . bin2hex(random_bytes(3));
+    $dsn = t_pg_dsn_with_db($adminDsn, $name);
     $admin = t_pg_admin($adminDsn);
-    $admin->exec("CREATE DATABASE $name");
-    $dsn = preg_match('/dbname=[^;]+/', $adminDsn) ? (string) preg_replace('/dbname=[^;]+/', "dbname=$name", $adminDsn) : $adminDsn . ";dbname=$name";
     register_shutdown_function(static fn () => t_pg_drop($adminDsn, $name));
-    (new PDO($dsn, $user, $pass, $opts))->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
+
+    if ($useTemplate) {
+        $tplName = t_pg_ensure_template($admin, $adminDsn, $user, $pass);
+        t_pg_wait_idle($admin, $tplName);
+        $admin->exec("CREATE DATABASE $name TEMPLATE $tplName");
+    } else {
+        $admin->exec("CREATE DATABASE $name");
+        (new PDO($dsn, $user, $pass, $opts))->exec((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'));
+    }
+    try {
+        $admin->exec("ALTER DATABASE $name SET synchronous_commit = off");
+    } catch (Throwable) {
+    }
+
     putenv('DB_DSN=' . $dsn);
     $user !== null && putenv('DB_USER=' . $user);
     $pass !== null && putenv('DB_PASSWORD=' . $pass);
-    // Em processo (migrate() carrega Settings, I18n, ActivityLog...).
+    // Em processo (migrate() carrega Settings, I18n, ActivityLog... e sai rápido quando já está na versão atual).
     require_once CL_ROOT . '/src/Db.php';
-    Db::migrateNow();
+    if (!$useTemplate) {
+        Db::migrateNow();
+    }
     return $dsn;
 }
 
@@ -247,17 +400,21 @@ function t_pg_drop(string $adminDsn, string $name): bool
 }
 
 /**
- * run.php sweep: drops casalivre_t_<pid>_* whose test process no longer exists (leftovers of interrupted tests).
+ * run.php sweep: drops casalivre_t_<pid>_* whose test process no longer exists and stale casalivre_t_tpl_* templates.
  * Databases of live processes (a parallel run) are kept. PIDs are those of the PID namespace running the suite.
  * @return list<string> dropped databases
  */
 function t_pg_sweep(string $adminDsn): array
 {
     $gone = [];
+    $currentTpl = 'casalivre_t_tpl_' . substr(t_pg_template_hash(), 0, 12);
     $rows = t_pg_admin($adminDsn)->query("SELECT datname FROM pg_database WHERE datname LIKE 'casalivre\\_t\\_%'")->fetchAll(PDO::FETCH_COLUMN);
     foreach ($rows as $db) {
-        if (preg_match('/^casalivre_t_(\d+)_[0-9a-f]+$/', (string) $db, $m) && !file_exists('/proc/' . $m[1]) && t_pg_drop($adminDsn, (string) $db)) {
-            $gone[] = (string) $db;
+        $dbName = (string) $db;
+        if (preg_match('/^casalivre_t_(\d+)_[0-9a-f]+$/', $dbName, $m) && !file_exists('/proc/' . $m[1]) && t_pg_drop($adminDsn, $dbName)) {
+            $gone[] = $dbName;
+        } elseif (preg_match('/^casalivre_t_tpl_[0-9a-f]{12}(?:_b_[0-9a-f]+)?$/', $dbName) && $dbName !== $currentTpl && t_pg_drop($adminDsn, $dbName)) {
+            $gone[] = $dbName;
         }
     }
     return $gone;

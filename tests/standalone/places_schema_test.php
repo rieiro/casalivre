@@ -25,7 +25,7 @@ t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
 
-t_temp_db();
+t_temp_db(false); // Bootstrap test: verifies schema load + CityRepository seeding from an empty DB.
 $pdo = db();
 $cities = json_decode((string) file_get_contents(CL_ROOT . '/database/cities.json'), true);
 
