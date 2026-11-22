@@ -89,13 +89,13 @@ $imp = '/imoveis/' . $owner['hash'] . '/ical/importar';
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
 t_eq(200, $r['status'], 'web: import OK 200 (tela do calendário)');
-$logs = c_logs($act, $m);
 // Updated: 2026-11 - add-feed now syncs immediately while the ownership challenge is pending.
-t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'web: import grava CALENDAR_FEED_ADD');
+t_eq([ActivityLog::CALENDAR_FEED_ADD], c_codes($act, $m), 'web: import grava CALENDAR_FEED_ADD');
 t_ok(str_contains($r['body'], e(t('cal.feed_added'))), 'web: aviso de feed adicionado');
-t_eq(1, isset($blocked($hid)[$day(20)]) ? 1 : 0, 'DB: o pedido importa a noite e mantém o feed pendente');
+t_eq(1, isset($blocked($hid)[$day(20)]) ? 1 : 0, 'DB: o pedido importa a noite no modo sync-only');
 t_eq('OK', $feeds()[0]['last_status'], 'DB: feed web já sincronizou');
-t_eq('pending_verification', $feeds()[0]['status'], 'DB: feed web segue aguardando o desafio');
+// Updated: 2026-11 - no platform was selected, so this is a sync-only feed.
+t_eq('active', $feeds()[0]['status'], 'DB: feed web fica ativo em modo sync-only');
 
 $m = c_mark($act);
 $r = c_form($base, $imp, ['_csrf' => $csrf, 'external_ical_url' => $urlWeb, 'feed_title' => 'Web'], $jar);
@@ -133,8 +133,8 @@ t_eq(200, $r['status'], 'API: import OK 200');
 // Updated: 2026-11 - the feed is downloaded and imported during the add request.
 t_eq([true, 1], [$r['json']['ok'] ?? null, $r['json']['importadas'] ?? null], 'API: {ok, importadas:1}');
 t_ok(!isset($r['json']['status']), 'API: sem campo status');
-$logs = c_logs($act, $m);
-t_eq([ActivityLog::CALENDAR_FEED_ADD], array_column($logs, 'code'), 'API: import grava CALENDAR_FEED_ADD');
+// Updated: 2026-11 - ignore the Valkey fallback code in no-Valkey test containers.
+t_eq([ActivityLog::CALENDAR_FEED_ADD], c_codes($act, $m), 'API: import grava CALENDAR_FEED_ADD');
 t_eq(1, isset($blocked($hid)[$day(30)]) ? 1 : 0, 'DB: o pedido importa a noite');
 $m = c_mark($act);
 $r = c_api('POST', $base, $api, ['external_ical_url' => $urlApi, 'feed_title' => 'Api'], $csrf, $jar);

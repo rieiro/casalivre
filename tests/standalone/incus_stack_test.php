@@ -344,18 +344,22 @@ echo "incus stack: ota verification deploy\n";
 $jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
 t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
     '04-jumpstart-app.sh applies incremental migrations on an existing database');
-// Updated: 2026-11 - Schema 39 unifies iCal challenge into calendar_feeds.
-t_ok(str_contains($jumpstartOta, 'migration_039_unify_ical_challenge.sql'),
-    '04-jumpstart-app.sh documents the schema 39 migration');
-t_ok(is_file(CL_ROOT . '/database/migrations/migration_039_unify_ical_challenge.sql'),
-    'migration_039_unify_ical_challenge.sql exists');
+// Updated: 2026-11 - Schema 40 adds the platform-bound OTA binding and review columns.
+t_ok(str_contains($jumpstartOta, 'migration_040_ota_url_binding.sql'),
+    '04-jumpstart-app.sh documents the schema 40 migration');
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_040_ota_url_binding.sql'),
+    'migration_040_ota_url_binding.sql exists');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'), 'url_hash'),
     'schema documents calendar_feeds.url_hash');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'), 'canonical_listing_id'),
+    'schema documents the platform-bound canonical id');
+t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/migrations/migration_040_ota_url_binding.sql'), 'uq_ota_credit_ledger_canonical'),
+    'migration 040 enforces the per-listing credit cap');
 t_ok(str_contains($jumpstartOta, 'casalivre-ota-verify'),
     '04-jumpstart-app.sh installs casalivre-ota-verify');
 t_ok(str_contains($jumpstartOta, 'check_pending_ota_verifications.php'),
     '04-jumpstart-app.sh runs the OTA verification check');
-// Updated: 2026-11 - Schema 39 makes calendar_feeds the single verification source.
+// Updated: 2026-11 - Schema 40 keeps calendar_feeds as the single verification source.
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/scripts/check_pending_ota_verifications.php'), 'calendar_feeds'),
     'the verification cron reads calendar_feeds (unified challenge)');
 t_ok(str_contains($jumpstartOta, '/srv/app/storage/cache'),
@@ -371,9 +375,9 @@ t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'
 echo "incus stack: ota fraud gate deploy\n";
 t_ok(is_file(CL_ROOT . '/database/migrations/migration_036_ota_fraud_gate.sql'),
     'migration_036_ota_fraud_gate.sql exists');
-// Updated: 2026-11 - Schema 39 unifies iCal challenge into calendar_feeds.
-t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_039_unify_ical_challenge.sql'),
-    '04-jumpstart-app.sh mentions the schema 39 migration');
+// Updated: 2026-11 - Schema 40 adds the platform-bound OTA binding and review columns.
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_040_ota_url_binding.sql'),
+    '04-jumpstart-app.sh mentions the schema 40 migration');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'ota_credit_ledger'),
     'verify-stack.sh checks the credit ledger');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'property_ical_exports'),

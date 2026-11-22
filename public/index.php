@@ -119,7 +119,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 
 return Seguranca::pipeline(
     [
-        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'google_place_id', 'public_url', 'ical_url'],
+        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'property_url', 'platform', 'mode', 'consent', 'google_place_id', 'public_url', 'ical_url'],
         'sem_csrf' => [
             '/mcp',
             '#^/api/v1/agent/properties/[a-f0-9]{16}/intent$#',
@@ -1062,6 +1062,35 @@ if ($path === '/admin/filas/reprocessar-emails' && $method === 'POST') {
     return null;
 }
 
+if ($path === '/admin/verificacoes' && $method === 'GET') {
+    $user = require_admin();
+    view('admin/verificacoes', [
+        'pending' => OtaVerificationService::listPendingReviews(),
+        'user' => $user,
+        'csrf' => csrf_token(),
+        'active_tab' => 'verificacoes',
+        'layout' => 'admin_layout',
+        'page_title' => 'OTA Verification Review',
+        'ok' => isset($_GET['ok']),
+        'error' => null,
+    ]);
+    return null;
+}
+
+if (preg_match('#^/admin/verificacoes/(\d+)/aprovar$#', $path, $m) && $method === 'POST') {
+    require_admin();
+    csrf_check();
+    OtaVerificationService::approveFeed((int) $m[1], (int) $_SESSION['user_id']);
+    redirect('/admin/verificacoes?ok=1');
+}
+
+if (preg_match('#^/admin/verificacoes/(\d+)/rejeitar$#', $path, $m) && $method === 'POST') {
+    require_admin();
+    csrf_check();
+    OtaVerificationService::rejectFeed((int) $m[1], (int) $_SESSION['user_id'], (string) ($_POST['review_note'] ?? ''));
+    redirect('/admin/verificacoes?ok=1');
+}
+
 if ($path === '/admin/traducoes' && ($method === 'GET' || $method === 'POST')) {
     $user = require_admin();
     require_once dirname(__DIR__) . '/src/Acoes/AdminTranslations.php';
@@ -1579,7 +1608,16 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     csrf_check();
     $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
     // Regra, validação (valor bruto, só https) e logs em ICalImport (iguais aos da API); aqui só a tela.
-    $res = ICalImport::run($property, (int) $user['id'], $_POST['external_ical_url'] ?? null, $_POST['feed_title'] ?? null);
+    $res = ICalImport::run(
+        $property,
+        (int) $user['id'],
+        $_POST['external_ical_url'] ?? null,
+        $_POST['feed_title'] ?? null,
+        $_POST['mode'] ?? 'sync_only',
+        $_POST['platform'] ?? '',
+        $_POST['property_url'] ?? '',
+        $_POST['consent'] ?? false
+    );
     $res->registrar();
     $message = $res->mensagem;
     $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
@@ -1605,6 +1643,38 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/verificar$#', $path, $m) &&
         (string) ($res['message'] ?? t('cal.feed_missing')),
         ((string) ($res['status'] ?? '')) === 'verified' ? 'ok' : 'error'
     );
+    redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/editar$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findManageableOrFail(
+        (int) $user['id'],
+        HouseRepository::idFromPublicRefOrFail($m[1])
+    );
+    try {
+        $res = HouseRepository::updateFeed(
+            (int) $property['id'],
+            (int) $user['id'],
+            (int) $m[2],
+            (string) ($_POST['mode'] ?? 'sync_only'),
+            (string) ($_POST['platform'] ?? ''),
+            (string) ($_POST['property_url'] ?? ''),
+            (string) ($_POST['external_ical_url'] ?? ''),
+            (string) ($_POST['feed_title'] ?? ''),
+            in_array($_POST['consent'] ?? false, [true, 1, '1', 'true', 'on'], true),
+            in_array($_POST['confirm'] ?? false, [true, 1, '1', 'true', 'on'], true)
+        );
+        CalendarFlash::set(
+            (string) ($res['message'] ?? ''),
+            ($res['status'] ?? '') === 'updated' ? 'ok' : 'error'
+        );
+    } catch (OtaFeedGateException $e) {
+        CalendarFlash::set($e->getMessage(), 'error');
+    } catch (RuntimeException $e) {
+        CalendarFlash::set($e->getMessage(), 'error');
+    }
     redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
 }
 

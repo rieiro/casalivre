@@ -50,7 +50,7 @@ foreach ($pages as $path) {
     $r = t_http('GET', $base . $path, null, [], $jar, str_contains($path, 'localidade='));
     $body = $r['body'];
     preg_match_all('/<script\b([^>]*)>/i', $body, $m);
-    $inline = array_filter($m[1], static fn (string $a) => !str_contains($a, 'src=') && !str_contains($a, 'application/json'));
+    $inline = array_filter($m[1], static fn (string $a) => !str_contains($a, 'src=') && !str_contains($a, 'application/json') && !str_contains($a, 'application/ld+json'));
     t_eq(0, count($inline), "$path: nenhum <script> inline (status {$r['status']})");
     t_ok(!preg_match('/\son[a-z]+\s*=/i', $body), "$path: nenhum handler on*=");
     t_ok(!preg_match('/\sstyle\s*=/i', $body), "$path: nenhum atributo style=");
@@ -99,7 +99,8 @@ sort($helperFiles);
 t_ok(count($helperFiles) > 1, 'varredura de helpers cobre helpers.php e src/helpers/ (' . count($helperFiles) . ' arquivos)');
 foreach (array_merge(['public/assets/pages/map.js', 'public/assets/pages/map-data.js', 'views/map.php', 'views/search.php', 'src/MapTiles.php', 'public/assets/map/style-light.json'], $helperFiles, ['public/index.php', '.env.example']) as $file) {
     $text = (string) file_get_contents(CL_ROOT . '/' . $file);
-    t_ok(!preg_match('/google|gstatic|GOOGLE_MAPS/i', $text), "$file sem Google Maps");
+    // Updated: 2026-11 - Google Places reputation is server-side; only legacy Maps JS/tiles are forbidden.
+    t_ok(!preg_match('/maps\.google|maps\.googleapis|gstatic|GOOGLE_MAPS_API_KEY|google\.com\/maps/i', $text), "$file sem Google Maps");
 }
 
 echo "safe-dom.js (Node vm): safeHref e el()\n";
@@ -142,9 +143,13 @@ for (const [key, [tag, attr, val]] of Object.entries(urlCases)) {
 out.classProp = CL.el('p', { CLASSNAME: 'x' }).className;
 console.log(JSON.stringify(out));
 JS;
+$node = trim((string) shell_exec('command -v node 2>/dev/null'));
+if ($node === '') {
+    echo "  skip safe-dom.js (Node is not installed)\n";
+} else {
 $tmp = tempnam(sys_get_temp_dir(), 'sd') . '.js';
 file_put_contents($tmp, str_replace('process.argv[1]', var_export(CL_ROOT . '/public/assets/safe-dom.js', true), $js));
-$res = json_decode((string) shell_exec('node ' . escapeshellarg($tmp) . ' 2>&1'), true) ?: [];
+$res = json_decode((string) shell_exec(escapeshellarg($node) . ' ' . escapeshellarg($tmp) . ' 2>&1'), true) ?: [];
 @unlink($tmp);
 t_eq('/imoveis/x', $res['href:"/imoveis/x"'] ?? null, 'safeHref aceita /imoveis/x');
 t_eq('/', $res['href:"/"'] ?? null, 'safeHref aceita /');
@@ -164,5 +169,6 @@ foreach ($urlExpect as $key => $want) {
     t_eq(0, $res['urlraw:' . $key] ?? null, "el(): $key não deixa cópia crua com outra caixa");
 }
 t_eq('x', $res['classProp'] ?? null, 'el(): CLASSNAME em qualquer caixa vira className');
+}
 
 t_done();

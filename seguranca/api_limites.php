@@ -20,6 +20,9 @@ return [
     ['POST', '#^/api/casas/[a-f0-9]{16}/fotos$#', 30, 600, '/api/casas/*/fotos'],
     // Validar o Google Place ID no painel: 10 tentativas por 10 min por IP.
     ['POST', '#^/api/google-place/verificar$#', 10, 600, '/api/google-place/verificar'],
+    // Cadastro/edição de feeds iCal: 20 por 10 min por IP (web e API).
+    ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical/importar$#', 20, 600, '/api/imoveis/*/ical/importar'],
+    ['PUT', '#^/api/imoveis/[a-f0-9]{16}/ical/\d+$#', 20, 600, '/api/imoveis/*/ical/*'],
     // Verificar a titularidade de um feed iCal: 30 checagens por minuto por IP.
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical/\d+/verificar$#', 30, 60, '/api/imoveis/*/ical/*/verificar'],
     // Exportação iCal por plataforma: 20 novos links por 10 min por IP.

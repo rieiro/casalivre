@@ -54,6 +54,12 @@
 
             <li class="admin-nav-heading">Platform & Content</li>
             <li class="admin-nav-item">
+                <a class="admin-nav-link <?= ($active_tab ?? '') === 'verificacoes' ? 'active' : '' ?>" href="/admin/verificacoes">
+                    <span class="admin-nav-icon">✅</span>
+                    <span>OTA Verification Review</span>
+                </a>
+            </li>
+            <li class="admin-nav-item">
                 <a class="admin-nav-link <?= ($active_tab ?? '') === 'grupos' ? 'active' : '' ?>" href="/admin/grupos">
                     <span class="admin-nav-icon">🏢</span>
                     <span>Groups & Networks</span>

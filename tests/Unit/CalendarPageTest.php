@@ -591,4 +591,53 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertSame(substr_count($slice, '<div'), substr_count($slice, '</div>'), 'sync-board must have balanced div tags');
         $this->assertMatchesRegularExpression('/<\/form>\s*<\/div>\s*<div\s+class="panel mt-16 ical-export-panel"/s', $html);
     }
+
+    public function testCalendarRendersPlatformBoundOtaFormAndPendingReviewLock(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 31,
+            'title' => 'Booking.com',
+            'url' => 'https://ical.booking.com/••••',
+            'status' => 'active',
+            'verification_mode' => 'ota',
+            'source_platform' => 'booking',
+            'review_status' => 'pending_review',
+            'verified_at' => '2026-11-20 12:00:00+00',
+            'property_url' => 'https://www.booking.com/hotel/br/casa-test.html',
+            'canonical_listing_id' => 'booking:br/casa-test',
+            'ics_metadata' => 'PRODID:-//Booking.com//',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+            'fail_count' => 0,
+            'stopped' => false,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Add-feed gate UI: explicit platform selection, property URL and legal consent.
+        $this->assertStringContainsString('name="mode"', $html);
+        $this->assertStringContainsString('value="ota"', $html);
+        $this->assertStringContainsString('name="platform"', $html);
+        $this->assertStringContainsString('name="property_url"', $html);
+        $this->assertStringContainsString('name="consent"', $html);
+        $this->assertStringContainsString('data-platform-meta', $html);
+        $this->assertStringContainsString('feed-mode', $html);
+        $this->assertStringContainsString('sync-platform', $html);
+        $this->assertStringContainsString(t('cal.review_pending'), $html);
+        $this->assertStringContainsString('/ical/31/editar', $html);
+        $this->assertStringContainsString('booking:br/casa-test', $html);
+    }
 }

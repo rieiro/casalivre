@@ -19,8 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-// Updated: 2026-11 - schema 39.
-t_eq(39, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 39');
+// Updated: 2026-11 - schema 40.
+t_eq(40, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 40');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -55,8 +55,8 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-// Updated: 2026-11 - schema 39.
-t_eq('39', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 39');
+// Updated: 2026-11 - schema 40.
+t_eq('40', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 40');
 t_eq(
     "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
     (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),
@@ -81,7 +81,9 @@ t_ok(isset($ls['idx_ls_place_rank']) && str_contains($ls['idx_ls_place_rank'], '
 t_ok(isset($ls['idx_ls_place_rating']) && str_contains($ls['idx_ls_place_rating'], '(city_place_id, rating_rank DESC, id DESC)') && str_contains($ls['idx_ls_place_rating'], 'INCLUDE (max_guests, rating_tenths, rank_base)') && str_contains($ls['idx_ls_place_rating'], "status = 'active'"), 'idx_ls_place_rating');
 t_ok(isset($ls['idx_ls_geo']) && str_contains($ls['idx_ls_geo'], 'USING gist') && str_contains($ls['idx_ls_geo'], 'point(lng, lat)') && str_contains($ls['idx_ls_geo'], 'INCLUDE (id, lat, lng, rank_base, rating_rank, max_guests, rating_tenths)') && str_contains($ls['idx_ls_geo'], "status = 'active'"), 'idx_ls_geo');
 // Updated: 2026-11 - verify critical public indexes by name instead of global count.
-foreach (['idx_places_name_fold', 'places_city_uf_uk', 'places_child_uk', 'idx_prop_nb_active', 'place_search_keys_pkey', 'idx_photos_processing', 'idx_ls_place_rank', 'idx_ls_place_rating', 'idx_ls_geo', 'idx_feeds_due', 'uq_calendar_feeds_url_hash'] as $indexName) {
+foreach (['idx_places_name_fold', 'places_city_uf_uk', 'places_child_uk', 'idx_prop_nb_active', 'place_search_keys_pkey', 'idx_photos_processing', 'idx_ls_place_rank', 'idx_ls_place_rating', 'idx_ls_geo', 'idx_feeds_due', 'uq_calendar_feeds_url_hash', 'idx_calendar_feeds_canonical',
+    'uq_calendar_feeds_canonical_non_booking', 'idx_calendar_feeds_pending_review',
+    'uq_ota_credit_ledger_property', 'uq_ota_credit_ledger_canonical'] as $indexName) {
     t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = " . $pdo->quote($indexName))->fetchColumn(), 'index ' . $indexName);
 }
 $due = (string) $pdo->query("SELECT pg_get_indexdef('idx_feeds_due'::regclass)")->fetchColumn();

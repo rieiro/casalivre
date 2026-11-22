@@ -101,7 +101,14 @@
                 await CL.api('/api/imoveis/' + ref + '/ical/importar', {
                     method: 'POST',
                     // Mesmos nomes do formulário web (a API recusa url/title).
-                    body: { external_ical_url: data.external_ical_url || '', feed_title: data.feed_title || '' },
+                    body: {
+                        external_ical_url: data.external_ical_url || '',
+                        feed_title: data.feed_title || '',
+                        mode: data.mode || 'sync_only',
+                        platform: data.platform || '',
+                        property_url: data.property_url || '',
+                        consent: data.consent || ''
+                    },
                     error: 'Erro ao importar feed',
                 });
                 window.location.reload();

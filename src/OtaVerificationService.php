@@ -438,14 +438,16 @@ final class OtaVerificationService
             }
 
             $ledger = db()->prepare(
-                'INSERT INTO ota_credit_ledger (property_id, user_id, verification_id, credits, awarded_at)
-                 VALUES (?, ?, ?, ?, to_timestamp(?))
-                 ON CONFLICT (property_id) DO NOTHING'
+                'INSERT INTO ota_credit_ledger
+                    (property_id, user_id, verification_id, canonical_listing_id, credits, awarded_at)
+                 VALUES (?, ?, ?, ?, ?, to_timestamp(?))
+                 ON CONFLICT DO NOTHING'
             );
             $ledger->execute([
                 (int) $row['property_id'],
                 $userId,
                 $verificationId,
+                $canonicalId !== '' ? $canonicalId : null,
                 self::ONBOARDING_CREDIT_REWARD,
                 $now,
             ]);
@@ -589,10 +591,11 @@ final class OtaVerificationService
     public static function listVerifiedForProperty(int $propertyId): array
     {
         $stmt = db()->prepare(
-            'SELECT source_platform, title, verified_at
+            "SELECT source_platform, title, verified_at
                FROM calendar_feeds
-              WHERE property_id = ? AND verified_at IS NOT NULL
-              ORDER BY verified_at DESC, id DESC'
+              WHERE property_id = ? AND verification_mode = 'ota'
+                AND verified_at IS NOT NULL AND review_status = 'approved'
+              ORDER BY verified_at DESC, id DESC"
         );
         $stmt->execute([$propertyId]);
         $out = [];
@@ -611,7 +614,10 @@ final class OtaVerificationService
     public static function hasVerifiedPlatform(int $propertyId): bool
     {
         $stmt = db()->prepare(
-            'SELECT 1 FROM calendar_feeds WHERE property_id = ? AND verified_at IS NOT NULL LIMIT 1'
+            "SELECT 1 FROM calendar_feeds
+              WHERE property_id = ? AND verification_mode = 'ota'
+                AND verified_at IS NOT NULL AND review_status = 'approved'
+              LIMIT 1"
         );
         $stmt->execute([$propertyId]);
         return $stmt->fetchColumn() !== false;
@@ -754,12 +760,23 @@ final class OtaVerificationService
     /** Downloads the private .ics feed with no redirects and a public-IP-only transport. */
     public static function fetchIcsFeed(string $icalUrl): string
     {
+        if (function_exists('exported_calendar_body')) {
+            $local = exported_calendar_body($icalUrl);
+            if (is_string($local) && $local !== '') {
+                return self::acceptFeed($local);
+            }
+        }
+
         // Standalone harness: deterministic bodies for .example hosts; real SSRF guards still apply elsewhere.
         $fixture = getenv('T_ICS_BODY_FILE');
         $testing = strtolower(trim((string) getenv('APP_ENV'))) === 'testing';
         if ($testing && is_string($fixture) && $fixture !== '' && is_file($fixture)) {
             $host = strtolower((string) (parse_url($icalUrl, PHP_URL_HOST) ?? ''));
-            if ($host === 'example' || str_ends_with($host, '.example')) {
+            $bare = trim($host, '[]');
+            $isIp = filter_var($bare, FILTER_VALIDATE_IP) !== false;
+            $isLocal = $host === 'localhost' || str_ends_with($host, '.localhost');
+            // Testing only: deterministic bodies for public hosts; literal IPs still hit the SSRF guard.
+            if (!$isIp && !$isLocal) {
                 $body = file_get_contents($fixture);
                 if (is_string($body) && $body !== '') {
                     return self::acceptFeed($body);
@@ -777,12 +794,6 @@ final class OtaVerificationService
             return self::acceptFeed($body);
         }
 
-        if (function_exists('exported_calendar_body')) {
-            $local = exported_calendar_body($icalUrl);
-            if (is_string($local) && $local !== '') {
-                return self::acceptFeed($local);
-            }
-        }
         if (!function_exists('curl_init')) {
             throw new RuntimeException('Não foi possível baixar o calendário iCal informado.');
         }
@@ -893,6 +904,18 @@ final class OtaVerificationService
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /** Public wrapper used by OtaFeedGate and UI validators. */
+    public static function assertUrlHygiene(string $url): void
+    {
+        self::validateUrlHygiene($url);
+    }
+
+    /** Public wrapper for the unified feed gate (the legacy method stays private). */
+    public static function pickOpenDateForFeed(string $ics, array $excludedDates = []): string
+    {
+        return self::pickOpenDate($ics, $excludedDates);
+    }
 
     private static function validateUrlHygiene(string $url): void
     {
@@ -1098,17 +1121,25 @@ final class OtaVerificationService
     }
 
     /** Awards the permanent onboarding credits for a verified feed (ledger idempotent). */
-    public static function awardFeedCredits(int $propertyId, int $feedId): bool
+    public static function awardFeedCredits(int $propertyId, int $feedId, ?string $canonicalListingId = null): bool
     {
         $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
         $owner->execute([$propertyId]);
         $userId = (int) $owner->fetchColumn();
         $ledger = db()->prepare(
-            'INSERT INTO ota_credit_ledger (property_id, user_id, verification_id, credits, awarded_at)
-             VALUES (?, ?, ?, ?, to_timestamp(?))
-             ON CONFLICT (property_id) DO NOTHING'
+            'INSERT INTO ota_credit_ledger
+                (property_id, user_id, verification_id, canonical_listing_id, credits, awarded_at)
+             VALUES (?, ?, ?, ?, ?, to_timestamp(?))
+             ON CONFLICT DO NOTHING'
         );
-        $ledger->execute([$propertyId, $userId, $feedId, self::ONBOARDING_CREDIT_REWARD, self::now()]);
+        $ledger->execute([
+            $propertyId,
+            $userId,
+            $feedId,
+            $canonicalListingId,
+            self::ONBOARDING_CREDIT_REWARD,
+            self::now(),
+        ]);
         if ($ledger->rowCount() !== 1) {
             return false;
         }
@@ -1120,6 +1151,94 @@ final class OtaVerificationService
             }
         }
         return true;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function listPendingReviews(): array
+    {
+        $stmt = db()->query(
+            "SELECT f.id, f.property_id, f.title, f.url, f.source_platform, f.property_url,
+                    f.canonical_listing_id, f.ics_metadata, f.verified_at, f.challenge_date,
+                    p.title AS property_title, p.public_hash, u.name AS user_name, u.email
+               FROM calendar_feeds f
+               JOIN properties p ON p.id = f.property_id
+               JOIN users u ON u.id = p.user_id
+              WHERE f.verification_mode = 'ota' AND f.verified_at IS NOT NULL
+                AND f.review_status = 'pending_review'
+              ORDER BY f.verified_at ASC, f.id ASC"
+        );
+        $rows = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $decrypted = CalendarSync::decryptUrl((string) $row['url']);
+            $host = parse_url($decrypted, PHP_URL_HOST);
+            $row['ical_url_masked'] = is_string($host) && $host !== ''
+                ? 'https://' . strtolower($host) . '/••••'
+                : '••••';
+            unset($row['url']);
+            $rows[] = $row;
+        }
+        return $rows;
+    }
+
+    /** @return array<string, mixed> */
+    public static function approveFeed(int $feedId, int $adminId): array
+    {
+        return Db::transactional(db(), static function () use ($feedId, $adminId): array {
+            $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? FOR UPDATE');
+            $lock->execute([$feedId]);
+            $row = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row) || (string) ($row['verification_mode'] ?? 'sync_only') !== 'ota') {
+                return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
+            }
+            if ((string) ($row['review_status'] ?? '') === 'approved') {
+                return ['status' => 'already_approved', 'message' => t('cal.review_approved')];
+            }
+            $now = self::now();
+            $awarded = self::awardFeedCredits(
+                (int) $row['property_id'],
+                $feedId,
+                $row['canonical_listing_id'] !== null ? (string) $row['canonical_listing_id'] : null
+            );
+            db()->prepare(
+                "UPDATE calendar_feeds
+                    SET review_status = 'approved', reviewed_by = ?, reviewed_at = to_timestamp(?),
+                        review_note = NULL, status = 'active', verified_at = COALESCE(verified_at, to_timestamp(?)),
+                        credits_awarded = CASE WHEN ? THEN TRUE ELSE credits_awarded END
+                  WHERE id = ?"
+            )->execute([$adminId, $now, $now, $awarded ? 1 : 0, $feedId]);
+            ActivityLog::record(ActivityLog::OTA_REVIEW_APPROVE, [
+                'imovel_id' => (int) $row['property_id'],
+                'plataforma' => (string) ($row['source_platform'] ?? 'other'),
+                'feed_id' => $feedId,
+            ]);
+            return ['status' => 'approved', 'credits_awarded' => $awarded, 'message' => t('cal.review_approved')];
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public static function rejectFeed(int $feedId, int $adminId, string $note): array
+    {
+        return Db::transactional(db(), static function () use ($feedId, $adminId, $note): array {
+            $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? FOR UPDATE');
+            $lock->execute([$feedId]);
+            $row = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row) || (string) ($row['verification_mode'] ?? 'sync_only') !== 'ota') {
+                return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
+            }
+            $note = function_exists('mb_substr') ? mb_substr(trim($note), 0, 500) : substr(trim($note), 0, 500);
+            db()->prepare(
+                "UPDATE calendar_feeds
+                    SET review_status = 'rejected', reviewed_by = ?, reviewed_at = to_timestamp(?),
+                        review_note = ?, status = 'error', verified_at = NULL, credits_awarded = FALSE
+                  WHERE id = ?"
+            )->execute([$adminId, self::now(), $note, $feedId]);
+            ActivityLog::record(ActivityLog::OTA_REVIEW_REJECT, [
+                'imovel_id' => (int) $row['property_id'],
+                'plataforma' => (string) ($row['source_platform'] ?? 'other'),
+                'feed_id' => $feedId,
+            ]);
+            return ['status' => 'rejected', 'message' => t('cal.review_rejected')];
+        });
     }
 
     private static function randomOffset(int $min, int $max): int

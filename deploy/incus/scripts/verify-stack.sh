@@ -106,6 +106,20 @@ if incus exec "$DB" -- su - postgres -c \
   else
     bad "calendar_feeds is missing the unified status/verified_at columns"
   fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='calendar_feeds' AND column_name IN ('verification_mode','canonical_listing_id','review_status')\"" 2>/dev/null \
+    | grep -qx 3; then
+    ok "calendar_feeds has the platform-bound OTA columns (schema 40)"
+  else
+    bad "calendar_feeds is missing the platform-bound OTA columns"
+  fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='ota_credit_ledger' AND column_name='canonical_listing_id'\"" 2>/dev/null \
+    | grep -qx 1; then
+    ok "ota_credit_ledger has canonical_listing_id (schema 40)"
+  else
+    bad "ota_credit_ledger is missing canonical_listing_id"
+  fi
 fi
 
 echo "== valkey =="

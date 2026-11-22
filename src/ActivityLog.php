@@ -94,6 +94,14 @@ final class ActivityLog
     public const ICAL_EXPORT_REVOKE = 59;
     /** Toggles de exportação iCal do imóvel alterados (Host/Gestor). Admin. */
     public const ICAL_EXPORT_SETTINGS = 60;
+    /** Verificação Booking/Vrbo aguardando revisão administrativa (Host/Gestor). Admin. */
+    public const OTA_REVIEW_PENDING = 61;
+    /** Revisão administrativa aprovou o selo OTA (Admin). Admin. */
+    public const OTA_REVIEW_APPROVE = 62;
+    /** Revisão administrativa rejeitou o selo OTA (Admin). Admin. */
+    public const OTA_REVIEW_REJECT = 63;
+    /** Links de um feed verificado foram alterados e a verificação reiniciada (Host/Gestor). Admin. */
+    public const OTA_FEED_EDIT = 64;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -156,6 +164,10 @@ final class ActivityLog
         self::ICAL_EXPORT_CREATE => 'Link de exportação iCal criado',
         self::ICAL_EXPORT_REVOKE => 'Link de exportação iCal revogado',
         self::ICAL_EXPORT_SETTINGS => 'Configuração de exportação iCal alterada',
+        self::OTA_REVIEW_PENDING => 'Verificação OTA aguardando revisão administrativa',
+        self::OTA_REVIEW_APPROVE => 'Verificação OTA aprovada pelo administrador',
+        self::OTA_REVIEW_REJECT => 'Verificação OTA rejeitada pelo administrador',
+        self::OTA_FEED_EDIT => 'Links de calendário verificado alterados',
     ];
 
     public const ADMIN = 'admin';
@@ -198,6 +210,10 @@ final class ActivityLog
         self::ICAL_EXPORT_CREATE => self::ADMIN,
         self::ICAL_EXPORT_REVOKE => self::ADMIN,
         self::ICAL_EXPORT_SETTINGS => self::ADMIN,
+        self::OTA_REVIEW_PENDING => self::ADMIN,
+        self::OTA_REVIEW_APPROVE => self::ADMIN,
+        self::OTA_REVIEW_REJECT => self::ADMIN,
+        self::OTA_FEED_EDIT => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -517,7 +533,7 @@ final class ActivityLog
         self::CALENDAR_PRICE => ['inicio', 'fim', 'diaria'],
         self::CALENDAR_BLOCK => ['inicio', 'fim'],
         self::CALENDAR_UNBLOCK => ['inicio', 'fim'],
-        self::CALENDAR_FEED_ADD => ['titulo', 'url'],
+        self::CALENDAR_FEED_ADD => ['titulo', 'url', 'modo', 'plataforma'],
         self::CALENDAR_FEED_REMOVE => ['feed_id'],
         self::CALENDAR_MIN_NIGHTS => ['inicio', 'fim', 'minimo_noites'],
         self::CALENDAR_SYNC => ['url', 'novas'],
@@ -532,6 +548,10 @@ final class ActivityLog
         self::ICAL_EXPORT_CREATE => ['imovel_id', 'plataforma', 'label'],
         self::ICAL_EXPORT_REVOKE => ['imovel_id', 'export_id', 'plataforma'],
         self::ICAL_EXPORT_SETTINGS => ['imovel_id', 'ical_export_manual_blocks', 'ical_export_imported_events'],
+        self::OTA_REVIEW_PENDING => ['plataforma', 'feed_id'],
+        self::OTA_REVIEW_APPROVE => ['plataforma', 'feed_id'],
+        self::OTA_REVIEW_REJECT => ['plataforma', 'feed_id'],
+        self::OTA_FEED_EDIT => ['plataforma', 'feed_id'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 

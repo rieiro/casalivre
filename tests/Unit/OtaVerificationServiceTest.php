@@ -472,10 +472,13 @@ final class OtaVerificationServiceTest extends TestCase
         // Updated: 2026-11 - Verified status is derived from calendar_feeds (unified challenge).
         $this->pdo->prepare('DELETE FROM calendar_feeds WHERE property_id = ?')->execute([$property['id']]);
         $feedIcal = 'https://ical.booking.com/v1/export?t=legacy-ota';
+        // Updated: 2026-11 - schema 40 badge gate requires an approved OTA verification.
         $this->pdo->prepare(
             "INSERT INTO calendar_feeds
-                (property_id, slot, url, url_hash, title, source_platform, status, verified_at, next_sync_at, last_status)
-             VALUES (?, 1, ?, ?, 'Booking.com', 'booking', 'active', to_timestamp(?), now(), 'PENDENTE')"
+                (property_id, slot, url, url_hash, title, source_platform, status, verified_at,
+                 verification_mode, review_status, next_sync_at, last_status)
+             VALUES (?, 1, ?, ?, 'Booking.com', 'booking', 'active', to_timestamp(?),
+                     'ota', 'approved', now(), 'PENDENTE')"
         )->execute([$property['id'], $feedIcal, hash('sha256', $feedIcal), self::T0]);
         $verified = OtaVerificationService::listVerifiedForProperty($property['id']);
         $this->assertNotEmpty($verified);

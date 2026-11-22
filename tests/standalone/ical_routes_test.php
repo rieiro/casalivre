@@ -28,9 +28,12 @@ $feedEnd = date('Ymd', strtotime('+6 days'));
 file_put_contents((string) getenv('T_ICS_BODY_FILE'),
     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:feed\r\nDTSTART;VALUE=DATE:" . str_replace('-', '', $feedDay)
     . "\r\nDTEND;VALUE=DATE:$feedEnd\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
-$feedUrl = 'https://feeds.example/bloqueado.ics?t=TOKENFEED';
+// Updated: 2026-11 - exercise the platform-bound OTA verification path.
+$feedUrl = 'https://www.airbnb.com/calendar/ical/12345678.ics?t=TOKENFEED';
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
     'external_ical_url' => $feedUrl, 'feed_title' => 'Teste', 'ics_body' => $ics,
+    'mode' => 'ota', 'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/12345678', 'consent' => '1',
 ]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'import grava o feed e sincroniza no pedido');
@@ -54,16 +57,18 @@ $badPort = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/impo
 t_eq(422, $badPort['status'], 'porta diferente de 443 é recusada');
 
 echo "URL do feed mascarada\n";
-t_eq('https://feeds.example/••••', $feed['url'] ?? null, 'import: feeds[].url mascarada');
+t_eq('https://www.airbnb.com/••••', $feed['url'] ?? null, 'import: feeds[].url mascarada');
 t_ok(!str_contains($r['body'], 'TOKENFEED') && !str_contains($r['body'], 'bloqueado.ics'), 'import: resposta sem token/caminho');
 // Updated: 2026-11 - feeds() now exposes the unified challenge/verification lifecycle.
 t_eq(['id', 'property_id', 'title', 'url', 'last_status', 'last_synced_at', 'last_error', 'fail_count',
     'status', 'challenge_date', 'challenge_expires_at', 'verified_at', 'last_checked_at', 'attempts',
-    'passive_fail_count', 'credits_awarded', 'source_platform', 'stopped'],
+    'passive_fail_count', 'credits_awarded', 'source_platform', 'verification_mode', 'property_url',
+    'canonical_listing_id', 'ics_metadata', 'review_status', 'reviewed_by', 'reviewed_at', 'review_note',
+    'consent_at', 'stopped'],
     array_keys($feed), 'import: só campos seguros');
 $g = t_http('GET', $base . '/api/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $g['status'], 'GET calendario API 200');
-t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['feeds'][0]['url'] ?? null) === 'https://feeds.example/••••', 'GET calendario API: URL mascarada');
+t_ok(!str_contains($g['body'], 'TOKENFEED') && (json_decode($g['body'], true)['feeds'][0]['url'] ?? null) === 'https://www.airbnb.com/••••', 'GET calendario API: URL mascarada');
 $w = t_http('GET', $base . '/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $w['status'], 'tela web do calendário continua 200');
 t_ok(!str_contains($w['body'], 'TOKENFEED') && str_contains($w['body'], 'Teste'), 'tela web lista o feed sem token');

@@ -69,7 +69,17 @@ final class IcalFeedLifecycleTest extends TestCase
 
     private function addFeed(string $url = 'https://ical.booking.com/v1/export?t=lifecycle'): array
     {
-        $result = HouseRepository::addFeed($this->propertyId, $this->userId, $url, 'Booking Test');
+        // Updated: 2026-11 - the Add Feed UI now requires explicit OTA verification mode.
+        $result = HouseRepository::addFeed(
+            $this->propertyId,
+            $this->userId,
+            $url,
+            'Booking Test',
+            'ota',
+            'booking',
+            'https://www.booking.com/hotel/br/casa-teste.html',
+            true
+        );
         $this->assertIsArray($result, is_string($result) ? $result : '');
         return $result;
     }
@@ -165,14 +175,25 @@ final class IcalFeedLifecycleTest extends TestCase
         $this->now += OtaVerificationService::CHECK_COOLDOWN_SECONDS + 1;
         OtaVerificationService::$httpTransport = fn (): string => $this->icsWithBlocked($date);
         $done = HouseRepository::verifyFeed($this->propertyId, (int) $feed['id']);
-        $this->assertSame('verified', $done['status']);
-        $this->assertTrue($done['verified']);
-        $this->assertTrue($done['credits_awarded']);
+        // Updated: 2026-11 - Booking/Vrbo hold the badge and credits until admin spot-check.
+        $this->assertSame('pending_review', $done['status']);
+        $this->assertFalse($done['verified']);
+        $this->assertFalse($done['credits_awarded']);
 
-        $stored = $this->pdo->query('SELECT status, verified_at, credits_awarded FROM calendar_feeds WHERE id = ' . (int) $feed['id'])->fetch(PDO::FETCH_ASSOC);
+        $stored = $this->pdo->query('SELECT status, verified_at, credits_awarded, review_status FROM calendar_feeds WHERE id = ' . (int) $feed['id'])->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('active', $stored['status']);
         $this->assertNotNull($stored['verified_at']);
-        $this->assertTrue((bool) $stored['credits_awarded']);
+        $this->assertSame('pending_review', $stored['review_status']);
+        $this->assertFalse((bool) $stored['credits_awarded']);
+        $this->assertFalse(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
+        $this->assertSame(
+            $creditsBefore,
+            (int) $this->pdo->query('SELECT quote_credits FROM users WHERE id = ' . $this->userId)->fetchColumn()
+        );
+
+        $approved = OtaVerificationService::approveFeed((int) $feed['id'], (int) $this->userId);
+        $this->assertSame('approved', $approved['status']);
+        $this->assertTrue($approved['credits_awarded']);
         $this->assertTrue(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
         $this->assertSame(
             $creditsBefore + OtaVerificationService::ONBOARDING_CREDIT_REWARD,

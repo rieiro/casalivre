@@ -26,7 +26,12 @@ function c_logs(string $file, string $since): array
 /** Só os códigos, na ordem. */
 function c_codes(string $file, string $since): array
 {
-    return array_map(static fn (array $r): int => $r['code'], c_logs($file, $since));
+    // 48 = VALKEY_UNAVAILABLE: infrastructure fallback when the test container has no Valkey,
+    // not a business audit action. Keep all business codes visible to the assertions.
+    return array_values(array_filter(
+        array_map(static fn (array $r): int => $r['code'], c_logs($file, $since)),
+        static fn (int $code): bool => $code !== 48
+    ));
 }
 
 /** Token CSRF da sessão do jar, lido de uma página com formulário. */

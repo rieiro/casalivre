@@ -593,7 +593,16 @@ function handle_api(string $path, string $method): void
         $property = api_owned_property($user, $m[1]);
         // Só os nomes canônicos (os mesmos do formulário web), passados brutos.
         // Regra, mensagens e logs em ICalImport (iguais aos da web); aqui só o status HTTP.
-        $res = ICalImport::run($property, (int) $user['id'], $body['external_ical_url'] ?? null, $body['feed_title'] ?? null);
+        $res = ICalImport::run(
+            $property,
+            (int) $user['id'],
+            $body['external_ical_url'] ?? null,
+            $body['feed_title'] ?? null,
+            $body['mode'] ?? 'sync_only',
+            $body['platform'] ?? '',
+            $body['property_url'] ?? '',
+            $body['consent'] ?? false
+        );
         $res->registrar();
         if (isset($res->dados['erros'])) {
             api_error(422, (string) $res->mensagem, $res->dados['erros']);
@@ -620,6 +629,43 @@ function handle_api(string $path, string $method): void
         }
         CalendarFlash::set(t('cal.feed_removed'), 'ok');
         json_out(200, ['ok' => true, 'feeds' => HouseRepository::feeds((int) $property['id'])]);
+    }
+
+    // Substituir os links de um feed (reset explícito da verificação quando confirmado).
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)$#', $path, $m) && $method === 'PUT') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $confirm = in_array($body['confirm'] ?? false, [true, 1, '1', 'true', 'on'], true);
+        try {
+            $res = HouseRepository::updateFeed(
+                (int) $property['id'],
+                (int) $user['id'],
+                (int) $m[2],
+                (string) ($body['mode'] ?? 'sync_only'),
+                (string) ($body['platform'] ?? ''),
+                (string) ($body['property_url'] ?? ''),
+                (string) ($body['external_ical_url'] ?? ''),
+                (string) ($body['feed_title'] ?? ''),
+                in_array($body['consent'] ?? false, [true, 1, '1', 'true', 'on'], true),
+                $confirm
+            );
+        } catch (OtaFeedGateException $e) {
+            api_error(422, $e->getMessage(), [$e->field => $e->getMessage()]);
+        } catch (RuntimeException $e) {
+            api_error(422, $e->getMessage());
+        }
+        if (($res['status'] ?? '') === 'not_found') {
+            api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
+        }
+        if (($res['status'] ?? '') !== 'updated') {
+            api_error(422, (string) ($res['message'] ?? t('cal.feed_lock_confirm')));
+        }
+        CalendarFlash::set((string) $res['message'], 'ok');
+        json_out(200, [
+            'ok' => true,
+            'message' => (string) $res['message'],
+            'feed' => HouseRepository::feeds((int) $property['id']),
+        ]);
     }
 
     // Sincronizar feed iCal agora

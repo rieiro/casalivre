@@ -39,7 +39,7 @@ $csrf = $csrf ?? '';
             <div class="dash-stat-item">
                 <span class="dash-stat-icon" aria-hidden="true">⚡</span>
                 <div class="dash-stat-data">
-                    <span class="dash-stat-num" style="color: #059669; font-size: 1.15rem;">Pix Direto</span>
+                    <span class="dash-stat-num dash-stat-pix">Pix Direto</span>
                     <span class="dash-stat-label">Sem taxas nem intermediários</span>
                 </div>
             </div>

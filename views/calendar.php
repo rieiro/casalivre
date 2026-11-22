@@ -10,6 +10,7 @@ $today = date('Y-m-d');
 $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
 require_once dirname(__DIR__) . '/src/IcalExportService.php';
+require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
 $icalExportData = IcalExportService::listForProperty((int) $property['id']);
 $icalExportBase = request_base() . '/ical/export/';
 ?>
@@ -142,12 +143,19 @@ $icalExportBase = request_base() . '/ical/export/';
                         <?php foreach ($feeds as $feed): ?>
                             <?php
                             $feedStatus = (string) ($feed['status'] ?? 'active');
-                            $statusLabel = match ($feedStatus) {
+                            $feedMode = (string) ($feed['verification_mode'] ?? 'sync_only');
+                            $isOta = $feedMode === 'ota';
+                            $platform = (string) ($feed['source_platform'] ?? 'other');
+                            $platformLabel = OtaPlatformRegistry::label($platform);
+                            $reviewStatus = (string) ($feed['review_status'] ?? 'approved');
+                            $isVerified = $isOta && $feed['verified_at'] !== null;
+                            $isPendingReview = $isVerified && $reviewStatus === 'pending_review';
+                            $statusLabel = $isPendingReview ? t('cal.review_pending') : match ($feedStatus) {
                                 'pending_verification' => t('cal.status_pending_verification'),
                                 'error' => t('cal.status_error'),
                                 default => t('cal.status_active'),
                             };
-                            $statusClass = match ($feedStatus) {
+                            $statusClass = $isPendingReview ? 'is-review' : match ($feedStatus) {
                                 'pending_verification' => 'is-pending',
                                 'error' => 'is-error',
                                 default => 'is-active',
@@ -172,9 +180,23 @@ $icalExportBase = request_base() . '/ical/export/';
                             $feedId = (int) $feed['id'];
                             ?>
                             <tr>
-                                <td><strong><?= e((string) ($feed['title'] ?? '')) ?></strong></td>
+                                <td>
+                                    <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
+                                    <?php if ($isOta && $platformLabel !== ''): ?>
+                                        <br><span class="sync-platform"><?= e($platformLabel) ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($isOta && !empty($feed['property_url'])): ?>
+                                        <br><a class="fine sync-property-link" href="<?= e((string) $feed['property_url']) ?>" target="_blank" rel="noopener noreferrer"><?= e((string) $feed['property_url']) ?></a>
+                                    <?php endif; ?>
+                                    <?php if ($isOta && !empty($feed['canonical_listing_id'])): ?>
+                                        <br><span class="muted fine sync-canonical"><?= e((string) $feed['canonical_listing_id']) ?></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
+                                    <?php if ($isPendingReview): ?>
+                                        <br><span class="muted fine"><?= e(t('cal.review_pending_hint')) ?></span>
+                                    <?php endif; ?>
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
                                     <?php endif; ?>
@@ -186,7 +208,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                 </td>
                                 <td>
                                     <div class="sync-actions">
-                                        <?php if ($feedStatus === 'pending_verification'): ?>
+                                        <?php if ($feedStatus === 'pending_verification' && !$isVerified): ?>
                                             <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/verificar">
                                                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                                                 <button class="primary btn-verify" type="submit"><?= e(t('cal.verify')) ?></button>
@@ -197,14 +219,14 @@ $icalExportBase = request_base() . '/ical/export/';
                                                 <button class="primary" type="submit"><?= e($feedStatus === 'error' ? t('cal.try_again') : t('cal.sync_now')) ?></button>
                                             </form>
                                         <?php endif; ?>
-                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir">
+                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir" data-confirm-remove>
                                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                                             <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>
                                         </form>
                                     </div>
                                 </td>
                             </tr>
-                            <?php if ($feedStatus === 'pending_verification' && $challengeBr !== ''): ?>
+                            <?php if ($feedStatus === 'pending_verification' && $challengeBr !== '' && !$isVerified): ?>
                                 <tr class="sync-challenge-row">
                                     <td colspan="4">
                                         <?= e(t('cal.challenge_before')) ?>
@@ -215,20 +237,91 @@ $icalExportBase = request_base() . '/ical/export/';
                                     </td>
                                 </tr>
                             <?php endif; ?>
+                            <?php if ($isOta && $isVerified): ?>
+                                <tr class="sync-edit-row">
+                                    <td colspan="4">
+                                        <details class="sync-edit">
+                                            <summary><?= e(t('cal.change_links')) ?></summary>
+                                            <p class="muted fine"><?= e(t('cal.change_warning')) ?></p>
+                                            <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/editar" class="sync-edit-form">
+                                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                <input type="hidden" name="mode" value="ota">
+                                                <label><?= e(t('cal.platform')) ?>
+                                                    <select name="platform" required>
+                                                        <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
+                                                            <option value="<?= e($key) ?>"<?= $key === $platform ? ' selected' : '' ?>><?= e((string) $item['label']) ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </label>
+                                                <label><?= e(t('cal.property_url')) ?>
+                                                    <input name="property_url" value="<?= e((string) ($feed['property_url'] ?? '')) ?>" required>
+                                                </label>
+                                                <label><?= e(t('cal.link')) ?>
+                                                    <input name="external_ical_url" placeholder="<?= e(t('cal.ical_new_placeholder')) ?>" required>
+                                                </label>
+                                                <label><?= e(t('cal.feed_title')) ?>
+                                                    <input name="feed_title" value="<?= e((string) ($feed['title'] ?? '')) ?>" maxlength="40" required>
+                                                </label>
+                                                <label class="prop-checkbox-label">
+                                                    <input type="checkbox" name="consent" value="1" required>
+                                                    <span><?= e(t('cal.consent')) ?></span>
+                                                </label>
+                                                <label class="prop-checkbox-label">
+                                                    <input type="checkbox" name="confirm" value="1" required>
+                                                    <span><?= e(t('cal.change_confirm')) ?></span>
+                                                </label>
+                                                <button class="primary" type="submit"><?= e(t('cal.save_changes')) ?></button>
+                                            </form>
+                                        </details>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
         </div>
-        <form class="panel" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>">
+        <?php
+        $platformMeta = json_encode(OtaPlatformRegistry::uiMeta(), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT);
+        ?>
+        <form class="panel" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
             <h2><?= e(t('cal.add_feed')) ?></h2>
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+            <div class="feed-mode">
+                <label class="prop-checkbox-label">
+                    <input type="radio" name="mode" value="ota" checked data-feed-mode>
+                    <span><?= e(t('cal.mode_ota')) ?></span>
+                </label>
+                <label class="prop-checkbox-label">
+                    <input type="radio" name="mode" value="sync_only" data-feed-mode>
+                    <span><?= e(t('cal.mode_sync')) ?></span>
+                </label>
+            </div>
+            <div data-ota-fields>
+                <label><?= e(t('cal.platform')) ?>
+                    <select name="platform" data-feed-platform <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                        <option value=""><?= e(t('cal.platform_select')) ?></option>
+                        <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
+                            <option value="<?= e($key) ?>"><?= e((string) $item['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <label><?= e(t('cal.property_url')) ?>
+                    <input name="property_url" data-feed-property-url maxlength="255" placeholder="<?= e(t('cal.property_url_placeholder')) ?>" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                </label>
+                <p class="muted fine" data-feed-helper><?= e(t('cal.ota_hint')) ?></p>
+                <label class="prop-checkbox-label">
+                    <input type="checkbox" name="consent" value="1" data-feed-consent <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                    <span><?= e(t('cal.consent')) ?></span>
+                </label>
+            </div>
             <label><?= e(t('cal.feed_title')) ?>
                 <input name="feed_title" maxlength="40" placeholder="Booking" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
             </label>
             <label><?= e(t('cal.link')) ?>
-                <input name="external_ical_url" placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
             </label>
+            <p class="muted fine" data-sync-hint hidden><?= e(t('cal.sync_only_hint')) ?></p>
             <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.add_feed')) ?></button>
             <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
         </form>
