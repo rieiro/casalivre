@@ -263,10 +263,32 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertSame('pending_review', $verified['status']);
         $this->assertFalse($verified['verified']);
         $this->assertFalse($verified['credits_awarded']);
+        $dateBr = date('d/m/Y', strtotime($date));
+        $this->assertSame($dateBr, $verified['challenge_date_br']);
+        $this->assertSame(
+            t('cal.review_pending_detail', ['platform' => 'Booking.com', 'date' => $dateBr]),
+            $verified['message']
+        );
         $this->assertFalse(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
 
         $pending = OtaVerificationService::listPendingReviews();
-        $this->assertNotEmpty(array_filter($pending, fn (array $r): bool => (int) $r['id'] === (int) $feed['id']));
+        $pendingRow = array_values(array_filter($pending, fn (array $r): bool => (int) $r['id'] === (int) $feed['id']))[0] ?? [];
+        $this->assertSame('Booking.com', $pendingRow['platform_label'] ?? null);
+        $this->assertSame($dateBr, $pendingRow['challenge_date_br'] ?? null);
+        $this->assertArrayHasKey('property_city', $pendingRow);
+        $this->assertArrayHasKey('ics_metadata', $pendingRow);
+
+        $beforeEdit = $this->feed($this->propertyId, (int) $feed['id']);
+        $locked = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'booking',
+            'https://www.booking.com/hotel/br/other-review.html',
+            'https://ical.booking.com/v1/export?t=other-review',
+            'Booking', true, true
+        );
+        $this->assertSame('pending_review_locked', $locked['status']);
+        $afterEdit = $this->feed($this->propertyId, (int) $feed['id']);
+        $this->assertSame($beforeEdit['property_url'], $afterEdit['property_url']);
+        $this->assertSame($beforeEdit['url'], $afterEdit['url']);
 
         $approved = OtaVerificationService::approveFeed((int) $feed['id'], $this->userId);
         $this->assertSame('approved', $approved['status']);
@@ -292,6 +314,9 @@ final class OtaUrlBindingTest extends TestCase
         $verified = HouseRepository::verifyFeed($property, (int) $feed['id']);
         $this->assertSame('pending_review', $verified['status']);
 
+        $noReason = OtaVerificationService::rejectFeed((int) $feed['id'], $this->userId, '   ');
+        $this->assertSame('reason_required', $noReason['status']);
+
         $rejected = OtaVerificationService::rejectFeed((int) $feed['id'], $this->userId, 'Spot-check failed');
         $this->assertSame('rejected', $rejected['status']);
         $fresh = $this->feed($property, (int) $feed['id']);
@@ -299,6 +324,21 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertNull($fresh['verified_at']);
         $this->assertSame('error', $fresh['status']);
         $this->assertFalse(OtaVerificationService::hasVerifiedPlatform($property));
+
+        $again = OtaVerificationService::rejectFeed((int) $feed['id'], $this->userId, 'Again');
+        $this->assertSame('invalid_state', $again['status']);
+        $invalidApprove = OtaVerificationService::approveFeed((int) $feed['id'], $this->userId);
+        $this->assertSame('invalid_state', $invalidApprove['status']);
+        $ledger = $this->pdo->prepare('SELECT count(*) FROM ota_credit_ledger WHERE property_id = ?');
+        $ledger->execute([$property]);
+        $this->assertSame(0, (int) $ledger->fetchColumn(), 'invalid-state approve must not award credits');
+
+        $unlocked = HouseRepository::updateFeed(
+            $property, $this->userId, (int) $feed['id'], 'ota', 'vrbo',
+            'https://www.vrbo.com/424243', 'https://www.vrbo.com/icalendar/424243.ics',
+            'Vrbo', true, true
+        );
+        $this->assertSame('updated', $unlocked['status'], 'a rejected feed can be fixed and restarted');
     }
 
     public function testBookingMultiUnitAllowedForSameHostAndCreditCappedPerCanonical(): void

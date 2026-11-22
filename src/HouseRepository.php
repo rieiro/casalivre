@@ -695,6 +695,12 @@ SQL;
         if (!is_array($feed)) {
             return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
         }
+        if ((string) ($feed['verification_mode'] ?? 'sync_only') === 'ota'
+            && $feed['verified_at'] !== null
+            && (string) ($feed['review_status'] ?? 'approved') === 'pending_review'
+        ) {
+            return ['status' => 'pending_review_locked', 'message' => t('cal.feed_pending_review_locked')];
+        }
         if ((string) ($feed['verification_mode'] ?? 'sync_only') === 'ota' && $feed['verified_at'] !== null && !$confirm) {
             return ['status' => 'locked', 'message' => t('cal.feed_lock_confirm')];
         }
@@ -1040,11 +1046,24 @@ SQL;
             }
             if ($row['verified_at'] !== null) {
                 $approved = (string) ($row['review_status'] ?? 'approved') === 'approved';
+                $platform = (string) ($row['source_platform'] ?? 'other');
+                $challengeDate = (string) ($row['challenge_date'] ?? '');
+                $challengeDateBr = $challengeDate !== '' ? self::dateBr($challengeDate) : '';
+                $pendingMessage = $challengeDateBr !== ''
+                    ? t('cal.review_pending_detail', [
+                        'platform' => OtaPlatformRegistry::label($platform),
+                        'date' => $challengeDateBr,
+                    ])
+                    : t('cal.review_pending');
                 return [
                     'status' => $approved ? 'verified' : 'pending_review',
                     'verified' => $approved,
+                    'review_status' => $approved ? 'approved' : 'pending_review',
+                    'credits_awarded' => (bool) ($row['credits_awarded'] ?? false),
+                    'challenge_date' => $challengeDate,
+                    'challenge_date_br' => $challengeDateBr,
                     'feed' => $row,
-                    'message' => $approved ? t('cal.feed_already_verified') : t('cal.review_pending'),
+                    'message' => $approved ? t('cal.feed_already_verified') : $pendingMessage,
                 ];
             }
             $platform = (string) ($row['source_platform'] ?? 'other');
@@ -1102,13 +1121,23 @@ SQL;
             }
             $fresh = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ?');
             $fresh->execute([$feedId]);
+            $challengeDate = (string) ($row['challenge_date'] ?? '');
+            $challengeDateBr = $challengeDate !== '' ? self::dateBr($challengeDate) : '';
+            $pendingMessage = $challengeDateBr !== ''
+                ? t('cal.review_pending_detail', [
+                    'platform' => OtaPlatformRegistry::label($platform),
+                    'date' => $challengeDateBr,
+                ])
+                : t('cal.review_pending');
             return [
                 'status' => $pendingReview ? 'pending_review' : 'verified',
                 'verified' => !$pendingReview,
                 'review_status' => $reviewStatus,
                 'credits_awarded' => $awarded,
+                'challenge_date' => $challengeDate,
+                'challenge_date_br' => $challengeDateBr,
                 'feed' => $fresh->fetch(PDO::FETCH_ASSOC) ?: $row,
-                'message' => $pendingReview ? t('cal.review_pending') : t('cal.feed_verified'),
+                'message' => $pendingReview ? $pendingMessage : t('cal.feed_verified'),
             ];
         });
     }

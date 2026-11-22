@@ -25,6 +25,9 @@ return [
     ['PUT', '#^/api/imoveis/[a-f0-9]{16}/ical/\d+$#', 20, 600, '/api/imoveis/*/ical/*'],
     // Verificar a titularidade de um feed iCal: 30 checagens por minuto por IP.
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical/\d+/verificar$#', 30, 60, '/api/imoveis/*/ical/*/verificar'],
+    // Revisão administrativa OTA: 60 leituras/ações por minuto por IP.
+    ['GET', '#^/api/admin/verifications/pending$#', 60, 60, '/api/admin/verifications/pending'],
+    ['POST', '#^/api/admin/verifications/\d+/(approve|reject)$#', 60, 60, '/api/admin/verifications/action'],
     // Exportação iCal por plataforma: 20 novos links por 10 min por IP.
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical-exports$#', 20, 600, '/api/imoveis/*/ical-exports'],
     // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).

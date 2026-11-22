@@ -207,6 +207,9 @@ function casa_privado(string $path, string $method): bool
     if ($path === '/api/google-place/verificar') {
         return true;
     }
+    if (str_starts_with($path, '/api/admin/')) {
+        return true;
+    }
     if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical-exports(/|$)#', $path) === 1) {
         return true;
     }
@@ -1070,9 +1073,9 @@ if ($path === '/admin/verificacoes' && $method === 'GET') {
         'csrf' => csrf_token(),
         'active_tab' => 'verificacoes',
         'layout' => 'admin_layout',
-        'page_title' => 'OTA Verification Review',
+        'page_title' => 'Revisão de Verificações OTA',
         'ok' => isset($_GET['ok']),
-        'error' => null,
+        'error' => isset($_GET['error']) ? (string) $_GET['error'] : null,
     ]);
     return null;
 }
@@ -1080,14 +1083,21 @@ if ($path === '/admin/verificacoes' && $method === 'GET') {
 if (preg_match('#^/admin/verificacoes/(\d+)/aprovar$#', $path, $m) && $method === 'POST') {
     require_admin();
     csrf_check();
-    OtaVerificationService::approveFeed((int) $m[1], (int) $_SESSION['user_id']);
+    $res = OtaVerificationService::approveFeed((int) $m[1], (int) $_SESSION['user_id']);
+    $status = (string) ($res['status'] ?? '');
+    if (!in_array($status, ['approved', 'already_approved'], true)) {
+        redirect('/admin/verificacoes?error=' . urlencode((string) ($res['message'] ?? 'Não foi possível aprovar.')));
+    }
     redirect('/admin/verificacoes?ok=1');
 }
 
 if (preg_match('#^/admin/verificacoes/(\d+)/rejeitar$#', $path, $m) && $method === 'POST') {
     require_admin();
     csrf_check();
-    OtaVerificationService::rejectFeed((int) $m[1], (int) $_SESSION['user_id'], (string) ($_POST['review_note'] ?? ''));
+    $res = OtaVerificationService::rejectFeed((int) $m[1], (int) $_SESSION['user_id'], (string) ($_POST['review_note'] ?? ''));
+    if (($res['status'] ?? '') !== 'rejected') {
+        redirect('/admin/verificacoes?error=' . urlencode((string) ($res['message'] ?? 'Não foi possível rejeitar.')));
+    }
     redirect('/admin/verificacoes?ok=1');
 }
 

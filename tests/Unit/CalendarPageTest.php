@@ -637,7 +637,8 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('feed-mode', $html);
         $this->assertStringContainsString('sync-platform', $html);
         $this->assertStringContainsString(t('cal.review_pending'), $html);
-        $this->assertStringContainsString('/ical/31/editar', $html);
+        // Updated: 2026-11 - Booking/Vrbo links stay locked while pending_review until admin decision.
+        $this->assertStringNotContainsString('/ical/31/editar', $html);
         $this->assertStringContainsString('booking:br/casa-test', $html);
     }
 
@@ -682,5 +683,86 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
         $this->assertStringContainsString('/ical/41/editar', $html);
         $this->assertStringContainsString('sync-badge is-error', $html);
+    }
+
+    public function testCalendarPendingReviewShowsChallengeInstructionAndNoEditForm(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 51,
+            'title' => 'Vrbo',
+            'url' => 'https://www.vrbo.com/••••',
+            'status' => 'active',
+            'verification_mode' => 'ota',
+            'source_platform' => 'vrbo',
+            'review_status' => 'pending_review',
+            'verified_at' => '2026-11-20 12:00:00+00',
+            'challenge_date' => '2027-02-14',
+            'property_url' => 'https://www.vrbo.com/424242',
+            'canonical_listing_id' => 'vrbo:424242',
+            'last_synced_at' => null,
+            'last_error' => null,
+            'fail_count' => 0,
+            'stopped' => false,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString(t('cal.review_pending'), $html);
+        $this->assertStringContainsString('14/02/2027', $html);
+        $this->assertStringContainsString(
+            e(t('cal.review_pending_detail', ['platform' => 'Vrbo', 'date' => '14/02/2027'])),
+            $html
+        );
+        $this->assertStringNotContainsString('/ical/51/editar', $html);
+    }
+
+    public function testAdminVerificationQueueRendersPtBrChecklistAndStrictCspMarkup(): void
+    {
+        $pending = [[
+            'id' => 61,
+            'property_title' => 'Casa Teste',
+            'property_city' => 'Florianópolis, SC',
+            'user_name' => 'Dono Teste',
+            'email' => 'dono@test.local',
+            'platform_label' => 'Booking.com',
+            'source_platform' => 'booking',
+            'property_url' => 'https://www.booking.com/hotel/br/casa-test.html',
+            'ical_url_masked' => 'https://ical.booking.com/••••',
+            'canonical_listing_id' => 'booking:br/casa-test',
+            'challenge_date_br' => '14/02/2027',
+            'ics_metadata' => 'PRODID:-//Booking.com//',
+        ]];
+        $user = ['is_admin' => 1];
+        $csrf = 'csrf_token_test';
+        $ok = false;
+        $error = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/admin/verificacoes.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString('Checklist:', $html);
+        $this->assertStringContainsString('Imóvel (CasaLivre)', $html);
+        $this->assertStringContainsString('Data para conferir', $html);
+        $this->assertStringContainsString('Meta iCal', $html);
+        $this->assertStringContainsString('14/02/2027', $html);
+        $this->assertStringContainsString('target="_blank" rel="noopener noreferrer"', $html);
+        $this->assertStringContainsString('data-confirm-approve=', $html);
+        $this->assertStringContainsString('Data do desafio não está bloqueada no anúncio público', $html);
+        $this->assertStringContainsString('/assets/pages/admin-verificacoes.js', $html);
+        $this->assertStringNotContainsString('onclick=', $html);
+        $this->assertStringNotContainsString('onsubmit=', $html);
+        $this->assertDoesNotMatchRegularExpression('/\sstyle\s*=/i', $html);
     }
 }

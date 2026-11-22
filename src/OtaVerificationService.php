@@ -1159,13 +1159,16 @@ final class OtaVerificationService
         $stmt = db()->query(
             "SELECT f.id, f.property_id, f.title, f.url, f.source_platform, f.property_url,
                     f.canonical_listing_id, f.ics_metadata, f.verified_at, f.challenge_date,
-                    p.title AS property_title, p.public_hash, u.name AS user_name, u.email
+                    COALESCE(f.verified_at, f.last_checked_at, f.last_synced_at) AS queued_at,
+                    p.title AS property_title, p.public_hash, u.name AS user_name, u.email,
+                    c.label AS property_city
                FROM calendar_feeds f
                JOIN properties p ON p.id = f.property_id
                JOIN users u ON u.id = p.user_id
+               LEFT JOIN places c ON c.id = p.city_place_id
               WHERE f.verification_mode = 'ota' AND f.verified_at IS NOT NULL
                 AND f.review_status = 'pending_review'
-              ORDER BY f.verified_at ASC, f.id ASC"
+              ORDER BY COALESCE(f.verified_at, f.last_checked_at) ASC, f.id ASC"
         );
         $rows = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -1175,6 +1178,10 @@ final class OtaVerificationService
                 ? 'https://' . strtolower($host) . '/••••'
                 : '••••';
             unset($row['url']);
+            $row['platform_label'] = OtaPlatformRegistry::label((string) ($row['source_platform'] ?? ''));
+            $row['challenge_date_br'] = !empty($row['challenge_date'])
+                ? self::dateBr((string) $row['challenge_date'])
+                : '';
             $rows[] = $row;
         }
         return $rows;
@@ -1190,8 +1197,11 @@ final class OtaVerificationService
             if (!is_array($row) || (string) ($row['verification_mode'] ?? 'sync_only') !== 'ota') {
                 return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
             }
-            if ((string) ($row['review_status'] ?? '') === 'approved') {
+            if ((string) ($row['review_status'] ?? '') === 'approved' && $row['verified_at'] !== null) {
                 return ['status' => 'already_approved', 'message' => t('cal.review_approved')];
+            }
+            if ((string) ($row['review_status'] ?? '') !== 'pending_review' || $row['verified_at'] === null) {
+                return ['status' => 'invalid_state', 'message' => 'Apenas verificações em análise podem ser aprovadas.'];
             }
             $now = self::now();
             $awarded = self::awardFeedCredits(
@@ -1218,6 +1228,10 @@ final class OtaVerificationService
     /** @return array<string, mixed> */
     public static function rejectFeed(int $feedId, int $adminId, string $note): array
     {
+        $note = function_exists('mb_substr') ? mb_substr(trim($note), 0, 500) : substr(trim($note), 0, 500);
+        if ($note === '') {
+            return ['status' => 'reason_required', 'message' => 'Informe o motivo da rejeição.'];
+        }
         return Db::transactional(db(), static function () use ($feedId, $adminId, $note): array {
             $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? FOR UPDATE');
             $lock->execute([$feedId]);
@@ -1225,7 +1239,9 @@ final class OtaVerificationService
             if (!is_array($row) || (string) ($row['verification_mode'] ?? 'sync_only') !== 'ota') {
                 return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
             }
-            $note = function_exists('mb_substr') ? mb_substr(trim($note), 0, 500) : substr(trim($note), 0, 500);
+            if ((string) ($row['review_status'] ?? '') !== 'pending_review' || $row['verified_at'] === null) {
+                return ['status' => 'invalid_state', 'message' => 'Apenas verificações em análise podem ser rejeitadas.'];
+            }
             db()->prepare(
                 "UPDATE calendar_feeds
                     SET review_status = 'rejected', reviewed_by = ?, reviewed_at = to_timestamp(?),

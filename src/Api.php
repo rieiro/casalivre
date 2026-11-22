@@ -32,6 +32,17 @@ function api_require_user(?array $user): array
 }
 
 /** Imóvel do hash público que pertence ao usuário (e está ativo), ou 404 'Imóvel não encontrado.'. */
+function api_require_admin(?array $user): array
+{
+    if (!$user) {
+        api_error(401, 'Autenticação necessária.');
+    }
+    if ((int) ($user['is_admin'] ?? 0) !== 1) {
+        api_error(403, 'Acesso restrito a administradores.');
+    }
+    return $user;
+}
+
 function api_owned_property(array $user, string $hash): array
 {
     $found = HouseRepository::findByPublicHash($hash);
@@ -791,10 +802,47 @@ function handle_api(string $path, string $method): void
             'ok' => true,
             'verified' => $status === 'verified',
             'review_status' => (string) ($result['review_status'] ?? ($status === 'verified' ? 'approved' : 'pending_review')),
+            'challenge_date_br' => (string) ($result['challenge_date_br'] ?? ''),
             'feed' => $safeFeed,
             'feeds' => $feeds,
             'message' => (string) ($result['message'] ?? ''),
         ]);
+    }
+
+    // Revisão administrativa OTA (JSON).
+    if ($path === '/api/admin/verifications/pending' && $method === 'GET') {
+        $admin = api_require_admin($user);
+        json_out(200, ['ok' => true, 'pending' => OtaVerificationService::listPendingReviews()]);
+    }
+
+    if (preg_match('#^/api/admin/verifications/(\d+)/approve$#', $path, $m) && $method === 'POST') {
+        $admin = api_require_admin($user);
+        $res = OtaVerificationService::approveFeed((int) $m[1], (int) $admin['id']);
+        $status = (string) ($res['status'] ?? '');
+        if ($status === 'not_found') {
+            api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
+        }
+        if ($status === 'invalid_state') {
+            api_error(409, (string) ($res['message'] ?? 'Estado inválido.'));
+        }
+        json_out(200, ['ok' => true] + $res);
+    }
+
+    if (preg_match('#^/api/admin/verifications/(\d+)/reject$#', $path, $m) && $method === 'POST') {
+        $admin = api_require_admin($user);
+        $reason = trim((string) ($body['rejection_reason'] ?? $body['review_note'] ?? ''));
+        $res = OtaVerificationService::rejectFeed((int) $m[1], (int) $admin['id'], $reason);
+        $status = (string) ($res['status'] ?? '');
+        if ($status === 'reason_required') {
+            api_error(422, (string) ($res['message'] ?? 'Informe o motivo da rejeição.'));
+        }
+        if ($status === 'not_found') {
+            api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
+        }
+        if ($status === 'invalid_state') {
+            api_error(409, (string) ($res['message'] ?? 'Estado inválido.'));
+        }
+        json_out(200, ['ok' => true] + $res);
     }
 
     api_error(404, 'Rota não encontrada.');

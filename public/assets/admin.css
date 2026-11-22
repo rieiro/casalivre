@@ -938,3 +938,39 @@ body.admin-body {
     .admin-content { padding: 1.25rem; }
     .admin-queue-stats { flex-direction: column; }
 }
+
+/* OTA manual review queue */
+.ota-review-card .ota-review-checklist {
+    margin: 0.75rem 0 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid #f0d58a;
+    border-radius: 0.6rem;
+    background: #fff8e1;
+    color: #6b4f00;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+.ota-review-table .ota-challenge-pill {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: #fff3cd;
+    border: 1px solid #e5c45c;
+    color: #6b4f00;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.ota-reject-form {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    max-width: 18rem;
+}
+.ota-reject-form input,
+.ota-reject-form select {
+    width: 100%;
+}
+.admin-muted {
+    color: var(--muted, #6b7280);
+    font-size: 0.8rem;
+}

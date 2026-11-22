@@ -5083,3 +5083,11 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     color: #059669;
     font-size: 1.15rem;
 }
+
+.sync-pending-detail {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: #7a5b00;
+}

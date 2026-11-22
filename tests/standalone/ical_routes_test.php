@@ -136,7 +136,85 @@ $bvj = json_decode($bv['body'], true) ?: [];
 t_eq(200, $bv['status'], 'Booking verificar responde 200 (não 422)');
 t_eq(false, $bvj['verified'] ?? null, 'Booking não libera o selo antes da revisão');
 t_eq('pending_review', $bvj['review_status'] ?? null, 'Booking retorna review_status pending_review');
-t_eq(t('cal.review_pending'), $bvj['message'] ?? null, 'Booking devolve a mensagem de revisão');
+$bookingDateBr = date('d/m/Y', strtotime($bookingChallenge));
+t_eq($bookingDateBr, $bvj['challenge_date_br'] ?? null, 'Booking devolve challenge_date_br');
+t_eq(
+    t('cal.review_pending_detail', ['platform' => 'Booking.com', 'date' => $bookingDateBr]),
+    $bvj['message'] ?? null,
+    'Booking devolve a instrução de revisão com a data'
+);
+
+echo "Admin JSON de revisão OTA\n";
+$adminBase = $base . '/api/admin/verifications';
+$r = t_http('GET', $adminBase . '/pending', null, [], $jar);
+t_eq(403, $r['status'], 'não-admin recebe 403 no JSON de revisão');
+db()->prepare('UPDATE users SET is_admin = 1 WHERE id = ?')->execute([$owner['user_id']]);
+$r = t_http('GET', $adminBase . '/pending', null, [], $jar);
+$aj = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'admin lista pendências com 200');
+$pendingIds = array_map(static fn (array $row): int => (int) $row['id'], $aj['pending'] ?? []);
+t_ok(in_array($bookingId, $pendingIds, true), 'a pendência Booking aparece na fila');
+$pendingBooking = null;
+foreach (($aj['pending'] ?? []) as $row) {
+    if ((int) $row['id'] === $bookingId) {
+        $pendingBooking = $row;
+        break;
+    }
+}
+t_ok(is_array($pendingBooking), 'payload da pendência Booking presente');
+t_eq('Booking.com', $pendingBooking['platform_label'] ?? null, 'platform_label no JSON admin');
+t_ok(($pendingBooking['challenge_date_br'] ?? '') !== '', 'challenge_date_br no JSON admin');
+t_ok(array_key_exists('property_city', $pendingBooking ?? []), 'property_city no JSON admin');
+
+$r = t_http('POST', $adminBase . '/' . $bookingId . '/approve', '{}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$ap = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'admin aprova com 200');
+t_eq('approved', $ap['status'] ?? null, 'admin approve devolve approved');
+$r = t_http('POST', $adminBase . '/' . $bookingId . '/approve', '{}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$ap2 = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'segunda aprovação é idempotente');
+t_eq('already_approved', $ap2['status'] ?? null, 'segunda aprovação devolve already_approved');
+
+$vrboUrl = 'https://www.vrbo.com/icalendar/555001.ics';
+$vrboPublic = 'https://www.vrbo.com/555001';
+$r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
+    'external_ical_url' => $vrboUrl,
+    'feed_title' => 'Vrbo Route',
+    'mode' => 'ota',
+    'platform' => 'vrbo',
+    'property_url' => $vrboPublic,
+    'consent' => '1',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$vj = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'Vrbo import responde 200');
+$vrboFeed = null;
+foreach (($vj['feeds'] ?? []) as $candidate) {
+    if (($candidate['source_platform'] ?? '') === 'vrbo') {
+        $vrboFeed = $candidate;
+        break;
+    }
+}
+t_ok(is_array($vrboFeed), 'o feed Vrbo foi criado');
+$vrboId = (int) ($vrboFeed['id'] ?? 0);
+$vrboChallengeStmt = db()->prepare('SELECT challenge_date FROM calendar_feeds WHERE id = ?');
+$vrboChallengeStmt->execute([$vrboId]);
+$vrboChallenge = (string) $vrboChallengeStmt->fetchColumn();
+$vrboEnd = date('Ymd', strtotime($vrboChallenge . ' +1 day'));
+file_put_contents((string) getenv('T_ICS_BODY_FILE'),
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:vrbo-challenge\r\nDTSTART;VALUE=DATE:" . str_replace('-', '', $vrboChallenge)
+    . "\r\nDTEND;VALUE=DATE:$vrboEnd\r\nSUMMARY:Blocked\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+$vv = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $vrboId . '/verificar', '', ['X-CSRF-Token: ' . $csrf], $jar);
+t_eq(200, $vv['status'], 'Vrbo verificar responde 200');
+$r = t_http('POST', $adminBase . '/' . $vrboId . '/reject', '{"rejection_reason":""}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(422, $r['status'], 'rejeição sem motivo responde 422');
+$r = t_http('POST', $adminBase . '/' . $vrboId . '/reject', '{"rejection_reason":"Anúncio público não corresponde ao imóvel"}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$rj = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'admin rejeita com 200');
+t_eq('rejected', $rj['status'] ?? null, 'admin reject devolve rejected');
+$r = t_http('POST', $adminBase . '/' . $vrboId . '/reject', '{"rejection_reason":"Again"}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'rejeição repetida responde 409');
+$r = t_http('POST', $adminBase . '/' . $vrboId . '/approve', '{}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'aprovação de rejeitada responde 409');
 
 echo "DELETE do feed\n";
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);

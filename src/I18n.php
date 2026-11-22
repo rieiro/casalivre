@@ -171,15 +171,16 @@ final class I18n
         return $out;
     }
 
-    public static function t(string $key): string
+    /** @param array<string, string|int> $params placeholders like {date}/{platform} */
+    public static function t(string $key, array $params = []): string
     {
         $lang = self::locale();
         $pack = self::pack($lang);
-        if (isset($pack[$key])) {
-            return $pack[$key];
+        $text = $pack[$key] ?? (self::pack('pt-BR')[$key] ?? $key);
+        foreach ($params as $name => $value) {
+            $text = str_replace('{' . $name . '}', (string) $value, $text);
         }
-        $fallback = self::pack('pt-BR');
-        return $fallback[$key] ?? $key;
+        return $text;
     }
 
     private static function pack(string $lang): array
@@ -223,9 +224,9 @@ final class I18n
     }
 }
 
-function t(string $key): string
+function t(string $key, array $params = []): string
 {
-    return I18n::t($key);
+    return I18n::t($key, $params);
 }
 
 function current_locale(): string

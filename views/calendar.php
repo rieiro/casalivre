@@ -178,7 +178,7 @@ $icalExportBase = request_base() . '/ical/export/';
                             $syncedAt = (string) ($feed['last_synced_at'] ?? '');
                             $synced = $syncedAt !== '' ? strtotime($syncedAt . ' UTC') : false;
                             $challengeBr = '';
-                            if ($feedStatus === 'pending_verification' && !empty($feed['challenge_date'])) {
+                            if (!empty($feed['challenge_date'])) {
                                 $challengeDt = DateTimeImmutable::createFromFormat('!Y-m-d', (string) $feed['challenge_date'], new DateTimeZone('UTC'));
                                 $challengeBr = $challengeDt === false ? '' : $challengeDt->format('d/m/Y');
                             }
@@ -200,10 +200,15 @@ $icalExportBase = request_base() . '/ical/export/';
                                 <td>
                                     <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
                                     <?php if ($isPendingReview): ?>
-                                        <br><span class="muted fine"><?= e(t('cal.review_pending_hint')) ?></span>
+                                        <br><span class="sync-pending-detail"><?= e($challengeBr !== ''
+                                            ? t('cal.review_pending_detail', ['platform' => $platformLabel, 'date' => $challengeBr])
+                                            : t('cal.review_pending_hint')) ?></span>
                                     <?php endif; ?>
                                     <?php if ($isRejected && !empty($feed['review_note'])): ?>
-                                        <br><span class="muted fine"><?= e((string) $feed['review_note']) ?></span>
+                                        <br><span class="muted fine"><?= e(t('cal.review_rejected_reason_label')) ?> <?= e((string) $feed['review_note']) ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($isVerified && !$isPendingReview && !$isRejected && $challengeBr !== ''): ?>
+                                        <br><span class="muted fine"><?= e(t('cal.verified_unblock_hint', ['date' => $challengeBr])) ?></span>
                                     <?php endif; ?>
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
@@ -245,7 +250,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($isOta && ($isVerified || $isRejected)): ?>
+                            <?php if ($isOta && (($isVerified && !$isPendingReview) || $isRejected)): ?>
                                 <tr class="sync-edit-row">
                                     <td colspan="4">
                                         <details class="sync-edit">

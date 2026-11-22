@@ -275,7 +275,11 @@
                     error: 'Erro ao verificar calendário'
                 });
                 if (window.CL && typeof CL.toast === 'function') {
-                    CL.toast('success', 'Calendário verificado', res.message || 'Verificação concluída.');
+                    if (res && res.verified === true) {
+                        CL.toast('success', 'Calendário verificado', res.message || 'Verificação concluída.');
+                    } else {
+                        CL.toast('info', 'Em análise pela equipe', res.message || 'Aguardando a revisão da equipe.');
+                    }
                 }
                 window.location.reload();
             } catch (e) {
