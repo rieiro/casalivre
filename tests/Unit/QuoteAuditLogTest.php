@@ -11,11 +11,24 @@ require_once dirname(__DIR__, 2) . '/src/QuoteRepository.php';
 final class QuoteAuditLogTest extends TestCase
 {
     private PDO $pdo;
+    /** @var array<string, string|false> */
+    private array $savedDbEnv = [];
 
     protected function setUp(): void
     {
         putenv('APP_ENV=testing');
         Db::loadEnv();
+        foreach (['DB_DSN', 'DB_USER', 'DB_PASSWORD'] as $k) {
+            $this->savedDbEnv[$k] = getenv($k);
+        }
+        $testDsn = (string) getenv('TEST_PG_DSN');
+        $testUser = (string) getenv('TEST_PG_USER');
+        if ($testDsn !== '' && $testUser !== '') {
+            putenv('DB_DSN=' . $testDsn);
+            putenv('DB_USER=' . $testUser);
+            putenv('DB_PASSWORD=' . (string) getenv('TEST_PG_PASSWORD'));
+            (new ReflectionProperty(Db::class, 'conn'))->setValue(null, null);
+        }
         $this->pdo = db();
         $this->pdo->beginTransaction();
         QuoteRepository::ensureTable();
@@ -30,6 +43,12 @@ final class QuoteAuditLogTest extends TestCase
         }
         if ($this->pdo->inTransaction()) {
             $this->pdo->rollBack();
+        }
+        if ((string) getenv('TEST_PG_DSN') !== '' && (string) getenv('TEST_PG_USER') !== '') {
+            (new ReflectionProperty(Db::class, 'conn'))->setValue(null, null);
+            foreach ($this->savedDbEnv as $k => $v) {
+                putenv($v === false ? $k : ($k . '=' . $v));
+            }
         }
         unset($_SESSION['user_id']);
     }
