@@ -16,7 +16,7 @@ $version = static fn (PDO $p): ?string => ($v = $p->query("SELECT value FROM sch
 $shape = static fn (PDO $p): array => $p->query("SELECT n.nspname || '.' || c.relname || ':' || c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('public', 'audit') ORDER BY 1")->fetchAll(PDO::FETCH_COLUMN);
 
 echo "banco novo (schema.pgsql.sql, versão 0)\n";
-t_temp_db(); // carrega o schema e migra em processo
+t_temp_db(false); // carrega o schema e migra em processo a partir de um banco vazio
 $p = $pdo();
 $p->exec("DELETE FROM schema_meta");
 $p->exec("DELETE FROM settings");
