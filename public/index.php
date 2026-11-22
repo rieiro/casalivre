@@ -1641,7 +1641,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/verificar$#', $path, $m) &&
     $res = HouseRepository::verifyFeed((int) $property['id'], (int) $m[2]);
     CalendarFlash::set(
         (string) ($res['message'] ?? t('cal.feed_missing')),
-        ((string) ($res['status'] ?? '')) === 'verified' ? 'ok' : 'error'
+        in_array((string) ($res['status'] ?? ''), ['verified', 'pending_review'], true) ? 'ok' : 'error'
     );
     redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
 }

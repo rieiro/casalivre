@@ -664,7 +664,7 @@ function handle_api(string $path, string $method): void
         json_out(200, [
             'ok' => true,
             'message' => (string) $res['message'],
-            'feed' => HouseRepository::feeds((int) $property['id']),
+            'feeds' => HouseRepository::feeds((int) $property['id']),
         ]);
     }
 
@@ -776,7 +776,7 @@ function handle_api(string $path, string $method): void
             header('Retry-After: ' . (int) ($result['retry_after'] ?? 60));
             api_error(429, (string) ($result['message'] ?? 'Aguarde para tentar novamente.'));
         }
-        if ($status !== 'verified') {
+        if (!in_array($status, ['verified', 'pending_review'], true)) {
             api_error(422, (string) ($result['message'] ?? 'A verificação ainda não foi concluída.'));
         }
         $feeds = HouseRepository::feeds((int) $property['id']);
@@ -789,7 +789,8 @@ function handle_api(string $path, string $method): void
         }
         json_out(200, [
             'ok' => true,
-            'verified' => true,
+            'verified' => $status === 'verified',
+            'review_status' => (string) ($result['review_status'] ?? ($status === 'verified' ? 'approved' : 'pending_review')),
             'feed' => $safeFeed,
             'feeds' => $feeds,
             'message' => (string) ($result['message'] ?? ''),

@@ -150,16 +150,21 @@ $icalExportBase = request_base() . '/ical/export/';
                             $reviewStatus = (string) ($feed['review_status'] ?? 'approved');
                             $isVerified = $isOta && $feed['verified_at'] !== null;
                             $isPendingReview = $isVerified && $reviewStatus === 'pending_review';
-                            $statusLabel = $isPendingReview ? t('cal.review_pending') : match ($feedStatus) {
-                                'pending_verification' => t('cal.status_pending_verification'),
-                                'error' => t('cal.status_error'),
-                                default => t('cal.status_active'),
-                            };
-                            $statusClass = $isPendingReview ? 'is-review' : match ($feedStatus) {
-                                'pending_verification' => 'is-pending',
-                                'error' => 'is-error',
-                                default => 'is-active',
-                            };
+                            $isRejected = $isOta && $reviewStatus === 'rejected';
+                            $statusLabel = $isRejected
+                                ? t('cal.review_rejected_badge')
+                                : ($isPendingReview ? t('cal.review_pending') : match ($feedStatus) {
+                                    'pending_verification' => t('cal.status_pending_verification'),
+                                    'error' => t('cal.status_error'),
+                                    default => t('cal.status_active'),
+                                });
+                            $statusClass = $isRejected
+                                ? 'is-error'
+                                : ($isPendingReview ? 'is-review' : match ($feedStatus) {
+                                    'pending_verification' => 'is-pending',
+                                    'error' => 'is-error',
+                                    default => 'is-active',
+                                });
                             $reason = match ((string) ($feed['last_error'] ?? '')) {
                                 'bad_url', 'private_ip' => t('cal.err_url'),
                                 'http_4xx' => t('cal.err_http'),
@@ -196,6 +201,9 @@ $icalExportBase = request_base() . '/ical/export/';
                                     <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
                                     <?php if ($isPendingReview): ?>
                                         <br><span class="muted fine"><?= e(t('cal.review_pending_hint')) ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($isRejected && !empty($feed['review_note'])): ?>
+                                        <br><span class="muted fine"><?= e((string) $feed['review_note']) ?></span>
                                     <?php endif; ?>
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
@@ -237,7 +245,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($isOta && $isVerified): ?>
+                            <?php if ($isOta && ($isVerified || $isRejected)): ?>
                                 <tr class="sync-edit-row">
                                     <td colspan="4">
                                         <details class="sync-edit">

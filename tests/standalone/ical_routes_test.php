@@ -101,6 +101,43 @@ $ledger = db()->prepare('SELECT count(*) FROM ota_credit_ledger WHERE property_i
 $ledger->execute([$owner['house_id']]);
 t_eq(1, (int) $ledger->fetchColumn(), 'crédito de onboarding entra uma única vez');
 
+echo "Booking.com pending_review responde 200\n";
+$bookingUrl = 'https://ical.booking.com/v1/export?t=ROUTEBOOK';
+$bookingPublic = 'https://www.booking.com/hotel/br/casa-route.html';
+$r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
+    'external_ical_url' => $bookingUrl,
+    'feed_title' => 'Booking Route',
+    'mode' => 'ota',
+    'platform' => 'booking',
+    'property_url' => $bookingPublic,
+    'consent' => '1',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$bj = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'Booking import responde 200');
+$bookingFeed = null;
+foreach (($bj['feeds'] ?? []) as $candidate) {
+    if (($candidate['source_platform'] ?? '') === 'booking') {
+        $bookingFeed = $candidate;
+        break;
+    }
+}
+t_ok(is_array($bookingFeed), 'o feed Booking foi criado');
+$bookingId = (int) ($bookingFeed['id'] ?? 0);
+$bookingChallengeStmt = db()->prepare('SELECT challenge_date FROM calendar_feeds WHERE id = ?');
+$bookingChallengeStmt->execute([$bookingId]);
+$bookingChallenge = (string) $bookingChallengeStmt->fetchColumn();
+t_ok($bookingChallenge !== '', 'o desafio Booking tem data futura');
+$bookingEnd = date('Ymd', strtotime($bookingChallenge . ' +1 day'));
+file_put_contents((string) getenv('T_ICS_BODY_FILE'),
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:booking-challenge\r\nDTSTART;VALUE=DATE:" . str_replace('-', '', $bookingChallenge)
+    . "\r\nDTEND;VALUE=DATE:$bookingEnd\r\nSUMMARY:Blocked\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+$bv = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $bookingId . '/verificar', '', ['X-CSRF-Token: ' . $csrf], $jar);
+$bvj = json_decode($bv['body'], true) ?: [];
+t_eq(200, $bv['status'], 'Booking verificar responde 200 (não 422)');
+t_eq(false, $bvj['verified'] ?? null, 'Booking não libera o selo antes da revisão');
+t_eq('pending_review', $bvj['review_status'] ?? null, 'Booking retorna review_status pending_review');
+t_eq(t('cal.review_pending'), $bvj['message'] ?? null, 'Booking devolve a mensagem de revisão');
+
 echo "DELETE do feed\n";
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];

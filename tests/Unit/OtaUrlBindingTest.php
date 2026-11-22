@@ -209,6 +209,18 @@ final class OtaUrlBindingTest extends TestCase
             'https://www.booking.com/hotel/br/casa-share.html',
             OtaFeedGate::resolveMobileShareUrl('booking', 'https://www.booking.com/Share-abc')
         );
+
+        OtaFeedGate::$shareTransport = fn (): array => [
+            'status' => 302,
+            'location' => 'https://www.airbnb.com/search?q=1',
+        ];
+        try {
+            OtaFeedGate::resolveMobileShareUrl('airbnb', 'https://abnb.me/search');
+            $this->fail('a non-listing share target must be rejected');
+        } catch (OtaFeedGateException $e) {
+            $this->assertSame('property_url', $e->field);
+            $this->assertSame(t('ota.err_path'), $e->getMessage());
+        }
     }
 
     public function testShareLinkFeedStoresCanonicalPublicUrl(): void
@@ -321,6 +333,9 @@ final class OtaUrlBindingTest extends TestCase
         $a = HouseRepository::addFeed($this->propertyId, $this->userId, $ical, 'A1', 'ota', 'airbnb', $public, true);
         $this->assertIsArray($a);
         $this->expectGate('property_url', fn () => HouseRepository::addFeed(
+            $this->propertyId, $this->userId, 'https://www.airbnb.com/calendar/ical/919191.ics?t=same-property', 'A1b', 'ota', 'airbnb', $public, true
+        ));
+        $this->expectGate('property_url', fn () => HouseRepository::addFeed(
             $property2, $this->userId, 'https://www.airbnb.com/calendar/ical/919191.ics?t=x', 'A2', 'ota', 'airbnb', $public, true
         ));
     }
@@ -344,6 +359,17 @@ final class OtaUrlBindingTest extends TestCase
             'Airbnb', true, false
         );
         $this->assertSame('locked', $locked['status']);
+
+        $same = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',
+            'https://www.airbnb.com/rooms/818181', 'https://www.airbnb.com/calendar/ical/818181.ics?t=same',
+            'Airbnb', true, true
+        );
+        $this->assertSame('updated', $same['status'], 'updating a feed with its own canonical is allowed');
+        $this->assertSame(
+            'airbnb:818181',
+            (string) $this->feed($this->propertyId, (int) $feed['id'])['canonical_listing_id']
+        );
 
         $edited = HouseRepository::updateFeed(
             $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',

@@ -717,13 +717,14 @@ SQL;
         if ($dup->fetchColumn()) {
             return ['status' => 'duplicate', 'message' => t('cal.duplicate_feed_global')];
         }
-        $prepared = OtaFeedGate::prepare($propertyId, $userId, $mode, $platform, $propertyUrl, $normalized, $consent);
+        $prepared = OtaFeedGate::prepare($propertyId, $userId, $mode, $platform, $propertyUrl, $normalized, $consent, $feedId);
         $now = OtaVerificationService::now();
         $status = $mode === 'ota' ? 'pending_verification' : 'active';
         $sourcePlatform = $mode === 'ota' ? (string) $prepared['platform'] : self::detectSourcePlatform($normalized);
         $challengeDate = $prepared['challenge_date'];
 
-        return Db::transactional(db(), static function () use (
+        try {
+            return Db::transactional(db(), static function () use (
             $propertyId,
             $feedId,
             $mode,
@@ -795,7 +796,17 @@ SQL;
                 'feed' => $fresh->fetch(PDO::FETCH_ASSOC) ?: $current,
                 'message' => t('cal.feed_edit_reset'),
             ];
-        });
+            });
+        } catch (PDOException $e) {
+            if ((string) $e->getCode() !== '23505') {
+                throw $e;
+            }
+            $dup->execute([$urlHash, $feedId]);
+            if ($dup->fetchColumn()) {
+                return ['status' => 'duplicate', 'message' => t('cal.duplicate_feed_global')];
+            }
+            throw new OtaFeedGateException('property_url', t('ota.err_canonical_taken'));
+        }
     }
 
     /**

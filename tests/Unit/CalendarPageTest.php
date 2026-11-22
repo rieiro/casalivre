@@ -640,4 +640,47 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('/ical/31/editar', $html);
         $this->assertStringContainsString('booking:br/casa-test', $html);
     }
+
+    public function testCalendarRendersRejectedOtaBadgeAndEscapedReviewNote(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $note = '<script>alert(1)</script> Documento não confere.';
+        $feeds = [[
+            'id' => 41,
+            'title' => 'Vrbo',
+            'url' => 'https://www.vrbo.com/••••',
+            'status' => 'error',
+            'verification_mode' => 'ota',
+            'source_platform' => 'vrbo',
+            'review_status' => 'rejected',
+            'review_note' => $note,
+            'verified_at' => null,
+            'property_url' => 'https://www.vrbo.com/424242',
+            'canonical_listing_id' => 'vrbo:424242',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+            'fail_count' => 0,
+            'stopped' => false,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString(t('cal.review_rejected_badge'), $html);
+        $this->assertStringContainsString(e($note), $html);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringContainsString('/ical/41/editar', $html);
+        $this->assertStringContainsString('sync-badge is-error', $html);
+    }
 }

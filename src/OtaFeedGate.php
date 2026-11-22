@@ -40,7 +40,8 @@ final class OtaFeedGate
         string $platform,
         string $publicUrl,
         string $icalUrl,
-        bool $consent
+        bool $consent,
+        int $excludeFeedId = 0
     ): array {
         $mode = strtolower(trim($mode));
         if (!in_array($mode, ['ota', 'sync_only'], true)) {
@@ -93,7 +94,7 @@ final class OtaFeedGate
         }
 
         $canonical = self::canonicalize($platform, $publicPath, $icalUrl);
-        self::assertCanonicalAvailable($propertyId, $userId, $canonical, $platform);
+        self::assertCanonicalAvailable($propertyId, $userId, $canonical, $platform, $excludeFeedId);
 
         $ics = OtaVerificationService::fetchIcsFeed($icalUrl);
         $icsMetadata = OtaVerificationService::extractIcsMetadata($ics);
@@ -168,15 +169,20 @@ final class OtaFeedGate
         throw new OtaFeedGateException('platform', t('ota.err_platform'));
     }
 
-    public static function assertCanonicalAvailable(int $propertyId, int $userId, string $canonical, string $platform): void
-    {
+    public static function assertCanonicalAvailable(
+        int $propertyId,
+        int $userId,
+        string $canonical,
+        string $platform,
+        int $excludeFeedId = 0
+    ): void {
         $stmt = db()->prepare(
             "SELECT f.property_id, p.user_id
                FROM calendar_feeds f
                JOIN properties p ON p.id = f.property_id
-              WHERE f.canonical_listing_id = ? AND f.property_id <> ? AND f.verification_mode = 'ota'"
+              WHERE f.canonical_listing_id = ? AND f.id <> ? AND f.verification_mode = 'ota'"
         );
-        $stmt->execute([$canonical, $propertyId]);
+        $stmt->execute([$canonical, $excludeFeedId]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             if ((int) $row['user_id'] !== $userId) {
                 throw new OtaFeedGateException('property_url', t('ota.err_canonical_other_host'));
@@ -202,13 +208,15 @@ final class OtaFeedGate
             $parts = parse_url($current);
             $host = strtolower((string) ($parts['host'] ?? ''));
             $path = self::cleanPath((string) ($parts['path'] ?? ''));
-            if (OtaPlatformRegistry::isPublicHost($platform, $host)
-                && preg_match(OtaPlatformRegistry::publicPathRegex($platform), $path) === 1
-            ) {
+            $publicHost = OtaPlatformRegistry::isPublicHost($platform, $host);
+            if ($publicHost && preg_match(OtaPlatformRegistry::publicPathRegex($platform), $path) === 1) {
                 return $current;
             }
             if (!OtaPlatformRegistry::isShareUrl($platform, $host, $path)) {
-                throw new OtaFeedGateException('property_url', t('ota.err_domain'));
+                throw new OtaFeedGateException(
+                    'property_url',
+                    $publicHost ? t('ota.err_path') : t('ota.err_domain')
+                );
             }
             if ($hop === 2) {
                 break;
@@ -245,14 +253,16 @@ final class OtaFeedGate
         $location = '';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_NOBODY => true,
-            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPGET => true,
+            CURLOPT_RETURNTRANSFER => false,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_RESOLVE => [$target['host'] . ':' . $target['port'] . ':' . $ip],
             CURLOPT_TIMEOUT => 5,
             CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_NOPROXY => '*',
             CURLOPT_USERAGENT => 'CasaLivre/1.0',
+            // Some shorteners reject HEAD. Abort the body immediately; headers/status are already read.
+            CURLOPT_WRITEFUNCTION => static fn (): int => 0,
             CURLOPT_HEADERFUNCTION => static function ($ch, string $header) use (&$location): int {
                 if (preg_match('#^Location:\s*(.+)$#i', trim($header), $m) === 1) {
                     $location = trim($m[1]);
@@ -264,6 +274,10 @@ final class OtaFeedGate
             curl_setopt($ch, CURLOPT_PROTOCOLS_STR, 'https');
         }
         curl_exec($ch);
+        $primaryIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
+        if ($primaryIp !== '' && !CalendarSync::isPublicIp($primaryIp)) {
+            throw new OtaFeedGateException('property_url', t('ota.err_share_host'));
+        }
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $redirect = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: $location);
         return ['status' => $status, 'location' => $redirect !== '' ? $redirect : null];
