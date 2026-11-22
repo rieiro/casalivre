@@ -775,7 +775,8 @@ SQL;
                         challenge_date = ?, challenge_expires_at = to_timestamp(?), attempts = 0,
                         verified_at = NULL, reviewed_by = NULL, reviewed_at = NULL, review_note = NULL,
                         last_checked_at = NULL, fail_count = 0, last_error = NULL, last_status = 'PENDENTE',
-                        next_sync_at = to_timestamp(?)
+                        next_sync_at = to_timestamp(?),
+                        credits_awarded = CASE WHEN source_platform = ? THEN credits_awarded ELSE FALSE END
                   WHERE id = ? AND property_id = ?"
             )->execute([
                 CalendarSync::encryptUrl($normalized),
@@ -793,6 +794,7 @@ SQL;
                 $challengeDate,
                 $challengeDate !== null ? $now + 259200 : null,
                 $now,
+                $sourcePlatform,
                 $feedId,
                 $propertyId,
             ]);
@@ -1102,14 +1104,15 @@ SQL;
 
             $awarded = false;
             if (!$pendingReview) {
-                $awarded = OtaVerificationService::awardFeedCredits(
-                    $propertyId,
-                    $feedId,
-                    $row['canonical_listing_id'] !== null ? (string) $row['canonical_listing_id'] : null
-                );
-                if ($awarded) {
-                    db()->prepare('UPDATE calendar_feeds SET credits_awarded = TRUE WHERE id = ?')
-                        ->execute([$feedId]);
+                $updatedStmt = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ?');
+                $updatedStmt->execute([$feedId]);
+                $updatedRow = $updatedStmt->fetch(PDO::FETCH_ASSOC);
+                if (is_array($updatedRow)) {
+                    $awarded = OtaVerificationService::awardVerificationCreditsIfEligible(
+                        db(),
+                        $updatedRow,
+                        'calendar_feeds'
+                    );
                 }
             }
             $parsed = import_ics($propertyId, $ics);

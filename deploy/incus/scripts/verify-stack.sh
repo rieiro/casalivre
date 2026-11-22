@@ -120,6 +120,13 @@ if incus exec "$DB" -- su - postgres -c \
   else
     bad "ota_credit_ledger is missing canonical_listing_id"
   fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='ota_credit_ledger' AND column_name IN ('platform','reward_type')\"" 2>/dev/null \
+    | grep -qx 2; then
+    ok "ota_credit_ledger has per-platform reward columns (schema 41)"
+  else
+    bad "ota_credit_ledger is missing per-platform reward columns"
+  fi
 fi
 
 echo "== valkey =="

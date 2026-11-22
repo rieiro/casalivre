@@ -433,4 +433,134 @@ final class OtaUrlBindingTest extends TestCase
         $ledger->execute([$this->propertyId]);
         $this->assertSame(1, (int) $ledger->fetchColumn(), 'the credit ledger survives feed removal');
     }
+
+    private function credits(): int
+    {
+        return (int) $this->pdo->query('SELECT quote_credits FROM users WHERE id = ' . $this->userId)->fetchColumn();
+    }
+
+    private function verifyFeedWithBlock(int $propertyId, array $feed): array
+    {
+        $this->now += OtaVerificationService::CHECK_COOLDOWN_SECONDS + 1;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithBlocked((string) $feed['challenge_date']);
+        return HouseRepository::verifyFeed($propertyId, (int) $feed['id']);
+    }
+
+    public function testOncePerPlatformCreditsAndPermanentAntiFarmingLedger(): void
+    {
+        $start = $this->credits();
+
+        // Property A: one reward for each platform.
+        [$airIcal, $airPublic] = $this->airbnbUrl(111111);
+        $air = HouseRepository::addFeed($this->propertyId, $this->userId, $airIcal, 'Airbnb', 'ota', 'airbnb', $airPublic, true);
+        $this->assertIsArray($air);
+        $airFeed = $this->feed($this->propertyId, (int) $air['feed']['id']);
+        $airVerified = $this->verifyFeedWithBlock($this->propertyId, $airFeed);
+        $this->assertTrue($airVerified['credits_awarded']);
+
+        [$bookIcal, $bookPublic] = $this->bookingUrl('credit-book', 'casa-credit');
+        $book = HouseRepository::addFeed($this->propertyId, $this->userId, $bookIcal, 'Booking', 'ota', 'booking', $bookPublic, true);
+        $this->assertIsArray($book);
+        $bookFeed = $this->feed($this->propertyId, (int) $book['feed']['id']);
+        $bookVerified = $this->verifyFeedWithBlock($this->propertyId, $bookFeed);
+        $this->assertSame('pending_review', $bookVerified['status']);
+        $bookApproved = OtaVerificationService::approveFeed((int) $bookFeed['id'], $this->userId);
+        $this->assertSame('approved', $bookApproved['status']);
+        $this->assertTrue($bookApproved['credits_awarded']);
+
+        $vrboIcal = 'https://www.vrbo.com/icalendar/444111.ics';
+        $vrboPublic = 'https://www.vrbo.com/444111';
+        $vrbo = HouseRepository::addFeed($this->propertyId, $this->userId, $vrboIcal, 'Vrbo', 'ota', 'vrbo', $vrboPublic, true);
+        $this->assertIsArray($vrbo);
+        $vrboFeed = $this->feed($this->propertyId, (int) $vrbo['feed']['id']);
+        $this->verifyFeedWithBlock($this->propertyId, $vrboFeed);
+        $vrboApproved = OtaVerificationService::approveFeed((int) $vrboFeed['id'], $this->userId);
+        $this->assertSame('approved', $vrboApproved['status']);
+        $this->assertTrue($vrboApproved['credits_awarded']);
+
+        $this->assertSame($start + 15, $this->credits(), 'Airbnb + Booking + Vrbo award once each');
+        $ledger = $this->pdo->prepare('SELECT platform FROM ota_credit_ledger WHERE property_id = ? ORDER BY platform');
+        $ledger->execute([$this->propertyId]);
+        $this->assertSame(['airbnb', 'booking', 'vrbo'], $ledger->fetchAll(PDO::FETCH_COLUMN));
+
+        // Same-platform edit + re-verify: badge returns, zero extra credits.
+        $edited = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, (int) $airFeed['id'], 'ota', 'airbnb',
+            'https://www.airbnb.com/rooms/111112', 'https://www.airbnb.com/calendar/ical/111112.ics',
+            'Airbnb', true, true
+        );
+        $this->assertSame('updated', $edited['status']);
+        $editedFeed = $this->feed($this->propertyId, (int) $airFeed['id']);
+        $reVerified = $this->verifyFeedWithBlock($this->propertyId, $editedFeed);
+        $this->assertSame('verified', $reVerified['status']);
+        $this->assertFalse($reVerified['credits_awarded']);
+        $this->assertSame($start + 15, $this->credits(), 're-verification after edit does not pay twice');
+
+        // Same Booking canonical on another property of the same host: approval succeeds, no credits.
+        $propertyB = $this->makeProperty($this->userId, 'Booking B');
+        $book2 = HouseRepository::addFeed(
+            $propertyB, $this->userId, 'https://ical.booking.com/v1/export?t=credit-book-2',
+            'Booking B', 'ota', 'booking', $bookPublic, true
+        );
+        $this->assertIsArray($book2);
+        $book2Feed = $this->feed($propertyB, (int) $book2['feed']['id']);
+        $this->verifyFeedWithBlock($propertyB, $book2Feed);
+        $book2Approved = OtaVerificationService::approveFeed((int) $book2Feed['id'], $this->userId);
+        $this->assertSame('approved', $book2Approved['status']);
+        $this->assertFalse($book2Approved['credits_awarded'], 'multi-unit Booking canonical is paid only once');
+        $this->assertSame($start + 15, $this->credits());
+
+        // Platform switch on a fresh property: Vrbo pays once, switching back to Airbnb pays zero.
+        $propertyD = $this->makeProperty($this->userId, 'Switch');
+        [$switchIcal, $switchPublic] = $this->airbnbUrl(555001);
+        $switch = HouseRepository::addFeed($propertyD, $this->userId, $switchIcal, 'Switch', 'ota', 'airbnb', $switchPublic, true);
+        $this->assertIsArray($switch);
+        $switchFeed = $this->feed($propertyD, (int) $switch['feed']['id']);
+        $this->verifyFeedWithBlock($propertyD, $switchFeed);
+        $this->assertSame($start + 20, $this->credits());
+
+        $switched = HouseRepository::updateFeed(
+            $propertyD, $this->userId, (int) $switchFeed['id'], 'ota', 'vrbo',
+            'https://www.vrbo.com/555001', 'https://www.vrbo.com/icalendar/555001.ics',
+            'Switch', true, true
+        );
+        $this->assertSame('updated', $switched['status']);
+        $switchedFeed = $this->feed($propertyD, (int) $switchFeed['id']);
+        $this->verifyFeedWithBlock($propertyD, $switchedFeed);
+        $vrboSwitch = OtaVerificationService::approveFeed((int) $switchFeed['id'], $this->userId);
+        $this->assertTrue($vrboSwitch['credits_awarded'], 'first Vrbo on this property pays');
+        $this->assertSame($start + 25, $this->credits());
+
+        $back = HouseRepository::updateFeed(
+            $propertyD, $this->userId, (int) $switchFeed['id'], 'ota', 'airbnb',
+            'https://www.airbnb.com/rooms/555003', 'https://www.airbnb.com/calendar/ical/555003.ics',
+            'Switch', true, true
+        );
+        $this->assertSame('updated', $back['status']);
+        $backFeed = $this->feed($propertyD, (int) $switchFeed['id']);
+        $backVerified = $this->verifyFeedWithBlock($propertyD, $backFeed);
+        $this->assertSame('verified', $backVerified['status']);
+        $this->assertFalse($backVerified['credits_awarded'], 'returning to an already-paid platform pays zero');
+        $this->assertSame($start + 25, $this->credits());
+
+        // Delete Property A: the three ledger rows survive with property_id NULL.
+        $this->pdo->prepare('DELETE FROM properties WHERE id = ?')->execute([$this->propertyId]);
+        $nullRows = $this->pdo->prepare('SELECT platform, canonical_listing_id FROM ota_credit_ledger WHERE property_id IS NULL ORDER BY platform');
+        $nullRows->execute();
+        $orphans = $nullRows->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertCount(3, $orphans);
+        $this->assertSame(['airbnb', 'booking', 'vrbo'], array_column($orphans, 'platform'));
+        $this->assertNotEmpty($orphans[0]['canonical_listing_id']);
+
+        // A recreated property verifying the same canonical gets the badge but zero credits.
+        $propertyC = $this->makeProperty($this->userId, 'Recreated');
+        [$reIcal, $rePublic] = $this->airbnbUrl(111111);
+        $recreated = HouseRepository::addFeed($propertyC, $this->userId, $reIcal, 'Recreated', 'ota', 'airbnb', $rePublic, true);
+        $this->assertIsArray($recreated);
+        $recreatedFeed = $this->feed($propertyC, (int) $recreated['feed']['id']);
+        $recreatedVerified = $this->verifyFeedWithBlock($propertyC, $recreatedFeed);
+        $this->assertSame('verified', $recreatedVerified['status']);
+        $this->assertFalse($recreatedVerified['credits_awarded'], 'the permanent ledger blocks recreated listings');
+        $this->assertSame($start + 25, $this->credits());
+    }
 }

@@ -19,8 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-// Updated: 2026-11 - schema 40.
-t_eq(40, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 40');
+// Updated: 2026-11 - schema 41.
+t_eq(41, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 41');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -55,8 +55,8 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-// Updated: 2026-11 - schema 40.
-t_eq('40', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 40');
+// Updated: 2026-11 - schema 41.
+t_eq('41', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 41');
 t_eq(
     "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
     (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),
@@ -86,6 +86,20 @@ foreach (['idx_places_name_fold', 'places_city_uf_uk', 'places_child_uk', 'idx_p
     'uq_ota_credit_ledger_property', 'uq_ota_credit_ledger_canonical'] as $indexName) {
     t_eq(1, (int) $pdo->query("SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = " . $pdo->quote($indexName))->fetchColumn(), 'index ' . $indexName);
 }
+// Updated: 2026-11 - schema 41 once-per-platform/per-canonical credit ledger.
+$ledgerColumns = [];
+foreach ($pdo->query("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'ota_credit_ledger' AND column_name IN ('platform', 'reward_type', 'user_id', 'property_id')")->fetchAll(PDO::FETCH_ASSOC) as $column) {
+    $ledgerColumns[$column['column_name']] = $column['is_nullable'];
+}
+t_eq('NO', $ledgerColumns['platform'] ?? null, 'ota_credit_ledger.platform is NOT NULL');
+t_eq('NO', $ledgerColumns['reward_type'] ?? null, 'ota_credit_ledger.reward_type is NOT NULL');
+t_eq('YES', $ledgerColumns['user_id'] ?? null, 'ota_credit_ledger.user_id is nullable (survives user deletion)');
+t_eq('YES', $ledgerColumns['property_id'] ?? null, 'ota_credit_ledger.property_id is nullable');
+$creditPropIdx = (string) $pdo->query("SELECT pg_get_indexdef('uq_ota_credit_ledger_property'::regclass)")->fetchColumn();
+t_ok(str_contains($creditPropIdx, '(property_id, platform, reward_type)'), 'ledger property uniqueness is per platform/reward');
+$creditCanIdx = (string) $pdo->query("SELECT pg_get_indexdef('uq_ota_credit_ledger_canonical'::regclass)")->fetchColumn();
+t_ok(str_contains($creditCanIdx, '(canonical_listing_id, reward_type)'), 'ledger canonical uniqueness is per reward');
+
 $due = (string) $pdo->query("SELECT pg_get_indexdef('idx_feeds_due'::regclass)")->fetchColumn();
 t_ok(str_contains($due, 'USING btree') && str_contains($due, '(next_sync_at)') && !str_contains($due, 'WHERE'), 'idx_feeds_due is a plain btree');
 t_eq('smallint', (string) $pdo->query("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'calendar_feeds'::regclass AND attname = 'slot'")->fetchColumn(), 'slot is smallint');

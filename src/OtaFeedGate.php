@@ -195,7 +195,7 @@ final class OtaFeedGate
         $ledger = db()->prepare('SELECT user_id FROM ota_credit_ledger WHERE canonical_listing_id = ? LIMIT 1');
         $ledger->execute([$canonical]);
         $owner = $ledger->fetchColumn();
-        if ($owner !== false && (int) $owner !== $userId) {
+        if ($owner !== false && $owner !== null && (int) $owner !== $userId) {
             throw new OtaFeedGateException('property_url', t('ota.err_canonical_other_host'));
         }
     }

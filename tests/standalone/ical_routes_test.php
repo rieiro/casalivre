@@ -175,6 +175,42 @@ $ap2 = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'segunda aprovação é idempotente');
 t_eq('already_approved', $ap2['status'] ?? null, 'segunda aprovação devolve already_approved');
 
+$creditsBeforeUnit = (int) db()->query('SELECT quote_credits FROM users WHERE id = ' . (int) $owner['user_id'])->fetchColumn();
+$booking2Url = 'https://ical.booking.com/v1/export?t=ROUTEBOOK2';
+$r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
+    'external_ical_url' => $booking2Url,
+    'feed_title' => 'Booking Unit 2',
+    'mode' => 'ota',
+    'platform' => 'booking',
+    'property_url' => $bookingPublic,
+    'consent' => '1',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$b2j = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'segunda unidade Booking importa 200');
+$booking2Feed = null;
+foreach (($b2j['feeds'] ?? []) as $candidate) {
+    if (($candidate['source_platform'] ?? '') === 'booking' && (int) $candidate['id'] !== $bookingId) {
+        $booking2Feed = $candidate;
+    }
+}
+t_ok(is_array($booking2Feed), 'segunda unidade Booking criada');
+$booking2Id = (int) ($booking2Feed['id'] ?? 0);
+$booking2ChallengeStmt = db()->prepare('SELECT challenge_date FROM calendar_feeds WHERE id = ?');
+$booking2ChallengeStmt->execute([$booking2Id]);
+$booking2Challenge = (string) $booking2ChallengeStmt->fetchColumn();
+$booking2End = date('Ymd', strtotime($booking2Challenge . ' +1 day'));
+file_put_contents((string) getenv('T_ICS_BODY_FILE'),
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:booking2-challenge\r\nDTSTART;VALUE=DATE:" . str_replace('-', '', $booking2Challenge)
+    . "\r\nDTEND;VALUE=DATE:$booking2End\r\nSUMMARY:Blocked\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+$r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $booking2Id . '/verificar', '', ['X-CSRF-Token: ' . $csrf], $jar);
+t_eq(200, $r['status'], 'segunda unidade Booking verifica 200');
+$r = t_http('POST', $adminBase . '/' . $booking2Id . '/approve', '{}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+$ap3 = json_decode($r['body'], true) ?: [];
+t_eq(200, $r['status'], 'segunda unidade Booking aprova 200');
+t_eq(false, $ap3['credits_awarded'] ?? null, 'segunda unidade do mesmo anúncio não paga de novo');
+$creditsAfterUnit = (int) db()->query('SELECT quote_credits FROM users WHERE id = ' . (int) $owner['user_id'])->fetchColumn();
+t_eq($creditsBeforeUnit, $creditsAfterUnit, 'créditos não mudam na segunda unidade');
+
 $vrboUrl = 'https://www.vrbo.com/icalendar/555001.ics';
 $vrboPublic = 'https://www.vrbo.com/555001';
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([

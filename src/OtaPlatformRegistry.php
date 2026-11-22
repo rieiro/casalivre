@@ -60,6 +60,12 @@ final class OtaPlatformRegistry
         return self::get($platform) !== null;
     }
 
+    /** Only the three native OTA platforms qualify for verification credits. */
+    public static function isAllowed(string $platform): bool
+    {
+        return in_array(strtolower(trim($platform)), ['airbnb', 'booking', 'vrbo'], true);
+    }
+
     public static function label(string $platform): string
     {
         return (string) (self::get($platform)['label'] ?? '');

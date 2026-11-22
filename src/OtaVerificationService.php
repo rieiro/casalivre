@@ -437,36 +437,19 @@ final class OtaVerificationService
                 }
             }
 
-            $ledger = db()->prepare(
-                'INSERT INTO ota_credit_ledger
-                    (property_id, user_id, verification_id, canonical_listing_id, credits, awarded_at)
-                 VALUES (?, ?, ?, ?, ?, to_timestamp(?))
-                 ON CONFLICT DO NOTHING'
-            );
-            $ledger->execute([
-                (int) $row['property_id'],
-                $userId,
-                $verificationId,
-                $canonicalId !== '' ? $canonicalId : null,
-                self::ONBOARDING_CREDIT_REWARD,
-                $now,
-            ]);
-            $awardNow = $ledger->rowCount() === 1 && (int) $row['credits_awarded'] === 0;
-
             db()->prepare(
                 "UPDATE property_external_verifications
                     SET status = 'verified', verified_at = to_timestamp(?),
-                        credits_awarded = 1, fail_count = 0, updated_at = to_timestamp(?)
+                        fail_count = 0, updated_at = to_timestamp(?)
                   WHERE id = ?"
             )->execute([$now, $now, $verificationId]);
 
-            if ($awardNow && $userId > 0) {
-                db()->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
-                    ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
-                if (self::$creditHook !== null) {
-                    (self::$creditHook)((int) $row['property_id'], $userId, $verificationId);
-                }
-            }
+            $fresh = self::findRow($verificationId) ?? $row;
+            $awardNow = self::awardVerificationCreditsIfEligible(
+                db(),
+                $fresh,
+                'property_external_verifications'
+            );
 
             ActivityLog::record(ActivityLog::OTA_VERIFY_VERIFIED, [
                 'imovel_id' => (int) $row['property_id'],
@@ -475,8 +458,8 @@ final class OtaVerificationService
                 'creditos' => $awardNow ? self::ONBOARDING_CREDIT_REWARD : 0,
             ]);
 
-            $fresh = self::findRow($verificationId) ?? $row;
-            return self::verifiedResult($fresh, $awardNow ? 1 : 0, false);
+            $credits = $awardNow ? 1 : (int) ($fresh['credits_awarded'] ?? 0);
+            return self::verifiedResult($fresh, $credits, false);
         });
     }
 
@@ -1121,36 +1104,103 @@ final class OtaVerificationService
     }
 
     /** Awards the permanent onboarding credits for a verified feed (ledger idempotent). */
-    public static function awardFeedCredits(int $propertyId, int $feedId, ?string $canonicalListingId = null): bool
-    {
-        $owner = db()->prepare('SELECT user_id FROM properties WHERE id = ?');
+    /**
+     * Inserts the permanent ledger row once per (property, platform, reward_type) and once per
+     * (canonical_listing_id, reward_type), then credits the host and marks the source row.
+     * MUST run inside the caller's transaction after locking the feed/verification row.
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function awardVerificationCreditsIfEligible(
+        PDO $pdo,
+        array $row,
+        string $sourceTable = 'calendar_feeds',
+        string $rewardType = 'ota_verification'
+    ): bool {
+        if (!in_array($sourceTable, ['calendar_feeds', 'property_external_verifications'], true)) {
+            return false;
+        }
+        if ($sourceTable === 'calendar_feeds') {
+            if ((string) ($row['verification_mode'] ?? 'sync_only') !== 'ota'
+                || $row['verified_at'] === null
+                || (string) ($row['review_status'] ?? 'approved') !== 'approved'
+                || self::pgBool($row['credits_awarded'] ?? false)
+            ) {
+                return false;
+            }
+            $platform = (string) ($row['source_platform'] ?? '');
+        } else {
+            if ((string) ($row['status'] ?? '') !== 'verified'
+                || (int) ($row['credits_awarded'] ?? 0) !== 0
+            ) {
+                return false;
+            }
+            $platform = (string) ($row['platform'] ?? '');
+        }
+
+        $propertyId = (int) ($row['property_id'] ?? 0);
+        $verificationId = (int) ($row['id'] ?? 0);
+        $canonicalId = trim((string) ($row['canonical_listing_id'] ?? ''));
+        $platform = strtolower(trim($platform));
+        if ($propertyId <= 0 || !OtaPlatformRegistry::isAllowed($platform)) {
+            return false;
+        }
+
+        $owner = $pdo->prepare('SELECT user_id FROM properties WHERE id = ?');
         $owner->execute([$propertyId]);
         $userId = (int) $owner->fetchColumn();
-        $ledger = db()->prepare(
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare(
             'INSERT INTO ota_credit_ledger
-                (property_id, user_id, verification_id, canonical_listing_id, credits, awarded_at)
-             VALUES (?, ?, ?, ?, ?, to_timestamp(?))
+                (property_id, user_id, verification_id, platform, canonical_listing_id, reward_type, credits, awarded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, to_timestamp(?))
              ON CONFLICT DO NOTHING'
         );
-        $ledger->execute([
+        $stmt->execute([
             $propertyId,
             $userId,
-            $feedId,
-            $canonicalListingId,
+            $verificationId,
+            $platform,
+            $canonicalId !== '' ? $canonicalId : null,
+            $rewardType,
             self::ONBOARDING_CREDIT_REWARD,
             self::now(),
         ]);
-        if ($ledger->rowCount() !== 1) {
+        if ($stmt->rowCount() !== 1) {
             return false;
         }
-        if ($userId > 0) {
-            db()->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
-                ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
-            if (self::$creditHook !== null) {
-                (self::$creditHook)($propertyId, $userId, $feedId);
-            }
+
+        $pdo->prepare('UPDATE users SET quote_credits = quote_credits + ? WHERE id = ?')
+            ->execute([self::ONBOARDING_CREDIT_REWARD, $userId]);
+        if ($sourceTable === 'calendar_feeds') {
+            $pdo->prepare('UPDATE calendar_feeds SET credits_awarded = TRUE WHERE id = ?')
+                ->execute([$verificationId]);
+        } else {
+            $pdo->prepare('UPDATE property_external_verifications SET credits_awarded = 1 WHERE id = ?')
+                ->execute([$verificationId]);
+        }
+        if (self::$creditHook !== null) {
+            (self::$creditHook)($propertyId, $userId, $verificationId);
         }
         return true;
+    }
+
+    /** Thin compatibility wrapper; callers should prefer the row-based helper. */
+    public static function awardFeedCredits(int $propertyId, int $feedId, ?string $canonicalListingId = null): bool
+    {
+        $stmt = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ?');
+        $stmt->execute([$feedId, $propertyId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row)
+            && self::awardVerificationCreditsIfEligible(db(), $row, 'calendar_feeds');
+    }
+
+    private static function pgBool(mixed $value): bool
+    {
+        return $value === true || $value === 't' || $value === '1' || $value === 1;
     }
 
     /** @return list<array<string, mixed>> */
@@ -1204,18 +1254,17 @@ final class OtaVerificationService
                 return ['status' => 'invalid_state', 'message' => 'Apenas verificações em análise podem ser aprovadas.'];
             }
             $now = self::now();
-            $awarded = self::awardFeedCredits(
-                (int) $row['property_id'],
-                $feedId,
-                $row['canonical_listing_id'] !== null ? (string) $row['canonical_listing_id'] : null
-            );
             db()->prepare(
                 "UPDATE calendar_feeds
                     SET review_status = 'approved', reviewed_by = ?, reviewed_at = to_timestamp(?),
-                        review_note = NULL, status = 'active', verified_at = COALESCE(verified_at, to_timestamp(?)),
-                        credits_awarded = CASE WHEN ? THEN TRUE ELSE credits_awarded END
+                        review_note = NULL, status = 'active', verified_at = COALESCE(verified_at, to_timestamp(?))
                   WHERE id = ?"
-            )->execute([$adminId, $now, $now, $awarded ? 1 : 0, $feedId]);
+            )->execute([$adminId, $now, $now, $feedId]);
+            $approvedStmt = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ?');
+            $approvedStmt->execute([$feedId]);
+            $approvedRow = $approvedStmt->fetch(PDO::FETCH_ASSOC);
+            $awarded = is_array($approvedRow)
+                && self::awardVerificationCreditsIfEligible(db(), $approvedRow, 'calendar_feeds');
             ActivityLog::record(ActivityLog::OTA_REVIEW_APPROVE, [
                 'imovel_id' => (int) $row['property_id'],
                 'plataforma' => (string) ($row['source_platform'] ?? 'other'),
