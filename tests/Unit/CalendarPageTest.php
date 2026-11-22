@@ -765,4 +765,19 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('onsubmit=', $html);
         $this->assertDoesNotMatchRegularExpression('/\sstyle\s*=/i', $html);
     }
+
+    public function testAdminVerificationViewDoesNotDuplicateLayoutAlertBanners(): void
+    {
+        $pending = [];
+        $user = ['is_admin' => 1];
+        $csrf = 'csrf_token_test';
+        $ok = true;
+        $error = 'Mensagem do layout';
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/admin/verificacoes.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertStringNotContainsString('admin-alert-banner', $html);
+        $this->assertStringContainsString('Revisão de Verificações OTA', $html);
+    }
 }

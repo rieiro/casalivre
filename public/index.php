@@ -1067,6 +1067,8 @@ if ($path === '/admin/filas/reprocessar-emails' && $method === 'POST') {
 
 if ($path === '/admin/verificacoes' && $method === 'GET') {
     $user = require_admin();
+    $error = $_SESSION['admin_verificacoes_error'] ?? null;
+    unset($_SESSION['admin_verificacoes_error']);
     view('admin/verificacoes', [
         'pending' => OtaVerificationService::listPendingReviews(),
         'user' => $user,
@@ -1075,7 +1077,7 @@ if ($path === '/admin/verificacoes' && $method === 'GET') {
         'layout' => 'admin_layout',
         'page_title' => 'Revisão de Verificações OTA',
         'ok' => isset($_GET['ok']),
-        'error' => isset($_GET['error']) ? (string) $_GET['error'] : null,
+        'error' => $error,
     ]);
     return null;
 }
@@ -1086,7 +1088,8 @@ if (preg_match('#^/admin/verificacoes/(\d+)/aprovar$#', $path, $m) && $method ==
     $res = OtaVerificationService::approveFeed((int) $m[1], (int) $_SESSION['user_id']);
     $status = (string) ($res['status'] ?? '');
     if (!in_array($status, ['approved', 'already_approved'], true)) {
-        redirect('/admin/verificacoes?error=' . urlencode((string) ($res['message'] ?? 'Não foi possível aprovar.')));
+        $_SESSION['admin_verificacoes_error'] = (string) ($res['message'] ?? 'Não foi possível aprovar.');
+        redirect('/admin/verificacoes');
     }
     redirect('/admin/verificacoes?ok=1');
 }
@@ -1096,7 +1099,8 @@ if (preg_match('#^/admin/verificacoes/(\d+)/rejeitar$#', $path, $m) && $method =
     csrf_check();
     $res = OtaVerificationService::rejectFeed((int) $m[1], (int) $_SESSION['user_id'], (string) ($_POST['review_note'] ?? ''));
     if (($res['status'] ?? '') !== 'rejected') {
-        redirect('/admin/verificacoes?error=' . urlencode((string) ($res['message'] ?? 'Não foi possível rejeitar.')));
+        $_SESSION['admin_verificacoes_error'] = (string) ($res['message'] ?? 'Não foi possível rejeitar.');
+        redirect('/admin/verificacoes');
     }
     redirect('/admin/verificacoes?ok=1');
 }

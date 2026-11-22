@@ -1168,7 +1168,7 @@ final class OtaVerificationService
                LEFT JOIN places c ON c.id = p.city_place_id
               WHERE f.verification_mode = 'ota' AND f.verified_at IS NOT NULL
                 AND f.review_status = 'pending_review'
-              ORDER BY COALESCE(f.verified_at, f.last_checked_at) ASC, f.id ASC"
+              ORDER BY f.verified_at ASC, f.id ASC"
         );
         $rows = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {

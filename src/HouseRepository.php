@@ -673,6 +673,26 @@ SQL;
     }
 
     /**
+     * Shared lock rule for link edits: pending_review always locks; a verified OTA feed needs confirmation.
+     *
+     * @param array<string, mixed> $row
+     * @return array{status: string, message: string}|null
+     */
+    private static function feedEditLock(array $row, bool $confirm): ?array
+    {
+        if ((string) ($row['verification_mode'] ?? 'sync_only') !== 'ota' || $row['verified_at'] === null) {
+            return null;
+        }
+        if ((string) ($row['review_status'] ?? 'approved') === 'pending_review') {
+            return ['status' => 'pending_review_locked', 'message' => t('cal.feed_pending_review_locked')];
+        }
+        if (!$confirm) {
+            return ['status' => 'locked', 'message' => t('cal.feed_lock_confirm')];
+        }
+        return null;
+    }
+
+    /**
      * Replaces the URLs of an existing feed after the full gate, resetting any OTA verification.
      *
      * @return array<string, mixed>
@@ -695,14 +715,8 @@ SQL;
         if (!is_array($feed)) {
             return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
         }
-        if ((string) ($feed['verification_mode'] ?? 'sync_only') === 'ota'
-            && $feed['verified_at'] !== null
-            && (string) ($feed['review_status'] ?? 'approved') === 'pending_review'
-        ) {
-            return ['status' => 'pending_review_locked', 'message' => t('cal.feed_pending_review_locked')];
-        }
-        if ((string) ($feed['verification_mode'] ?? 'sync_only') === 'ota' && $feed['verified_at'] !== null && !$confirm) {
-            return ['status' => 'locked', 'message' => t('cal.feed_lock_confirm')];
+        if (($locked = self::feedEditLock($feed, $confirm)) !== null) {
+            return $locked;
         }
         $title = trim($title);
         $titleLen = function_exists('mb_strlen') ? mb_strlen($title) : strlen($title);
@@ -741,13 +755,17 @@ SQL;
             $title,
             $prepared,
             $challengeDate,
-            $now
+            $now,
+            $confirm
         ): array {
             $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
             $lock->execute([$feedId, $propertyId]);
             $current = $lock->fetch(PDO::FETCH_ASSOC);
             if (!is_array($current)) {
                 return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
+            }
+            if (($locked = self::feedEditLock($current, $confirm)) !== null) {
+                return $locked;
             }
             db()->prepare(
                 "UPDATE calendar_feeds
@@ -1048,13 +1066,7 @@ SQL;
                 $approved = (string) ($row['review_status'] ?? 'approved') === 'approved';
                 $platform = (string) ($row['source_platform'] ?? 'other');
                 $challengeDate = (string) ($row['challenge_date'] ?? '');
-                $challengeDateBr = $challengeDate !== '' ? self::dateBr($challengeDate) : '';
-                $pendingMessage = $challengeDateBr !== ''
-                    ? t('cal.review_pending_detail', [
-                        'platform' => OtaPlatformRegistry::label($platform),
-                        'date' => $challengeDateBr,
-                    ])
-                    : t('cal.review_pending');
+                [$challengeDateBr, $pendingMessage] = self::pendingReviewDetail($platform, $challengeDate);
                 return [
                     'status' => $approved ? 'verified' : 'pending_review',
                     'verified' => $approved,
@@ -1122,13 +1134,7 @@ SQL;
             $fresh = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ?');
             $fresh->execute([$feedId]);
             $challengeDate = (string) ($row['challenge_date'] ?? '');
-            $challengeDateBr = $challengeDate !== '' ? self::dateBr($challengeDate) : '';
-            $pendingMessage = $challengeDateBr !== ''
-                ? t('cal.review_pending_detail', [
-                    'platform' => OtaPlatformRegistry::label($platform),
-                    'date' => $challengeDateBr,
-                ])
-                : t('cal.review_pending');
+            [$challengeDateBr, $pendingMessage] = self::pendingReviewDetail($platform, $challengeDate);
             return [
                 'status' => $pendingReview ? 'pending_review' : 'verified',
                 'verified' => !$pendingReview,
@@ -1196,6 +1202,19 @@ SQL;
             'UPDATE calendar_feeds SET passive_fail_count = 0, last_passive_check_at = to_timestamp(?) WHERE id = ?'
         )->execute([$now, $feedId]);
         return ['status' => 'ok', 'fail_count' => 0];
+    }
+
+    /** @return array{0: string, 1: string} [DD/MM/YYYY, pending-review message] */
+    private static function pendingReviewDetail(string $platform, string $challengeDate): array
+    {
+        $dateBr = $challengeDate !== '' ? self::dateBr($challengeDate) : '';
+        $message = $dateBr !== ''
+            ? t('cal.review_pending_detail', [
+                'platform' => OtaPlatformRegistry::label($platform),
+                'date' => $dateBr,
+            ])
+            : t('cal.review_pending');
+        return [$dateBr, $message];
     }
 
     private static function dateBr(string $ymd): string

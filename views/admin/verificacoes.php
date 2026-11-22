@@ -7,13 +7,6 @@
  * @var string|null $error
  */
 ?>
-<?php if (!empty($ok)): ?>
-    <div class="admin-alert-banner admin-alert-ok">Ação concluída.</div>
-<?php endif; ?>
-<?php if ($error): ?>
-    <div class="admin-alert-banner admin-alert-warn"><?= e($error) ?></div>
-<?php endif; ?>
-
 <div class="admin-card ota-review-card">
     <div class="admin-card-title">
         <span>✅ Revisão de Verificações OTA</span>
