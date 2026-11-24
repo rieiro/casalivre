@@ -36,17 +36,10 @@
 
     // Erro na tela (sem alert): mensagem da API (json.error) no topo do formulário e, por campo, ao lado do input
     // (json.erros = {campo: msg}, os mesmos nomes do formulário web).
-    function showError(form, e) {
-        form.querySelectorAll('[data-api-error]').forEach(el => el.remove());
-        form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
-        const box = document.createElement('p');
-        box.className = 'alert error';
-        box.setAttribute('data-api-error', '');
-        box.setAttribute('role', 'alert');
-        box.textContent = e.message;
-        const head = form.querySelector('h2');
-        if (head) head.after(box); else form.prepend(box);
+    // Devolve true quando a mensagem foi mostrada só ao lado do campo (formulário com data-field-errors-only).
+    function showFieldErrors(form, e) {
         const erros = (e.data && typeof e.data.erros === 'object' && e.data.erros) || {};
+        let shown = 0;
         Object.keys(erros).forEach(campo => {
             const input = form.querySelector('[name="' + CSS.escape(campo) + '"]');
             if (!input) return;
@@ -56,7 +49,26 @@
             msg.setAttribute('data-api-error', '');
             msg.textContent = String(erros[campo]);
             input.after(msg);
+            shown++;
         });
+        return shown;
+    }
+
+    function showError(form, e, fieldOnly) {
+        form.querySelectorAll('[data-api-error]').forEach(el => el.remove());
+        form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
+        const inline = showFieldErrors(form, e);
+        if (fieldOnly && inline > 0) {
+            return true;
+        }
+        const box = document.createElement('p');
+        box.className = 'alert error';
+        box.setAttribute('data-api-error', '');
+        box.setAttribute('role', 'alert');
+        box.textContent = e.message;
+        const head = form.querySelector('h2');
+        if (head) head.after(box); else form.prepend(box);
+        return false;
     }
 
     // Recarrega a página; o aviso (ok ou erro) vem do flash na sessão gravado pela API (sem ?msg= na URL).
@@ -118,8 +130,8 @@
                     reloadPage();
                     return;
                 }
-                showError(feedForm, e);
-                if (window.CL && typeof window.CL.toast === 'function') {
+                const inline = showError(feedForm, e, feedForm.hasAttribute('data-field-errors-only'));
+                if (!inline && window.CL && typeof window.CL.toast === 'function') {
                     CL.toast('error', 'Erro ao importar feed', e.message || 'Verifique o link informado.');
                 }
             }

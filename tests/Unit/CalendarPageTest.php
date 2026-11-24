@@ -728,6 +728,33 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('booking:br/casa-test', $html);
     }
 
+    public function testCalendarImportFormShowsFieldErrorsOnlyBelowTheInput(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // The import form opts into field-scoped errors: the API message goes below the invalid input only.
+        $this->assertMatchesRegularExpression('/<form class="sync-add-form"[^>]*data-field-errors-only="1"/', $html);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('function showFieldErrors(', $js);
+        $this->assertStringContainsString("feedForm.hasAttribute('data-field-errors-only')", $js);
+        $this->assertStringContainsString('if (!inline &&', $js);
+    }
+
     public function testCalendarRendersRejectedOtaBadgeAndEscapedReviewNote(): void
     {
         $property = [

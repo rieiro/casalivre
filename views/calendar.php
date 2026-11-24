@@ -363,7 +363,7 @@ $icalExportBase = request_base() . '/ical/export/';
             <div class="sync-add-viewport">
                 <div class="sync-add-track">
                     <section class="sync-add-section" id="sync-panel-import" role="tabpanel" aria-labelledby="sync-tab-import" data-sync-panel="import">
-                        <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
+                        <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-field-errors-only="1" data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
                             <h2><?= e(t('cal.sync_import_tab')) ?></h2>
                             <p class="muted fine"><?= e(t('cal.import_hint')) ?></p>
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
