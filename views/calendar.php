@@ -359,41 +359,29 @@ $icalExportBase = request_base() . '/ical/export/';
                             <h2><?= e(t('cal.sync_import_tab')) ?></h2>
                             <p class="muted fine"><?= e(t('cal.import_hint')) ?></p>
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                            <div class="feed-mode">
-                                <label class="prop-checkbox-label">
-                                    <input type="radio" name="mode" value="ota" checked data-feed-mode>
-                                    <span><?= e(t('cal.mode_ota')) ?></span>
-                                </label>
-                                <label class="prop-checkbox-label">
-                                    <input type="radio" name="mode" value="sync_only" data-feed-mode>
-                                    <span><?= e(t('cal.mode_sync')) ?></span>
-                                </label>
-                            </div>
-                            <div data-ota-fields>
-                                <label><?= e(t('cal.platform')) ?>
-                                    <select name="platform" data-feed-platform <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                                        <option value=""><?= e(t('cal.platform_select')) ?></option>
-                                        <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
-                                            <option value="<?= e($key) ?>"><?= e((string) $item['label']) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </label>
-                                <label><?= e(t('cal.property_url')) ?>
-                                    <input name="property_url" data-feed-property-url maxlength="255" placeholder="<?= e(t('cal.property_url_placeholder')) ?>" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                                </label>
-                                <p class="muted fine" data-feed-helper><?= e(t('cal.ota_hint')) ?></p>
-                                <label class="prop-checkbox-label">
-                                    <input type="checkbox" name="consent" value="1" data-feed-consent <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                                    <span><?= e(t('cal.consent')) ?></span>
-                                </label>
-                            </div>
+                            <input type="hidden" name="mode" value="ota">
+                            <label><?= e(t('cal.platform')) ?>
+                                <select name="platform" data-feed-platform required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                                    <option value=""><?= e(t('cal.platform_select')) ?></option>
+                                    <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
+                                        <option value="<?= e($key) ?>"><?= e((string) $item['label']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label><?= e(t('cal.property_url')) ?>
+                                <input name="property_url" data-feed-property-url maxlength="255" placeholder="<?= e(t('cal.property_url_placeholder')) ?>" required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                            </label>
+                            <p class="muted fine"><?= e(t('cal.ota_hint')) ?></p>
+                            <label class="prop-checkbox-label">
+                                <input type="checkbox" name="consent" value="1" data-feed-consent required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                                <span><?= e(t('cal.consent')) ?></span>
+                            </label>
                             <label><?= e(t('cal.feed_title')) ?>
                                 <input name="feed_title" maxlength="40" placeholder="Booking" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
                             </label>
                             <label><?= e(t('cal.link')) ?>
                                 <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
                             </label>
-                            <p class="muted fine" data-sync-hint hidden><?= e(t('cal.sync_only_hint')) ?></p>
                             <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.sync_import_tab')) ?></button>
                             <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
                         </form>

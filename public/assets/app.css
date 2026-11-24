@@ -310,12 +310,14 @@ footer { padding: var(--space-16); }
 .sync-add-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
 .sync-add-tabs button { min-height: 36px; padding: var(--space-6) var(--space-4); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--radius-8); font-size: .82rem; font-weight: 600; cursor: pointer; }
 .sync-add-tabs button.is-on { background: var(--brand); color: var(--surface); border-color: var(--brand); }
-.sync-add-viewport { overflow: hidden; }
-.sync-add-track { display: grid; grid-template-columns: repeat(2, 100%); transition: transform 250ms ease; }
+.sync-add-viewport { overflow: hidden; transition: height 250ms ease; }
+.sync-add-track { display: grid; grid-template-columns: repeat(2, 100%); align-items: start; transition: transform 250ms ease; }
 .sync-add-group[data-sync-active="export"] .sync-add-track { transform: translateX(-100%); }
 .sync-add-section { min-width: 0; }
 .sync-add-section[inert] { pointer-events: none; }
 .sync-add-form { display: grid; gap: var(--space-10); }
+.sync-add-form h2 { margin: 0; }
+.sync-add-form p { margin: 0; }
 .sync-add-group .ical-export-form { grid-template-columns: 1fr; }
 .sync-scroll { overflow-x: auto; }
 .sync-table { width: 100%; border-collapse: collapse; }
@@ -5046,12 +5048,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 }
 
 /* OTA verification: platform-bound feed form, review and edit states. */
-.feed-mode {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
-    margin: 0.5rem 0 0.75rem;
-}
 .sync-platform {
     display: inline-block;
     margin-top: 0.2rem;

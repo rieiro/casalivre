@@ -714,7 +714,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('name="property_url"', $html);
         $this->assertStringContainsString('name="consent"', $html);
         $this->assertStringContainsString('data-platform-meta', $html);
-        $this->assertStringContainsString('feed-mode', $html);
+        // Updated: 2026-11 - The verify-and-sync choice is fixed; users can no longer pick sync-only mode.
+        $this->assertStringContainsString('<input type="hidden" name="mode" value="ota">', $html);
+        $this->assertStringNotContainsString('data-feed-mode', $html);
         $this->assertStringContainsString('sync-platform', $html);
         $this->assertStringContainsString(t('cal.review_pending'), $html);
         // Updated: 2026-11 - Booking/Vrbo links stay locked while pending_review until admin decision.
@@ -957,5 +959,49 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString(e(t('cal.import_hint')), $slice);
         $this->assertStringNotContainsString(e(t('cal.add_feed')), $slice);
         $this->assertStringContainsString('data-feed-add', $slice);
+    }
+
+    public function testSyncImportUsesFixedVerifyModeAndEliminatesBlankSpace(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Verify and sync is the only mode; it is submitted as a hidden field.
+        $this->assertStringContainsString('<input type="hidden" name="mode" value="ota">', $html);
+        $this->assertStringNotContainsString('data-feed-mode', $html);
+        $this->assertStringNotContainsString('value="sync_only"', $html);
+        $this->assertStringNotContainsString('data-ota-fields', $html);
+        $this->assertStringNotContainsString('data-sync-hint', $html);
+
+        $formJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar.js');
+        $this->assertStringNotContainsString('data-feed-mode', $formJs);
+        $this->assertStringNotContainsString('sync_only', $formJs);
+        $this->assertStringContainsString('consent.checked', $formJs);
+
+        // Sliding group keeps only the active section height and the form uses the grid gap for spacing.
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('sync-add-viewport', $js);
+        $this->assertStringContainsString('viewport.style.height = active.offsetHeight', $js);
+        $this->assertStringContainsString("mode: data.mode || 'ota'", $js);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.sync-add-track\s*\{[^}]*align-items:\s*start;/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-viewport\s*\{[^}]*transition:\s*height/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-form\s+h2\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-form\s+p\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertStringNotContainsString('.feed-mode', $css);
     }
 }

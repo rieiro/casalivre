@@ -104,7 +104,7 @@
                     body: {
                         external_ical_url: data.external_ical_url || '',
                         feed_title: data.feed_title || '',
-                        mode: data.mode || 'sync_only',
+                        mode: data.mode || 'ota',
                         platform: data.platform || '',
                         property_url: data.property_url || '',
                         consent: data.consent || ''
@@ -266,6 +266,15 @@
     document.querySelectorAll('[data-sync-tabs]').forEach(function (group) {
         const buttons = group.querySelectorAll('[data-sync-tab]');
         const panels = group.querySelectorAll('[data-sync-panel]');
+        const viewport = group.querySelector('.sync-add-viewport');
+        function current() {
+            return group.getAttribute('data-sync-active') || 'import';
+        }
+        function fit(name) {
+            if (!viewport) return;
+            const active = group.querySelector('[data-sync-panel="' + name + '"]');
+            if (active) viewport.style.height = active.offsetHeight + 'px';
+        }
         function activate(name) {
             group.setAttribute('data-sync-active', name);
             buttons.forEach(function (button) {
@@ -282,13 +291,17 @@
                     panel.setAttribute('inert', '');
                 }
             });
+            fit(name);
         }
         buttons.forEach(function (button) {
             button.addEventListener('click', function () {
                 activate(button.getAttribute('data-sync-tab') || 'import');
             });
         });
-        activate(group.getAttribute('data-sync-active') || 'import');
+        window.addEventListener('resize', function () {
+            fit(current());
+        });
+        activate(current());
     });
 
     // Verificar a titularidade de um feed iCal (desafio unificado no calendário).
