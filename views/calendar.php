@@ -16,24 +16,9 @@ $icalExportData = $icalExportData ?? IcalExportService::listForProperty((int) $p
 $icalExportBase = request_base() . '/ical/export/';
 
 // Model B: propriedade verificada quando algum OTA principal segue ativo e aprovado.
-$majorOtaPlatforms = ['airbnb', 'booking', 'vrbo'];
-$verifiedOtaPlatforms = [];
-foreach ($feeds as $verifiedFeed) {
-    if ((string) ($verifiedFeed['verification_mode'] ?? 'sync_only') !== 'ota'
-        || (string) ($verifiedFeed['status'] ?? 'active') !== 'active'
-        || ($verifiedFeed['verified_at'] ?? null) === null
-        || (string) ($verifiedFeed['review_status'] ?? 'approved') !== 'approved'
-    ) {
-        continue;
-    }
-    $verifiedOtaPlatforms[(string) ($verifiedFeed['source_platform'] ?? '')] = true;
-}
-$isPropertyVerified = (int) ($property['is_verified'] ?? 0) === 1
-    || OtaVerificationService::hasVerifiedPlatform((int) $property['id']);
-$remainingOtaLabels = [];
-foreach (array_diff($majorOtaPlatforms, array_keys($verifiedOtaPlatforms)) as $remainingPlatform) {
-    $remainingOtaLabels[] = OtaPlatformRegistry::label((string) $remainingPlatform);
-}
+$bannerState = OtaVerificationService::propertyBannerState((array) ($property ?? []), (array) $feeds);
+$isPropertyVerified = $bannerState['is_verified'];
+$remainingOtaLabels = $bannerState['remaining_labels'];
 ?>
 <section class="wrap">
     <h1 class="cal-title" data-cal-title><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>

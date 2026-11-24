@@ -12,9 +12,8 @@ $amenityIcons = Amenities::ICONS;
 // Selo público "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
 require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 $otaVerifications = OtaVerificationService::listVerifiedForProperty((int) ($property['id'] ?? 0));
-// Model B: selo em nível de propriedade (mesma regra de public_listing()).
-$isVerifiedProperty = (int) ($property['is_verified'] ?? 0) === 1
-    || OtaVerificationService::hasVerifiedPlatform((int) ($property['id'] ?? 0));
+// Model B: selo em nível de propriedade (mesma regra de public_listing(), sem consulta extra).
+$isVerifiedProperty = OtaVerificationService::isPropertyVerified((array) ($property ?? []), $otaVerifications);
 
 // Fallback server-side (sem JS): a página com use_api é montada pelo property.js, que recebe o mesmo
 // google_reputation pelo GET /api/imoveis/{hash}. Sem chave/cache/falha do Google, $googleReputation fica null.

@@ -33,6 +33,7 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
     }
     $houseRules = Amenities::rules($house);
     $score = HouseRepository::score($house);
+    $otaVerifications = OtaVerificationService::listVerifiedForProperty($id);
     $ratingCount = (int) ($house['rating_count'] ?? 0);
     $noiseFrom = (string) ($selected['noise_from'] ?? '22:00');
     $noiseUntil = (string) ($selected['noise_until'] ?? '07:00');
@@ -53,9 +54,9 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
             current_locale()
         ),
         // Selo "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
-        'ota_verifications' => OtaVerificationService::listVerifiedForProperty($id),
-        // Model B: selo em nível de propriedade (algum OTA principal ativo e aprovado).
-        'is_verified' => (int) ($house['is_verified'] ?? 0) === 1 || OtaVerificationService::hasVerifiedPlatform($id),
+        'ota_verifications' => $otaVerifications,
+        // Model B: selo em nível de propriedade (algum OTA principal ativo e aprovado), sem consulta extra.
+        'is_verified' => OtaVerificationService::isPropertyVerified($house, $otaVerifications),
         'quote' => $quote,
         'photos' => $photos,
         'amenities' => $amenities,

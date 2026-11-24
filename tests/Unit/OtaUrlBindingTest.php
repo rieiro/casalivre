@@ -790,4 +790,43 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertSame([], OtaVerificationService::listVerifiedForProperty($this->propertyId));
         $this->assertFalse(public_listing($this->property($this->propertyId))['is_verified']);
     }
+
+    public function testHasVerifiedPlatformRequiresActiveFeedsWithVerifiedAt(): void
+    {
+        // Model B SSOT: an error-status feed with verified_at set is not a verified badge.
+        $ical = 'https://www.airbnb.com/calendar/ical/7770001.ics';
+        $this->pdo->prepare(
+            "INSERT INTO calendar_feeds
+                 (property_id, slot, url, url_hash, title, source_platform, status, verified_at,
+                  verification_mode, review_status, next_sync_at, last_status)
+             VALUES (?, 1, ?, ?, 'Airbnb', 'airbnb', 'error', to_timestamp(?),
+                     'ota', 'approved', now(), 'ERRO')"
+        )->execute([$this->propertyId, $ical, hash('sha256', $ical), $this->now]);
+        $this->assertFalse(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
+        $this->assertSame([], OtaVerificationService::listVerifiedForProperty($this->propertyId));
+    }
+
+    public function testIsPropertyVerifiedShortCircuitsWhenPropertyFlagIsZero(): void
+    {
+        // A genuinely verified major feed exists (the badge source for Model B).
+        $ical = 'https://www.airbnb.com/calendar/ical/8880002.ics';
+        $this->pdo->prepare(
+            "INSERT INTO calendar_feeds
+                 (property_id, slot, url, url_hash, title, source_platform, status, verified_at,
+                  verification_mode, review_status, next_sync_at, last_status)
+             VALUES (?, 1, ?, ?, 'Airbnb', 'airbnb', 'active', to_timestamp(?),
+                     'ota', 'approved', now(), 'ATIVO')"
+        )->execute([$this->propertyId, $ical, hash('sha256', $ical), $this->now]);
+        $this->assertTrue(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
+
+        // Stored flag 0: isPropertyVerified() short-circuits to false without querying
+        // calendar_feeds (a query would have returned true above).
+        $this->assertFalse(OtaVerificationService::isPropertyVerified(['id' => $this->propertyId, 'is_verified' => 0]));
+        $this->assertTrue(OtaVerificationService::isPropertyVerified(['id' => $this->propertyId, 'is_verified' => 1]));
+        // With the feed list passed in, the in-memory verdict applies without extra queries.
+        $this->assertTrue(OtaVerificationService::isPropertyVerified(
+            ['id' => $this->propertyId, 'is_verified' => 0],
+            OtaVerificationService::listVerifiedForProperty($this->propertyId)
+        ));
+    }
 }

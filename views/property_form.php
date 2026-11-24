@@ -1,9 +1,7 @@
 <?php
 $editing = (bool) ($property ?? false);
 require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
-$isPropertyVerified = $editing
-    && ((int) ($property['is_verified'] ?? 0) === 1
-        || OtaVerificationService::hasVerifiedPlatform((int) ($property['id'] ?? 0)));
+$isPropertyVerified = $editing && OtaVerificationService::isPropertyVerified((array) ($property ?? []));
 $posted = $posted ?? [];
 $current = is_array($property ?? null) ? $property : [];
 $titleValue = (string) ($posted['title'] ?? ($current['title'] ?? ''));
