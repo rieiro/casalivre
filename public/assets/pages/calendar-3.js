@@ -225,7 +225,7 @@
     // Os links exportados ficam no grupo da esquerda; cópia e revogação valem para a página toda.
     document.querySelectorAll('[data-ical-export-copy]').forEach(function (button) {
         button.addEventListener('click', async function () {
-            const input = button.closest('.ical-export-link')?.querySelector('[data-ical-export-link]');
+            const input = button.closest('tr')?.querySelector('[data-ical-export-link]');
             if (!input) return;
             try {
                 if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {

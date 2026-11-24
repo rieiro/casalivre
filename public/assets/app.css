@@ -4948,9 +4948,9 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     flex: 1 1 auto;
     min-width: 0;
 }
-.ical-export-stale {
-    color: var(--danger);
-    font-weight: 600;
+.ical-export-table .ical-export-input {
+    width: 100%;
+    max-width: 18ch;
 }
 .ical-export-table td {
     vertical-align: middle;
@@ -4985,6 +4985,11 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     border-color: #a7d8bd;
     background: #e8f5ee;
     color: var(--ok);
+}
+.sync-badge.is-stale {
+    border-color: var(--notice-line);
+    background: var(--notice-bg);
+    color: #7a5b00;
 }
 .sync-badge.is-error {
     border-color: var(--danger-line);

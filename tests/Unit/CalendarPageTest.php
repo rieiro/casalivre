@@ -859,4 +859,70 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('admin-alert-banner', $html);
         $this->assertStringContainsString('Revisão de Verificações OTA', $html);
     }
+
+    public function testExportedCalendarRowsFollowImportTableFormatAndShowStatus(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $icalExportData = [
+            'settings' => [
+                'ical_export_manual_blocks' => true,
+                'ical_export_imported_events' => false,
+            ],
+            'exports' => [
+                [
+                    'id' => 81,
+                    'target_platform' => 'booking',
+                    'label' => 'Casa Teste',
+                    'token' => 'token-ativo',
+                    'last_fetched_at' => null,
+                    'last_fetched_label' => t('ical.never_accessed'),
+                    'stale' => false,
+                    'created_at' => '2026-01-01 00:00:00',
+                ],
+                [
+                    'id' => 82,
+                    'target_platform' => 'airbnb',
+                    'label' => null,
+                    'token' => 'token-antigo',
+                    'last_fetched_at' => '2026-01-01 00:00:00',
+                    'last_fetched_label' => t('ical.stale'),
+                    'stale' => true,
+                    'created_at' => '2026-01-01 00:00:00',
+                ],
+            ],
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Export table follows the imported table: platform, compact link, status (with last access), actions.
+        $this->assertStringContainsString(t('ical.col_status'), $html);
+        $this->assertStringContainsString('sync-badge is-active', $html);
+        $this->assertStringContainsString('sync-badge is-stale', $html);
+        $this->assertStringContainsString(e(t('ical.status_active')), $html);
+        $this->assertStringContainsString(e(t('ical.stale')), $html);
+        $this->assertStringContainsString(t('ical.never_accessed'), $html);
+        $this->assertStringContainsString('class="ical-export-input"', $html);
+
+        // Copy and revoke share the same action group used by the imported table.
+        $this->assertMatchesRegularExpression('/<div class="sync-actions">\s*<button[^>]*data-ical-export-copy[^>]*>.*?<\/button>\s*<button[^>]*data-ical-export-revoke/s', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*max-width:\s*\d+ch;/s', $css);
+        $this->assertStringContainsString('.sync-badge.is-stale', $css);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString("button.closest('tr')", $js);
+    }
 }

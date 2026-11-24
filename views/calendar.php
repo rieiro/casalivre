@@ -11,7 +11,7 @@ $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
 require_once dirname(__DIR__) . '/src/IcalExportService.php';
 require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
-$icalExportData = IcalExportService::listForProperty((int) $property['id']);
+$icalExportData = $icalExportData ?? IcalExportService::listForProperty((int) $property['id']);
 $icalExportBase = request_base() . '/ical/export/';
 ?>
 <section class="wrap">
@@ -301,7 +301,7 @@ $icalExportBase = request_base() . '/ical/export/';
                         <tr>
                             <th><?= e(t('ical.col_platform')) ?></th>
                             <th><?= e(t('ical.col_link')) ?></th>
-                            <th><?= e(t('ical.col_last')) ?></th>
+                            <th><?= e(t('ical.col_status')) ?></th>
                             <th><?= e(t('ical.col_actions')) ?></th>
                         </tr>
                     </thead>
@@ -313,6 +313,7 @@ $icalExportBase = request_base() . '/ical/export/';
                             <?php
                             $icalPlatform = (string) $icalExport['target_platform'];
                             $icalLink = $icalExportBase . $icalExport['token'] . '.ics';
+                            $icalStale = (bool) ($icalExport['stale'] ?? false);
                             ?>
                             <tr>
                                 <td>
@@ -323,13 +324,18 @@ $icalExportBase = request_base() . '/ical/export/';
                                 </td>
                                 <td>
                                     <div class="ical-export-link">
-                                        <input readonly value="<?= e($icalLink) ?>" data-ical-export-link data-select-on-click>
-                                        <button class="primary" type="button" data-ical-export-copy><?= e(t('ical.copy')) ?></button>
+                                        <input class="ical-export-input" readonly value="<?= e($icalLink) ?>" data-ical-export-link data-select-on-click>
                                     </div>
                                 </td>
-                                <td class="<?= $icalExport['stale'] ? 'ical-export-stale' : '' ?>"><?= e((string) $icalExport['last_fetched_label']) ?></td>
                                 <td>
-                                    <button class="danger" type="button" data-ical-export-revoke data-export-id="<?= (int) $icalExport['id'] ?>"><?= e(t('ical.revoke')) ?></button>
+                                    <span class="sync-badge <?= $icalStale ? 'is-stale' : 'is-active' ?>"><?= e($icalStale ? t('ical.stale') : t('ical.status_active')) ?></span>
+                                    <br><span class="muted fine"><?= e(t('ical.col_last')) ?>: <?= e((string) $icalExport['last_fetched_label']) ?></span>
+                                </td>
+                                <td>
+                                    <div class="sync-actions">
+                                        <button class="primary" type="button" data-ical-export-copy><?= e(t('ical.copy')) ?></button>
+                                        <button class="danger" type="button" data-ical-export-revoke data-export-id="<?= (int) $icalExport['id'] ?>"><?= e(t('ical.revoke')) ?></button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
