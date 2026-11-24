@@ -54,6 +54,8 @@ function public_listing(array $house, string $checkin = '', string $checkout = '
         ),
         // Selo "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
         'ota_verifications' => OtaVerificationService::listVerifiedForProperty($id),
+        // Model B: selo em nível de propriedade (algum OTA principal ativo e aprovado).
+        'is_verified' => (int) ($house['is_verified'] ?? 0) === 1 || OtaVerificationService::hasVerifiedPlatform($id),
         'quote' => $quote,
         'photos' => $photos,
         'amenities' => $amenities,

@@ -570,14 +570,18 @@ final class OtaVerificationService
     /**
      * Public, token-free view of the verified listings of a property.
      *
-     * @return list<array{platform: string, platform_label: string, title: string, verified_at: string}>
+     * Only approved and active OTA feeds are exposed; the iCal URL and its hash never leave the DB.
+     *
+     * @return list<array{platform: string, platform_label: string, title: string, verified_at: string, property_url: ?string}>
      */
     public static function listVerifiedForProperty(int $propertyId): array
     {
         $stmt = db()->prepare(
-            "SELECT source_platform, title, verified_at
+            "SELECT source_platform, title, verified_at, property_url
                FROM calendar_feeds
               WHERE property_id = ? AND verification_mode = 'ota'
+                AND source_platform IN ('airbnb', 'booking', 'vrbo')
+                AND status = 'active'
                 AND verified_at IS NOT NULL AND review_status = 'approved'
               ORDER BY verified_at DESC, id DESC"
         );
@@ -590,9 +594,55 @@ final class OtaVerificationService
                 'platform_label' => self::PLATFORM_LABELS[$platform] ?? $platform,
                 'title' => (string) ($row['title'] ?? ''),
                 'verified_at' => (string) $row['verified_at'],
+                'property_url' => self::publicListingUrl($platform, (string) ($row['property_url'] ?? '')),
             ];
         }
         return $out;
+    }
+
+    /**
+     * Syncs the property-level verification flag from the OTA feeds (Model B).
+     *
+     * The property is verified while at least one major OTA feed is active, approved and verified.
+     * Must run inside the caller's transaction so the flag never disagrees with calendar_feeds.
+     */
+    public static function syncPropertyVerifiedStatus(PDO $pdo, int $propertyId): bool
+    {
+        $check = $pdo->prepare(
+            "SELECT 1 FROM calendar_feeds
+              WHERE property_id = ? AND verification_mode = 'ota'
+                AND source_platform IN ('airbnb', 'booking', 'vrbo')
+                AND status = 'active' AND verified_at IS NOT NULL AND review_status = 'approved'
+              LIMIT 1"
+        );
+        $check->execute([$propertyId]);
+        if ($check->fetchColumn() !== false) {
+            $pdo->prepare(
+                'UPDATE properties SET is_verified = 1, verified_at = COALESCE(verified_at, to_timestamp(?)) WHERE id = ?'
+            )->execute([self::now(), $propertyId]);
+            return true;
+        }
+        $pdo->prepare('UPDATE properties SET is_verified = 0 WHERE id = ?')->execute([$propertyId]);
+        return false;
+    }
+
+    /** Public listing URL of an OTA feed, validated against the platform allowlist; null when unsafe. */
+    private static function publicListingUrl(string $platform, string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+        try {
+            self::validateUrlHygiene($url);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if (!in_array($host, self::PUBLIC_HOSTS[$platform] ?? [], true)) {
+            return null;
+        }
+        return self::normalizeUrl($url, true);
     }
 
     public static function hasVerifiedPlatform(int $propertyId): bool
@@ -1266,6 +1316,7 @@ final class OtaVerificationService
             $approvedRow = $approvedStmt->fetch(PDO::FETCH_ASSOC);
             $awarded = is_array($approvedRow)
                 && self::awardVerificationCreditsIfEligible(db(), $approvedRow, 'calendar_feeds');
+            self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_APPROVE, [
                 'imovel_id' => (int) $row['property_id'],
                 'plataforma' => (string) ($row['source_platform'] ?? 'other'),
@@ -1298,6 +1349,7 @@ final class OtaVerificationService
                         review_note = ?, status = 'error', verified_at = NULL, credits_awarded = FALSE
                   WHERE id = ?"
             )->execute([$adminId, self::now(), $note, $feedId]);
+            self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_REJECT, [
                 'imovel_id' => (int) $row['property_id'],
                 'plataforma' => (string) ($row['source_platform'] ?? 'other'),

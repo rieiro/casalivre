@@ -408,6 +408,7 @@ function handle_api(string $path, string $method): void
                 current_locale()
             ),
             'ota_verifications' => OtaVerificationService::listVerifiedForProperty($id),
+            'is_verified' => (int) ($house['is_verified'] ?? 0) === 1 || OtaVerificationService::hasVerifiedPlatform($id),
         ]);
     }
 

@@ -19,8 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-// Updated: 2026-11 - schema 41.
-t_eq(41, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 41');
+// Updated: 2026-11 - schema 42 (Model B: properties.is_verified/verified_at).
+t_eq(42, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 42');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');
@@ -55,8 +55,8 @@ t_ok(isset($defs['places_city_uf_uk']) && str_contains($defs['places_city_uf_uk'
 $coll = static fn (string $table, string $col): string => (string) $pdo->query("SELECT c.collname FROM pg_attribute a JOIN pg_class r ON r.oid = a.attrelid JOIN pg_collation c ON c.oid = a.attcollation WHERE r.relname = '$table' AND a.attname = '$col'")->fetchColumn();
 t_eq('C', $coll('places', 'name_fold'), 'places.name_fold COLLATE C');
 t_eq('C', $coll('place_search_keys', 'key'), 'place_search_keys.key COLLATE C');
-// Updated: 2026-11 - schema 41.
-t_eq('41', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 41');
+// Updated: 2026-11 - schema 42 (Model B: properties.is_verified/verified_at).
+t_eq('42', (string) $pdo->query("SELECT value FROM schema_meta WHERE skey = 'schema_version'")->fetchColumn(), 'schema_meta = 42');
 t_eq(
     "CREATE INDEX idx_photos_processing ON public.photos USING btree (created_at) WHERE (status = 'processing'::text)",
     (string) $pdo->query("SELECT pg_get_indexdef('idx_photos_processing'::regclass)")->fetchColumn(),

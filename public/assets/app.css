@@ -4907,6 +4907,12 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     font-size: 0.8rem;
     color: var(--muted);
 }
+.prop-ota-platform-link {
+    color: var(--ok);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
 @media (max-width: 768px) {
     .prop-ota-actions {
         align-items: stretch;
@@ -5044,6 +5050,11 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     background: #e8f5ee;
     color: var(--ok);
     font-weight: 700;
+}
+.prop-verify-banner.is-verified {
+    border: 1px solid #a7d8bd;
+    background: #e8f5ee;
+    color: var(--ok);
 }
 @media (max-width: 768px) {
     .prop-verify-banner {

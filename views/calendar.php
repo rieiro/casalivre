@@ -11,8 +11,29 @@ $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
 require_once dirname(__DIR__) . '/src/IcalExportService.php';
 require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
+require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 $icalExportData = $icalExportData ?? IcalExportService::listForProperty((int) $property['id']);
 $icalExportBase = request_base() . '/ical/export/';
+
+// Model B: propriedade verificada quando algum OTA principal segue ativo e aprovado.
+$majorOtaPlatforms = ['airbnb', 'booking', 'vrbo'];
+$verifiedOtaPlatforms = [];
+foreach ($feeds as $verifiedFeed) {
+    if ((string) ($verifiedFeed['verification_mode'] ?? 'sync_only') !== 'ota'
+        || (string) ($verifiedFeed['status'] ?? 'active') !== 'active'
+        || ($verifiedFeed['verified_at'] ?? null) === null
+        || (string) ($verifiedFeed['review_status'] ?? 'approved') !== 'approved'
+    ) {
+        continue;
+    }
+    $verifiedOtaPlatforms[(string) ($verifiedFeed['source_platform'] ?? '')] = true;
+}
+$isPropertyVerified = (int) ($property['is_verified'] ?? 0) === 1
+    || OtaVerificationService::hasVerifiedPlatform((int) $property['id']);
+$remainingOtaLabels = [];
+foreach (array_diff($majorOtaPlatforms, array_keys($verifiedOtaPlatforms)) as $remainingPlatform) {
+    $remainingOtaLabels[] = OtaPlatformRegistry::label((string) $remainingPlatform);
+}
 ?>
 <section class="wrap">
     <h1 class="cal-title" data-cal-title><?= e(t('cal.title')) ?> · <?= e($property['title']) ?></h1>
@@ -126,6 +147,14 @@ $icalExportBase = request_base() . '/ical/export/';
         </form>
     </div>
     <div class="sync-board" id="sincronizar-calendario">
+        <?php if ($isPropertyVerified): ?>
+            <div class="prop-verify-banner is-verified" role="status" data-property-verified>
+                <span class="prop-verify-badge">✓ <?= e(t('ota.property_verified')) ?></span>
+                <?php if ($remainingOtaLabels !== []): ?>
+                    <span class="muted fine"><?= e(t('cal.remaining_ota_incentive', ['platforms' => implode(', ', $remainingOtaLabels)])) ?></span>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         <div class="panel">
             <h3 class="sync-group-title"><?= e(t('cal.imported_calendars')) ?></h3>
             <div class="sync-scroll">

@@ -12,6 +12,7 @@ require_once dirname(__DIR__, 2) . '/src/OtaFeedGate.php';
 require_once dirname(__DIR__, 2) . '/src/OtaVerificationService.php';
 require_once dirname(__DIR__, 2) . '/src/HouseRepository.php';
 require_once dirname(__DIR__, 2) . '/src/Acoes/ICalFeedRemove.php';
+require_once dirname(__DIR__, 2) . '/src/PublicListing.php';
 require_once dirname(__DIR__, 2) . '/src/helpers.php';
 
 final class OtaUrlBindingTest extends TestCase
@@ -700,5 +701,93 @@ final class OtaUrlBindingTest extends TestCase
             'Rejeitado 2', true, true
         );
         $this->assertSame('updated', $rejectedEdit['status']);
+    }
+
+    private function property(int $propertyId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM properties WHERE id = ?');
+        $stmt->execute([$propertyId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** Three consecutive 401/403/404/410 responses run the passive downgrade for a verified feed. */
+    private function passiveDowngrade(int $feedId): array
+    {
+        OtaVerificationService::$httpTransport = static function (): string {
+            throw new RuntimeException('HTTP 401', 401);
+        };
+        $result = [];
+        for ($i = 0; $i < OtaVerificationService::PASSIVE_DOWNGRADE_FAIL_DAYS; $i++) {
+            $this->now += 86401;
+            $result = HouseRepository::passiveVerifyFeed($feedId);
+        }
+        return $result;
+    }
+
+    public function testModelBPropertyLevelVerificationFollowsVerifiedMajorFeeds(): void
+    {
+        // 1. Verifying the first major OTA (Airbnb) marks the property as verified and awards credits.
+        [$airIcal, $airPublic] = $this->airbnbUrl(303030);
+        $airCreated = HouseRepository::addFeed(
+            $this->propertyId, $this->userId, $airIcal, 'Airbnb', 'ota', 'airbnb', $airPublic, true
+        );
+        $this->assertIsArray($airCreated);
+        $airFeed = $this->feed($this->propertyId, (int) $airCreated['feed']['id']);
+        $airVerified = $this->verifyFeedWithBlock($this->propertyId, $airFeed);
+        $this->assertSame('verified', $airVerified['status']);
+        $this->assertTrue($airVerified['credits_awarded']);
+        $property = $this->property($this->propertyId);
+        $this->assertSame(1, (int) $property['is_verified'], 'Airbnb verification sets properties.is_verified');
+        $this->assertNotNull($property['verified_at'], 'properties.verified_at is stamped');
+        $airLedger = $this->pdo->prepare('SELECT count(*) FROM ota_credit_ledger WHERE property_id = ? AND platform = ?');
+        $airLedger->execute([$this->propertyId, 'airbnb']);
+        $this->assertSame(1, (int) $airLedger->fetchColumn(), 'Airbnb credits are awarded');
+
+        // 2. A second major OTA (Booking.com) stays pending_review, then approval keeps the property verified.
+        [$bookIcal, $bookPublic] = $this->bookingUrl('model-b-' . bin2hex(random_bytes(3)), 'casa-model-b');
+        $bookCreated = HouseRepository::addFeed(
+            $this->propertyId, $this->userId, $bookIcal, 'Booking', 'ota', 'booking', $bookPublic, true
+        );
+        $this->assertIsArray($bookCreated);
+        $bookFeed = $this->feed($this->propertyId, (int) $bookCreated['feed']['id']);
+        $bookVerified = $this->verifyFeedWithBlock($this->propertyId, $bookFeed);
+        $this->assertSame('pending_review', $bookVerified['status']);
+        $this->assertSame(1, (int) $this->property($this->propertyId)['is_verified'], 'the property stays verified while Booking awaits review');
+        $bookApproved = OtaVerificationService::approveFeed((int) $bookFeed['id'], $this->userId);
+        $this->assertSame('approved', $bookApproved['status']);
+        $this->assertTrue($bookApproved['credits_awarded'], 'Booking.com credits are awarded on approval');
+        $this->assertSame(1, (int) $this->property($this->propertyId)['is_verified']);
+        $bookLedger = $this->pdo->prepare('SELECT count(*) FROM ota_credit_ledger WHERE property_id = ? AND platform = ?');
+        $bookLedger->execute([$this->propertyId, 'booking']);
+        $this->assertSame(1, (int) $bookLedger->fetchColumn());
+
+        $links = OtaVerificationService::listVerifiedForProperty($this->propertyId);
+        $this->assertSame(['booking', 'airbnb'], array_column($links, 'platform'));
+        $this->assertSame([$bookPublic, $airPublic], array_column($links, 'property_url'), 'only validated public listing URLs are exposed');
+        foreach ($links as $link) {
+            $this->assertArrayNotHasKey('url', $link);
+            $this->assertArrayNotHasKey('url_hash', $link);
+            $this->assertArrayNotHasKey('ical_url', $link);
+        }
+        $listing = public_listing($this->property($this->propertyId));
+        $this->assertTrue($listing['is_verified'], 'public listing exposes the property-level badge');
+        $this->assertSame(['booking', 'airbnb'], array_column($listing['ota_verifications'], 'platform'));
+        $this->assertSame([$bookPublic, $airPublic], array_column($listing['ota_verifications'], 'property_url'));
+        $this->assertStringNotContainsString('url_hash', (string) json_encode($listing['ota_verifications']));
+
+        // 3. Airbnb expires (3 consecutive 401s): Booking keeps the property verified, but Airbnb is no longer public.
+        $downgraded = $this->passiveDowngrade((int) $airFeed['id']);
+        $this->assertSame('downgraded', $downgraded['status']);
+        $this->assertSame(1, (int) $this->property($this->propertyId)['is_verified'], 'another active major OTA keeps the badge');
+        $this->assertSame(['booking'], array_column(OtaVerificationService::listVerifiedForProperty($this->propertyId), 'platform'));
+        $this->assertTrue(public_listing($this->property($this->propertyId))['is_verified']);
+
+        // 4. Booking expires too: no active approved major OTA remains, so the property loses the badge.
+        $downgradedBook = $this->passiveDowngrade((int) $bookFeed['id']);
+        $this->assertSame('downgraded', $downgradedBook['status']);
+        $property = $this->property($this->propertyId);
+        $this->assertSame(0, (int) $property['is_verified'], 'the badge drops when no major OTA remains verified');
+        $this->assertSame([], OtaVerificationService::listVerifiedForProperty($this->propertyId));
+        $this->assertFalse(public_listing($this->property($this->propertyId))['is_verified']);
     }
 }

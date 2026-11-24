@@ -12,6 +12,9 @@ $amenityIcons = Amenities::ICONS;
 // Selo público "Anúncio Verificado em Plataformas Parceiras" (nunca expõe tokens do iCal).
 require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 $otaVerifications = OtaVerificationService::listVerifiedForProperty((int) ($property['id'] ?? 0));
+// Model B: selo em nível de propriedade (mesma regra de public_listing()).
+$isVerifiedProperty = (int) ($property['is_verified'] ?? 0) === 1
+    || OtaVerificationService::hasVerifiedPlatform((int) ($property['id'] ?? 0));
 
 // Fallback server-side (sem JS): a página com use_api é montada pelo property.js, que recebe o mesmo
 // google_reputation pelo GET /api/imoveis/{hash}. Sem chave/cache/falha do Google, $googleReputation fica null.
@@ -229,18 +232,25 @@ $googleAuthorInitial = static function (string $name): string {
                     </div>
                 <?php endif; ?>
 
-                <?php if ($otaVerifications !== []): ?>
+                <?php if ($isVerifiedProperty): ?>
                     <div class="prop-view-card prop-ota-card">
-                        <span class="prop-ota-badge">✓ <?= e(t('ota.badge')) ?></span>
-                        <p class="prop-ota-platforms">
-                            <?php
-                            $otaPlatformLabels = [];
-                            foreach ($otaVerifications as $otaVerifiedRow) {
-                                $otaPlatformLabels[] = t('ota.platform_' . (string) $otaVerifiedRow['platform']);
-                            }
-                            echo e(implode(' · ', $otaPlatformLabels));
-                            ?>
-                        </p>
+                        <span class="prop-ota-badge">✓ <?= e(t('ota.property_verified')) ?></span>
+                        <?php if ($otaVerifications !== []): ?>
+                            <p class="prop-ota-platforms">
+                                <?php foreach ($otaVerifications as $otaIndex => $otaVerifiedRow): ?>
+                                    <?php if ($otaIndex > 0): ?> · <?php endif; ?>
+                                    <?php
+                                    $otaLabel = t('ota.platform_' . (string) $otaVerifiedRow['platform']);
+                                    $otaUrl = $otaVerifiedRow['property_url'] ?? null;
+                                    ?>
+                                    <?php if (is_string($otaUrl) && $otaUrl !== ''): ?>
+                                        <a class="prop-ota-platform-link" href="<?= e($otaUrl) ?>" target="_blank" rel="noopener noreferrer"><?= e($otaLabel) ?></a>
+                                    <?php else: ?>
+                                        <?= e($otaLabel) ?>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </p>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
