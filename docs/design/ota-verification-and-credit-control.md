@@ -63,7 +63,7 @@ All platform, URL, share-link, uniqueness, and live `.ics` checks run in `OtaFee
 ## 3. Challenge Mechanics & Stronger Manual Proof Flow
 
 ### Date-Block Challenge (`OtaVerificationService`)
-- **Date Selection (`pickOpenDateForFeed()`):** Scans months `[14, 16]`, falling back to `[3, 6]` then `[1, 4]` (`MAX_DATE_PICK_ATTEMPTS = 10` random picks per window, then deterministic forward scan), avoiding already-pending challenge dates on the property and requiring `D-1`, `D`, and `D+7` open (`isCandidateDateEligible()`).
+- **Date Selection (`pickOpenDateForFeed()`):** Scans months `[1, 4]`, falling back to `[4, 7]` then `[14, 16]` (`MAX_DATE_PICK_ATTEMPTS = 10` random picks per window, then deterministic forward scan), avoiding already-pending challenge dates on the property and requiring `D-1`, `D`, and `D+7` open (`isCandidateDateEligible()`).
 - **Challenge Check (`HouseRepository::verifyFeed()`):**
   - Rate-limited by `CHECK_COOLDOWN_SECONDS = 60` (`429 Retry-After` in `Api.php`) and `72h` expiry.
   - `isIsolatedManualBlockInIcs()` confirms `challenge_date` is covered by an active opaque `VEVENT`, both `D-1` and `D+1` are free (`isolated === true`), and `SUMMARY` is not a guest reservation (`Reserved` / `Reservado`, case-insensitive).
