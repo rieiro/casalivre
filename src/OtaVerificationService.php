@@ -13,7 +13,7 @@ require_once __DIR__ . '/CalendarSync.php';
  * The host proves control of an external listing by blocking one future date in the OTA
  * calendar export. A unified pre-save fraud gate validates the URLs, ownership, daily rate,
  * global iCal uniqueness and the live calendar before anything is persisted; the challenge
- * date prefers the 14-16 month horizon and falls back to 3-6 and 1-4 months. The iCal URL is
+ * date prefers the 1-4 month horizon and falls back to 4-7 and 14-16 months. The iCal URL is
  * encrypted at rest and a permanent credit ledger prevents farming by deleting rows.
  */
 final class OtaVerificationService
@@ -941,7 +941,7 @@ final class OtaVerificationService
     private static function pickOpenDate(string $ics, array $excludedDates): string
     {
         $base = (new DateTimeImmutable('@' . self::now()))->setTimezone(new DateTimeZone('UTC'));
-        foreach ([[14, 16], [3, 6], [1, 4]] as [$minMonths, $maxMonths]) {
+        foreach ([[1, 4], [4, 7], [14, 16]] as [$minMonths, $maxMonths]) {
             $minDate = $base->modify('+' . $minMonths . ' months');
             $maxDate = $base->modify('+' . $maxMonths . ' months');
             $totalDays = (int) $minDate->diff($maxDate)->days;

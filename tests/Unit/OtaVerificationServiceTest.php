@@ -104,8 +104,8 @@ final class OtaVerificationServiceTest extends TestCase
             'END:VEVENT',
             'BEGIN:VEVENT',
             'UID:blocked-window',
-            'DTSTART;VALUE=DATE:20280120',
-            'DTEND;VALUE=DATE:20280121',
+            'DTSTART;VALUE=DATE:20261220',
+            'DTEND;VALUE=DATE:20261221',
             'SUMMARY:First pick is blocked',
             'END:VEVENT',
             'END:VCALENDAR',
@@ -314,11 +314,12 @@ final class OtaVerificationServiceTest extends TestCase
 
     public function testStartChallengePicksOpenDateOneToFourMonthsAhead(): void
     {
-        // Updated: 2026-11 - Requirement changed from a 1-4 month window to a 14-16 month
-        // primary window with 3-6 and 1-4 fallbacks; this test covers the primary window.
+        // Updated: 2026-11 - Requirement changed from 14-16 month primary window to 1-4
+        // month primary window; the first candidate (2026-12-20) is blocked, so the retry
+        // clamps to the window max (2027-03-20).
         OtaVerificationService::$clock = static fn (): int => self::T0;
         OtaVerificationService::$httpTransport = fn (): string => $this->airbnbIcs();
-        $this->fixedRandom([0, 90]); // first pick (2028-01-20) is blocked; retry clamps to 2028-03-20
+        $this->fixedRandom([0, 90]); // first pick (2026-12-20) is blocked; retry clamps to 2027-03-20
 
         $property = $this->activeProperty();
         $result = OtaVerificationService::startChallenge(
@@ -328,8 +329,8 @@ final class OtaVerificationServiceTest extends TestCase
             'https://www.airbnb.com/calendar/ical/12345678.ics?t=secret-token'
         );
 
-        $this->assertSame('2028-03-20', $result['challenge_date']);
-        $this->assertSame('20/03/2028', $result['challenge_date_br']);
+        $this->assertSame('2027-03-20', $result['challenge_date']);
+        $this->assertSame('20/03/2027', $result['challenge_date_br']);
         $this->assertSame('pending_challenge', $result['status']);
         $this->assertGreaterThan(0, (int) $result['verification_id']);
 
@@ -337,7 +338,7 @@ final class OtaVerificationServiceTest extends TestCase
         $row->execute([(int) $result['verification_id']]);
         $stored = $row->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('pending_challenge', $stored['status']);
-        $this->assertSame('2028-03-20', (string) $stored['challenge_date']);
+        $this->assertSame('2027-03-20', (string) $stored['challenge_date']);
         $this->assertSame(0, (int) $stored['attempts']);
         $this->assertSame(0, (int) $stored['credits_awarded']);
 
@@ -353,7 +354,7 @@ final class OtaVerificationServiceTest extends TestCase
             $this->addToAssertionCount(1); // shared dev DB login cannot SET ROLE; test-pg.sh covers it
         } else {
             $this->assertSame('airbnb', $payload['plataforma']);
-            $this->assertSame('2028-03-20', $payload['challenge_date']);
+            $this->assertSame('2027-03-20', $payload['challenge_date']);
             $this->assertStringContainsString('www.airbnb.com#', (string) $payload['url']);
             $this->assertStringNotContainsString('secret-token', (string) $payload['url'], 'iCal token must never be logged');
         }
@@ -575,23 +576,24 @@ final class OtaVerificationServiceTest extends TestCase
         $this->assertGreaterThan(0, $verificationId);
         // Updated: 2026-11 - addChallenge now runs the full fraud gate and creates pending_challenge.
         $this->assertSame('pending_challenge', $added['status']);
-        $this->assertSame('2028-03-20', $added['challenge_date']);
+        // Updated: 2026-11 - Requirement changed from 14-16 month primary window to 1-4 month primary window.
+        $this->assertSame('2027-03-20', $added['challenge_date']);
 
         $row = $this->pdo->prepare('SELECT * FROM property_external_verifications WHERE id = ?');
         $row->execute([$verificationId]);
         $stored = $row->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('pending_challenge', $stored['status']);
-        $this->assertSame('2028-03-20', (string) $stored['challenge_date']);
+        $this->assertSame('2027-03-20', (string) $stored['challenge_date']);
 
         $generated = OtaVerificationService::generateChallenge($verificationId);
         $this->assertSame('pending_challenge', $generated['status']);
         $this->assertSame($verificationId, (int) $generated['verification_id']);
-        $this->assertSame('2028-03-20', $generated['challenge_date']);
+        $this->assertSame('2027-03-20', $generated['challenge_date']);
 
         $rows = OtaVerificationService::listForProperty($property['id']);
         $this->assertCount(1, $rows);
         $this->assertSame('pending_challenge', $rows[0]['status']);
-        $this->assertSame('20/03/2028', $rows[0]['challenge_date_br']);
+        $this->assertSame('20/03/2027', $rows[0]['challenge_date_br']);
 
         $other = $this->activeProperty(1);
         try {
@@ -801,13 +803,15 @@ final class OtaVerificationServiceTest extends TestCase
     {
         $property = $this->activeProperty();
         OtaVerificationService::$clock = static fn (): int => self::T0;
-        // 2028-01-20 is the primary candidate; its D+7 (2028-01-27) is blocked, so the retry picks the window max.
+        // Updated: 2026-11 - Requirement changed from 14-16 month primary window to 1-4
+        // month primary window. 2026-12-20 is the primary candidate; its D+7 (2026-12-27)
+        // is blocked, so the retry picks the window max (2027-03-20).
         OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents(
-            [['20280127', '20280128', 'Reserved']],
+            [['20261227', '20261228', 'Reserved']],
             '-//Booking.com//Test//EN',
             'Casa Teste'
         );
-        $this->fixedRandom([0, 60]);
+        $this->fixedRandom([0, 90]);
 
         $result = OtaVerificationService::validateAndCreateChallenge(
             $property['id'],
@@ -816,7 +820,7 @@ final class OtaVerificationServiceTest extends TestCase
             'https://www.booking.com/hotel/br/test.html',
             'https://ical.booking.com/v1/export?t=metadata'
         );
-        $this->assertSame('2028-03-20', $result['challenge_date']);
+        $this->assertSame('2027-03-20', $result['challenge_date']);
 
         $row = $this->pdo->prepare('SELECT * FROM property_external_verifications WHERE id = ?');
         $row->execute([(int) $result['verification_id']]);
@@ -1031,10 +1035,10 @@ final class OtaVerificationServiceTest extends TestCase
         $property = $this->activeProperty();
         OtaVerificationService::$clock = static fn (): int => self::T0;
         OtaVerificationService::$httpTransport = fn (): string => $this->icsWithEvents([
-            ['20280101', '20280210'], // blocks through 2028-02-09
-            ['20280219', '20280501'], // blocks from 2028-02-19
+            ['20261201', '20270110'], // blocks through 2027-01-09
+            ['20270119', '20270401'], // blocks from 2027-01-19
         ]);
-        $this->fixedRandom([0]); // every random attempt hits the blocked 2028-01-20
+        $this->fixedRandom([0]); // every random attempt hits the blocked 2026-12-20
 
         $result = OtaVerificationService::validateAndCreateChallenge(
             $property['id'],
@@ -1044,7 +1048,8 @@ final class OtaVerificationServiceTest extends TestCase
             'https://ical.booking.com/v1/export?t=scan'
         );
         // The deterministic scan finds the first date whose D-1, D and D+7 are open.
-        $this->assertSame('2028-02-11', $result['challenge_date']);
+        // Updated: 2026-11 - Requirement changed from 14-16 month primary window to 1-4 month primary window.
+        $this->assertSame('2027-01-11', $result['challenge_date']);
         $this->assertSame('pending_challenge', $result['status']);
     }
 
@@ -1242,5 +1247,32 @@ final class OtaVerificationServiceTest extends TestCase
         );
         $old->execute([$now - 7 * 86400]);
         $this->assertSame(0, (int) $old->fetchColumn());
+    }
+
+    public function testPickOpenDateForFeedPrefersOneToFourMonthWindow(): void
+    {
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        $this->fixedRandom([0]);
+
+        $date = OtaVerificationService::pickOpenDateForFeed($this->icsWithEvents([]));
+
+        $this->assertSame('2026-12-20', $date);
+        $this->assertGreaterThanOrEqual('2026-12-20', $date);
+        $this->assertLessThanOrEqual('2027-03-20', $date);
+    }
+
+    public function testPickOpenDateForFeedFallsBackWhenOneToFourMonthWindowIsBlocked(): void
+    {
+        OtaVerificationService::$clock = static fn (): int => self::T0;
+        $this->fixedRandom([0]);
+        $ics = $this->icsWithEvents([
+            ['20261201', '20270401', 'Primary window fully blocked'],
+        ]);
+
+        $date = OtaVerificationService::pickOpenDateForFeed($ics);
+
+        $this->assertSame('2027-04-02', $date);
+        $this->assertGreaterThan('2027-03-20', $date, 'the fallback window must start after the primary window');
+        $this->assertLessThanOrEqual('2027-06-20', $date);
     }
 }
