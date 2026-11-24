@@ -29,6 +29,11 @@
         if (item) {
             propertyUrl.placeholder = item.public_placeholder || '';
             url.placeholder = item.ical_placeholder || '';
+            title.placeholder = item.label || '';
+        } else {
+            propertyUrl.placeholder = '';
+            url.placeholder = '';
+            title.placeholder = '';
         }
         ready();
     }

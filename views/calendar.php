@@ -377,7 +377,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                 <span><?= e(t('cal.consent')) ?></span>
                             </label>
                             <label><?= e(t('cal.feed_title')) ?>
-                                <input name="feed_title" maxlength="40" placeholder="Booking" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                                <input name="feed_title" maxlength="40" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
                             </label>
                             <label><?= e(t('cal.link')) ?>
                                 <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
