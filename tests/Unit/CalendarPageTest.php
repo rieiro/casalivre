@@ -1119,4 +1119,91 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $pdo->rollBack();
         }
     }
+
+    public function testCalendarViewLocksVerifiedAndPendingReviewOtaFeeds(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 91,
+                'title' => 'Airbnb Verificado',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 92,
+                'title' => 'Booking em análise',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'pending_review',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => '2027-01-15',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 93,
+                'title' => 'Vrbo rejeitado',
+                'url' => 'https://www.vrbo.com/••••',
+                'status' => 'error',
+                'verification_mode' => 'ota',
+                'source_platform' => 'vrbo',
+                'review_status' => 'rejected',
+                'review_note' => 'Documento não confere',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 94,
+                'title' => 'Airbnb pendente',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'pending_verification',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => '2027-01-20',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Verified and pending-review feeds are read-only: no remove or edit actions.
+        foreach ([91, 92] as $lockedId) {
+            $this->assertStringNotContainsString('/ical/' . $lockedId . '/excluir', $html);
+            $this->assertStringNotContainsString('/ical/' . $lockedId . '/editar', $html);
+        }
+        $this->assertSame(2, substr_count($html, e(t('cal.feed_locked_support_hint'))));
+        $this->assertStringContainsString('class="muted fine sync-lock-note"', $html);
+
+        // Rejected and still-unverified feeds remain editable and removable.
+        foreach ([93, 94] as $openId) {
+            $this->assertStringContainsString('/ical/' . $openId . '/excluir', $html);
+            $this->assertStringContainsString('/ical/' . $openId . '/editar', $html);
+        }
+    }
 }

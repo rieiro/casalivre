@@ -676,27 +676,30 @@ SQL;
     }
 
     /**
-     * Shared lock rule for link edits: pending_review always locks; a verified OTA feed needs confirmation.
+     * Strict lock rule for OTA feeds: verified (approved) and pending-review rows are read-only
+     * for hosts, regardless of confirmation. Sync-only, rejected and unverified rows stay editable.
      *
      * @param array<string, mixed> $row
      * @return array{status: string, message: string}|null
      */
-    private static function feedEditLock(array $row, bool $confirm): ?array
+    private static function otaReadOnlyLock(array $row): ?array
     {
-        if ((string) ($row['verification_mode'] ?? 'sync_only') !== 'ota' || $row['verified_at'] === null) {
+        if ((string) ($row['verification_mode'] ?? 'sync_only') !== 'ota') {
             return null;
         }
-        if ((string) ($row['review_status'] ?? 'approved') === 'pending_review') {
-            return ['status' => 'pending_review_locked', 'message' => t('cal.feed_pending_review_locked')];
+        $pendingReview = (string) ($row['review_status'] ?? '') === 'pending_review';
+        if ($row['verified_at'] === null && !$pendingReview) {
+            return null;
         }
-        if (!$confirm) {
-            return ['status' => 'locked', 'message' => t('cal.feed_lock_confirm')];
-        }
-        return null;
+        return [
+            'status' => $pendingReview ? 'pending_review_locked' : 'locked',
+            'message' => t('cal.feed_locked_edit'),
+        ];
     }
 
     /**
-     * Replaces the URLs of an existing feed after the full gate, resetting any OTA verification.
+     * Replaces the URLs of an existing feed after the full gate. Verified and pending-review OTA
+     * feeds are strictly read-only; the confirm flag no longer unlocks them.
      *
      * @return array<string, mixed>
      */
@@ -718,7 +721,7 @@ SQL;
         if (!is_array($feed)) {
             return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
         }
-        if (($locked = self::feedEditLock($feed, $confirm)) !== null) {
+        if (($locked = self::otaReadOnlyLock($feed)) !== null) {
             return $locked;
         }
         $title = trim($title);
@@ -758,8 +761,7 @@ SQL;
             $title,
             $prepared,
             $challengeDate,
-            $now,
-            $confirm
+            $now
         ): array {
             $lock = db()->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
             $lock->execute([$feedId, $propertyId]);
@@ -767,7 +769,7 @@ SQL;
             if (!is_array($current)) {
                 return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
             }
-            if (($locked = self::feedEditLock($current, $confirm)) !== null) {
+            if (($locked = self::otaReadOnlyLock($current)) !== null) {
                 return $locked;
             }
             db()->prepare(
@@ -840,15 +842,31 @@ SQL;
 
     /**
      * Deletes the feed and frees only the nights it holds. Other feeds of the property become due.
-     * One transaction, advisory lock first. Returns the night pairs for the audit.
+     * One transaction, advisory lock first. Verified and pending-review OTA feeds are refused
+     * before any write. Returns the night pairs for the audit.
      *
-     * @return array{feed: ?array, link: array, nights: array}
+     * @return array{status?: string, message?: string, feed: ?array, link: array, nights: array}
      */
     public static function removeFeed(int $propertyId, int $userId, int $feedId): array
     {
         return Db::transactional(db(), static function () use ($propertyId, $userId, $feedId): array {
             $pdo = db();
             $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
+            $lock = $pdo->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
+            $lock->execute([$feedId, $propertyId]);
+            $current = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($current)) {
+                return ['feed' => null, 'link' => [], 'nights' => []];
+            }
+            if (($locked = self::otaReadOnlyLock($current)) !== null) {
+                return [
+                    'status' => $locked['status'],
+                    'message' => $locked['message'],
+                    'feed' => null,
+                    'link' => [],
+                    'nights' => [],
+                ];
+            }
             $deleted = ReturningWrite::remove('calendar_feeds', 'id = ? AND property_id = ?', [$feedId, $propertyId], ['id', 'url', 'title']);
             if ($deleted === []) {
                 return ['feed' => null, 'link' => [], 'nights' => []];

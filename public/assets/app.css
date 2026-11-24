@@ -5108,3 +5108,9 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     line-height: 1.35;
     color: #7a5b00;
 }
+.sync-lock-note {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}

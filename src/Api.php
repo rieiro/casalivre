@@ -634,6 +634,9 @@ function handle_api(string $path, string $method): void
         // Feed inexistente -> 404 sem liberar noites nem ressincronizar (ver ICalFeedRemove).
         $res = ICalFeedRemove::remover((int) $property['id'], (int) $user['id'], (int) $m[2]);
         $res->registrar();
+        if ($res->tipo === 'bloqueado') {
+            api_error(409, (string) $res->mensagem);
+        }
         if ($res->tipo === 'nao_encontrado') {
             CalendarFlash::set((string) $res->mensagem, 'error');
             api_error(404, $res->mensagem);
@@ -668,8 +671,11 @@ function handle_api(string $path, string $method): void
         if (($res['status'] ?? '') === 'not_found') {
             api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
         }
+        if (in_array((string) ($res['status'] ?? ''), ['locked', 'pending_review_locked'], true)) {
+            api_error(409, (string) ($res['message'] ?? t('cal.feed_locked_edit')));
+        }
         if (($res['status'] ?? '') !== 'updated') {
-            api_error(422, (string) ($res['message'] ?? t('cal.feed_lock_confirm')));
+            api_error(422, (string) ($res['message'] ?? t('cal.feed_locked_edit')));
         }
         CalendarFlash::set((string) $res['message'], 'ok');
         json_out(200, [
