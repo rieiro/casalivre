@@ -1702,6 +1702,10 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m)) {
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2]);
     $res->registrar();
+    if ($res->tipo === 'bloqueado') {
+        CalendarFlash::set((string) $res->mensagem, 'error');
+        redirect('/imoveis/' . $m[1] . '/calendario#sincronizar-calendario');
+    }
     if ($res->tipo === 'nao_encontrado') {
         // Feed inexistente: nada muda; a tela do calendário mostra o erro (a API responde 404).
         CalendarFlash::set((string) $res->mensagem, 'error');

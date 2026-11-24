@@ -144,6 +144,20 @@ t_eq(
     'Booking devolve a instrução de revisão com a data'
 );
 
+// Updated: 2026-11 - Pending-review OTA feeds are strictly read-only for hosts.
+$r = t_http('PUT', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $bookingId, json_encode([
+    'mode' => 'ota', 'platform' => 'booking',
+    'property_url' => 'https://www.booking.com/hotel/br/other-route.html',
+    'external_ical_url' => 'https://ical.booking.com/v1/export?t=ROUTEBOOK-OTHER',
+    'feed_title' => 'Booking Other', 'consent' => '1', 'confirm' => '1',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'PUT em feed pending_review responde 409');
+$r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $bookingId, null, ['X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'DELETE em feed pending_review responde 409');
+$pendingStill = db()->prepare('SELECT count(*) FROM calendar_feeds WHERE id = ?');
+$pendingStill->execute([$bookingId]);
+t_eq(1, (int) $pendingStill->fetchColumn(), 'pending_review continua no banco após bloqueio');
+
 echo "Admin JSON de revisão OTA\n";
 $adminBase = $base . '/api/admin/verifications';
 $r = t_http('GET', $adminBase . '/pending', null, [], $jar);
@@ -253,9 +267,25 @@ $r = t_http('POST', $adminBase . '/' . $vrboId . '/approve', '{}', ['Content-Typ
 t_eq(409, $r['status'], 'aprovação de rejeitada responde 409');
 
 echo "DELETE do feed\n";
+// Updated: 2026-11 - Verified OTA feeds are strictly read-only for hosts.
+$r = t_http('PUT', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), json_encode([
+    'mode' => 'ota', 'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/87654321',
+    'external_ical_url' => 'https://www.airbnb.com/calendar/ical/87654321.ics',
+    'feed_title' => 'Airbnb 2', 'consent' => '1', 'confirm' => '1',
+]), ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'PUT em feed OTA verificado responde 409');
 $r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . (int) ($feed['id'] ?? 0), null, ['X-CSRF-Token: ' . $csrf], $jar);
+t_eq(409, $r['status'], 'DELETE em feed OTA verificado responde 409');
+$verifiedStill = db()->prepare('SELECT count(*) FROM calendar_feeds WHERE id = ?');
+$verifiedStill->execute([(int) ($feed['id'] ?? 0)]);
+t_eq(1, (int) $verifiedStill->fetchColumn(), 'feed verificado continua no banco após bloqueio');
+
+// Support intervention resets the row directly; the rejected (unverified) feed stays host-removable.
+db()->prepare('DELETE FROM calendar_feeds WHERE id = ?')->execute([(int) ($feed['id'] ?? 0)]);
+$r = t_http('DELETE', $base . '/api/imoveis/' . $owner['hash'] . '/ical/' . $vrboId, null, ['X-CSRF-Token: ' . $csrf], $jar);
 $json = json_decode($r['body'], true) ?: [];
-t_eq(200, $r['status'], 'DELETE responde 200');
+t_eq(200, $r['status'], 'DELETE de feed rejeitado responde 200');
 t_ok(!isset($json['ressincronizados']) && is_array($json['feeds'] ?? null), 'DELETE não baixa os outros feeds');
 
 echo "retry marca o feed como devido\n";

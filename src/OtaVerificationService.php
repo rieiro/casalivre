@@ -121,7 +121,8 @@ final class OtaVerificationService
 
         $locked = db()->prepare(
             "SELECT 1 FROM property_external_verifications
-              WHERE property_id = ? AND platform = ? AND status = 'verified' LIMIT 1"
+              WHERE property_id = ? AND platform = ?
+                AND status IN ('verified', 'pending_manual_review') LIMIT 1"
         );
         $locked->execute([$propertyId, $platform]);
         if ($locked->fetchColumn() !== false) {
@@ -214,7 +215,7 @@ final class OtaVerificationService
                     fail_count = 0,
                     last_passive_check_at = NULL,
                     updated_at = EXCLUDED.updated_at
-                 WHERE property_external_verifications.status <> \'verified\'
+                 WHERE property_external_verifications.status NOT IN (\'verified\', \'pending_manual_review\')
                  RETURNING id'
             );
             $stmt->execute([
@@ -274,7 +275,7 @@ final class OtaVerificationService
         if ($row === null) {
             throw new InvalidArgumentException('Verificação não encontrada.');
         }
-        if ((string) $row['status'] === 'verified') {
+        if (in_array((string) $row['status'], ['verified', 'pending_manual_review'], true)) {
             throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
         }
         $icalUrl = self::decryptIcalUrl((string) $row['ical_url']);
@@ -296,7 +297,7 @@ final class OtaVerificationService
         if ($row === null) {
             return false;
         }
-        if ((string) $row['status'] === 'verified') {
+        if (in_array((string) $row['status'], ['verified', 'pending_manual_review'], true)) {
             throw new InvalidArgumentException('Este anúncio já está verificado e bloqueado para alterações.');
         }
         $stmt = db()->prepare('DELETE FROM property_external_verifications WHERE id = ? AND property_id = ?');

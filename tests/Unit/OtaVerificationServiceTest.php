@@ -1275,4 +1275,60 @@ final class OtaVerificationServiceTest extends TestCase
         $this->assertGreaterThan('2027-03-20', $date, 'the fallback window must start after the primary window');
         $this->assertLessThanOrEqual('2027-06-20', $date);
     }
+
+    public function testLegacyVerifiedVerificationRowsStayLockedForHosts(): void
+    {
+        $property = $this->activeProperty();
+        $ical = 'https://ical.booking.com/v1/export?t=legacy-lock';
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO property_external_verifications
+                (property_id, platform, public_url, ical_url, status, challenge_date,
+                 challenge_expires_at, verified_at, credits_awarded, canonical_listing_id,
+                 ical_url_hash, created_at, updated_at)
+             VALUES (?, 'booking', 'https://www.booking.com/hotel/br/legacy-lock.html', ?,
+                     'verified', NULL, NULL, to_timestamp(?), 1, 'booking:br/legacy-lock', ?,
+                     to_timestamp(?), to_timestamp(?))
+             RETURNING id"
+        );
+        $stmt->execute([
+            $property['id'],
+            $ical,
+            self::T0,
+            hash('sha256', $ical),
+            self::T0,
+            self::T0,
+        ]);
+        $verificationId = (int) $stmt->fetchColumn();
+        $this->assertGreaterThan(0, $verificationId);
+
+        try {
+            OtaVerificationService::generateChallenge($verificationId);
+            $this->fail('a verified legacy row must not regenerate the challenge');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('bloqueado', $e->getMessage());
+        }
+        try {
+            OtaVerificationService::removeChallenge($verificationId, $property['id']);
+            $this->fail('a verified legacy row must not be removed by the host');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('bloqueado', $e->getMessage());
+        }
+        try {
+            OtaVerificationService::startChallenge(
+                $property['id'],
+                'booking',
+                'https://www.booking.com/hotel/br/legacy-lock.html',
+                $ical
+            );
+            $this->fail('a verified legacy platform must block a new challenge');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('bloqueado', $e->getMessage());
+        }
+
+        $row = $this->pdo->prepare('SELECT status, verified_at FROM property_external_verifications WHERE id = ?');
+        $row->execute([$verificationId]);
+        $stored = $row->fetch(PDO::FETCH_ASSOC) ?: [];
+        $this->assertSame('verified', (string) $stored['status']);
+        $this->assertNotNull($stored['verified_at']);
+    }
 }

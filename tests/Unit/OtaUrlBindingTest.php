@@ -11,6 +11,7 @@ require_once dirname(__DIR__, 2) . '/src/OtaPlatformRegistry.php';
 require_once dirname(__DIR__, 2) . '/src/OtaFeedGate.php';
 require_once dirname(__DIR__, 2) . '/src/OtaVerificationService.php';
 require_once dirname(__DIR__, 2) . '/src/HouseRepository.php';
+require_once dirname(__DIR__, 2) . '/src/Acoes/ICalFeedRemove.php';
 require_once dirname(__DIR__, 2) . '/src/helpers.php';
 
 final class OtaUrlBindingTest extends TestCase
@@ -393,45 +394,48 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertSame('verified', $verified['status']);
         $this->assertTrue(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
 
-        $locked = HouseRepository::updateFeed(
-            $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',
-            'https://www.airbnb.com/rooms/818181', 'https://www.airbnb.com/calendar/ical/818181.ics?t=new',
-            'Airbnb', true, false
-        );
-        $this->assertSame('locked', $locked['status']);
-
-        $same = HouseRepository::updateFeed(
-            $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',
-            'https://www.airbnb.com/rooms/818181', 'https://www.airbnb.com/calendar/ical/818181.ics?t=same',
-            'Airbnb', true, true
-        );
-        $this->assertSame('updated', $same['status'], 'updating a feed with its own canonical is allowed');
-        $this->assertSame(
-            'airbnb:818181',
-            (string) $this->feed($this->propertyId, (int) $feed['id'])['canonical_listing_id']
-        );
-
-        $edited = HouseRepository::updateFeed(
-            $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',
-            'https://www.airbnb.com/rooms/828282', 'https://www.airbnb.com/calendar/ical/828282.ics',
-            'Airbnb', true, true
-        );
-        $this->assertSame('updated', $edited['status']);
-        $fresh = $this->feed($this->propertyId, (int) $feed['id']);
-        $this->assertSame('airbnb:828282', $fresh['canonical_listing_id']);
-        $this->assertSame('pending_verification', $fresh['status']);
-        $this->assertNull($fresh['verified_at']);
-        $this->assertNotNull($fresh['challenge_date']);
-        $this->assertTrue((bool) $fresh['credits_awarded'], 'credits remain awarded across reset');
+        // Updated: 2026-11 - Requirement changed from confirmed reset/delete to strict read-only lock on verified OTA feeds.
+        $before = $this->feed($this->propertyId, (int) $feed['id']);
+        foreach ([false, true] as $confirm) {
+            $locked = HouseRepository::updateFeed(
+                $this->propertyId, $this->userId, (int) $feed['id'], 'ota', 'airbnb',
+                'https://www.airbnb.com/rooms/828282', 'https://www.airbnb.com/calendar/ical/828282.ics',
+                'Airbnb', true, $confirm
+            );
+            $this->assertSame('locked', $locked['status'], 'verified feeds stay locked even with confirm');
+        }
+        $gone = HouseRepository::removeFeed($this->propertyId, $this->userId, (int) $feed['id']);
+        $this->assertSame('locked', $gone['status']);
+        $this->assertNull($gone['feed']);
+        $this->assertSame([], $gone['nights']);
+        $this->assertSame([], $gone['link']);
+        $after = $this->feed($this->propertyId, (int) $feed['id']);
+        $this->assertSame($before['url'], $after['url']);
+        $this->assertSame($before['property_url'], $after['property_url']);
+        $this->assertSame('active', $after['status']);
+        $this->assertTrue(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
 
         $ledger = $this->pdo->prepare('SELECT count(*) FROM ota_credit_ledger WHERE property_id = ?');
         $ledger->execute([$this->propertyId]);
         $this->assertSame(1, (int) $ledger->fetchColumn());
 
-        HouseRepository::removeFeed($this->propertyId, $this->userId, (int) $feed['id']);
+        // Support intervention: direct DB delete, then the host re-verifies the same feed for zero extra credits.
+        $this->pdo->prepare('DELETE FROM calendar_feeds WHERE id = ?')->execute([(int) $feed['id']]);
         $this->assertFalse(OtaVerificationService::hasVerifiedPlatform($this->propertyId));
         $ledger->execute([$this->propertyId]);
-        $this->assertSame(1, (int) $ledger->fetchColumn(), 'the credit ledger survives feed removal');
+        $this->assertSame(1, (int) $ledger->fetchColumn(), 'the credit ledger survives the support deletion');
+
+        $this->now += 86400;
+        $readded = HouseRepository::addFeed(
+            $this->propertyId, $this->userId, $ical, 'Airbnb', 'ota', 'airbnb', $public, true
+        );
+        $this->assertIsArray($readded);
+        $newFeed = $this->feed($this->propertyId, (int) $readded['feed']['id']);
+        $reVerified = $this->verifyFeedWithBlock($this->propertyId, $newFeed);
+        $this->assertSame('verified', $reVerified['status']);
+        $this->assertFalse($reVerified['credits_awarded'], 're-verification after support deletion pays zero');
+        $ledger->execute([$this->propertyId]);
+        $this->assertSame(1, (int) $ledger->fetchColumn());
     }
 
     private function credits(): int
@@ -483,18 +487,25 @@ final class OtaUrlBindingTest extends TestCase
         $ledger->execute([$this->propertyId]);
         $this->assertSame(['airbnb', 'booking', 'vrbo'], $ledger->fetchAll(PDO::FETCH_COLUMN));
 
-        // Same-platform edit + re-verify: badge returns, zero extra credits.
-        $edited = HouseRepository::updateFeed(
+        // Updated: 2026-11 - Requirement changed from confirmed reset/delete to strict read-only lock on verified OTA feeds.
+        $lockedEdit = HouseRepository::updateFeed(
             $this->propertyId, $this->userId, (int) $airFeed['id'], 'ota', 'airbnb',
             'https://www.airbnb.com/rooms/111112', 'https://www.airbnb.com/calendar/ical/111112.ics',
             'Airbnb', true, true
         );
-        $this->assertSame('updated', $edited['status']);
-        $editedFeed = $this->feed($this->propertyId, (int) $airFeed['id']);
-        $reVerified = $this->verifyFeedWithBlock($this->propertyId, $editedFeed);
+        $this->assertSame('locked', $lockedEdit['status'], 'verified feeds cannot be edited by the host');
+        $this->pdo->prepare('DELETE FROM calendar_feeds WHERE id = ?')->execute([(int) $airFeed['id']]);
+        $this->now += 86400;
+        [$airIcal2, $airPublic2] = $this->airbnbUrl(111112);
+        $air2 = HouseRepository::addFeed(
+            $this->propertyId, $this->userId, $airIcal2, 'Airbnb', 'ota', 'airbnb', $airPublic2, true
+        );
+        $this->assertIsArray($air2);
+        $airFeed2 = $this->feed($this->propertyId, (int) $air2['feed']['id']);
+        $reVerified = $this->verifyFeedWithBlock($this->propertyId, $airFeed2);
         $this->assertSame('verified', $reVerified['status']);
         $this->assertFalse($reVerified['credits_awarded']);
-        $this->assertSame($start + 15, $this->credits(), 're-verification after edit does not pay twice');
+        $this->assertSame($start + 15, $this->credits(), 're-verification after support reset does not pay twice');
 
         // Same Booking canonical on another property of the same host: approval succeeds, no credits.
         $propertyB = $this->makeProperty($this->userId, 'Booking B');
@@ -519,25 +530,40 @@ final class OtaUrlBindingTest extends TestCase
         $this->verifyFeedWithBlock($propertyD, $switchFeed);
         $this->assertSame($start + 20, $this->credits());
 
-        $switched = HouseRepository::updateFeed(
+        // Updated: 2026-11 - Requirement changed from confirmed reset/delete to strict read-only lock on verified OTA feeds.
+        $lockedSwitch = HouseRepository::updateFeed(
             $propertyD, $this->userId, (int) $switchFeed['id'], 'ota', 'vrbo',
             'https://www.vrbo.com/555001', 'https://www.vrbo.com/icalendar/555001.ics',
             'Switch', true, true
         );
-        $this->assertSame('updated', $switched['status']);
-        $switchedFeed = $this->feed($propertyD, (int) $switchFeed['id']);
-        $this->verifyFeedWithBlock($propertyD, $switchedFeed);
-        $vrboSwitch = OtaVerificationService::approveFeed((int) $switchFeed['id'], $this->userId);
+        $this->assertSame('locked', $lockedSwitch['status']);
+        $this->pdo->prepare('DELETE FROM calendar_feeds WHERE id = ?')->execute([(int) $switchFeed['id']]);
+        $this->now += 86400;
+        $vrboAdd = HouseRepository::addFeed(
+            $propertyD, $this->userId, 'https://www.vrbo.com/icalendar/555001.ics',
+            'Switch', 'ota', 'vrbo', 'https://www.vrbo.com/555001', true
+        );
+        $this->assertIsArray($vrboAdd);
+        $vrboSwitchFeed = $this->feed($propertyD, (int) $vrboAdd['feed']['id']);
+        $this->verifyFeedWithBlock($propertyD, $vrboSwitchFeed);
+        $vrboSwitch = OtaVerificationService::approveFeed((int) $vrboSwitchFeed['id'], $this->userId);
         $this->assertTrue($vrboSwitch['credits_awarded'], 'first Vrbo on this property pays');
         $this->assertSame($start + 25, $this->credits());
 
-        $back = HouseRepository::updateFeed(
-            $propertyD, $this->userId, (int) $switchFeed['id'], 'ota', 'airbnb',
+        $lockedBack = HouseRepository::updateFeed(
+            $propertyD, $this->userId, (int) $vrboSwitchFeed['id'], 'ota', 'airbnb',
             'https://www.airbnb.com/rooms/555003', 'https://www.airbnb.com/calendar/ical/555003.ics',
             'Switch', true, true
         );
-        $this->assertSame('updated', $back['status']);
-        $backFeed = $this->feed($propertyD, (int) $switchFeed['id']);
+        $this->assertSame('locked', $lockedBack['status']);
+        $this->pdo->prepare('DELETE FROM calendar_feeds WHERE id = ?')->execute([(int) $vrboSwitchFeed['id']]);
+        $this->now += 86400;
+        [$backIcal, $backPublic] = $this->airbnbUrl(555003);
+        $backAdd = HouseRepository::addFeed(
+            $propertyD, $this->userId, $backIcal, 'Switch', 'ota', 'airbnb', $backPublic, true
+        );
+        $this->assertIsArray($backAdd);
+        $backFeed = $this->feed($propertyD, (int) $backAdd['feed']['id']);
         $backVerified = $this->verifyFeedWithBlock($propertyD, $backFeed);
         $this->assertSame('verified', $backVerified['status']);
         $this->assertFalse($backVerified['credits_awarded'], 'returning to an already-paid platform pays zero');
@@ -562,5 +588,117 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertSame('verified', $recreatedVerified['status']);
         $this->assertFalse($recreatedVerified['credits_awarded'], 'the permanent ledger blocks recreated listings');
         $this->assertSame($start + 25, $this->credits());
+    }
+
+    public function testStrictLockRejectsVerifiedAndPendingReviewFeedsForHosts(): void
+    {
+        // Verified Airbnb feed (approved automatically).
+        [$ical, $public] = $this->airbnbUrl(707070);
+        $created = HouseRepository::addFeed($this->propertyId, $this->userId, $ical, 'Airbnb', 'ota', 'airbnb', $public, true);
+        $this->assertIsArray($created);
+        $verifiedFeed = $this->feed($this->propertyId, (int) $created['feed']['id']);
+        $verifiedResult = $this->verifyFeedWithBlock($this->propertyId, $verifiedFeed);
+        $this->assertSame('verified', $verifiedResult['status']);
+        $verifiedFeed = $this->feed($this->propertyId, (int) $created['feed']['id']);
+        $this->assertNotNull($verifiedFeed['verified_at'] ?? null);
+
+        $night = '2099-03-10';
+        $this->pdo->prepare(
+            "INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id)
+             VALUES (?, ?, 1, 'sync', ?)
+             ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'sync', feed_id = EXCLUDED.feed_id"
+        )->execute([$this->propertyId, $night, (int) $verifiedFeed['id']]);
+
+        $before = $this->feed($this->propertyId, (int) $verifiedFeed['id']);
+        $removed = ICalFeedRemove::remover($this->propertyId, $this->userId, (int) $verifiedFeed['id']);
+        $this->assertSame('bloqueado', $removed->tipo);
+        $this->assertNotSame('', (string) $removed->mensagem);
+        $this->assertSame([], $removed->eventos, 'a blocked removal must not write CALENDAR_FEED_REMOVE');
+
+        $after = $this->feed($this->propertyId, (int) $verifiedFeed['id']);
+        $this->assertSame($before['url'], $after['url']);
+        $this->assertSame($before['property_url'], $after['property_url']);
+        $this->assertSame('active', $after['status']);
+        $nightRow = $this->pdo->prepare('SELECT blocked, origin, feed_id FROM calendar_days WHERE property_id = ? AND day = ?');
+        $nightRow->execute([$this->propertyId, $night]);
+        $nightData = $nightRow->fetch(PDO::FETCH_ASSOC) ?: [];
+        $this->assertSame(1, (int) $nightData['blocked']);
+        $this->assertSame('sync', (string) $nightData['origin']);
+        $this->assertSame((int) $verifiedFeed['id'], (int) $nightData['feed_id']);
+
+        foreach ([false, true] as $confirm) {
+            $locked = HouseRepository::updateFeed(
+                $this->propertyId, $this->userId, (int) $verifiedFeed['id'], 'ota', 'airbnb',
+                'https://www.airbnb.com/rooms/707071', 'https://www.airbnb.com/calendar/ical/707071.ics',
+                'Airbnb', true, $confirm
+            );
+            $this->assertSame('locked', $locked['status'], 'confirm never unlocks a verified feed');
+        }
+
+        // Pending review Booking feed (verified_at set, review_status pending_review).
+        [$bIcal, $bPublic] = $this->bookingUrl('strict-lock', 'casa-strict-lock');
+        $bCreated = HouseRepository::addFeed($this->propertyId, $this->userId, $bIcal, 'Booking', 'ota', 'booking', $bPublic, true);
+        $this->assertIsArray($bCreated);
+        $bFeed = $this->feed($this->propertyId, (int) $bCreated['feed']['id']);
+        $bVerified = $this->verifyFeedWithBlock($this->propertyId, $bFeed);
+        $this->assertSame('pending_review', $bVerified['status']);
+
+        $bRemoved = ICalFeedRemove::remover($this->propertyId, $this->userId, (int) $bFeed['id']);
+        $this->assertSame('bloqueado', $bRemoved->tipo);
+        $this->assertSame([], $bRemoved->eventos);
+        $bLocked = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, (int) $bFeed['id'], 'ota', 'booking',
+            'https://www.booking.com/hotel/br/other-strict-lock.html',
+            'https://ical.booking.com/v1/export?t=other-strict-lock',
+            'Booking', true, true
+        );
+        $this->assertSame('pending_review_locked', $bLocked['status']);
+        $this->assertNotSame([], $this->feed($this->propertyId, (int) $bFeed['id']));
+    }
+
+    public function testUnverifiedAndRejectedOtaFeedsRemainEditableAndRemovable(): void
+    {
+        // Pending verification: editable and removable.
+        [$pIcal, $pPublic] = $this->airbnbUrl(606060);
+        $pendingCreated = HouseRepository::addFeed($this->propertyId, $this->userId, $pIcal, 'Pendente', 'ota', 'airbnb', $pPublic, true);
+        $this->assertIsArray($pendingCreated);
+        $pendingId = (int) $pendingCreated['feed']['id'];
+        $edited = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, $pendingId, 'ota', 'airbnb',
+            'https://www.airbnb.com/rooms/606061', 'https://www.airbnb.com/calendar/ical/606061.ics',
+            'Pendente', true, false
+        );
+        $this->assertSame('updated', $edited['status']);
+        $gone = ICalFeedRemove::remover($this->propertyId, $this->userId, $pendingId);
+        $this->assertSame('ok', $gone->tipo);
+        $this->assertSame([], $this->feed($this->propertyId, $pendingId));
+
+        // Rejected VRBO stays removable.
+        [$rIcal, $rPublic] = ['https://www.vrbo.com/icalendar/505050.ics', 'https://www.vrbo.com/505050'];
+        $rejectedCreated = HouseRepository::addFeed($this->propertyId, $this->userId, $rIcal, 'Rejeitado', 'ota', 'vrbo', $rPublic, true);
+        $this->assertIsArray($rejectedCreated);
+        $rejectedId = (int) $rejectedCreated['feed']['id'];
+        $rejectedFeed = $this->feed($this->propertyId, $rejectedId);
+        $this->assertSame('pending_review', $this->verifyFeedWithBlock($this->propertyId, $rejectedFeed)['status']);
+        $this->assertSame('rejected', OtaVerificationService::rejectFeed($rejectedId, $this->userId, 'Documento não confere')['status']);
+        $rejectedGone = ICalFeedRemove::remover($this->propertyId, $this->userId, $rejectedId);
+        $this->assertSame('ok', $rejectedGone->tipo);
+        $this->assertSame([], $this->feed($this->propertyId, $rejectedId));
+
+        // Rejected VRBO stays editable (support-facing reset through the normal OTA flow).
+        $this->now += 86400;
+        [$r2Ical, $r2Public] = ['https://www.vrbo.com/icalendar/505052.ics', 'https://www.vrbo.com/505052'];
+        $rejected2Created = HouseRepository::addFeed($this->propertyId, $this->userId, $r2Ical, 'Rejeitado 2', 'ota', 'vrbo', $r2Public, true);
+        $this->assertIsArray($rejected2Created);
+        $rejected2Id = (int) $rejected2Created['feed']['id'];
+        $rejected2Feed = $this->feed($this->propertyId, $rejected2Id);
+        $this->assertSame('pending_review', $this->verifyFeedWithBlock($this->propertyId, $rejected2Feed)['status']);
+        $this->assertSame('rejected', OtaVerificationService::rejectFeed($rejected2Id, $this->userId, 'Documento não confere')['status']);
+        $rejectedEdit = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, $rejected2Id, 'ota', 'vrbo',
+            'https://www.vrbo.com/505053', 'https://www.vrbo.com/icalendar/505053.ics',
+            'Rejeitado 2', true, true
+        );
+        $this->assertSame('updated', $rejectedEdit['status']);
     }
 }

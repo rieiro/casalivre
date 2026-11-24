@@ -153,6 +153,7 @@ $icalExportBase = request_base() . '/ical/export/';
                             $isVerified = $isOta && $feed['verified_at'] !== null;
                             $isPendingReview = $isVerified && $reviewStatus === 'pending_review';
                             $isRejected = $isOta && $reviewStatus === 'rejected';
+                            $isOtaLocked = $isOta && ($isVerified || $isPendingReview);
                             $statusLabel = $isRejected
                                 ? t('cal.review_rejected_badge')
                                 : ($isPendingReview ? t('cal.review_pending') : match ($feedStatus) {
@@ -215,6 +216,9 @@ $icalExportBase = request_base() . '/ical/export/';
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
                                     <?php endif; ?>
+                                    <?php if ($isOtaLocked): ?>
+                                        <br><span class="muted fine sync-lock-note"><?= e(t('cal.feed_locked_support_hint')) ?></span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?= $synced === false
@@ -234,10 +238,12 @@ $icalExportBase = request_base() . '/ical/export/';
                                                 <button class="primary" type="submit"><?= e($feedStatus === 'error' ? t('cal.try_again') : t('cal.sync_now')) ?></button>
                                             </form>
                                         <?php endif; ?>
-                                        <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir" data-confirm-remove>
-                                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                            <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>
-                                        </form>
+                                        <?php if (!$isOtaLocked): ?>
+                                            <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir" data-confirm-remove>
+                                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>
+                                            </form>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -252,7 +258,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($isOta && (($isVerified && !$isPendingReview) || $isRejected)): ?>
+                            <?php if ($isOta && !$isOtaLocked && ($isRejected || $feedStatus === 'error' || $feedStatus === 'pending_verification')): ?>
                                 <tr class="sync-edit-row">
                                     <td colspan="4">
                                         <details class="sync-edit">
