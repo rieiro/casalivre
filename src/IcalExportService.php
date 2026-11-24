@@ -8,6 +8,13 @@ require_once __DIR__ . '/ActivityLog.php';
 require_once __DIR__ . '/helpers.php';
 
 /**
+ * Raised when a platform already has an active export link (HTTP 409, not a validation error).
+ */
+final class IcalExportConflictException extends RuntimeException
+{
+}
+
+/**
  * Per-platform iCal export links for one property.
  *
  * Each link has its own 64-hex token and target platform. The export merges calendar_days into
@@ -18,6 +25,10 @@ final class IcalExportService
 {
     public const PLATFORMS = ['airbnb', 'booking', 'vrbo', 'cleaner', 'other'];
     public const OTA_PLATFORMS = ['airbnb', 'booking', 'vrbo'];
+    /** Links that need a label to tell teams apart (cleaning, Google Calendar, …). */
+    public const FLEXIBLE_PLATFORMS = ['cleaner', 'other'];
+    public const MAX_FLEXIBLE_EXPORTS = 5;
+    public const MAX_EXPORTS_PER_PROPERTY = 10;
     /** Revoked links are kept this long for abuse investigation, then deleted. */
     public const REVOKED_EXPORT_RETENTION_DAYS = 90;
 
@@ -107,7 +118,6 @@ final class IcalExportService
     /** @return array{id: int, target_platform: string, label: ?string, token: string} */
     public static function createExport(int $propertyId, int $userId, string $targetPlatform, ?string $label = null): array
     {
-        self::assertOwner($propertyId, $userId);
         $targetPlatform = strtolower(trim($targetPlatform));
         if (!in_array($targetPlatform, self::PLATFORMS, true)) {
             throw new InvalidArgumentException('Plataforma de exportação inválida.');
@@ -115,6 +125,10 @@ final class IcalExportService
         $label = $label === null ? null : trim($label);
         if ($label === '') {
             $label = null;
+        }
+        $flexible = in_array($targetPlatform, self::FLEXIBLE_PLATFORMS, true);
+        if ($flexible && $label === null) {
+            throw new InvalidArgumentException(t('ical.err_label_required'));
         }
         if ($label !== null) {
             $len = function_exists('mb_strlen') ? mb_strlen($label) : strlen($label);
@@ -124,25 +138,59 @@ final class IcalExportService
         }
 
         $token = bin2hex(random_bytes(32));
-        $stmt = db()->prepare(
-            'INSERT INTO property_ical_exports (property_id, target_platform, label, token)
-             VALUES (?, ?, ?, ?) RETURNING id'
-        );
-        $stmt->execute([$propertyId, $targetPlatform, $label, $token]);
-        $exportId = (int) $stmt->fetchColumn();
 
-        ActivityLog::record(ActivityLog::ICAL_EXPORT_CREATE, [
-            'imovel_id' => $propertyId,
-            'plataforma' => $targetPlatform,
-            'label' => (string) ($label ?? ''),
-        ]);
+        return Db::transactional(db(), static function () use ($propertyId, $userId, $targetPlatform, $label, $token, $flexible): array {
+            // FOR UPDATE serializes concurrent createExport() calls for the same property.
+            self::assertOwner($propertyId, $userId, true);
+            $activeStmt = db()->prepare(
+                'SELECT target_platform FROM property_ical_exports WHERE property_id = ? AND revoked_at IS NULL'
+            );
+            $activeStmt->execute([$propertyId]);
+            /** @var list<string> $active */
+            $active = $activeStmt->fetchAll(PDO::FETCH_COLUMN);
+            if (count($active) >= self::MAX_EXPORTS_PER_PROPERTY) {
+                throw new InvalidArgumentException(t('ical.err_max_total'));
+            }
+            if (in_array($targetPlatform, self::OTA_PLATFORMS, true) && in_array($targetPlatform, $active, true)) {
+                throw new IcalExportConflictException(t('ical.err_ota_duplicate'));
+            }
+            if ($flexible) {
+                $flexibleActive = count(array_filter(
+                    $active,
+                    static fn (mixed $platform): bool => in_array($platform, self::FLEXIBLE_PLATFORMS, true)
+                ));
+                if ($flexibleActive >= self::MAX_FLEXIBLE_EXPORTS) {
+                    throw new InvalidArgumentException(t('ical.err_max_flexible'));
+                }
+            }
 
-        return [
-            'id' => $exportId,
-            'target_platform' => $targetPlatform,
-            'label' => $label,
-            'token' => $token,
-        ];
+            try {
+                $stmt = db()->prepare(
+                    'INSERT INTO property_ical_exports (property_id, target_platform, label, token)
+                     VALUES (?, ?, ?, ?) RETURNING id'
+                );
+                $stmt->execute([$propertyId, $targetPlatform, $label, $token]);
+                $exportId = (int) $stmt->fetchColumn();
+            } catch (PDOException $e) {
+                if ((string) $e->getCode() === '23505') {
+                    throw new IcalExportConflictException(t('ical.err_ota_duplicate'));
+                }
+                throw $e;
+            }
+
+            ActivityLog::record(ActivityLog::ICAL_EXPORT_CREATE, [
+                'imovel_id' => $propertyId,
+                'plataforma' => $targetPlatform,
+                'label' => (string) ($label ?? ''),
+            ]);
+
+            return [
+                'id' => $exportId,
+                'target_platform' => $targetPlatform,
+                'label' => $label,
+                'token' => $token,
+            ];
+        });
     }
 
     public static function revokeExport(int $propertyId, int $userId, int $exportId): bool

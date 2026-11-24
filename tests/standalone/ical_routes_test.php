@@ -296,5 +296,52 @@ HouseRepository::markFeedPending($owner['house_id'], (int) $a['feed']['id']);
 $pending = array_values(array_filter(HouseRepository::feeds($owner['house_id']), static fn ($f) => ($f['title'] ?? '') === 'A'))[0] ?? [];
 t_eq('PENDENTE', $pending['last_status'] ?? null, 'markFeedPending grava PENDENTE');
 
+echo "limites dos links de exportação iCal\n";
+$exportsPath = $base . '/api/imoveis/' . $owner['hash'] . '/ical-exports';
+$jsonHeaders = ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf];
+$createExport = function (array $payload) use ($exportsPath, $jsonHeaders, $jar): array {
+    $response = t_http('POST', $exportsPath, json_encode($payload), $jsonHeaders, $jar);
+    return [$response, json_decode($response['body'], true) ?: []];
+};
+[$r, $json] = $createExport(['target_platform' => 'airbnb']);
+t_eq(200, $r['status'], 'primeiro link Airbnb ativo responde 200');
+$airbnbExportId = (int) ($json['export']['id'] ?? 0);
+t_ok($airbnbExportId > 0, 'primeiro link Airbnb devolve id');
+
+[$r] = $createExport(['target_platform' => 'airbnb']);
+t_eq(409, $r['status'], 'segundo link Airbnb ativo responde 409');
+[$r] = $createExport(['target_platform' => 'booking']);
+t_eq(200, $r['status'], 'link Booking inicial responde 200');
+
+[$r] = $createExport(['target_platform' => 'cleaner']);
+t_eq(422, $r['status'], 'link de limpeza sem rótulo responde 422');
+[$r] = $createExport(['target_platform' => 'other', 'label' => '   ']);
+t_eq(422, $r['status'], 'link extra com rótulo em branco responde 422');
+
+[$r, $json] = $createExport(['target_platform' => 'other', 'label' => 'Google Agenda']);
+t_eq(200, $r['status'], 'link extra com rótulo responde 200');
+for ($i = 1; $i < 5; $i++) {
+    [$r] = $createExport([
+        'target_platform' => $i % 2 === 0 ? 'cleaner' : 'other',
+        'label' => 'Extra ' . $i,
+    ]);
+    t_eq(200, $r['status'], 'link extra ' . $i . ' responde 200');
+}
+[$r] = $createExport(['target_platform' => 'other', 'label' => 'Extra 6']);
+t_eq(422, $r['status'], 'sexto link extra/limpeza ativo responde 422');
+
+$r = t_http('GET', $exportsPath, null, [], $jar);
+$list = json_decode($r['body'], true) ?: [];
+$activeIds = array_map(static fn (array $row): int => (int) $row['id'], $list['exports'] ?? []);
+t_eq(200, $r['status'], 'listagem de links ativos responde 200');
+t_eq(7, count($activeIds), 'links de outras plataformas permanecem após as rejeições');
+t_ok(in_array($airbnbExportId, $activeIds, true), 'o link Airbnb original continua ativo');
+
+$r = t_http('DELETE', $exportsPath . '/' . $airbnbExportId, null, ['X-CSRF-Token: ' . $csrf], $jar);
+t_eq(200, $r['status'], 'revogar o link Airbnb responde 200');
+[$r, $json] = $createExport(['target_platform' => 'airbnb']);
+t_eq(200, $r['status'], 'link Airbnb pode ser recriado após a revogação');
+t_ok((int) ($json['export']['id'] ?? 0) > 0, 'link Airbnb recriado devolve id');
+
 @unlink($jar);
 t_done();

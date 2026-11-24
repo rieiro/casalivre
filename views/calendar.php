@@ -395,6 +395,39 @@ $icalExportBase = request_base() . '/ical/export/';
                         </form>
                     </section>
                     <section class="sync-add-section" id="sync-panel-export" role="tabpanel" aria-labelledby="sync-tab-export" data-sync-panel="export" aria-hidden="true" inert>
+                        <?php
+                        $icalActiveTotal = count($icalExportData['exports']);
+                        $icalActiveOta = [];
+                        $icalActiveFlexible = 0;
+                        foreach ($icalExportData['exports'] as $icalActiveExport) {
+                            $icalActivePlatform = (string) ($icalActiveExport['target_platform'] ?? '');
+                            if (in_array($icalActivePlatform, IcalExportService::OTA_PLATFORMS, true)) {
+                                $icalActiveOta[$icalActivePlatform] = true;
+                            } elseif (in_array($icalActivePlatform, IcalExportService::FLEXIBLE_PLATFORMS, true)) {
+                                $icalActiveFlexible++;
+                            }
+                        }
+                        $icalAtTotalCap = $icalActiveTotal >= IcalExportService::MAX_EXPORTS_PER_PROPERTY;
+                        $icalAtFlexCap = $icalActiveFlexible >= IcalExportService::MAX_FLEXIBLE_EXPORTS;
+                        $icalDisabledPlatforms = [];
+                        foreach (IcalExportService::PLATFORMS as $icalPlatform) {
+                            $icalIsOta = in_array($icalPlatform, IcalExportService::OTA_PLATFORMS, true);
+                            $icalDisabledPlatforms[$icalPlatform] = $icalAtTotalCap
+                                || ($icalIsOta ? isset($icalActiveOta[$icalPlatform]) : $icalAtFlexCap);
+                        }
+                        $icalAllExhausted = !in_array(false, $icalDisabledPlatforms, true);
+                        $icalFirstEnabled = null;
+                        foreach (IcalExportService::PLATFORMS as $icalPlatform) {
+                            if (!$icalDisabledPlatforms[$icalPlatform]) {
+                                $icalFirstEnabled = $icalPlatform;
+                                break;
+                            }
+                        }
+                        $icalInitialPlatform = $icalFirstEnabled ?? IcalExportService::PLATFORMS[0];
+                        $icalLabelRequired = in_array($icalInitialPlatform, IcalExportService::FLEXIBLE_PLATFORMS, true);
+                        $icalLabelCaption = $icalLabelRequired ? t('ical.label_required') : t('ical.label');
+                        $icalLabelPlaceholder = $icalLabelRequired ? t('ical.label_required_placeholder') : t('ical.label');
+                        ?>
                         <div class="ical-export-panel"
                             data-ical-export
                             data-saved="<?= e(t('ical.settings_saved')) ?>"
@@ -420,19 +453,35 @@ $icalExportBase = request_base() . '/ical/export/';
                                 <p class="muted fine"><?= e(t('ical.imported_hint')) ?></p>
                             </div>
 
-                            <form class="ical-export-form" data-ical-export-form>
+                            <form class="ical-export-form" data-ical-export-form
+                                data-label-optional="<?= e(t('ical.label')) ?>"
+                                data-label-required="<?= e(t('ical.label_required')) ?>"
+                                data-placeholder-optional="<?= e(t('ical.label')) ?>"
+                                data-placeholder-required="<?= e(t('ical.label_required_placeholder')) ?>">
                                 <label><?= e(t('ical.platform')) ?>
-                                    <select name="target_platform">
+                                    <select name="target_platform" data-ical-export-platform<?= $icalAllExhausted ? ' disabled' : '' ?>>
                                         <?php foreach (IcalExportService::PLATFORMS as $icalPlatform): ?>
-                                            <option value="<?= e($icalPlatform) ?>"><?= e(t('ical.platform_' . $icalPlatform)) ?></option>
+                                            <?php
+                                            $icalTaken = in_array($icalPlatform, IcalExportService::OTA_PLATFORMS, true)
+                                                && isset($icalActiveOta[$icalPlatform]);
+                                            $icalOptionDisabled = $icalDisabledPlatforms[$icalPlatform];
+                                            $icalOptionLabel = t('ical.platform_' . $icalPlatform)
+                                                . ($icalTaken ? ' ' . t('ical.already_generated_suffix') : '');
+                                            ?>
+                                            <option value="<?= e($icalPlatform) ?>"<?= $icalOptionDisabled ? ' disabled' : '' ?><?= $icalPlatform === $icalFirstEnabled ? ' selected' : '' ?>><?= e($icalOptionLabel) ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </label>
-                                <label><?= e(t('ical.label')) ?>
-                                    <input name="label" maxlength="60" placeholder="<?= e(t('ical.label')) ?>">
+                                <label><span data-ical-export-label-caption><?= e($icalLabelCaption) ?></span>
+                                    <input name="label" maxlength="60" placeholder="<?= e($icalLabelPlaceholder) ?>"<?= $icalLabelRequired ? ' required' : '' ?><?= $icalAllExhausted ? ' disabled' : '' ?>>
                                 </label>
-                                <button class="primary" type="submit"><?= e(t('ical.generate')) ?></button>
+                                <button class="primary" type="submit"<?= $icalAllExhausted ? ' disabled' : '' ?>><?= e(t('ical.generate')) ?></button>
                             </form>
+                            <?php if ($icalAllExhausted): ?>
+                                <p class="muted fine"><?= e(t('ical.limit_total_hint')) ?></p>
+                            <?php elseif ($icalAtFlexCap): ?>
+                                <p class="muted fine"><?= e(t('ical.limit_flexible_hint')) ?></p>
+                            <?php endif; ?>
                         </div>
                     </section>
                 </div>

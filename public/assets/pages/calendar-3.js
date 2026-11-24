@@ -199,6 +199,36 @@
 
         const exportForm = icalExport.querySelector('[data-ical-export-form]');
         if (exportForm) {
+            // Rótulo: opcional para OTAs, obrigatório para links extras (limpeza/outro).
+            const platformSelect = exportForm.querySelector('[data-ical-export-platform]');
+            const labelInput = exportForm.querySelector('input[name="label"]');
+            const labelCaption = exportForm.querySelector('[data-ical-export-label-caption]');
+            const refreshSyncHeight = function () {
+                const group = exportForm.closest('[data-sync-tabs]');
+                if (!group) return;
+                const viewport = group.querySelector('.sync-add-viewport');
+                const activeName = group.getAttribute('data-sync-active') || 'import';
+                const activePanel = group.querySelector('[data-sync-panel="' + activeName + '"]');
+                if (viewport && activePanel) viewport.style.height = activePanel.offsetHeight + 'px';
+            };
+            const syncExportLabelField = function () {
+                if (!platformSelect || !labelInput) return;
+                const required = ['cleaner', 'other'].includes(platformSelect.value);
+                labelInput.required = required;
+                labelInput.placeholder = required
+                    ? (exportForm.dataset.placeholderRequired || '')
+                    : (exportForm.dataset.placeholderOptional || '');
+                if (labelCaption) {
+                    labelCaption.textContent = required
+                        ? (exportForm.dataset.labelRequired || '')
+                        : (exportForm.dataset.labelOptional || '');
+                }
+                refreshSyncHeight();
+            };
+            if (platformSelect) {
+                platformSelect.addEventListener('change', syncExportLabelField);
+                syncExportLabelField();
+            }
             exportForm.addEventListener('submit', async function (ev) {
                 ev.preventDefault();
                 const button = exportForm.querySelector('button[type="submit"]');
