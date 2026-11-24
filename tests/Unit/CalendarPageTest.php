@@ -576,11 +576,12 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // Updated: 2026-11 - Sync board now mirrors the top half: one left panel with the imported and exported tables plus a right sliding import/export group.
+        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; it starts with the imported calendars group.
         $this->assertMatchesRegularExpression(
-            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h2>/s',
+            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
             $html
         );
+        $this->assertStringNotContainsString('<h2>' . e(t('cal.sync')) . '</h2>', $html);
 
         $start = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
         $this->assertNotFalse($start);

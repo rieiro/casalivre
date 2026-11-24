@@ -125,7 +125,6 @@ $icalExportBase = request_base() . '/ical/export/';
     </div>
     <div class="sync-board" id="sincronizar-calendario">
         <div class="panel">
-            <h2><?= e(t('cal.sync')) ?></h2>
             <h3 class="sync-group-title"><?= e(t('cal.imported_calendars')) ?></h3>
             <div class="sync-scroll">
                 <table class="sync-table">
