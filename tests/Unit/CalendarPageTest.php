@@ -664,6 +664,10 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/\[data-sync-active="export"\]\s+\.sync-add-track\s*\{[^}]*transform:\s*translateX\(-100%\)/s', $css);
         $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.sync-add-group\s*\{\s*position:\s*static;/s', $css);
 
+        // Both left-pane tables center their columns and fields.
+        $this->assertMatchesRegularExpression('/\.sync-table\s+th,\s*\.sync-table\s+td\s*\{[^}]*text-align:\s*center;/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-link\s*\{[^}]*justify-content:\s*center;/s', $css);
+
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
         $this->assertStringContainsString('data-sync-tabs', $js);
         $this->assertStringContainsString('data-sync-panel', $js);

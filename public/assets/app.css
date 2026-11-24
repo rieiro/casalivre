@@ -321,7 +321,7 @@ footer { padding: var(--space-16); }
 .sync-add-group .ical-export-form { grid-template-columns: 1fr; }
 .sync-scroll { overflow-x: auto; }
 .sync-table { width: 100%; border-collapse: collapse; }
-.sync-table th, .sync-table td { text-align: left; padding: var(--space-8) var(--space-10); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.sync-table th, .sync-table td { text-align: center; padding: var(--space-8) var(--space-10); border-bottom: 1px solid var(--line); vertical-align: middle; }
 .sync-table th { font-size: .85rem; }
 .sync-url { display: block; margin-top: var(--space-2); font-size: .8rem; overflow-wrap: anywhere; }
 .sync-table form { margin: 0; }
@@ -4944,6 +4944,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .ical-export-link {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
 }
 .ical-export-link input {
