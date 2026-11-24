@@ -576,24 +576,37 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; it starts with the imported calendars group.
+        // Updated: 2026-12 - Requirement changed from a separate sync board row to bottom groups inside the calendar columns.
         $this->assertMatchesRegularExpression(
-            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
+            '/<div class="cal-column cal-column-left">\s*<div class="cal-months">/s',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/<div class="panel sync-tables-panel" id="sincronizar-calendario">\s*<h3 class="sync-group-title">/s',
             $html
         );
         $this->assertStringNotContainsString('<h2>' . e(t('cal.sync')) . '</h2>', $html);
 
-        $start = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
-        $this->assertNotFalse($start);
+        $leftStart = strpos($html, '<div class="cal-column cal-column-left">');
+        $rightStart = strpos($html, '<div class="cal-column cal-column-right">');
+        $this->assertNotFalse($leftStart);
+        $this->assertNotFalse($rightStart);
+        $this->assertLessThan($rightStart, $leftStart, 'left column comes before right column');
+        $left = substr($html, $leftStart, $rightStart - $leftStart);
+        $right = substr($html, $rightStart);
+
+        $this->assertSame(2, substr_count($left, 'class="sync-table'));
+        $this->assertStringContainsString('ical-export-table', $left);
+        $this->assertStringNotContainsString('data-feed-form', $left);
+        $this->assertStringContainsString('data-feed-form', $right);
+        $this->assertStringContainsString('data-sync-tabs', $right);
+
+        $boardStart = strpos($html, '<div class="cal-board">');
+        $this->assertNotFalse($boardStart);
         $end = strrpos($html, '</section>');
         $this->assertNotFalse($end);
-        $slice = substr($html, $start, $end - $start);
-
-        $this->assertSame(2, substr_count($slice, 'class="sync-table'));
-        $this->assertStringContainsString('data-feed-form', $slice);
-        $this->assertStringContainsString('data-ical-export', $slice);
-        $this->assertStringContainsString('data-sync-tabs', $slice);
-        $this->assertSame(substr_count($slice, '<div'), substr_count($slice, '</div>'), 'sync-board must have balanced div tags');
+        $slice = substr($html, $boardStart, $end - $boardStart);
+        $this->assertSame(substr_count($slice, '<div'), substr_count($slice, '</div>'), 'calendar board must have balanced div tags');
     }
 
     public function testCalendarSyncSectionMirrorsTopLayoutWithGroupedTablesAndSlidingTabs(): void
@@ -624,24 +637,33 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // The bottom half reuses the top half columns (calendar board and sync board share the grid).
+        // Updated: 2026-12 - Requirement changed from a separate sync board grid to bottom groups inside the two calendar columns.
         $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
         $this->assertMatchesRegularExpression('/\.cal-board\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s*minmax\(260px,\s*\.75fr\)/s', $css);
-        $this->assertMatchesRegularExpression('/\.sync-board\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s*minmax\(260px,\s*\.75fr\)/s', $css);
+        $this->assertMatchesRegularExpression('/\.cal-column\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s', $css);
+        $this->assertStringNotContainsString('.sync-board {', $css);
 
-        $boardPos = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
+        $leftStart = strpos($html, '<div class="cal-column cal-column-left">');
+        $rightStart = strpos($html, '<div class="cal-column cal-column-right">');
+        $monthsPos = strpos($html, '<div class="cal-months">');
+        $tablesPos = strpos($html, '<div class="panel sync-tables-panel" id="sincronizar-calendario">');
+        $controlsPos = strpos($html, '<form class="cal-controls"');
         $importedPos = strpos($html, e(t('cal.imported_calendars')));
         $exportedPos = strpos($html, e(t('cal.exported_calendars')));
         $tabsPos = strpos($html, 'data-sync-tabs');
-        $this->assertNotFalse($boardPos);
-        $this->assertNotFalse($importedPos);
-        $this->assertNotFalse($exportedPos);
-        $this->assertNotFalse($tabsPos);
-        $this->assertLessThan($tabsPos, $importedPos, 'imported calendars table belongs to the left panel');
-        $this->assertLessThan($tabsPos, $exportedPos, 'exported calendars table belongs to the left panel');
+        foreach ([$leftStart, $rightStart, $monthsPos, $tablesPos, $controlsPos, $importedPos, $exportedPos, $tabsPos] as $pos) {
+            $this->assertNotFalse($pos);
+        }
+        $this->assertLessThan($monthsPos, $leftStart);
+        $this->assertLessThan($tablesPos, $monthsPos, 'imported/exported tables sit at the bottom of the left column');
+        $this->assertLessThan($importedPos, $tablesPos);
+        $this->assertLessThan($exportedPos, $importedPos);
+        $this->assertLessThan($tabsPos, $exportedPos);
+        $this->assertLessThan($controlsPos, $rightStart);
+        $this->assertLessThan($tabsPos, $controlsPos, 'import/export controls sit below the day/price/min nights group');
 
-        // Left side: a single element group holding both tables.
-        $left = substr($html, $boardPos, $tabsPos - $boardPos);
+        // Left column bottom: a single element group holding both tables.
+        $left = substr($html, $leftStart, $rightStart - $leftStart);
         $this->assertSame(2, substr_count($left, 'class="sync-table'));
         $this->assertStringContainsString('ical-export-table', $left);
         $this->assertStringContainsString(e(t('ical.empty')), $left);

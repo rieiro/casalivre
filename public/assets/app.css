@@ -246,7 +246,7 @@ footer { padding: var(--space-16); }
 .rooms-summary li:last-child { border-bottom: 0; }
 .cal-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); align-items: start; }
 .cal-months { display: flex; flex-direction: column; gap: var(--space-22); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-16) var(--space-18) var(--space-20); }
-.cal-controls { position: sticky; top: 16px; display: grid; gap: var(--space-12); align-content: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-16); }
+.cal-controls { position: static; display: grid; gap: var(--space-12); align-content: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-16); }
 .cal-controls label { display: grid; gap: var(--space-4); font-size: .9rem; }
 .cal-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); align-items: start; }
 .cal-fields label { display: grid; gap: var(--space-4); font-size: .85rem; }
@@ -301,12 +301,11 @@ footer { padding: var(--space-16); }
 .swatch.prereserva, .swatch.pre-reserva { background: var(--cal-prereserva); border-color: #14532d; }
 .cal-day.picked { outline: 2px solid var(--brand); }
 .cal-day:disabled { color: var(--disabled); cursor: default; }
-.sync-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); margin-top: var(--space-18); align-items: start; }
-.sync-board .panel { border-radius: var(--radius-12); margin: 0; }
-.sync-board .panel:first-child { padding: var(--space-16) var(--space-18) var(--space-20); }
+.cal-column { display: flex; flex-direction: column; gap: var(--space-18); min-width: 0; }
+.sync-tables-panel { border-radius: var(--radius-12); margin: 0; padding: var(--space-16) var(--space-18) var(--space-20); }
 .sync-group-title { margin: var(--space-4) 0 0; font-size: 1rem; }
 .sync-group-title + .sync-scroll { margin-top: var(--space-6); }
-.sync-add-group { position: sticky; top: 16px; padding: var(--space-16); }
+.sync-add-group { padding: var(--space-16); }
 .sync-add-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
 .sync-add-tabs button { min-height: 36px; padding: var(--space-6) var(--space-4); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--radius-8); font-size: .82rem; font-weight: 600; cursor: pointer; }
 .sync-add-tabs button.is-on { background: var(--brand); color: var(--surface); border-color: var(--brand); }
@@ -347,7 +346,7 @@ footer { padding: var(--space-16); }
     body.page-property-form footer,
     body:has(.prop-form-page) footer { display: none; }
     .cal-title { display: none; }
-    .result, .search-layout, .cal-board, .amenity-grid, .sync-board { grid-template-columns: 1fr; }
+    .result, .search-layout, .cal-board, .amenity-grid { grid-template-columns: 1fr; }
     .result .offer { justify-items: start; }
     .cal-controls { position: static; }
     .cal-month-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); }
@@ -375,10 +374,8 @@ footer { padding: var(--space-16); }
     .cal-corner { top: 2px; left: 3px; font-size: .6rem; }
     .cal-controls { padding: var(--space-12); gap: var(--space-10); }
     .cal-summary-table { padding: var(--space-6) var(--space-8); font-size: .8rem; }
-    .sync-board { gap: var(--space-12); margin-top: var(--space-12); }
-    .sync-board .panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
-    .sync-board .panel:first-child { padding: var(--space-10) var(--space-12); }
-    .sync-board h2 { font-size: 1rem; margin: 0 0 var(--space-8); }
+    .cal-column { gap: var(--space-12); }
+    .sync-tables-panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
     .sync-group-title { font-size: .95rem; }
     .sync-add-group { position: static; }
     .sync-add-tabs button { min-height: 32px; font-size: .78rem; }

@@ -34,6 +34,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
         <?php endforeach; ?>
     <?php endif; ?>
     <div class="cal-board">
+        <div class="cal-column cal-column-left">
         <div class="cal-months">
             <ul class="cal-legend cal-legend-desktop">
                 <li><span class="swatch open"></span> <?= e(t('cal.legend_open')) ?></li>
@@ -93,54 +94,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                 </section>
             <?php endfor; ?>
         </div>
-        <form class="cal-controls" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/calendario" data-cal-form data-months="<?= e(implode(',', current_locale() === 'en' ? ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] : (current_locale() === 'es' ? ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] : ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']))) ?>" data-min-default="<?= e(t('cal.min_nights')) ?>" data-min-from="<?= e(t('cal.min_from')) ?>" data-min-range="<?= e(t('cal.min_range')) ?>" data-cleaning-fee="<?= (int) ($property['cleaning_fee'] ?? 0) ?>">
-            <div class="cal-view" role="group" aria-label="<?= e(t('cal.view')) ?>">
-                <button type="button" data-cal-view="day" class="is-on" aria-pressed="true"><?= e(t('cal.view_day')) ?></button>
-                <button type="button" data-cal-view="price" aria-pressed="false"><?= e(t('cal.view_price')) ?></button>
-                <button type="button" data-cal-view="min" aria-pressed="false"><?= e(t('cal.view_nights')) ?></button>
-            </div>
-            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-            <input type="hidden" name="inicio" data-cal-start>
-            <input type="hidden" name="fim" data-cal-end>
-            <input type="hidden" name="cal_view" value="<?= e((string) (($restore['view'] ?? 'day'))) ?>" data-cal-view-input>
-            <p class="cal-summary is-hint" data-cal-summary><?= e(t('cal.range_hint')) ?></p>
-            <div class="cal-fields">
-                <label><?= e(t('cal.price')) ?> <input name="price" data-cal-price placeholder="<?= e(t('cal.price_hint')) ?>"></label>
-                <label><span data-min-label><?= e(t('cal.min_nights')) ?></span> <input type="number" name="min_nights" min="1" data-cal-min value="<?= (int) $property['min_nights'] ?>"></label>
-            </div>
-            <div class="cal-summary-table" data-cal-summary-table hidden>
-                <div class="cal-summary-row">
-                    <span class="cal-summary-label" data-cal-stay-formula></span>
-                    <span class="cal-summary-val" data-cal-stay-total></span>
-                </div>
-                <div class="cal-summary-row">
-                    <span class="cal-summary-label"><?= e(t('cal.taxes')) ?></span>
-                    <span class="cal-summary-val" data-cal-taxes-val>R$ 0</span>
-                </div>
-                <div class="cal-summary-row cal-summary-total">
-                    <span class="cal-summary-label"><?= e(t('cal.total')) ?></span>
-                    <span class="cal-summary-val" data-cal-grand-total></span>
-                </div>
-            </div>
-            <div class="cal-actions">
-                <button class="danger is-off" type="submit" name="acao" value="bloquear" data-cal-block disabled><?= e(t('cal.block')) ?></button>
-                <button class="primary is-off" type="submit" name="acao" value="abrir" data-cal-open disabled><?= e(t('cal.open_action')) ?></button>
-                <button class="primary is-off" type="submit" name="acao" value="salvar" data-cal-save disabled><?= e(t('cal.save_changes')) ?></button>
-            </div>
-            <button class="primary is-off" type="submit" name="acao" value="cotacao" data-cal-quote disabled><?= e(t('cal.generate_quote')) ?></button>
-            <p class="muted cal-sync-locked"><?= e(t('cal.sync_locked')) ?></p>
-        </form>
-    </div>
-    <div class="sync-board" id="sincronizar-calendario">
-        <?php if ($isPropertyVerified): ?>
-            <div class="prop-verify-banner is-verified" role="status" data-property-verified>
-                <span class="prop-verify-badge">✓ <?= e(t('ota.property_verified')) ?></span>
-                <?php if ($remainingOtaLabels !== []): ?>
-                    <span class="muted fine"><?= e(t('cal.remaining_ota_incentive', ['platforms' => implode(', ', $remainingOtaLabels)])) ?></span>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-        <div class="panel">
+        <div class="panel sync-tables-panel" id="sincronizar-calendario">
             <h3 class="sync-group-title"><?= e(t('cal.imported_calendars')) ?></h3>
             <div class="sync-scroll">
                 <table class="sync-table">
@@ -366,6 +320,53 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                 </table>
             </div>
         </div>
+        </div>
+        <div class="cal-column cal-column-right">
+        <form class="cal-controls" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/calendario" data-cal-form data-months="<?= e(implode(',', current_locale() === 'en' ? ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] : (current_locale() === 'es' ? ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] : ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']))) ?>" data-min-default="<?= e(t('cal.min_nights')) ?>" data-min-from="<?= e(t('cal.min_from')) ?>" data-min-range="<?= e(t('cal.min_range')) ?>" data-cleaning-fee="<?= (int) ($property['cleaning_fee'] ?? 0) ?>">
+            <div class="cal-view" role="group" aria-label="<?= e(t('cal.view')) ?>">
+                <button type="button" data-cal-view="day" class="is-on" aria-pressed="true"><?= e(t('cal.view_day')) ?></button>
+                <button type="button" data-cal-view="price" aria-pressed="false"><?= e(t('cal.view_price')) ?></button>
+                <button type="button" data-cal-view="min" aria-pressed="false"><?= e(t('cal.view_nights')) ?></button>
+            </div>
+            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+            <input type="hidden" name="inicio" data-cal-start>
+            <input type="hidden" name="fim" data-cal-end>
+            <input type="hidden" name="cal_view" value="<?= e((string) (($restore['view'] ?? 'day'))) ?>" data-cal-view-input>
+            <p class="cal-summary is-hint" data-cal-summary><?= e(t('cal.range_hint')) ?></p>
+            <div class="cal-fields">
+                <label><?= e(t('cal.price')) ?> <input name="price" data-cal-price placeholder="<?= e(t('cal.price_hint')) ?>"></label>
+                <label><span data-min-label><?= e(t('cal.min_nights')) ?></span> <input type="number" name="min_nights" min="1" data-cal-min value="<?= (int) $property['min_nights'] ?>"></label>
+            </div>
+            <div class="cal-summary-table" data-cal-summary-table hidden>
+                <div class="cal-summary-row">
+                    <span class="cal-summary-label" data-cal-stay-formula></span>
+                    <span class="cal-summary-val" data-cal-stay-total></span>
+                </div>
+                <div class="cal-summary-row">
+                    <span class="cal-summary-label"><?= e(t('cal.taxes')) ?></span>
+                    <span class="cal-summary-val" data-cal-taxes-val>R$ 0</span>
+                </div>
+                <div class="cal-summary-row cal-summary-total">
+                    <span class="cal-summary-label"><?= e(t('cal.total')) ?></span>
+                    <span class="cal-summary-val" data-cal-grand-total></span>
+                </div>
+            </div>
+            <div class="cal-actions">
+                <button class="danger is-off" type="submit" name="acao" value="bloquear" data-cal-block disabled><?= e(t('cal.block')) ?></button>
+                <button class="primary is-off" type="submit" name="acao" value="abrir" data-cal-open disabled><?= e(t('cal.open_action')) ?></button>
+                <button class="primary is-off" type="submit" name="acao" value="salvar" data-cal-save disabled><?= e(t('cal.save_changes')) ?></button>
+            </div>
+            <button class="primary is-off" type="submit" name="acao" value="cotacao" data-cal-quote disabled><?= e(t('cal.generate_quote')) ?></button>
+            <p class="muted cal-sync-locked"><?= e(t('cal.sync_locked')) ?></p>
+        </form>
+        <?php if ($isPropertyVerified): ?>
+            <div class="prop-verify-banner is-verified" role="status" data-property-verified>
+                <span class="prop-verify-badge">✓ <?= e(t('ota.property_verified')) ?></span>
+                <?php if ($remainingOtaLabels !== []): ?>
+                    <span class="muted fine"><?= e(t('cal.remaining_ota_incentive', ['platforms' => implode(', ', $remainingOtaLabels)])) ?></span>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         <?php
         $platformMeta = json_encode(OtaPlatformRegistry::uiMeta(), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT);
         ?>
@@ -500,6 +501,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                     </section>
                 </div>
             </div>
+        </div>
         </div>
     </div>
     <?php if (is_array($restore ?? null)): ?>
