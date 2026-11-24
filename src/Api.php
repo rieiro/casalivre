@@ -525,7 +525,7 @@ function handle_api(string $path, string $method): void
         json_out(200, [
             'ok' => true,
             'message' => $res->mensagem,
-            'days' => HouseRepository::calendarDays((int) $property['id']),
+            'days' => HouseRepository::calendarDays((int) $property['id'], true),
         ]);
     }
 

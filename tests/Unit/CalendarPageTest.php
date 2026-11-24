@@ -1025,4 +1025,98 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/\.sync-add-form\s+p\s*\{[^}]*margin:\s*0;/s', $css);
         $this->assertStringNotContainsString('.feed-mode', $css);
     }
+
+    public function testCalendarExternalFeedDaysRenderWithSyncColor(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $extDay = (new DateTimeImmutable('first day of +1 month'))->format('Y-m-d');
+        $intDay = (new DateTimeImmutable('first day of +1 month'))->modify('+3 days')->format('Y-m-d');
+        $days = [
+            [
+                'day' => $extDay,
+                'blocked' => 1,
+                'price' => null,
+                'min_nights' => null,
+                'origin' => 'reserva',
+                'feed_id' => 424242,
+            ],
+            [
+                'day' => $intDay,
+                'blocked' => 1,
+                'price' => null,
+                'min_nights' => null,
+                'origin' => 'reserva',
+                'feed_id' => null,
+            ],
+        ];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // External feed nights (even with DB origin reserva) must use the sync color.
+        $this->assertMatchesRegularExpression(
+            '/<button type="button" class="cal-day sync" data-cal-day="' . preg_quote($extDay, '/') . '" data-day-num="\d+" data-origin="sync"/',
+            $html
+        );
+        // Internal bookings keep the reserva color.
+        $this->assertMatchesRegularExpression(
+            '/<button type="button" class="cal-day reserva" data-cal-day="' . preg_quote($intDay, '/') . '" data-day-num="\d+" data-origin="reserva"/',
+            $html
+        );
+    }
+
+    public function testCalendarRepositoryNormalizesExternalFeedOrigins(): void
+    {
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            $propertyId = (int) $pdo->query('SELECT id FROM properties ORDER BY id LIMIT 1')->fetchColumn();
+            $this->assertGreaterThan(0, $propertyId);
+            $extDay = '2199-01-05';
+            $intDay = '2199-01-06';
+            $insert = $pdo->prepare(
+                "INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id)
+                 VALUES (?, ?, 1, 'reserva', ?)
+                 ON CONFLICT (property_id, day)
+                 DO UPDATE SET blocked = 1, origin = 'reserva', feed_id = EXCLUDED.feed_id"
+            );
+            $insert->execute([$propertyId, $extDay, 424242]);
+            $insert->execute([$propertyId, $intDay, null]);
+
+            $normalized = [];
+            foreach (HouseRepository::calendarDays($propertyId, true) as $row) {
+                $normalized[(string) $row['day']] = $row;
+            }
+            $this->assertSame('sync', $normalized[$extDay]['origin']);
+            $this->assertArrayNotHasKey('feed_id', $normalized[$extDay]);
+            $this->assertSame('reserva', $normalized[$intDay]['origin']);
+
+            $until = [];
+            foreach (HouseRepository::calendarDaysUntil($propertyId, '2199-12-31') as $row) {
+                $until[(string) $row['day']] = $row;
+            }
+            $this->assertSame('sync', $until[$extDay]['origin']);
+            $this->assertArrayNotHasKey('feed_id', $until[$extDay]);
+            $this->assertSame('reserva', $until[$intDay]['origin']);
+
+            // Raw reads (used by import/export parity) must keep the stored origin.
+            $raw = [];
+            foreach (HouseRepository::calendarDays($propertyId) as $row) {
+                $raw[(string) $row['day']] = $row;
+            }
+            $this->assertSame('reserva', $raw[$extDay]['origin']);
+        } finally {
+            $pdo->rollBack();
+        }
+    }
 }

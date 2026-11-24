@@ -62,7 +62,9 @@ $icalExportBase = request_base() . '/ical/export/';
                             $info = $marked[$iso] ?? null;
                             $disabled = $iso < $today || $iso > $maxDay;
                             $origin = (string) ($info['origin'] ?? '');
-                            if ($origin === '' && !empty($info['blocked'])) {
+                            if (!empty($info['feed_id'])) {
+                                $origin = 'sync';
+                            } elseif ($origin === '' && !empty($info['blocked'])) {
                                 $origin = 'sistema';
                             }
                             $nightPrice = (isset($info['price']) && $info['price'] !== null && $info['price'] !== '')
