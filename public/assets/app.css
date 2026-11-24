@@ -304,6 +304,7 @@ footer { padding: var(--space-16); }
 .sync-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); margin-top: var(--space-18); align-items: start; }
 .sync-board .panel { border-radius: var(--radius-12); margin: 0; }
 .sync-board .panel:first-child { padding: var(--space-16) var(--space-18) var(--space-20); }
+.sync-board .prop-verify-banner { grid-column: 1 / -1; margin: 0; }
 .sync-group-title { margin: var(--space-4) 0 0; font-size: 1rem; }
 .sync-group-title + .sync-scroll { margin-top: var(--space-6); }
 .sync-add-group { position: sticky; top: 16px; padding: var(--space-16); }

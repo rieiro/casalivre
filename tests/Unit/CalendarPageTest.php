@@ -1433,4 +1433,47 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/<button class="primary" type="submit" disabled>/', $form);
         $this->assertStringContainsString(e(t('ical.limit_total_hint')), $html);
     }
+
+    public function testCalendarSyncBannerSpansBothColumnsAtTopOfSyncSection(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 95,
+            'title' => 'Airbnb Verificado',
+            'url' => 'https://www.airbnb.com/••••',
+            'status' => 'active',
+            'verification_mode' => 'ota',
+            'source_platform' => 'airbnb',
+            'review_status' => 'approved',
+            'verified_at' => '2026-11-01 12:00:00+00',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $boardPos = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
+        $bannerPos = strpos($html, 'prop-verify-banner');
+        $tablesPos = strpos($html, '<div class="panel">', (int) $boardPos);
+        $this->assertNotFalse($boardPos);
+        $this->assertNotFalse($bannerPos);
+        $this->assertNotFalse($tablesPos);
+        $this->assertLessThan($bannerPos, $boardPos);
+        $this->assertLessThan($tablesPos, $bannerPos, 'the verified property banner sits above the sync tables');
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.sync-board\s+\.prop-verify-banner\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s', $css);
+    }
 }
