@@ -300,7 +300,7 @@ $icalExportBase = request_base() . '/ical/export/';
                         <tr>
                             <th><?= e(t('ical.col_platform')) ?></th>
                             <th><?= e(t('ical.col_link')) ?></th>
-                            <th><?= e(t('ical.col_status')) ?></th>
+                            <th><?= e(t('cal.col_synced')) ?></th>
                             <th><?= e(t('ical.col_actions')) ?></th>
                         </tr>
                     </thead>
@@ -312,7 +312,8 @@ $icalExportBase = request_base() . '/ical/export/';
                             <?php
                             $icalPlatform = (string) $icalExport['target_platform'];
                             $icalLink = $icalExportBase . $icalExport['token'] . '.ics';
-                            $icalStale = (bool) ($icalExport['stale'] ?? false);
+                            $icalFetchedAt = (string) ($icalExport['last_fetched_at'] ?? '');
+                            $icalFetched = $icalFetchedAt !== '' ? strtotime($icalFetchedAt . ' UTC') : false;
                             ?>
                             <tr>
                                 <td>
@@ -327,8 +328,9 @@ $icalExportBase = request_base() . '/ical/export/';
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="sync-badge <?= $icalStale ? 'is-stale' : 'is-active' ?>"><?= e($icalStale ? t('ical.stale') : t('ical.status_active')) ?></span>
-                                    <br><span class="muted fine"><?= e(t('ical.col_last')) ?>: <?= e((string) $icalExport['last_fetched_label']) ?></span>
+                                    <?= $icalFetched === false
+                                        ? '—'
+                                        : max(0, (int) floor((time() - $icalFetched) / 60)) . ' ' . e(t('cal.minutes_ago')) ?>
                                 </td>
                                 <td>
                                     <div class="sync-actions">

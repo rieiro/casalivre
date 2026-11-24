@@ -4986,11 +4986,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     background: #e8f5ee;
     color: var(--ok);
 }
-.sync-badge.is-stale {
-    border-color: var(--notice-line);
-    background: var(--notice-bg);
-    color: #7a5b00;
-}
 .sync-badge.is-error {
     border-color: var(--danger-line);
     background: var(--danger-bg);

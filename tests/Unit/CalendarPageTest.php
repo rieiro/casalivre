@@ -861,7 +861,7 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('Revisão de Verificações OTA', $html);
     }
 
-    public function testExportedCalendarRowsFollowImportTableFormatAndShowStatus(): void
+    public function testExportedCalendarRowsFollowImportTableFormatAndShowLastSync(): void
     {
         $property = [
             'id' => 7,
@@ -907,13 +907,12 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // Export table follows the imported table: platform, compact link, status (with last access), actions.
-        $this->assertStringContainsString(t('ical.col_status'), $html);
-        $this->assertStringContainsString('sync-badge is-active', $html);
-        $this->assertStringContainsString('sync-badge is-stale', $html);
-        $this->assertStringContainsString(e(t('ical.status_active')), $html);
-        $this->assertStringContainsString(e(t('ical.stale')), $html);
-        $this->assertStringContainsString(t('ical.never_accessed'), $html);
+        // Updated: 2026-11 - Export status column now copies the imported table's Last sync format (plain minutes ago).
+        $this->assertStringContainsString(t('cal.col_synced'), $html);
+        $this->assertStringNotContainsString('sync-badge is-active', $html);
+        $this->assertStringNotContainsString('sync-badge is-stale', $html);
+        $this->assertMatchesRegularExpression('/<td>\s*—\s*<\/td>/', $html);
+        $this->assertStringContainsString(t('cal.minutes_ago'), $html);
         $this->assertStringContainsString('class="ical-export-input"', $html);
 
         // Copy and revoke share the same action group used by the imported table.
@@ -921,7 +920,7 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
 
         $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
         $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*max-width:\s*\d+ch;/s', $css);
-        $this->assertStringContainsString('.sync-badge.is-stale', $css);
+        $this->assertStringNotContainsString('.sync-badge.is-stale', $css);
 
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
         $this->assertStringContainsString("button.closest('tr')", $js);
