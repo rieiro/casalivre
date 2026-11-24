@@ -354,7 +354,8 @@ $icalExportBase = request_base() . '/ical/export/';
                 <div class="sync-add-track">
                     <section class="sync-add-section" id="sync-panel-import" role="tabpanel" aria-labelledby="sync-tab-import" data-sync-panel="import">
                         <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
-                            <h2><?= e(t('cal.add_feed')) ?></h2>
+                            <h2><?= e(t('cal.sync_import_tab')) ?></h2>
+                            <p class="muted fine"><?= e(t('cal.import_hint')) ?></p>
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <div class="feed-mode">
                                 <label class="prop-checkbox-label">
@@ -391,7 +392,7 @@ $icalExportBase = request_base() . '/ical/export/';
                                 <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
                             </label>
                             <p class="muted fine" data-sync-hint hidden><?= e(t('cal.sync_only_hint')) ?></p>
-                            <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.add_feed')) ?></button>
+                            <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.sync_import_tab')) ?></button>
                             <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
                         </form>
                     </section>

@@ -926,4 +926,37 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
         $this->assertStringContainsString("button.closest('tr')", $js);
     }
+
+    public function testCalendarImportSectionUsesImportCalendarHeadingAndHint(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertSame('Importar calendário', t('cal.sync_import_tab'));
+        $this->assertSame('Importe o calendário de outras plataformas para evitar reservas duplicadas.', t('cal.import_hint'));
+
+        $start = strpos($html, 'data-sync-panel="import"');
+        $end = strpos($html, 'data-sync-panel="export"');
+        $this->assertNotFalse($start);
+        $this->assertNotFalse($end);
+        $slice = substr($html, $start, $end - $start);
+
+        $this->assertStringContainsString('<h2>' . e(t('cal.sync_import_tab')) . '</h2>', $slice);
+        $this->assertStringContainsString(e(t('cal.import_hint')), $slice);
+        $this->assertStringNotContainsString(e(t('cal.add_feed')), $slice);
+        $this->assertStringContainsString('data-feed-add', $slice);
+    }
 }
