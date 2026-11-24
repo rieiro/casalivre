@@ -1006,6 +1006,12 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('placeholder="Booking"', $html);
         $this->assertStringContainsString("title.placeholder = item.label || ''", $formJs);
 
+        // Title is optional for enabling the button and is auto-filled from the selected platform.
+        $this->assertStringNotContainsString("&& title.value.trim() !== ''", $formJs);
+        $this->assertStringContainsString("title.value = item.label || ''", $formJs);
+        $this->assertStringContainsString("if (title.value.trim() === '')", $formJs);
+        $this->assertStringContainsString("title.value = item && item.label ? item.label : ''", $formJs);
+
         // Sliding group keeps only the active section height and the form uses the grid gap for spacing.
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
         $this->assertStringContainsString('sync-add-viewport', $js);
