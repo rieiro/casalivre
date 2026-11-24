@@ -27,6 +27,8 @@ final class HouseRepository
     public const SYNC_ADVISORY_NS = 48001403;
     public const FEED_SLOTS = 5;
     private const ADD_SLOT_ATTEMPTS = 5;
+    /** SQL projection: nights imported from a feed report the sync origin without exposing feed_id. */
+    private const ORIGIN_PROJECTION = "CASE WHEN feed_id IS NOT NULL THEN 'sync' ELSE origin END AS origin";
     /** The 16th consecutive failure stops the feed (next_sync_at = infinity). */
     public const FAIL_STOP = 16;
     /** Added to a scheduled next_sync_at so a restart does not sync every feed at once. */
@@ -330,13 +332,14 @@ SQL;
         ));
     }
 
-    public static function calendarDays(int $propertyId): array
+    public static function calendarDays(int $propertyId, bool $normalizeExternal = false): array
     {
         if (class_exists('QuoteRepository', false) || file_exists(__DIR__ . '/QuoteRepository.php')) {
             require_once __DIR__ . '/QuoteRepository.php';
             QuoteRepository::cleanupExpired($propertyId);
         }
-        $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? ORDER BY day');
+        $origin = $normalizeExternal ? self::ORIGIN_PROJECTION : 'origin';
+        $stmt = db()->prepare('SELECT day, blocked, price, min_nights, ' . $origin . ' FROM calendar_days WHERE property_id = ? ORDER BY day');
         $stmt->execute([$propertyId]);
         return $stmt->fetchAll();
     }
@@ -348,7 +351,7 @@ SQL;
             require_once __DIR__ . '/QuoteRepository.php';
             QuoteRepository::cleanupExpired($propertyId);
         }
-        $stmt = db()->prepare('SELECT day, blocked, price, min_nights, origin FROM calendar_days WHERE property_id = ? AND day <= ? ORDER BY day');
+        $stmt = db()->prepare('SELECT day, blocked, price, min_nights, ' . self::ORIGIN_PROJECTION . ' FROM calendar_days WHERE property_id = ? AND day <= ? ORDER BY day');
         $stmt->execute([$propertyId, $maxDay]);
         $rows = $stmt->fetchAll();
 

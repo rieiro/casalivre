@@ -1563,7 +1563,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
     }
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
-        'days' => HouseRepository::calendarDays((int) $property['id']),
+        'days' => HouseRepository::calendarDays((int) $property['id'], true),
         'feeds' => HouseRepository::feeds((int) $property['id']),
         'message' => $message,
         'message_tone' => $messageTone,
@@ -1637,7 +1637,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $metho
     $messageTone = $res->tipo === 'ok' ? 'ok' : 'error';
     view('calendar', [
         'property' => HouseRepository::find((int) $property['id']),
-        'days' => HouseRepository::calendarDays((int) $property['id']),
+        'days' => HouseRepository::calendarDays((int) $property['id'], true),
         'feeds' => HouseRepository::feeds((int) $property['id']),
         'message' => $message,
         'message_tone' => $messageTone,
