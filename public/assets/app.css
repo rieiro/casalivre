@@ -4956,6 +4956,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     height: 34px;
     padding: var(--space-6) var(--space-8);
     box-sizing: border-box;
+    font-size: .85rem;
 }
 .ical-export-table td {
     vertical-align: middle;

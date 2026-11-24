@@ -928,6 +928,10 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertSame(1, preg_match('/\.cal-fields\s+input\s*\{[^}]*height:\s*(\d+px);/s', $css, $calFieldHeight));
         $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*height:\s*' . preg_quote($calFieldHeight[1], '/') . ';/s', $css);
 
+        // ... and its smaller text size too.
+        $this->assertSame(1, preg_match('/\.cal-fields\s+label\s*\{[^}]*font-size:\s*([0-9.]+rem);/s', $css, $calFieldFont));
+        $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*font-size:\s*' . preg_quote($calFieldFont[1], '/') . ';/s', $css);
+
         $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
         $this->assertStringContainsString("button.closest('tr')", $js);
     }
