@@ -34,19 +34,23 @@
         checkFlashAlerts();
     }
 
+    // Grupo deslizante (importar/exportar): o viewport tem altura fixa, então qualquer mudança de conteúdo
+    // (erro inline, rótulo obrigatório) precisa reajustá-la para não cortar campos.
+    function fitSyncGroup(element) {
+        const group = element.closest('[data-sync-tabs]');
+        if (!group) return;
+        const viewport = group.querySelector('.sync-add-viewport');
+        const activeName = group.getAttribute('data-sync-active') || 'import';
+        const activePanel = group.querySelector('[data-sync-panel="' + activeName + '"]');
+        if (viewport && activePanel) viewport.style.height = activePanel.offsetHeight + 'px';
+    }
+
     // Erro na tela (sem alert): mensagem da API (json.error) no topo do formulário e, por campo, ao lado do input
     // (json.erros = {campo: msg}, os mesmos nomes do formulário web).
-    function showError(form, e) {
-        form.querySelectorAll('[data-api-error]').forEach(el => el.remove());
-        form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
-        const box = document.createElement('p');
-        box.className = 'alert error';
-        box.setAttribute('data-api-error', '');
-        box.setAttribute('role', 'alert');
-        box.textContent = e.message;
-        const head = form.querySelector('h2');
-        if (head) head.after(box); else form.prepend(box);
+    // Devolve true quando a mensagem foi mostrada só ao lado do campo (formulário com data-field-errors-only).
+    function showFieldErrors(form, e) {
         const erros = (e.data && typeof e.data.erros === 'object' && e.data.erros) || {};
+        let shown = 0;
         Object.keys(erros).forEach(campo => {
             const input = form.querySelector('[name="' + CSS.escape(campo) + '"]');
             if (!input) return;
@@ -56,7 +60,28 @@
             msg.setAttribute('data-api-error', '');
             msg.textContent = String(erros[campo]);
             input.after(msg);
+            shown++;
         });
+        return shown;
+    }
+
+    function showError(form, e, fieldOnly) {
+        form.querySelectorAll('[data-api-error]').forEach(el => el.remove());
+        form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
+        const inline = showFieldErrors(form, e);
+        // O erro inline aumenta o formulário; reajusta o grupo antes de decidir onde mostrar a mensagem.
+        fitSyncGroup(form);
+        if (fieldOnly && inline > 0) {
+            return true;
+        }
+        const box = document.createElement('p');
+        box.className = 'alert error';
+        box.setAttribute('data-api-error', '');
+        box.setAttribute('role', 'alert');
+        box.textContent = e.message;
+        const head = form.querySelector('h2');
+        if (head) head.after(box); else form.prepend(box);
+        return false;
     }
 
     // Recarrega a página; o aviso (ok ou erro) vem do flash na sessão gravado pela API (sem ?msg= na URL).
@@ -118,8 +143,8 @@
                     reloadPage();
                     return;
                 }
-                showError(feedForm, e);
-                if (window.CL && typeof window.CL.toast === 'function') {
+                const inline = showError(feedForm, e, feedForm.hasAttribute('data-field-errors-only'));
+                if (!inline && window.CL && typeof window.CL.toast === 'function') {
                     CL.toast('error', 'Erro ao importar feed', e.message || 'Verifique o link informado.');
                 }
             }
@@ -203,14 +228,6 @@
             const platformSelect = exportForm.querySelector('[data-ical-export-platform]');
             const labelInput = exportForm.querySelector('input[name="label"]');
             const labelCaption = exportForm.querySelector('[data-ical-export-label-caption]');
-            const refreshSyncHeight = function () {
-                const group = exportForm.closest('[data-sync-tabs]');
-                if (!group) return;
-                const viewport = group.querySelector('.sync-add-viewport');
-                const activeName = group.getAttribute('data-sync-active') || 'import';
-                const activePanel = group.querySelector('[data-sync-panel="' + activeName + '"]');
-                if (viewport && activePanel) viewport.style.height = activePanel.offsetHeight + 'px';
-            };
             const syncExportLabelField = function () {
                 if (!platformSelect || !labelInput) return;
                 const required = ['cleaner', 'other'].includes(platformSelect.value);
@@ -223,7 +240,7 @@
                         ? (exportForm.dataset.labelRequired || '')
                         : (exportForm.dataset.labelOptional || '');
                 }
-                refreshSyncHeight();
+                fitSyncGroup(exportForm);
             };
             if (platformSelect) {
                 platformSelect.addEventListener('change', syncExportLabelField);

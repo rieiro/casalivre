@@ -247,6 +247,7 @@ $js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/calendar-3.js')
 t_ok(!str_contains($js, "searchParams.set('msg'") && !str_contains($js, "params.get('msg')"), 'JS: não usa mais ?msg= (recarrega e o aviso vem do flash)');
 
 echo "ajustes: URL do feed só https; array recusado (itens 9, 10)\n";
+t_ratelimit_reset();
 $antes = count($feeds());
 $m = c_mark($act);
 $bad = ['javascript:alert(1)', 'ftp://x.test/a.ics', 'file:///etc/passwd', 'http://x.test/a.ics', 'https:///a.ics', 'https://x.test/a b.ics', 'data:text/calendar,BEGIN', '//x.test/a.ics'];
@@ -338,5 +339,28 @@ $ical = (string) file_get_contents(CL_ROOT . '/src/Acoes/ICalImport.php');
 t_ok(str_contains($ical, 'TextoBruto::ok(') && str_contains($ical, 'CalendarSync::isHttpsUrl(') && !str_contains($ical, 'function https('), 'ICalImport usa TextoBruto e a regra https única do CalendarSync');
 $sync = (string) file_get_contents(CL_ROOT . '/src/CalendarSync.php');
 t_ok(!str_contains($sync, 'só http/https') && str_contains($sync, 'self::isHttpsUrl($url)'), 'CalendarSync: fetch usa isHttpsUrl e o comentário diz só https');
+
+echo "import: link público de outra plataforma mostra o erro só no campo\n";
+t_ratelimit_reset();
+$m = c_mark($act);
+$r = c_api('POST', $base, $api, [
+    'external_ical_url' => 'https://www.airbnb.com/calendar/ical/999.ics',
+    'feed_title' => 'Domínio',
+    'mode' => 'ota',
+    'platform' => 'airbnb',
+    'property_url' => 'https://www.booking.com/hotel/br/outra.html',
+    'consent' => '1',
+], $csrf, $jar);
+t_eq([422, ['property_url' => t('ota.err_domain')]], [$r['status'], $r['json']['erros'] ?? null], 'API: link público de outra plataforma -> 422 erros.property_url');
+t_eq([], c_codes($act, $m), 'API: link público recusado não grava');
+$js = (string) file_get_contents(CL_ROOT . '/public/assets/pages/calendar-3.js');
+t_ok(
+    str_contains($js, "feedForm.hasAttribute('data-field-errors-only')") && str_contains($js, 'if (!inline &&'),
+    'JS: erro do import por campo fica só abaixo do input (sem alerta no topo nem toast repetido)'
+);
+t_ok(
+    str_contains($js, 'function fitSyncGroup(') && str_contains($js, 'fitSyncGroup(form);'),
+    'JS: erro inline reajusta a altura do grupo para exibir todos os campos'
+);
 
 t_done();
