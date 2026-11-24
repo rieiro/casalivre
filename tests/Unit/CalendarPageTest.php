@@ -1206,4 +1206,192 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $this->assertStringContainsString('/ical/' . $openId . '/editar', $html);
         }
     }
+
+    public function testCalendarExportFormDisablesGeneratedOtaOptionsAndRequiresLabel(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $icalExportData = [
+            'settings' => ['ical_export_manual_blocks' => true, 'ical_export_imported_events' => false],
+            'exports' => [
+                [
+                    'id' => 81, 'target_platform' => 'airbnb', 'label' => null, 'token' => 'token-airbnb',
+                    'last_fetched_at' => null, 'last_fetched_label' => t('ical.never_accessed'),
+                    'stale' => false, 'created_at' => '2026-01-01 00:00:00',
+                ],
+                [
+                    'id' => 82, 'target_platform' => 'booking', 'label' => null, 'token' => 'token-booking',
+                    'last_fetched_at' => null, 'last_fetched_label' => t('ical.never_accessed'),
+                    'stale' => false, 'created_at' => '2026-01-01 00:00:00',
+                ],
+            ],
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertMatchesRegularExpression(
+            '/<option value="airbnb" disabled>Airbnb \(já gerado\)<\/option>/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/<option value="booking" disabled>Booking\.com \(já gerado\)<\/option>/',
+            $html
+        );
+        // The first available option is selected so the default is never a disabled OTA.
+        $this->assertStringContainsString('<option value="vrbo" selected>Vrbo</option>', $html);
+        // Vrbo is the first free OTA, so the label stays optional for that selection.
+        $this->assertMatchesRegularExpression('/<span data-ical-export-label-caption>Rótulo \(opcional\)<\/span>/', $html);
+        $this->assertMatchesRegularExpression(
+            '/<input name="label" maxlength="60" placeholder="Rótulo \(opcional\)">/',
+            $html
+        );
+        $this->assertStringContainsString('data-label-required="Rótulo (obrigatório)"', $html);
+        $this->assertStringContainsString('data-placeholder-required="Rótulo obrigatório (ex: Limpeza)"', $html);
+    }
+
+    public function testCalendarExportFormRequiresLabelWhenOnlyFlexibleOptionsRemain(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $exports = [];
+        foreach (['airbnb', 'booking', 'vrbo'] as $i => $platform) {
+            $exports[] = [
+                'id' => 90 + $i, 'target_platform' => $platform, 'label' => null, 'token' => 'token-' . $platform,
+                'last_fetched_at' => null, 'last_fetched_label' => t('ical.never_accessed'),
+                'stale' => false, 'created_at' => '2026-01-01 00:00:00',
+            ];
+        }
+        $icalExportData = [
+            'settings' => ['ical_export_manual_blocks' => true, 'ical_export_imported_events' => false],
+            'exports' => $exports,
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        foreach (['airbnb', 'booking', 'vrbo'] as $platform) {
+            $this->assertMatchesRegularExpression(
+                '/<option value="' . $platform . '" disabled>[^<]*\(já gerado\)<\/option>/',
+                $html
+            );
+        }
+        $this->assertStringContainsString('<option value="cleaner" selected>', $html);
+        $this->assertMatchesRegularExpression('/<span data-ical-export-label-caption>Rótulo \(obrigatório\)<\/span>/', $html);
+        $this->assertMatchesRegularExpression(
+            '/<input name="label" maxlength="60" placeholder="Rótulo obrigatório \(ex: Limpeza\)" required>/',
+            $html
+        );
+    }
+
+    public function testCalendarExportFormDisablesFlexibleOptionsAtFlexibleCap(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $exports = [];
+        for ($i = 0; $i < 5; $i++) {
+            $exports[] = [
+                'id' => 100 + $i,
+                'target_platform' => $i % 2 === 0 ? 'cleaner' : 'other',
+                'label' => 'Equipe ' . $i,
+                'token' => 'token-flex-' . $i,
+                'last_fetched_at' => null,
+                'last_fetched_label' => t('ical.never_accessed'),
+                'stale' => false,
+                'created_at' => '2026-01-01 00:00:00',
+            ];
+        }
+        $icalExportData = [
+            'settings' => ['ical_export_manual_blocks' => true, 'ical_export_imported_events' => false],
+            'exports' => $exports,
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertMatchesRegularExpression('/<option value="cleaner" disabled>/', $html);
+        $this->assertMatchesRegularExpression('/<option value="other" disabled>/', $html);
+        $this->assertStringContainsString('<option value="airbnb" selected>Airbnb</option>', $html);
+        $this->assertStringContainsString(e(t('ical.limit_flexible_hint')), $html);
+        $this->assertStringNotContainsString(e(t('ical.limit_total_hint')), $html);
+    }
+
+    public function testCalendarExportFormLocksWhenTotalCapIsReached(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $platforms = ['airbnb', 'booking', 'vrbo', 'cleaner', 'other', 'cleaner', 'other', 'cleaner', 'other', 'cleaner'];
+        $exports = [];
+        foreach ($platforms as $i => $platform) {
+            $exports[] = [
+                'id' => 200 + $i,
+                'target_platform' => $platform,
+                'label' => in_array($platform, ['cleaner', 'other'], true) ? 'Rótulo ' . $i : null,
+                'token' => 'token-cap-' . $i,
+                'last_fetched_at' => null,
+                'last_fetched_label' => t('ical.never_accessed'),
+                'stale' => false,
+                'created_at' => '2026-01-01 00:00:00',
+            ];
+        }
+        $icalExportData = [
+            'settings' => ['ical_export_manual_blocks' => true, 'ical_export_imported_events' => false],
+            'exports' => $exports,
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $formStart = strpos($html, 'data-ical-export-form');
+        $formEnd = $formStart === false ? false : strpos($html, '</form>', $formStart);
+        $this->assertNotFalse($formStart);
+        $this->assertNotFalse($formEnd);
+        $form = substr($html, (int) $formStart, (int) $formEnd - (int) $formStart);
+        $this->assertSame(5, substr_count($form, '<option value="'));
+        $this->assertSame(5, preg_match_all('/<option[^>]*\sdisabled>/', $form));
+        $this->assertStringContainsString('<select name="target_platform" data-ical-export-platform disabled>', $form);
+        $this->assertMatchesRegularExpression('/<input name="label"[^>]*\sdisabled>/', $form);
+        $this->assertMatchesRegularExpression('/<button class="primary" type="submit" disabled>/', $form);
+        $this->assertStringContainsString(e(t('ical.limit_total_hint')), $html);
+    }
 }

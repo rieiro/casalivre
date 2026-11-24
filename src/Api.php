@@ -743,6 +743,8 @@ function handle_api(string $path, string $method): void
                 (string) ($body['target_platform'] ?? ''),
                 isset($body['label']) ? (string) $body['label'] : null
             );
+        } catch (IcalExportConflictException $e) {
+            api_error(409, $e->getMessage());
         } catch (InvalidArgumentException $e) {
             api_error(422, $e->getMessage());
         }

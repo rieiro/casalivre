@@ -270,4 +270,163 @@ final class IcalExportServiceTest extends TestCase
         )->fetchAll(PDO::FETCH_COLUMN);
         $this->assertSame([str_repeat('a', 64), str_repeat('c', 64)], $rows);
     }
+
+    public function testDuplicateActiveOtaLinkIsRejectedUntilRevoked(): void
+    {
+        foreach (IcalExportService::OTA_PLATFORMS as $platform) {
+            $first = IcalExportService::createExport($this->propertyId, $this->userId, $platform);
+            try {
+                IcalExportService::createExport($this->propertyId, $this->userId, $platform);
+                $this->fail('a second active ' . $platform . ' link must be rejected');
+            } catch (IcalExportConflictException $e) {
+                $this->assertSame(t('ical.err_ota_duplicate'), $e->getMessage());
+            }
+
+            // The platform is matched case-insensitively.
+            try {
+                IcalExportService::createExport($this->propertyId, $this->userId, strtoupper($platform));
+                $this->fail('a duplicate link in uppercase must be rejected');
+            } catch (IcalExportConflictException $e) {
+                $this->assertSame(t('ical.err_ota_duplicate'), $e->getMessage());
+            }
+
+            $this->assertTrue(IcalExportService::revokeExport($this->propertyId, $this->userId, (int) $first['id']));
+            $second = IcalExportService::createExport($this->propertyId, $this->userId, $platform);
+            $this->assertSame($platform, $second['target_platform']);
+            $this->assertTrue(IcalExportService::revokeExport($this->propertyId, $this->userId, (int) $second['id']));
+        }
+
+        // Different OTAs coexist and revoking one leaves the other untouched.
+        $airbnb = IcalExportService::createExport($this->propertyId, $this->userId, 'airbnb');
+        $booking = IcalExportService::createExport($this->propertyId, $this->userId, 'booking');
+        $this->assertTrue(IcalExportService::revokeExport($this->propertyId, $this->userId, (int) $airbnb['id']));
+        $remaining = IcalExportService::listForProperty($this->propertyId)['exports'];
+        $this->assertCount(1, $remaining);
+        $this->assertSame((int) $booking['id'], $remaining[0]['id']);
+    }
+
+    public function testFlexibleLinksRequireLabelAndRespectFiveLinkCap(): void
+    {
+        foreach (IcalExportService::FLEXIBLE_PLATFORMS as $platform) {
+            foreach ([null, '   '] as $blankLabel) {
+                try {
+                    IcalExportService::createExport($this->propertyId, $this->userId, $platform, $blankLabel);
+                    $this->fail($platform . ' requires a non-empty label');
+                } catch (InvalidArgumentException $e) {
+                    $this->assertSame(t('ical.err_label_required'), $e->getMessage());
+                }
+            }
+        }
+
+        $ids = [];
+        for ($i = 0; $i < IcalExportService::MAX_FLEXIBLE_EXPORTS; $i++) {
+            $platform = $i % 2 === 0 ? 'cleaner' : 'other';
+            $created = IcalExportService::createExport($this->propertyId, $this->userId, $platform, '  Equipe ' . $i . '  ');
+            $this->assertSame('Equipe ' . $i, $created['label'], 'labels are trimmed');
+            $ids[] = (int) $created['id'];
+        }
+
+        try {
+            IcalExportService::createExport($this->propertyId, $this->userId, 'other', 'Equipe 6');
+            $this->fail('a sixth flexible link must be rejected');
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame(t('ical.err_max_flexible'), $e->getMessage());
+        }
+
+        $this->assertTrue(IcalExportService::revokeExport($this->propertyId, $this->userId, $ids[0]));
+        $replacement = IcalExportService::createExport($this->propertyId, $this->userId, 'cleaner', 'Equipe nova');
+        $this->assertSame('cleaner', $replacement['target_platform']);
+        $this->assertCount(
+            IcalExportService::MAX_FLEXIBLE_EXPORTS,
+            IcalExportService::listForProperty($this->propertyId)['exports']
+        );
+    }
+
+    public function testTotalActiveExportCapBlocksNewLinks(): void
+    {
+        $insert = $this->pdo->prepare(
+            'INSERT INTO property_ical_exports (property_id, target_platform, label, token) VALUES (?, ?, ?, ?)'
+        );
+        $seed = ['airbnb', 'booking', 'vrbo', 'cleaner', 'other', 'cleaner', 'other', 'cleaner', 'other', 'cleaner'];
+        foreach ($seed as $i => $platform) {
+            $label = in_array($platform, IcalExportService::FLEXIBLE_PLATFORMS, true) ? 'Rótulo ' . $i : null;
+            $insert->execute([$this->propertyId, $platform, $label, hash('sha256', 'total-cap-' . $i)]);
+        }
+        $this->assertCount(
+            IcalExportService::MAX_EXPORTS_PER_PROPERTY,
+            IcalExportService::listForProperty($this->propertyId)['exports']
+        );
+
+        foreach ([['cleaner', 'Extra'], ['booking', null]] as [$platform, $label]) {
+            try {
+                IcalExportService::createExport($this->propertyId, $this->userId, $platform, $label);
+                $this->fail('the 11th active link must be rejected');
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame(t('ical.err_max_total'), $e->getMessage());
+            }
+        }
+
+        $this->assertCount(
+            IcalExportService::MAX_EXPORTS_PER_PROPERTY,
+            IcalExportService::listForProperty($this->propertyId)['exports'],
+            'rejected attempts leave the existing links intact'
+        );
+
+        // Revoking an OTA link frees the slot and its platform for a new link.
+        $airbnbId = (int) $this->pdo->query(
+            'SELECT id FROM property_ical_exports WHERE property_id = ' . $this->propertyId
+            . " AND target_platform = 'airbnb' AND revoked_at IS NULL"
+        )->fetchColumn();
+        $this->assertTrue(IcalExportService::revokeExport($this->propertyId, $this->userId, $airbnbId));
+        $recreated = IcalExportService::createExport($this->propertyId, $this->userId, 'airbnb');
+        $this->assertSame('airbnb', $recreated['target_platform']);
+        $this->assertCount(
+            IcalExportService::MAX_EXPORTS_PER_PROPERTY,
+            IcalExportService::listForProperty($this->propertyId)['exports']
+        );
+    }
+
+    public function testPartialUniqueIndexBlocksRawDuplicateActiveOta(): void
+    {
+        $insert = $this->pdo->prepare(
+            'INSERT INTO property_ical_exports (property_id, target_platform, token, revoked_at) VALUES (?, ?, ?, ?)'
+        );
+        $insert->execute([$this->propertyId, 'airbnb', hash('sha256', 'uq-active'), null]);
+        $insert->execute([
+            $this->propertyId,
+            'airbnb',
+            hash('sha256', 'uq-revoked-1'),
+            gmdate('Y-m-d H:i:sP', $this->now - 86400),
+        ]);
+        $insert->execute([
+            $this->propertyId,
+            'airbnb',
+            hash('sha256', 'uq-revoked-2'),
+            gmdate('Y-m-d H:i:sP', $this->now - 7200),
+        ]);
+
+        // The partial unique index rejects a raw duplicate, bypassing the service checks.
+        $this->pdo->exec('SAVEPOINT uq_pie_active_ota_test');
+        try {
+            $insert->execute([$this->propertyId, 'airbnb', hash('sha256', 'uq-duplicate'), null]);
+            $this->fail('uq_pie_active_ota must reject a second active Airbnb link');
+        } catch (PDOException $e) {
+            $this->assertSame('23505', (string) $e->getCode());
+        }
+        $this->pdo->exec('ROLLBACK TO SAVEPOINT uq_pie_active_ota_test');
+
+        // Revoked rows are free to repeat the platform; revoking the active one frees the index slot.
+        $this->pdo->prepare(
+            'UPDATE property_ical_exports SET revoked_at = to_timestamp(?)
+              WHERE property_id = ? AND target_platform = ? AND revoked_at IS NULL'
+        )->execute([$this->now, $this->propertyId, 'airbnb']);
+        $insert->execute([$this->propertyId, 'airbnb', hash('sha256', 'uq-active-2'), null]);
+
+        $active = $this->pdo->prepare(
+            'SELECT count(*) FROM property_ical_exports WHERE property_id = ' . $this->propertyId
+            . ' AND target_platform = ? AND revoked_at IS NULL'
+        );
+        $active->execute(['airbnb']);
+        $this->assertSame(1, (int) $active->fetchColumn());
+    }
 }
