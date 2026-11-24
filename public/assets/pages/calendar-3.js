@@ -34,6 +34,17 @@
         checkFlashAlerts();
     }
 
+    // Grupo deslizante (importar/exportar): o viewport tem altura fixa, então qualquer mudança de conteúdo
+    // (erro inline, rótulo obrigatório) precisa reajustá-la para não cortar campos.
+    function fitSyncGroup(element) {
+        const group = element.closest('[data-sync-tabs]');
+        if (!group) return;
+        const viewport = group.querySelector('.sync-add-viewport');
+        const activeName = group.getAttribute('data-sync-active') || 'import';
+        const activePanel = group.querySelector('[data-sync-panel="' + activeName + '"]');
+        if (viewport && activePanel) viewport.style.height = activePanel.offsetHeight + 'px';
+    }
+
     // Erro na tela (sem alert): mensagem da API (json.error) no topo do formulário e, por campo, ao lado do input
     // (json.erros = {campo: msg}, os mesmos nomes do formulário web).
     // Devolve true quando a mensagem foi mostrada só ao lado do campo (formulário com data-field-errors-only).
@@ -58,6 +69,8 @@
         form.querySelectorAll('[data-api-error]').forEach(el => el.remove());
         form.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
         const inline = showFieldErrors(form, e);
+        // O erro inline aumenta o formulário; reajusta o grupo antes de decidir onde mostrar a mensagem.
+        fitSyncGroup(form);
         if (fieldOnly && inline > 0) {
             return true;
         }
@@ -215,14 +228,6 @@
             const platformSelect = exportForm.querySelector('[data-ical-export-platform]');
             const labelInput = exportForm.querySelector('input[name="label"]');
             const labelCaption = exportForm.querySelector('[data-ical-export-label-caption]');
-            const refreshSyncHeight = function () {
-                const group = exportForm.closest('[data-sync-tabs]');
-                if (!group) return;
-                const viewport = group.querySelector('.sync-add-viewport');
-                const activeName = group.getAttribute('data-sync-active') || 'import';
-                const activePanel = group.querySelector('[data-sync-panel="' + activeName + '"]');
-                if (viewport && activePanel) viewport.style.height = activePanel.offsetHeight + 'px';
-            };
             const syncExportLabelField = function () {
                 if (!platformSelect || !labelInput) return;
                 const required = ['cleaner', 'other'].includes(platformSelect.value);
@@ -235,7 +240,7 @@
                         ? (exportForm.dataset.labelRequired || '')
                         : (exportForm.dataset.labelOptional || '');
                 }
-                refreshSyncHeight();
+                fitSyncGroup(exportForm);
             };
             if (platformSelect) {
                 platformSelect.addEventListener('change', syncExportLabelField);

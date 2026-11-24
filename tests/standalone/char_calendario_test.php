@@ -358,5 +358,9 @@ t_ok(
     str_contains($js, "feedForm.hasAttribute('data-field-errors-only')") && str_contains($js, 'if (!inline &&'),
     'JS: erro do import por campo fica só abaixo do input (sem alerta no topo nem toast repetido)'
 );
+t_ok(
+    str_contains($js, 'function fitSyncGroup(') && str_contains($js, 'fitSyncGroup(form);'),
+    'JS: erro inline reajusta a altura do grupo para exibir todos os campos'
+);
 
 t_done();

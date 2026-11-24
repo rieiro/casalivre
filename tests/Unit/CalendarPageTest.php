@@ -755,6 +755,18 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('if (!inline &&', $js);
     }
 
+    public function testCalendarSyncGroupResizesSoInlineImportErrorIsFullyVisible(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+
+        // The sliding group has a fixed viewport height; inline errors must re-fit it so nothing is clipped.
+        $this->assertStringContainsString('function fitSyncGroup(', $js);
+        $this->assertStringContainsString('fitSyncGroup(form);', $js);
+        // Export label enforcement reuses the same fit helper (no duplicated resize logic).
+        $this->assertStringContainsString('fitSyncGroup(exportForm);', $js);
+        $this->assertStringNotContainsString('function refreshSyncHeight(', $js);
+    }
+
     public function testCalendarRendersRejectedOtaBadgeAndEscapedReviewNote(): void
     {
         $property = [
