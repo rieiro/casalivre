@@ -189,6 +189,34 @@ $ap2 = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'segunda aprovação é idempotente');
 t_eq('already_approved', $ap2['status'] ?? null, 'segunda aprovação devolve already_approved');
 
+echo "Model B: propriedade verificada e links públicos\n";
+$propStmt = db()->prepare('SELECT is_verified, verified_at FROM properties WHERE id = ?');
+$propStmt->execute([$owner['house_id']]);
+$propState = $propStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+t_eq(1, (int) ($propState['is_verified'] ?? 0), 'Airbnb verificado + Booking aprovado mantêm properties.is_verified = 1');
+t_ok(($propState['verified_at'] ?? null) !== null, 'properties.verified_at é preenchido');
+$publicResponse = t_http('GET', $base . '/api/imoveis/' . $owner['hash']);
+$publicJson = json_decode($publicResponse['body'], true) ?: [];
+t_eq(true, $publicJson['is_verified'] ?? null, 'API pública expõe is_verified = true');
+$publicPlatforms = array_map(
+    static fn (array $row): string => (string) ($row['platform'] ?? ''),
+    $publicJson['ota_verifications'] ?? []
+);
+t_eq(['booking', 'airbnb'], $publicPlatforms, 'API pública expõe só plataformas verificadas e aprovadas');
+$publicUrls = array_map(
+    static fn (array $row): string => (string) ($row['property_url'] ?? ''),
+    $publicJson['ota_verifications'] ?? []
+);
+t_eq(
+    ['https://www.booking.com/hotel/br/casa-route.html', 'https://www.airbnb.com/rooms/12345678'],
+    $publicUrls,
+    'API pública expõe o link validado do anúncio (sem token do iCal)'
+);
+t_ok(
+    !str_contains($publicResponse['body'], 'ROUTEBOOK') && !str_contains($publicResponse['body'], 'url_hash'),
+    'resposta pública sem token nem hash do iCal'
+);
+
 $creditsBeforeUnit = (int) db()->query('SELECT quote_credits FROM users WHERE id = ' . (int) $owner['user_id'])->fetchColumn();
 $booking2Url = 'https://ical.booking.com/v1/export?t=ROUTEBOOK2';
 $r = t_http('POST', $base . '/api/imoveis/' . $owner['hash'] . '/ical/importar', json_encode([
@@ -261,6 +289,12 @@ $r = t_http('POST', $adminBase . '/' . $vrboId . '/reject', '{"rejection_reason"
 $rj = json_decode($r['body'], true) ?: [];
 t_eq(200, $r['status'], 'admin rejeita com 200');
 t_eq('rejected', $rj['status'] ?? null, 'admin reject devolve rejected');
+$propStmt->execute([$owner['house_id']]);
+t_eq(
+    1,
+    (int) (($propStmt->fetch(PDO::FETCH_ASSOC) ?: [])['is_verified'] ?? 0),
+    'rejeitar o Vrbo não derruba o selo enquanto o Booking segue aprovado'
+);
 $r = t_http('POST', $adminBase . '/' . $vrboId . '/reject', '{"rejection_reason":"Again"}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);
 t_eq(409, $r['status'], 'rejeição repetida responde 409');
 $r = t_http('POST', $adminBase . '/' . $vrboId . '/approve', '{}', ['Content-Type: application/json', 'X-CSRF-Token: ' . $csrf], $jar);

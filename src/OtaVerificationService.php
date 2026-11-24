@@ -6,6 +6,7 @@ require_once __DIR__ . '/Db.php';
 require_once __DIR__ . '/I18n.php';
 require_once __DIR__ . '/ActivityLog.php';
 require_once __DIR__ . '/CalendarSync.php';
+require_once __DIR__ . '/OtaPlatformRegistry.php';
 
 /**
  * OTA listing ownership verification (iCal challenge-response).
@@ -29,6 +30,12 @@ final class OtaVerificationService
     public const PASSIVE_DOWNGRADE_FAIL_DAYS = 3;
     /** Retention of the daily-rate log; the 5/day cap only reads the last 24h. */
     public const CHALLENGE_ATTEMPTS_RETENTION_DAYS = 7;
+    /**
+     * SSOT: the condition every "does a verified major OTA feed exist for this property?" query
+     * reads. status/review_status alignment keeps hasVerifiedPlatform(), syncPropertyVerifiedStatus()
+     * and listVerifiedForProperty() on the same definition of "verified" (Model B).
+     */
+    private const VERIFIED_OTA_FEED_WHERE = "property_id = ? AND verification_mode = 'ota' AND source_platform IN ('airbnb', 'booking', 'vrbo') AND status = 'active' AND verified_at IS NOT NULL AND review_status = 'approved'";
 
     /** Test hook: fn(string $url, int $timeout): string. Null uses the SSRF-safe cURL transport. */
     public static ?Closure $httpTransport = null;
@@ -570,16 +577,17 @@ final class OtaVerificationService
     /**
      * Public, token-free view of the verified listings of a property.
      *
-     * @return list<array{platform: string, platform_label: string, title: string, verified_at: string}>
+     * Only approved and active OTA feeds are exposed; the iCal URL and its hash never leave the DB.
+     *
+     * @return list<array{platform: string, platform_label: string, title: string, verified_at: string, property_url: ?string}>
      */
     public static function listVerifiedForProperty(int $propertyId): array
     {
         $stmt = db()->prepare(
-            "SELECT source_platform, title, verified_at
+            'SELECT source_platform, title, verified_at, property_url
                FROM calendar_feeds
-              WHERE property_id = ? AND verification_mode = 'ota'
-                AND verified_at IS NOT NULL AND review_status = 'approved'
-              ORDER BY verified_at DESC, id DESC"
+              WHERE ' . self::VERIFIED_OTA_FEED_WHERE . '
+              ORDER BY verified_at DESC, id DESC'
         );
         $stmt->execute([$propertyId]);
         $out = [];
@@ -590,21 +598,141 @@ final class OtaVerificationService
                 'platform_label' => self::PLATFORM_LABELS[$platform] ?? $platform,
                 'title' => (string) ($row['title'] ?? ''),
                 'verified_at' => (string) $row['verified_at'],
+                'property_url' => self::publicListingUrl($platform, (string) ($row['property_url'] ?? '')),
             ];
         }
         return $out;
     }
 
+    /**
+     * Syncs the property-level verification flag from the OTA feeds (Model B).
+     *
+     * The property is verified while at least one major OTA feed is active, approved and verified.
+     * Must run inside the caller's transaction so the flag never disagrees with calendar_feeds.
+     */
+    public static function syncPropertyVerifiedStatus(PDO $pdo, int $propertyId): bool
+    {
+        $check = $pdo->prepare(
+            'SELECT 1 FROM calendar_feeds WHERE ' . self::VERIFIED_OTA_FEED_WHERE . ' LIMIT 1'
+        );
+        $check->execute([$propertyId]);
+        if ($check->fetchColumn() !== false) {
+            $pdo->prepare(
+                'UPDATE properties SET is_verified = 1, verified_at = COALESCE(verified_at, to_timestamp(?)) WHERE id = ?'
+            )->execute([self::now(), $propertyId]);
+            return true;
+        }
+        $pdo->prepare('UPDATE properties SET is_verified = 0 WHERE id = ?')->execute([$propertyId]);
+        return false;
+    }
+
+    /** Public listing URL of an OTA feed, validated against the platform allowlist; null when unsafe. */
+    private static function publicListingUrl(string $platform, string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+        try {
+            self::validateUrlHygiene($url);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if (!OtaPlatformRegistry::isPublicHost($platform, $host)) {
+            return null;
+        }
+        return self::normalizeUrl($url, true);
+    }
+
     public static function hasVerifiedPlatform(int $propertyId): bool
     {
         $stmt = db()->prepare(
-            "SELECT 1 FROM calendar_feeds
-              WHERE property_id = ? AND verification_mode = 'ota'
-                AND verified_at IS NOT NULL AND review_status = 'approved'
-              LIMIT 1"
+            'SELECT 1 FROM calendar_feeds WHERE ' . self::VERIFIED_OTA_FEED_WHERE . ' LIMIT 1'
         );
         $stmt->execute([$propertyId]);
         return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Property-level verification flag (Model B) for callers that already hold the property row
+     * and/or the verified feed list; zero extra SQL when the data is in hand.
+     *
+     * @param array<string, mixed> $property
+     * @param list<array<string, mixed>>|null $verifiedOrFeeds Rows from listVerifiedForProperty()
+     *                                                         or HouseRepository::feeds().
+     */
+    public static function isPropertyVerified(array $property, ?array $verifiedOrFeeds = null): bool
+    {
+        if ((int) ($property['is_verified'] ?? 0) === 1) {
+            return true;
+        }
+        if ($verifiedOrFeeds !== null) {
+            foreach ($verifiedOrFeeds as $feed) {
+                if (self::isVerifiedFeedRow($feed)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (array_key_exists('is_verified', $property) && (int) $property['is_verified'] === 0) {
+            return false;
+        }
+        return self::hasVerifiedPlatform((int) ($property['id'] ?? 0));
+    }
+
+    /**
+     * Presentational banner state for the calendar page (Model B).
+     *
+     * @param array<string, mixed> $property
+     * @param list<array<string, mixed>> $feeds HouseRepository::feeds() rows.
+     * @return array{is_verified: bool, remaining_labels: list<string>}
+     */
+    public static function propertyBannerState(array $property, array $feeds): array
+    {
+        $verifiedPlatforms = [];
+        foreach ($feeds as $feed) {
+            if (self::isVerifiedFeedRow($feed)) {
+                $verifiedPlatforms[self::rowPlatform($feed)] = true;
+            }
+        }
+        $remainingLabels = [];
+        foreach (array_keys(OtaPlatformRegistry::all()) as $platform) {
+            if (!isset($verifiedPlatforms[(string) $platform])) {
+                $remainingLabels[] = OtaPlatformRegistry::label((string) $platform);
+            }
+        }
+        return [
+            'is_verified' => self::isPropertyVerified($property, $feeds),
+            'remaining_labels' => $remainingLabels,
+        ];
+    }
+
+    /** Row platform: listVerifiedForProperty() exposes 'platform', HouseRepository::feeds() 'source_platform'. */
+    private static function rowPlatform(array $row): string
+    {
+        return strtolower((string) ($row['source_platform'] ?? $row['platform'] ?? ''));
+    }
+
+    /** @param array<string, mixed> $row */
+    private static function isVerifiedFeedRow(array $row): bool
+    {
+        if (!OtaPlatformRegistry::isAllowed(self::rowPlatform($row))) {
+            return false;
+        }
+        // listVerifiedForProperty() rows omit verification_mode (it is 'ota' there);
+        // HouseRepository::feeds() rows carry it, so a present non-'ota' mode excludes the row.
+        $mode = $row['verification_mode'] ?? null;
+        if ($mode !== null && strtolower((string) $mode) !== 'ota') {
+            return false;
+        }
+        if ((string) ($row['status'] ?? 'active') !== 'active') {
+            return false;
+        }
+        if (($row['verified_at'] ?? null) === null) {
+            return false;
+        }
+        return (string) ($row['review_status'] ?? 'approved') === 'approved';
     }
 
     /** Verification row restricted to a property (used by the API ownership check). */
@@ -1266,6 +1394,7 @@ final class OtaVerificationService
             $approvedRow = $approvedStmt->fetch(PDO::FETCH_ASSOC);
             $awarded = is_array($approvedRow)
                 && self::awardVerificationCreditsIfEligible(db(), $approvedRow, 'calendar_feeds');
+            self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_APPROVE, [
                 'imovel_id' => (int) $row['property_id'],
                 'plataforma' => (string) ($row['source_platform'] ?? 'other'),
@@ -1298,6 +1427,7 @@ final class OtaVerificationService
                         review_note = ?, status = 'error', verified_at = NULL, credits_awarded = FALSE
                   WHERE id = ?"
             )->execute([$adminId, self::now(), $note, $feedId]);
+            self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_REJECT, [
                 'imovel_id' => (int) $row['property_id'],
                 'plataforma' => (string) ($row['source_platform'] ?? 'other'),

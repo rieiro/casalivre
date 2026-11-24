@@ -145,7 +145,10 @@ CREATE TABLE IF NOT EXISTS properties (
     -- Place ID do Google Maps (New v1). Apenas o identificador; a reputação fica no cache efêmero abaixo.
     google_place_id TEXT NULL CHECK (google_place_id IS NULL OR google_place_id ~ '^[A-Za-z0-9_-]{10,128}$'),
     -- Grupo do imóvel: só muda com o aceite do dono (convite em group_property_invites).
-    group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
+    group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+    -- Schema 42 (Model B): selo "Propriedade Verificada" mantido em sincronia com os feeds OTA.
+    is_verified SMALLINT NOT NULL DEFAULT 0 CHECK (is_verified IN (0, 1)),
+    verified_at TIMESTAMPTZ NULL
 );
 
 -- Schema 34: cache efêmero (TTL máximo de 24h, ToS do Google) da reputação do Google Places.

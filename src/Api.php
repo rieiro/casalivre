@@ -378,6 +378,7 @@ function handle_api(string $path, string $method): void
             'checkin' => $checkin,
             'checkout' => $checkout,
         ]);
+        $otaVerifications = OtaVerificationService::listVerifiedForProperty($id);
         json_out(200, [
             'id' => property_ref($house),
             'title' => $house['title'],
@@ -407,7 +408,8 @@ function handle_api(string $path, string $method): void
                 isset($house['google_place_id']) ? (string) $house['google_place_id'] : null,
                 current_locale()
             ),
-            'ota_verifications' => OtaVerificationService::listVerifiedForProperty($id),
+            'ota_verifications' => $otaVerifications,
+            'is_verified' => OtaVerificationService::isPropertyVerified($house, $otaVerifications),
         ]);
     }
 

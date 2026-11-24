@@ -861,21 +861,33 @@
                         gi("prop.google_reviews_title", "Google Reviews") + " · " + gi("prop.google_attribution", "Powered by Google")));
             }
 
-            // 8c. OTA verified badge (partner platforms)
+            // 8c. OTA verified badge (partner platforms) — Model B: badge at property level, links only for approved feeds.
             const otaVerifiedList = Array.isArray(data.ota_verifications) ? data.ota_verifications : [];
             let otaCard = null;
-            if (otaVerifiedList.length > 0) {
+            if (Boolean(data.is_verified)) {
                 const oi18n = (page && page.i18n) || {};
                 const oi = function (key, fallback) {
                     return String(oi18n[key] || fallback);
                 };
-                const otaLabels = otaVerifiedList.map(function (v) {
+                const otaNodes = [];
+                otaVerifiedList.forEach(function (v, index) {
                     const platform = String((v && v.platform) || "");
-                    return oi("ota.platform_" + platform, String((v && v.platform_label) || platform));
+                    const label = oi("ota.platform_" + platform, String((v && v.platform_label) || platform));
+                    const url = String((v && v.property_url) || "");
+                    if (index > 0) otaNodes.push(document.createTextNode(" · "));
+                    if (!/^https:\/\/[^\s]+$/.test(url)) {
+                        otaNodes.push(document.createTextNode(label));
+                        return;
+                    }
+                    const link = el("a", { className: "prop-ota-platform-link" }, label);
+                    link.setAttribute("href", url);
+                    link.setAttribute("target", "_blank");
+                    link.setAttribute("rel", "noopener noreferrer");
+                    otaNodes.push(link);
                 });
                 otaCard = el("div", { className: "prop-view-card prop-ota-card" },
-                    el("span", { className: "prop-ota-badge" }, "✓ " + oi("ota.badge", "Anúncio Verificado em Plataformas Parceiras")),
-                    el("p", { className: "prop-ota-platforms" }, otaLabels.join(" · ")));
+                    el("span", { className: "prop-ota-badge" }, "✓ " + oi("ota.property_verified", "Propriedade Verificada")),
+                    (otaNodes.length > 0 ? el("p", { className: "prop-ota-platforms" }, ...otaNodes) : null));
             }
 
             // 9. Left Main Column

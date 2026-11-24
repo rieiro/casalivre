@@ -1135,6 +1135,7 @@ SQL;
                         'calendar_feeds'
                     );
                 }
+                OtaVerificationService::syncPropertyVerifiedStatus(db(), $propertyId);
             }
             $parsed = import_ics($propertyId, $ics);
             if (!isset($parsed['error'])) {
@@ -1204,12 +1205,16 @@ SQL;
             }
             $fail = (int) $row['passive_fail_count'] + 1;
             if ($fail >= OtaVerificationService::PASSIVE_DOWNGRADE_FAIL_DAYS) {
-                db()->prepare(
-                    "UPDATE calendar_feeds
-                        SET status = 'pending_verification', verified_at = NULL, passive_fail_count = ?,
-                            last_passive_check_at = to_timestamp(?)
-                      WHERE id = ?"
-                )->execute([$fail, $now, $feedId]);
+                $propertyId = (int) $row['property_id'];
+                Db::transactional(db(), static function () use ($fail, $now, $feedId, $propertyId): void {
+                    db()->prepare(
+                        "UPDATE calendar_feeds
+                            SET status = 'pending_verification', verified_at = NULL, passive_fail_count = ?,
+                                last_passive_check_at = to_timestamp(?)
+                          WHERE id = ?"
+                    )->execute([$fail, $now, $feedId]);
+                    OtaVerificationService::syncPropertyVerifiedStatus(db(), $propertyId);
+                });
                 ActivityLog::record(ActivityLog::OTA_VERIFY_DOWNGRADED, [
                     'imovel_id' => (int) $row['property_id'],
                     'plataforma' => (string) ($row['source_platform'] ?? 'other'),
