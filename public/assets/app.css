@@ -4953,6 +4953,9 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .ical-export-table .ical-export-input {
     width: 100%;
     max-width: 18ch;
+    height: 34px;
+    padding: var(--space-6) var(--space-8);
+    box-sizing: border-box;
 }
 .ical-export-table td {
     vertical-align: middle;
