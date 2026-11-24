@@ -11,7 +11,7 @@ $maxDay = max_calendar_day($property);
 $feeds = $feeds ?? [];
 require_once dirname(__DIR__) . '/src/IcalExportService.php';
 require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
-$icalExportData = IcalExportService::listForProperty((int) $property['id']);
+$icalExportData = $icalExportData ?? IcalExportService::listForProperty((int) $property['id']);
 $icalExportBase = request_base() . '/ical/export/';
 ?>
 <section class="wrap">
@@ -125,7 +125,7 @@ $icalExportBase = request_base() . '/ical/export/';
     </div>
     <div class="sync-board" id="sincronizar-calendario">
         <div class="panel">
-            <h2><?= e(t('cal.sync')) ?></h2>
+            <h3 class="sync-group-title"><?= e(t('cal.imported_calendars')) ?></h3>
             <div class="sync-scroll">
                 <table class="sync-table">
                     <thead>
@@ -293,132 +293,142 @@ $icalExportBase = request_base() . '/ical/export/';
                     </tbody>
                 </table>
             </div>
+            <h3 class="sync-group-title"><?= e(t('cal.exported_calendars')) ?></h3>
+            <div class="sync-scroll">
+                <table class="sync-table ical-export-table">
+                    <thead>
+                        <tr>
+                            <th><?= e(t('ical.col_platform')) ?></th>
+                            <th><?= e(t('ical.col_link')) ?></th>
+                            <th><?= e(t('cal.col_synced')) ?></th>
+                            <th><?= e(t('ical.col_actions')) ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($icalExportData['exports'] === []): ?>
+                            <tr><td colspan="4" class="muted"><?= e(t('ical.empty')) ?></td></tr>
+                        <?php endif; ?>
+                        <?php foreach ($icalExportData['exports'] as $icalExport): ?>
+                            <?php
+                            $icalPlatform = (string) $icalExport['target_platform'];
+                            $icalLink = $icalExportBase . $icalExport['token'] . '.ics';
+                            $icalFetchedAt = (string) ($icalExport['last_fetched_at'] ?? '');
+                            $icalFetched = $icalFetchedAt !== '' ? strtotime($icalFetchedAt . ' UTC') : false;
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong><?= e(t('ical.platform_' . $icalPlatform)) ?></strong>
+                                    <?php if ($icalExport['label'] !== null && $icalExport['label'] !== ''): ?>
+                                        <br><span class="muted fine"><?= e((string) $icalExport['label']) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="ical-export-link">
+                                        <input class="ical-export-input" readonly value="<?= e($icalLink) ?>" data-ical-export-link data-select-on-click>
+                                    </div>
+                                </td>
+                                <td>
+                                    <?= $icalFetched === false
+                                        ? '—'
+                                        : max(0, (int) floor((time() - $icalFetched) / 60)) . ' ' . e(t('cal.minutes_ago')) ?>
+                                </td>
+                                <td>
+                                    <div class="sync-actions">
+                                        <button class="primary" type="button" data-ical-export-copy><?= e(t('ical.copy')) ?></button>
+                                        <button class="danger" type="button" data-ical-export-revoke data-export-id="<?= (int) $icalExport['id'] ?>"><?= e(t('ical.revoke')) ?></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
         <?php
         $platformMeta = json_encode(OtaPlatformRegistry::uiMeta(), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT);
         ?>
-        <form class="panel" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
-            <h2><?= e(t('cal.add_feed')) ?></h2>
-            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-            <div class="feed-mode">
-                <label class="prop-checkbox-label">
-                    <input type="radio" name="mode" value="ota" checked data-feed-mode>
-                    <span><?= e(t('cal.mode_ota')) ?></span>
-                </label>
-                <label class="prop-checkbox-label">
-                    <input type="radio" name="mode" value="sync_only" data-feed-mode>
-                    <span><?= e(t('cal.mode_sync')) ?></span>
-                </label>
+        <div class="panel sync-add-group" data-sync-tabs data-sync-active="import">
+            <div class="sync-add-tabs" role="tablist" aria-label="<?= e(t('cal.sync')) ?>">
+                <button type="button" id="sync-tab-import" role="tab" aria-controls="sync-panel-import" aria-selected="true" class="is-on" data-sync-tab="import"><?= e(t('cal.sync_import_tab')) ?></button>
+                <button type="button" id="sync-tab-export" role="tab" aria-controls="sync-panel-export" aria-selected="false" data-sync-tab="export"><?= e(t('cal.sync_export_tab')) ?></button>
             </div>
-            <div data-ota-fields>
-                <label><?= e(t('cal.platform')) ?>
-                    <select name="platform" data-feed-platform <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                        <option value=""><?= e(t('cal.platform_select')) ?></option>
-                        <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
-                            <option value="<?= e($key) ?>"><?= e((string) $item['label']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <label><?= e(t('cal.property_url')) ?>
-                    <input name="property_url" data-feed-property-url maxlength="255" placeholder="<?= e(t('cal.property_url_placeholder')) ?>" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                </label>
-                <p class="muted fine" data-feed-helper><?= e(t('cal.ota_hint')) ?></p>
-                <label class="prop-checkbox-label">
-                    <input type="checkbox" name="consent" value="1" data-feed-consent <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-                    <span><?= e(t('cal.consent')) ?></span>
-                </label>
+            <div class="sync-add-viewport">
+                <div class="sync-add-track">
+                    <section class="sync-add-section" id="sync-panel-import" role="tabpanel" aria-labelledby="sync-tab-import" data-sync-panel="import">
+                        <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
+                            <h2><?= e(t('cal.sync_import_tab')) ?></h2>
+                            <p class="muted fine"><?= e(t('cal.import_hint')) ?></p>
+                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                            <input type="hidden" name="mode" value="ota">
+                            <label><?= e(t('cal.platform')) ?>
+                                <select name="platform" data-feed-platform required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                                    <option value=""><?= e(t('cal.platform_select')) ?></option>
+                                    <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
+                                        <option value="<?= e($key) ?>"><?= e((string) $item['label']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label><?= e(t('cal.property_url')) ?>
+                                <input name="property_url" data-feed-property-url maxlength="255" placeholder="<?= e(t('cal.property_url_placeholder')) ?>" required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                            </label>
+                            <p class="muted fine"><?= e(t('cal.ota_hint')) ?></p>
+                            <label class="prop-checkbox-label">
+                                <input type="checkbox" name="consent" value="1" data-feed-consent required <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                                <span><?= e(t('cal.consent')) ?></span>
+                            </label>
+                            <label><?= e(t('cal.feed_title')) ?>
+                                <input name="feed_title" maxlength="40" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                            </label>
+                            <label><?= e(t('cal.link')) ?>
+                                <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
+                            </label>
+                            <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.sync_import_tab')) ?></button>
+                            <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
+                        </form>
+                    </section>
+                    <section class="sync-add-section" id="sync-panel-export" role="tabpanel" aria-labelledby="sync-tab-export" data-sync-panel="export" aria-hidden="true" inert>
+                        <div class="ical-export-panel"
+                            data-ical-export
+                            data-saved="<?= e(t('ical.settings_saved')) ?>"
+                            data-copied="<?= e(t('ical.copied')) ?>"
+                            data-copy-error="<?= e(t('ical.copy_error')) ?>"
+                            data-revoke-confirm="<?= e(t('ical.revoke_confirm')) ?>"
+                            data-error-settings="<?= e(t('ical.error_settings')) ?>"
+                            data-error-create="<?= e(t('ical.error_create')) ?>"
+                            data-error-revoke="<?= e(t('ical.error_revoke')) ?>"
+                        >
+                            <h2><?= e(t('ical.export_title')) ?></h2>
+                            <p class="muted fine"><?= e(t('ical.export_subtitle')) ?></p>
+
+                            <div class="ical-export-settings">
+                                <label class="prop-checkbox-label">
+                                    <input type="checkbox" value="1" data-ical-export-setting="manual"<?= $icalExportData['settings']['ical_export_manual_blocks'] ? ' checked' : '' ?>>
+                                    <span><?= e(t('ical.manual_blocks')) ?></span>
+                                </label>
+                                <label class="prop-checkbox-label">
+                                    <input type="checkbox" value="1" data-ical-export-setting="imported"<?= $icalExportData['settings']['ical_export_imported_events'] ? ' checked' : '' ?>>
+                                    <span><?= e(t('ical.imported_events')) ?></span>
+                                </label>
+                                <p class="muted fine"><?= e(t('ical.imported_hint')) ?></p>
+                            </div>
+
+                            <form class="ical-export-form" data-ical-export-form>
+                                <label><?= e(t('ical.platform')) ?>
+                                    <select name="target_platform">
+                                        <?php foreach (IcalExportService::PLATFORMS as $icalPlatform): ?>
+                                            <option value="<?= e($icalPlatform) ?>"><?= e(t('ical.platform_' . $icalPlatform)) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label><?= e(t('ical.label')) ?>
+                                    <input name="label" maxlength="60" placeholder="<?= e(t('ical.label')) ?>">
+                                </label>
+                                <button class="primary" type="submit"><?= e(t('ical.generate')) ?></button>
+                            </form>
+                        </div>
+                    </section>
+                </div>
             </div>
-            <label><?= e(t('cal.feed_title')) ?>
-                <input name="feed_title" maxlength="40" placeholder="Booking" <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-            </label>
-            <label><?= e(t('cal.link')) ?>
-                <input name="external_ical_url" data-feed-ical placeholder="https://ical.booking.com/v1/export?t=..." <?= count($feeds) >= 5 ? 'disabled' : '' ?>>
-            </label>
-            <p class="muted fine" data-sync-hint hidden><?= e(t('cal.sync_only_hint')) ?></p>
-            <button class="primary is-off" type="submit" data-feed-add disabled><?= e(t('cal.add_feed')) ?></button>
-            <p class="muted fine"><?= e(t('cal.sync_hint')) ?></p>
-        </form>
-    </div>
-    <div
-        class="panel mt-16 ical-export-panel"
-        data-ical-export
-        data-saved="<?= e(t('ical.settings_saved')) ?>"
-        data-copied="<?= e(t('ical.copied')) ?>"
-        data-copy-error="<?= e(t('ical.copy_error')) ?>"
-        data-revoke-confirm="<?= e(t('ical.revoke_confirm')) ?>"
-        data-error-settings="<?= e(t('ical.error_settings')) ?>"
-        data-error-create="<?= e(t('ical.error_create')) ?>"
-        data-error-revoke="<?= e(t('ical.error_revoke')) ?>"
-    >
-        <h2><?= e(t('ical.export_title')) ?></h2>
-        <p class="muted fine"><?= e(t('ical.export_subtitle')) ?></p>
-
-        <div class="ical-export-settings">
-            <label class="prop-checkbox-label">
-                <input type="checkbox" value="1" data-ical-export-setting="manual"<?= $icalExportData['settings']['ical_export_manual_blocks'] ? ' checked' : '' ?>>
-                <span><?= e(t('ical.manual_blocks')) ?></span>
-            </label>
-            <label class="prop-checkbox-label">
-                <input type="checkbox" value="1" data-ical-export-setting="imported"<?= $icalExportData['settings']['ical_export_imported_events'] ? ' checked' : '' ?>>
-                <span><?= e(t('ical.imported_events')) ?></span>
-            </label>
-            <p class="muted fine"><?= e(t('ical.imported_hint')) ?></p>
-        </div>
-
-        <form class="ical-export-form" data-ical-export-form>
-            <label><?= e(t('ical.platform')) ?>
-                <select name="target_platform">
-                    <?php foreach (IcalExportService::PLATFORMS as $icalPlatform): ?>
-                        <option value="<?= e($icalPlatform) ?>"><?= e(t('ical.platform_' . $icalPlatform)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label><?= e(t('ical.label')) ?>
-                <input name="label" maxlength="60" placeholder="<?= e(t('ical.label')) ?>">
-            </label>
-            <button class="primary" type="submit"><?= e(t('ical.generate')) ?></button>
-        </form>
-
-        <div class="sync-scroll">
-            <table class="sync-table ical-export-table">
-                <thead>
-                    <tr>
-                        <th><?= e(t('ical.col_platform')) ?></th>
-                        <th><?= e(t('ical.col_link')) ?></th>
-                        <th><?= e(t('ical.col_last')) ?></th>
-                        <th><?= e(t('ical.col_actions')) ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($icalExportData['exports'] === []): ?>
-                        <tr><td colspan="4" class="muted"><?= e(t('ical.empty')) ?></td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($icalExportData['exports'] as $icalExport): ?>
-                        <?php
-                        $icalPlatform = (string) $icalExport['target_platform'];
-                        $icalLink = $icalExportBase . $icalExport['token'] . '.ics';
-                        ?>
-                        <tr>
-                            <td>
-                                <strong><?= e(t('ical.platform_' . $icalPlatform)) ?></strong>
-                                <?php if ($icalExport['label'] !== null && $icalExport['label'] !== ''): ?>
-                                    <br><span class="muted fine"><?= e((string) $icalExport['label']) ?></span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <div class="ical-export-link">
-                                    <input readonly value="<?= e($icalLink) ?>" data-ical-export-link data-select-on-click>
-                                    <button class="primary" type="button" data-ical-export-copy><?= e(t('ical.copy')) ?></button>
-                                </div>
-                            </td>
-                            <td class="<?= $icalExport['stale'] ? 'ical-export-stale' : '' ?>"><?= e((string) $icalExport['last_fetched_label']) ?></td>
-                            <td>
-                                <button class="danger" type="button" data-ical-export-revoke data-export-id="<?= (int) $icalExport['id'] ?>"><?= e(t('ical.revoke')) ?></button>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
         </div>
     </div>
     <?php if (is_array($restore ?? null)): ?>

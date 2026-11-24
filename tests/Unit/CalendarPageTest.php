@@ -576,20 +576,104 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
+        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; it starts with the imported calendars group.
         $this->assertMatchesRegularExpression(
-            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h2>/s',
+            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
             $html
         );
+        $this->assertStringNotContainsString('<h2>' . e(t('cal.sync')) . '</h2>', $html);
 
         $start = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
         $this->assertNotFalse($start);
-        $this->assertSame(1, preg_match('/<div\s+class="panel mt-16 ical-export-panel"/', $html, $m, PREG_OFFSET_CAPTURE, $start));
-        $slice = substr($html, $start, (int) $m[0][1] - $start);
+        $end = strrpos($html, '</section>');
+        $this->assertNotFalse($end);
+        $slice = substr($html, $start, $end - $start);
 
-        $this->assertStringContainsString('class="sync-table"', $slice);
+        $this->assertSame(2, substr_count($slice, 'class="sync-table'));
         $this->assertStringContainsString('data-feed-form', $slice);
+        $this->assertStringContainsString('data-ical-export', $slice);
+        $this->assertStringContainsString('data-sync-tabs', $slice);
         $this->assertSame(substr_count($slice, '<div'), substr_count($slice, '</div>'), 'sync-board must have balanced div tags');
-        $this->assertMatchesRegularExpression('/<\/form>\s*<\/div>\s*<div\s+class="panel mt-16 ical-export-panel"/s', $html);
+    }
+
+    public function testCalendarSyncSectionMirrorsTopLayoutWithGroupedTablesAndSlidingTabs(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 71,
+            'title' => 'Airbnb',
+            'url' => 'https://www.airbnb.com/••••',
+            'status' => 'active',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+            'fail_count' => 0,
+            'stopped' => false,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // The bottom half reuses the top half columns (calendar board and sync board share the grid).
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.cal-board\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s*minmax\(260px,\s*\.75fr\)/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-board\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s*minmax\(260px,\s*\.75fr\)/s', $css);
+
+        $boardPos = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
+        $importedPos = strpos($html, e(t('cal.imported_calendars')));
+        $exportedPos = strpos($html, e(t('cal.exported_calendars')));
+        $tabsPos = strpos($html, 'data-sync-tabs');
+        $this->assertNotFalse($boardPos);
+        $this->assertNotFalse($importedPos);
+        $this->assertNotFalse($exportedPos);
+        $this->assertNotFalse($tabsPos);
+        $this->assertLessThan($tabsPos, $importedPos, 'imported calendars table belongs to the left panel');
+        $this->assertLessThan($tabsPos, $exportedPos, 'exported calendars table belongs to the left panel');
+
+        // Left side: a single element group holding both tables.
+        $left = substr($html, $boardPos, $tabsPos - $boardPos);
+        $this->assertSame(2, substr_count($left, 'class="sync-table'));
+        $this->assertStringContainsString('ical-export-table', $left);
+        $this->assertStringContainsString(e(t('ical.empty')), $left);
+        $this->assertStringNotContainsString('data-ical-export-form', $left);
+
+        // Right side: sliding group with the import and export sections for adding syncs.
+        $this->assertMatchesRegularExpression('/<div class="panel sync-add-group"[^>]*data-sync-tabs[^>]*>/', $html);
+        $this->assertStringContainsString('data-sync-tab="import"', $html);
+        $this->assertStringContainsString('data-sync-tab="export"', $html);
+        $this->assertStringContainsString('data-sync-panel="import"', $html);
+        $this->assertStringContainsString('data-sync-panel="export"', $html);
+        $this->assertMatchesRegularExpression('/data-sync-panel="import"[^>]*>.*?data-feed-form.*?data-sync-panel="export"[^>]*>.*?data-ical-export/s', $html);
+        $this->assertSame('Importar calendário', t('cal.sync_import_tab'));
+        $this->assertSame('Exportar calendário', t('cal.sync_export_tab'));
+        $this->assertSame('Calendários importados', t('cal.imported_calendars'));
+        $this->assertSame('Calendários exportados', t('cal.exported_calendars'));
+
+        // Sliding behaviour and mobile stacking.
+        $this->assertStringContainsString('.sync-add-track', $css);
+        $this->assertMatchesRegularExpression('/\[data-sync-active="export"\]\s+\.sync-add-track\s*\{[^}]*transform:\s*translateX\(-100%\)/s', $css);
+        $this->assertMatchesRegularExpression('/@media\s*\(max-width:\s*800px\).*?\.sync-add-group\s*\{\s*position:\s*static;/s', $css);
+
+        // Both left-pane tables center their columns and fields.
+        $this->assertMatchesRegularExpression('/\.sync-table\s+th,\s*\.sync-table\s+td\s*\{[^}]*text-align:\s*center;/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-link\s*\{[^}]*justify-content:\s*center;/s', $css);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('data-sync-tabs', $js);
+        $this->assertStringContainsString('data-sync-panel', $js);
+        // Copy/revoke handlers follow the exported links moved to the left group.
+        $this->assertStringContainsString("document.querySelectorAll('[data-ical-export-copy]')", $js);
+        $this->assertStringContainsString("document.querySelectorAll('[data-ical-export-revoke]')", $js);
     }
 
     public function testCalendarRendersPlatformBoundOtaFormAndPendingReviewLock(): void
@@ -634,7 +718,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString('name="property_url"', $html);
         $this->assertStringContainsString('name="consent"', $html);
         $this->assertStringContainsString('data-platform-meta', $html);
-        $this->assertStringContainsString('feed-mode', $html);
+        // Updated: 2026-11 - The verify-and-sync choice is fixed; users can no longer pick sync-only mode.
+        $this->assertStringContainsString('<input type="hidden" name="mode" value="ota">', $html);
+        $this->assertStringNotContainsString('data-feed-mode', $html);
         $this->assertStringContainsString('sync-platform', $html);
         $this->assertStringContainsString(t('cal.review_pending'), $html);
         // Updated: 2026-11 - Booking/Vrbo links stay locked while pending_review until admin decision.
@@ -779,5 +865,164 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
 
         $this->assertStringNotContainsString('admin-alert-banner', $html);
         $this->assertStringContainsString('Revisão de Verificações OTA', $html);
+    }
+
+    public function testExportedCalendarRowsFollowImportTableFormatAndShowLastSync(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $icalExportData = [
+            'settings' => [
+                'ical_export_manual_blocks' => true,
+                'ical_export_imported_events' => false,
+            ],
+            'exports' => [
+                [
+                    'id' => 81,
+                    'target_platform' => 'booking',
+                    'label' => 'Casa Teste',
+                    'token' => 'token-ativo',
+                    'last_fetched_at' => null,
+                    'last_fetched_label' => t('ical.never_accessed'),
+                    'stale' => false,
+                    'created_at' => '2026-01-01 00:00:00',
+                ],
+                [
+                    'id' => 82,
+                    'target_platform' => 'airbnb',
+                    'label' => null,
+                    'token' => 'token-antigo',
+                    'last_fetched_at' => '2026-01-01 00:00:00',
+                    'last_fetched_label' => t('ical.stale'),
+                    'stale' => true,
+                    'created_at' => '2026-01-01 00:00:00',
+                ],
+            ],
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Updated: 2026-11 - Export status column now copies the imported table's Last sync format (plain minutes ago).
+        $this->assertStringContainsString(t('cal.col_synced'), $html);
+        $this->assertStringNotContainsString('sync-badge is-active', $html);
+        $this->assertStringNotContainsString('sync-badge is-stale', $html);
+        $this->assertMatchesRegularExpression('/<td>\s*—\s*<\/td>/', $html);
+        $this->assertStringContainsString(t('cal.minutes_ago'), $html);
+        $this->assertStringContainsString('class="ical-export-input"', $html);
+
+        // Copy and revoke share the same action group used by the imported table.
+        $this->assertMatchesRegularExpression('/<div class="sync-actions">\s*<button[^>]*data-ical-export-copy[^>]*>.*?<\/button>\s*<button[^>]*data-ical-export-revoke/s', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*max-width:\s*\d+ch;/s', $css);
+        $this->assertStringNotContainsString('.sync-badge.is-stale', $css);
+
+        // The iCal link input copies the price/min-nights field height from the calendar editor.
+        $this->assertSame(1, preg_match('/\.cal-fields\s+input\s*\{[^}]*height:\s*(\d+px);/s', $css, $calFieldHeight));
+        $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*height:\s*' . preg_quote($calFieldHeight[1], '/') . ';/s', $css);
+
+        // ... and its smaller text size too.
+        $this->assertSame(1, preg_match('/\.cal-fields\s+label\s*\{[^}]*font-size:\s*([0-9.]+rem);/s', $css, $calFieldFont));
+        $this->assertMatchesRegularExpression('/\.ical-export-table\s+\.ical-export-input\s*\{[^}]*font-size:\s*' . preg_quote($calFieldFont[1], '/') . ';/s', $css);
+
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString("button.closest('tr')", $js);
+    }
+
+    public function testCalendarImportSectionUsesImportCalendarHeadingAndHint(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertSame('Importar calendário', t('cal.sync_import_tab'));
+        $this->assertSame('Importe o calendário de outras plataformas para evitar reservas duplicadas.', t('cal.import_hint'));
+
+        $start = strpos($html, 'data-sync-panel="import"');
+        $end = strpos($html, 'data-sync-panel="export"');
+        $this->assertNotFalse($start);
+        $this->assertNotFalse($end);
+        $slice = substr($html, $start, $end - $start);
+
+        $this->assertStringContainsString('<h2>' . e(t('cal.sync_import_tab')) . '</h2>', $slice);
+        $this->assertStringContainsString(e(t('cal.import_hint')), $slice);
+        $this->assertStringNotContainsString(e(t('cal.add_feed')), $slice);
+        $this->assertStringContainsString('data-feed-add', $slice);
+    }
+
+    public function testSyncImportUsesFixedVerifyModeAndEliminatesBlankSpace(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Verify and sync is the only mode; it is submitted as a hidden field.
+        $this->assertStringContainsString('<input type="hidden" name="mode" value="ota">', $html);
+        $this->assertStringNotContainsString('data-feed-mode', $html);
+        $this->assertStringNotContainsString('value="sync_only"', $html);
+        $this->assertStringNotContainsString('data-ota-fields', $html);
+        $this->assertStringNotContainsString('data-sync-hint', $html);
+
+        $formJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar.js');
+        $this->assertStringNotContainsString('data-feed-mode', $formJs);
+        $this->assertStringNotContainsString('sync_only', $formJs);
+        $this->assertStringContainsString('consent.checked', $formJs);
+        // The title placeholder follows the selected platform instead of a fixed Booking label.
+        $this->assertStringNotContainsString('placeholder="Booking"', $html);
+        $this->assertStringContainsString("title.placeholder = item.label || ''", $formJs);
+
+        // Title is optional for enabling the button and is auto-filled from the selected platform.
+        $this->assertStringNotContainsString("&& title.value.trim() !== ''", $formJs);
+        $this->assertStringContainsString("title.value = item.label || ''", $formJs);
+        $this->assertStringContainsString("if (title.value.trim() === '')", $formJs);
+        $this->assertStringContainsString("title.value = item && item.label ? item.label : ''", $formJs);
+
+        // Sliding group keeps only the active section height and the form uses the grid gap for spacing.
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/calendar-3.js');
+        $this->assertStringContainsString('sync-add-viewport', $js);
+        $this->assertStringContainsString('viewport.style.height = active.offsetHeight', $js);
+        $this->assertStringContainsString("mode: data.mode || 'ota'", $js);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.sync-add-track\s*\{[^}]*align-items:\s*start;/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-viewport\s*\{[^}]*transition:\s*height/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-form\s+h2\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-add-form\s+p\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertStringNotContainsString('.feed-mode', $css);
     }
 }

@@ -104,7 +104,7 @@
                     body: {
                         external_ical_url: data.external_ical_url || '',
                         feed_title: data.feed_title || '',
-                        mode: data.mode || 'sync_only',
+                        mode: data.mode || 'ota',
                         platform: data.platform || '',
                         property_url: data.property_url || '',
                         consent: data.consent || ''
@@ -171,12 +171,12 @@
 
     // Exportação iCal por plataforma: toggles, geração, cópia e revogação.
     const icalExport = document.querySelector('[data-ical-export]');
+    const exportToast = function (type, text) {
+        if (window.CL && typeof CL.toast === 'function') {
+            CL.toast(type, type === 'error' ? 'Atenção' : 'Exportação iCal', String(text || ''));
+        }
+    };
     if (icalExport) {
-        const exportToast = function (type, text) {
-            if (window.CL && typeof CL.toast === 'function') {
-                CL.toast(type, type === 'error' ? 'Atenção' : 'Exportação iCal', String(text || ''));
-            }
-        };
         const manual = icalExport.querySelector('[data-ical-export-setting="manual"]');
         const imported = icalExport.querySelector('[data-ical-export-setting="imported"]');
         const saveSettings = async function () {
@@ -220,46 +220,89 @@
                 }
             });
         }
-
-        icalExport.querySelectorAll('[data-ical-export-copy]').forEach(function (button) {
-            button.addEventListener('click', async function () {
-                const input = button.closest('.ical-export-link')?.querySelector('[data-ical-export-link]');
-                if (!input) return;
-                try {
-                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                        await navigator.clipboard.writeText(input.value);
-                    } else {
-                        input.select();
-                        document.execCommand('copy');
-                    }
-                    exportToast('success', icalExport.dataset.copied || '');
-                } catch (e) {
-                    exportToast('error', icalExport.dataset.copyError || '');
-                }
-            });
-        });
-
-        icalExport.querySelectorAll('[data-ical-export-revoke]').forEach(function (button) {
-            button.addEventListener('click', async function () {
-                const message = icalExport.dataset.revokeConfirm || '';
-                const confirmed = (window.CL && typeof CL.confirm === 'function')
-                    ? await CL.confirm({ title: 'Revogar', message: message, confirmText: 'Revogar', cancelText: 'Cancelar', danger: true })
-                    : confirm(message);
-                if (!confirmed) return;
-                button.disabled = true;
-                try {
-                    await CL.api('/api/imoveis/' + ref + '/ical-exports/' + button.getAttribute('data-export-id'), {
-                        method: 'DELETE',
-                        error: icalExport.dataset.errorRevoke || ''
-                    });
-                    window.location.reload();
-                } catch (e) {
-                    exportToast('error', (e && e.message) || icalExport.dataset.errorRevoke || '');
-                    button.disabled = false;
-                }
-            });
-        });
     }
+
+    // Os links exportados ficam no grupo da esquerda; cópia e revogação valem para a página toda.
+    document.querySelectorAll('[data-ical-export-copy]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            const input = button.closest('tr')?.querySelector('[data-ical-export-link]');
+            if (!input) return;
+            try {
+                if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(input.value);
+                } else {
+                    input.select();
+                    document.execCommand('copy');
+                }
+                exportToast('success', (icalExport && icalExport.dataset.copied) || '');
+            } catch (e) {
+                exportToast('error', (icalExport && icalExport.dataset.copyError) || '');
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-ical-export-revoke]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            const message = (icalExport && icalExport.dataset.revokeConfirm) || '';
+            const confirmed = (window.CL && typeof CL.confirm === 'function')
+                ? await CL.confirm({ title: 'Revogar', message: message, confirmText: 'Revogar', cancelText: 'Cancelar', danger: true })
+                : confirm(message);
+            if (!confirmed) return;
+            button.disabled = true;
+            try {
+                await CL.api('/api/imoveis/' + ref + '/ical-exports/' + button.getAttribute('data-export-id'), {
+                    method: 'DELETE',
+                    error: (icalExport && icalExport.dataset.errorRevoke) || ''
+                });
+                window.location.reload();
+            } catch (e) {
+                exportToast('error', (e && e.message) || (icalExport && icalExport.dataset.errorRevoke) || '');
+                button.disabled = false;
+            }
+        });
+    });
+
+    // Grupo deslizante: alterna as seções de importar e exportar calendário.
+    document.querySelectorAll('[data-sync-tabs]').forEach(function (group) {
+        const buttons = group.querySelectorAll('[data-sync-tab]');
+        const panels = group.querySelectorAll('[data-sync-panel]');
+        const viewport = group.querySelector('.sync-add-viewport');
+        function current() {
+            return group.getAttribute('data-sync-active') || 'import';
+        }
+        function fit(name) {
+            if (!viewport) return;
+            const active = group.querySelector('[data-sync-panel="' + name + '"]');
+            if (active) viewport.style.height = active.offsetHeight + 'px';
+        }
+        function activate(name) {
+            group.setAttribute('data-sync-active', name);
+            buttons.forEach(function (button) {
+                const on = button.getAttribute('data-sync-tab') === name;
+                button.classList.toggle('is-on', on);
+                button.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            panels.forEach(function (panel) {
+                const on = panel.getAttribute('data-sync-panel') === name;
+                panel.setAttribute('aria-hidden', on ? 'false' : 'true');
+                if (on) {
+                    panel.removeAttribute('inert');
+                } else {
+                    panel.setAttribute('inert', '');
+                }
+            });
+            fit(name);
+        }
+        buttons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                activate(button.getAttribute('data-sync-tab') || 'import');
+            });
+        });
+        window.addEventListener('resize', function () {
+            fit(current());
+        });
+        activate(current());
+    });
 
     // Verificar a titularidade de um feed iCal (desafio unificado no calendário).
     document.querySelectorAll('form[action*="/ical/"][action*="/verificar"]').forEach(function (form) {

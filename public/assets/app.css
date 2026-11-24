@@ -304,9 +304,24 @@ footer { padding: var(--space-16); }
 .sync-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); margin-top: var(--space-18); align-items: start; }
 .sync-board .panel { border-radius: var(--radius-12); margin: 0; }
 .sync-board .panel:first-child { padding: var(--space-16) var(--space-18) var(--space-20); }
+.sync-group-title { margin: var(--space-4) 0 0; font-size: 1rem; }
+.sync-group-title + .sync-scroll { margin-top: var(--space-6); }
+.sync-add-group { position: sticky; top: 16px; padding: var(--space-16); }
+.sync-add-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+.sync-add-tabs button { min-height: 36px; padding: var(--space-6) var(--space-4); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--radius-8); font-size: .82rem; font-weight: 600; cursor: pointer; }
+.sync-add-tabs button.is-on { background: var(--brand); color: var(--surface); border-color: var(--brand); }
+.sync-add-viewport { overflow: hidden; transition: height 250ms ease; }
+.sync-add-track { display: grid; grid-template-columns: repeat(2, 100%); align-items: start; transition: transform 250ms ease; }
+.sync-add-group[data-sync-active="export"] .sync-add-track { transform: translateX(-100%); }
+.sync-add-section { min-width: 0; }
+.sync-add-section[inert] { pointer-events: none; }
+.sync-add-form { display: grid; gap: var(--space-10); }
+.sync-add-form h2 { margin: 0; }
+.sync-add-form p { margin: 0; }
+.sync-add-group .ical-export-form { grid-template-columns: 1fr; }
 .sync-scroll { overflow-x: auto; }
 .sync-table { width: 100%; border-collapse: collapse; }
-.sync-table th, .sync-table td { text-align: left; padding: var(--space-8) var(--space-10); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.sync-table th, .sync-table td { text-align: center; padding: var(--space-8) var(--space-10); border-bottom: 1px solid var(--line); vertical-align: middle; }
 .sync-table th { font-size: .85rem; }
 .sync-url { display: block; margin-top: var(--space-2); font-size: .8rem; overflow-wrap: anywhere; }
 .sync-table form { margin: 0; }
@@ -364,6 +379,9 @@ footer { padding: var(--space-16); }
     .sync-board .panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
     .sync-board .panel:first-child { padding: var(--space-10) var(--space-12); }
     .sync-board h2 { font-size: 1rem; margin: 0 0 var(--space-8); }
+    .sync-group-title { font-size: .95rem; }
+    .sync-add-group { position: static; }
+    .sync-add-tabs button { min-height: 32px; font-size: .78rem; }
     .sync-table { width: 100%; font-size: .78rem; }
     .sync-table th, .sync-table td { padding: var(--space-6) var(--space-4); }
     .sync-table th { font-size: .72rem; }
@@ -4926,15 +4944,20 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 .ical-export-link {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
 }
 .ical-export-link input {
     flex: 1 1 auto;
     min-width: 0;
 }
-.ical-export-stale {
-    color: var(--danger);
-    font-weight: 600;
+.ical-export-table .ical-export-input {
+    width: 100%;
+    max-width: 18ch;
+    height: 34px;
+    padding: var(--space-6) var(--space-8);
+    box-sizing: border-box;
+    font-size: .85rem;
 }
 .ical-export-table td {
     vertical-align: middle;
@@ -5030,12 +5053,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 }
 
 /* OTA verification: platform-bound feed form, review and edit states. */
-.feed-mode {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
-    margin: 0.5rem 0 0.75rem;
-}
 .sync-platform {
     display: inline-block;
     margin-top: 0.2rem;
