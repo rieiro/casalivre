@@ -344,9 +344,9 @@ echo "incus stack: ota verification deploy\n";
 $jumpstartOta = incus_read('scripts/04-jumpstart-app.sh');
 t_ok(str_contains($jumpstartOta, 'database/migrations/migration_'),
     '04-jumpstart-app.sh applies incremental migrations on an existing database');
-// Updated: 2026-11 - Schema 41 adds the platform-bound OTA binding and review columns.
-t_ok(str_contains($jumpstartOta, 'migration_041_ota_per_platform_credits.sql'),
-    '04-jumpstart-app.sh documents the schema 41 migration');
+// Updated: 2026-11 - Schema 42 adds property-level verification columns (Model B).
+t_ok(str_contains($jumpstartOta, 'migration_042_property_level_verification.sql'),
+    '04-jumpstart-app.sh documents the schema 42 migration');
 t_ok(is_file(CL_ROOT . '/database/migrations/migration_041_ota_per_platform_credits.sql'),
     'migration_041_ota_per_platform_credits.sql exists');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/database/schema.pgsql.sql'), 'url_hash'),
@@ -379,9 +379,9 @@ t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'
 echo "incus stack: ota fraud gate deploy\n";
 t_ok(is_file(CL_ROOT . '/database/migrations/migration_036_ota_fraud_gate.sql'),
     'migration_036_ota_fraud_gate.sql exists');
-// Updated: 2026-11 - Schema 41 adds the platform-bound OTA binding and review columns.
-t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_041_ota_per_platform_credits.sql'),
-    '04-jumpstart-app.sh mentions the schema 41 migration');
+// Updated: 2026-11 - Schema 42 adds property-level verification columns (Model B).
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_042_property_level_verification.sql'),
+    '04-jumpstart-app.sh mentions the schema 42 migration');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'ota_credit_ledger'),
     'verify-stack.sh checks the credit ledger');
 t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'property_ical_exports'),
@@ -390,5 +390,13 @@ t_ok(str_contains(incus_read('scripts/verify-stack.sh'), 'verified_at'),
     'verify-stack.sh checks the unified calendar_feeds lifecycle');
 t_ok(str_contains((string) file_get_contents(CL_ROOT . '/deploy/incus/README.md'), 'ota_credit_ledger'),
     'README documents the credit ledger');
+
+echo "incus stack: schema 42 property-level verification migration\n";
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_042_property_level_verification.sql'),
+    'migration_042_property_level_verification.sql exists');
+$mig42 = (string) file_get_contents(CL_ROOT . '/database/migrations/migration_042_property_level_verification.sql');
+t_ok(str_contains($mig42, 'is_verified'), 'migration 042 adds properties.is_verified');
+t_ok(str_contains($mig42, 'verified_at'), 'migration 042 adds properties.verified_at');
+t_ok(str_contains($mig42, "'42'"), 'migration 042 updates schema_meta to 42');
 
 t_done();
