@@ -132,6 +132,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
         </form>
     </div>
     <div class="sync-board" id="sincronizar-calendario">
+        <div class="sync-left-pane">
         <?php if ($isPropertyVerified): ?>
             <div class="prop-verify-banner is-verified" role="status" data-property-verified>
                 <span class="prop-verify-badge">✓ <?= e(t('ota.property_verified')) ?></span>
@@ -365,6 +366,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
         <?php
         $platformMeta = json_encode(OtaPlatformRegistry::uiMeta(), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT);

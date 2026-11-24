@@ -576,9 +576,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; it starts with the imported calendars group.
+        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; the verified banner (when present) and tables live in the left pane group.
         $this->assertMatchesRegularExpression(
-            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
+            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="sync-left-pane">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
             $html
         );
         $this->assertStringNotContainsString('<h2>' . e(t('cal.sync')) . '</h2>', $html);
@@ -1434,7 +1434,7 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString(e(t('ical.limit_total_hint')), $html);
     }
 
-    public function testCalendarSyncBannerSpansBothColumnsAtTopOfSyncSection(): void
+    public function testCalendarSyncBannerAppearsOnlyInLeftPane(): void
     {
         $property = [
             'id' => 7,
@@ -1465,15 +1465,19 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $html = (string) ob_get_clean();
 
         $boardPos = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
-        $bannerPos = strpos($html, 'prop-verify-banner');
-        $tablesPos = strpos($html, '<div class="panel">', (int) $boardPos);
-        $this->assertNotFalse($boardPos);
-        $this->assertNotFalse($bannerPos);
-        $this->assertNotFalse($tablesPos);
-        $this->assertLessThan($bannerPos, $boardPos);
-        $this->assertLessThan($tablesPos, $bannerPos, 'the verified property banner sits above the sync tables');
-
+        $leftPanePos = strpos($html, '<div class="sync-left-pane">', (int) $boardPos);
+        $bannerPos = strpos($html, 'prop-verify-banner', (int) $leftPanePos);
+        $tablesPos = strpos($html, '<div class="panel">', (int) $leftPanePos);
+        $controlsPos = strpos($html, '<div class="panel sync-add-group"', (int) $boardPos);
+        foreach ([$boardPos, $leftPanePos, $bannerPos, $tablesPos, $controlsPos] as $pos) {
+            $this->assertNotFalse($pos);
+        }
+        $this->assertLessThan($bannerPos, $leftPanePos);
+        $this->assertLessThan($tablesPos, $bannerPos, 'the verified property banner sits above the tables in the left pane');
+        $this->assertLessThan($controlsPos, $tablesPos, 'the left pane comes before the import/export controls');
+        $this->assertLessThan($controlsPos, $bannerPos, 'the banner must not be part of the right controls pane');
         $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
-        $this->assertMatchesRegularExpression('/\.sync-board\s+\.prop-verify-banner\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s', $css);
+        $this->assertMatchesRegularExpression('/\.sync-left-pane\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s', $css);
+        $this->assertStringNotContainsString('.sync-board .prop-verify-banner', $css);
     }
 }
