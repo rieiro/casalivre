@@ -209,12 +209,6 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                     <?php else: ?>
                                         <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
                                     <?php endif; ?>
-                                    <?php if ($isOta && !empty($feed['property_url'])): ?>
-                                        <br><a class="fine sync-property-link" href="<?= e((string) $feed['property_url']) ?>" target="_blank" rel="noopener noreferrer"><?= e((string) $feed['property_url']) ?></a>
-                                    <?php endif; ?>
-                                    <?php if ($isOta && !empty($feed['canonical_listing_id'])): ?>
-                                        <br><span class="muted fine sync-canonical"><?= e((string) $feed['canonical_listing_id']) ?></span>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <span class="sync-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>

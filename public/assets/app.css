@@ -5076,13 +5076,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     color: var(--muted);
     background: var(--bg);
 }
-.sync-property-link {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 .sync-badge.is-review {
     border-color: var(--notice-line);
     background: var(--notice-bg);
