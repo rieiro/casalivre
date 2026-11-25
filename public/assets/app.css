@@ -303,7 +303,8 @@ footer { padding: var(--space-16); }
 .cal-day:disabled { color: var(--disabled); cursor: default; }
 .sync-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: var(--space-18); margin-top: var(--space-18); align-items: start; }
 .sync-board .panel { border-radius: var(--radius-12); margin: 0; }
-.sync-board .panel:first-child { padding: var(--space-16) var(--space-18) var(--space-20); }
+.sync-left-pane { display: flex; flex-direction: column; gap: var(--space-18); min-width: 0; }
+.sync-left-pane > .panel { padding: var(--space-16) var(--space-18) var(--space-20); }
 .sync-group-title { margin: var(--space-4) 0 0; font-size: 1rem; }
 .sync-group-title + .sync-scroll { margin-top: var(--space-6); }
 .sync-add-group { position: sticky; top: 16px; padding: var(--space-16); }
@@ -377,7 +378,7 @@ footer { padding: var(--space-16); }
     .cal-summary-table { padding: var(--space-6) var(--space-8); font-size: .8rem; }
     .sync-board { gap: var(--space-12); margin-top: var(--space-12); }
     .sync-board .panel { padding: var(--space-10) var(--space-12); border-radius: var(--radius-8); }
-    .sync-board .panel:first-child { padding: var(--space-10) var(--space-12); }
+    .sync-left-pane { gap: var(--space-12); }
     .sync-board h2 { font-size: 1rem; margin: 0 0 var(--space-8); }
     .sync-group-title { font-size: .95rem; }
     .sync-add-group { position: static; }
@@ -5066,7 +5067,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 /* OTA verification: platform-bound feed form, review and edit states. */
 .sync-platform {
     display: inline-block;
-    margin-top: 0.2rem;
+    margin-top: 0;
     padding: 0.15rem 0.5rem;
     border: 1px solid var(--line);
     border-radius: 999px;
@@ -5074,13 +5075,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     font-weight: 700;
     color: var(--muted);
     background: var(--bg);
-}
-.sync-property-link {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .sync-badge.is-review {
     border-color: var(--notice-line);

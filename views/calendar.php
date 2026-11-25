@@ -132,6 +132,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
         </form>
     </div>
     <div class="sync-board" id="sincronizar-calendario">
+        <div class="sync-left-pane">
         <?php if ($isPropertyVerified): ?>
             <div class="prop-verify-banner is-verified" role="status" data-property-verified>
                 <span class="prop-verify-badge">✓ <?= e(t('ota.property_verified')) ?></span>
@@ -203,15 +204,10 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                             ?>
                             <tr>
                                 <td>
-                                    <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
                                     <?php if ($isOta && $platformLabel !== ''): ?>
-                                        <br><span class="sync-platform"><?= e($platformLabel) ?></span>
-                                    <?php endif; ?>
-                                    <?php if ($isOta && !empty($feed['property_url'])): ?>
-                                        <br><a class="fine sync-property-link" href="<?= e((string) $feed['property_url']) ?>" target="_blank" rel="noopener noreferrer"><?= e((string) $feed['property_url']) ?></a>
-                                    <?php endif; ?>
-                                    <?php if ($isOta && !empty($feed['canonical_listing_id'])): ?>
-                                        <br><span class="muted fine sync-canonical"><?= e((string) $feed['canonical_listing_id']) ?></span>
+                                        <strong class="sync-platform"><?= e($platformLabel) ?></strong>
+                                    <?php else: ?>
+                                        <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -229,9 +225,6 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                     <?php endif; ?>
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
-                                    <?php endif; ?>
-                                    <?php if ($isOtaLocked): ?>
-                                        <br><span class="muted fine sync-lock-note"><?= e(t('cal.feed_locked_support_hint')) ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -365,6 +358,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
         <?php
         $platformMeta = json_encode(OtaPlatformRegistry::uiMeta(), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT);

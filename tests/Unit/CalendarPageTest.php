@@ -576,9 +576,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         require dirname(__DIR__, 2) . '/views/calendar.php';
         $html = (string) ob_get_clean();
 
-        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; it starts with the imported calendars group.
+        // Updated: 2026-11 - The left pane no longer repeats the "Sync calendar" heading; the verified banner (when present) and tables live in the left pane group.
         $this->assertMatchesRegularExpression(
-            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
+            '/<div class="sync-board" id="sincronizar-calendario">\s*<div class="sync-left-pane">\s*<div class="panel">\s*<h3 class="sync-group-title">/s',
             $html
         );
         $this->assertStringNotContainsString('<h2>' . e(t('cal.sync')) . '</h2>', $html);
@@ -725,7 +725,8 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString(t('cal.review_pending'), $html);
         // Updated: 2026-11 - Booking/Vrbo links stay locked while pending_review until admin decision.
         $this->assertStringNotContainsString('/ical/31/editar', $html);
-        $this->assertStringContainsString('booking:br/casa-test', $html);
+        // Updated: 2026-11 - The imported title column shows only the platform label; the public listing link and canonical id are no longer displayed.
+        $this->assertStringNotContainsString('booking:br/casa-test', $html);
     }
 
     public function testCalendarImportFormShowsFieldErrorsOnlyBelowTheInput(): void
@@ -1236,8 +1237,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $this->assertStringNotContainsString('/ical/' . $lockedId . '/excluir', $html);
             $this->assertStringNotContainsString('/ical/' . $lockedId . '/editar', $html);
         }
-        $this->assertSame(2, substr_count($html, e(t('cal.feed_locked_support_hint'))));
-        $this->assertStringContainsString('class="muted fine sync-lock-note"', $html);
+        // Updated: 2026-11 - Locked OTA feeds no longer show the "contact support" note in the status column.
+        $this->assertStringNotContainsString(e(t('cal.feed_locked_support_hint')), $html);
+        $this->assertStringNotContainsString('sync-lock-note', $html);
 
         // Rejected and still-unverified feeds remain editable and removable.
         foreach ([93, 94] as $openId) {
@@ -1432,5 +1434,170 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/<input name="label"[^>]*\sdisabled>/', $form);
         $this->assertMatchesRegularExpression('/<button class="primary" type="submit" disabled>/', $form);
         $this->assertStringContainsString(e(t('ical.limit_total_hint')), $html);
+    }
+
+    public function testCalendarSyncBannerAppearsOnlyInLeftPane(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 95,
+            'title' => 'Airbnb Verificado',
+            'url' => 'https://www.airbnb.com/••••',
+            'status' => 'active',
+            'verification_mode' => 'ota',
+            'source_platform' => 'airbnb',
+            'review_status' => 'approved',
+            'verified_at' => '2026-11-01 12:00:00+00',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $boardPos = strpos($html, '<div class="sync-board" id="sincronizar-calendario">');
+        $leftPanePos = strpos($html, '<div class="sync-left-pane">', (int) $boardPos);
+        $bannerPos = strpos($html, 'prop-verify-banner', (int) $leftPanePos);
+        $tablesPos = strpos($html, '<div class="panel">', (int) $leftPanePos);
+        $controlsPos = strpos($html, '<div class="panel sync-add-group"', (int) $boardPos);
+        foreach ([$boardPos, $leftPanePos, $bannerPos, $tablesPos, $controlsPos] as $pos) {
+            $this->assertNotFalse($pos);
+        }
+        $this->assertLessThan($bannerPos, $leftPanePos);
+        $this->assertLessThan($tablesPos, $bannerPos, 'the verified property banner sits above the tables in the left pane');
+        $this->assertLessThan($controlsPos, $tablesPos, 'the left pane comes before the import/export controls');
+        $this->assertLessThan($controlsPos, $bannerPos, 'the banner must not be part of the right controls pane');
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.sync-left-pane\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s', $css);
+        $this->assertStringNotContainsString('.sync-board .prop-verify-banner', $css);
+    }
+
+    public function testCalendarImportedFeedTitleShowsPlatformLabelOnly(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 95,
+                'title' => 'Airbnb Verificado',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 96,
+                'title' => 'Booking Casa Teste',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 97,
+                'title' => 'Calendário manual',
+                'url' => 'https://example.com/calendar.ics',
+                'status' => 'active',
+                'verification_mode' => 'sync_only',
+                'source_platform' => 'other',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $importedPos = strpos($html, e(t('cal.imported_calendars')));
+        $exportedPos = strpos($html, e(t('cal.exported_calendars')));
+        $this->assertNotFalse($importedPos);
+        $this->assertNotFalse($exportedPos);
+        $table = substr($html, (int) $importedPos, (int) $exportedPos - (int) $importedPos);
+
+        // OTA feeds show only the platform label as the imported calendar title.
+        $this->assertSame(1, preg_match_all('/<strong class="sync-platform">Airbnb<\/strong>/', $table));
+        $this->assertSame(1, preg_match_all('/<strong class="sync-platform">Booking\.com<\/strong>/', $table));
+        $this->assertStringNotContainsString('Airbnb Verificado', $table);
+        $this->assertStringNotContainsString('Booking Casa Teste', $table);
+        // Non-OTA feeds keep their free-text title.
+        $this->assertStringContainsString('<strong>Calendário manual</strong>', $table);
+    }
+
+    public function testCalendarImportedFeedTitleOmitsPropertyUrlAndCanonicalId(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [[
+            'id' => 98,
+            'title' => 'Airbnb Verificado',
+            'url' => 'https://www.airbnb.com/••••',
+            'status' => 'active',
+            'verification_mode' => 'ota',
+            'source_platform' => 'airbnb',
+            'review_status' => 'approved',
+            'verified_at' => '2026-11-01 12:00:00+00',
+            'property_url' => 'https://www.airbnb.com.br/rooms/12345678',
+            'canonical_listing_id' => 'airbnb:12345678',
+            'challenge_date' => null,
+            'last_synced_at' => null,
+            'last_error' => null,
+        ]];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $importedPos = strpos($html, e(t('cal.imported_calendars')));
+        $exportedPos = strpos($html, e(t('cal.exported_calendars')));
+        $this->assertNotFalse($importedPos);
+        $this->assertNotFalse($exportedPos);
+        $table = substr($html, (int) $importedPos, (int) $exportedPos - (int) $importedPos);
+
+        $this->assertStringNotContainsString('airbnb:12345678', $table);
+        $this->assertStringNotContainsString('https://www.airbnb.com.br/rooms/12345678', $table);
+        $this->assertStringNotContainsString('sync-property-link', $table);
+        $this->assertStringNotContainsString('sync-canonical', $table);
+        $this->assertStringContainsString('<strong class="sync-platform">Airbnb</strong>', $table);
     }
 }
