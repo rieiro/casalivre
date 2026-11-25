@@ -319,7 +319,6 @@ footer { padding: var(--space-16); }
 .sync-add-form { display: grid; gap: var(--space-10); }
 .sync-add-form h2 { margin: 0; }
 .sync-add-form p { margin: 0; }
-.sync-add-group .ical-export-form { grid-template-columns: 1fr; }
 .sync-scroll { overflow-x: auto; }
 .sync-table { width: 100%; border-collapse: collapse; }
 .sync-table th, .sync-table td { text-align: center; padding: var(--space-8) var(--space-10); border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -392,7 +391,8 @@ footer { padding: var(--space-16); }
     form[data-feed-form] h2 { font-size: 1rem; margin: 0 0 var(--space-4); }
     form[data-feed-form] label { font-size: .82rem; gap: var(--space-2); }
     form[data-feed-form] input { padding: var(--space-6) var(--space-8); font-size: .85rem; }
-    form[data-feed-form] button { min-height: 34px; padding: var(--space-6) var(--space-10); font-size: .85rem; }
+    form[data-feed-form] button,
+    .ical-export-form button { min-height: 34px; padding: var(--space-6) var(--space-10); font-size: .85rem; }
     form[data-feed-form] p.fine { font-size: .72rem; margin: 0; line-height: 1.25; }
     .cal-month { display: none; }
     .cal-month.is-shown { display: block; }
@@ -4929,24 +4929,28 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 }
 
 /* Exportação iCal por plataforma (aba Calendário). */
+.ical-export-panel {
+    display: grid;
+    gap: var(--space-10);
+}
+.ical-export-panel h2 {
+    margin: 0;
+}
+.ical-export-panel p {
+    margin: 0;
+}
 .ical-export-settings {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin: 0.5rem 0 1rem;
+    gap: var(--space-10);
+    margin: 0;
 }
 .ical-export-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-    gap: 0.75rem;
-    align-items: end;
-    margin-bottom: 1rem;
-}
-.ical-export-form label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.85rem;
+    grid-template-columns: 1fr;
+    gap: var(--space-10);
+    align-items: stretch;
+    margin-bottom: 0;
 }
 .ical-export-link {
     display: flex;
@@ -4970,9 +4974,6 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     vertical-align: middle;
 }
 @media (max-width: 800px) {
-    .ical-export-form {
-        grid-template-columns: 1fr;
-    }
     .ical-export-link {
         flex-wrap: wrap;
     }

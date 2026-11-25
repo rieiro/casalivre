@@ -57,6 +57,8 @@ final class I18n
                 'amenity.pets' => ['Aceita animais'],
                 'cal.sync_requested' => ['Sincronização agendada com sucesso.'],
                 'amenity.noise_hint' => ['Horário em que é permitido fazer barulho. Exemplo: 08:00 às 22:00.'],
+                'ical.export_title' => ['Exportar calendário do CasaLivre'],
+                'ical.generate' => ['Gerar link de exportação'],
             ],
             'en' => [
                 'account.delete_confirm' => ['Deactivate this account? The record stays in the system and only support can restore it.'],
@@ -86,6 +88,8 @@ final class I18n
                 'form.calendar_months_hint' => ['At most %s months, the system limit.'],
                 'cal.sync_requested' => ['Synchronization requested.'],
                 'amenity.noise_hint' => ['Hours when noise is allowed. Example: 08:00 to 22:00.'],
+                'ical.export_title' => ['Export your CasaLivre calendar'],
+                'ical.generate' => ['Generate export link'],
             ],
             'es' => [
                 'account.delete_confirm' => ['¿Inactivar esta cuenta? El registro permanece y solo soporte puede reactivarla.'],
@@ -115,6 +119,8 @@ final class I18n
                 'form.calendar_months_hint' => ['Como máximo %s meses, el límite del sistema.'],
                 'cal.sync_requested' => ['Sincronización solicitada.'],
                 'amenity.noise_hint' => ['Horario en el que se puede hacer ruido. Ejemplo: 08:00 a 22:00.'],
+                'ical.export_title' => ['Exportar calendario de CasaLivre'],
+                'ical.generate' => ['Generar enlace de exportación'],
             ],
         ];
         foreach ($previous as $lang => $map) {

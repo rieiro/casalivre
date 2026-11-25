@@ -1835,4 +1835,65 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('/ical/203/pausar-sync', $html);
         $this->assertStringNotContainsString('/ical/203/reativar-sync', $html);
     }
+
+    public function testCalendarExportControlUsesExportCalendarLabelsAndImportFieldStyling(): void
+    {
+        $messages = require dirname(__DIR__, 2) . '/database/messages.php';
+        $expected = [
+            'pt-BR' => 'Exportar calendário',
+            'en' => 'Export Calendar',
+            'es' => 'Exportar calendario',
+        ];
+        foreach ($expected as $locale => $label) {
+            $this->assertSame($label, $messages[$locale]['ical.export_title'] ?? null, $locale . ' export section title');
+            $this->assertSame($label, $messages[$locale]['ical.generate'] ?? null, $locale . ' export submit button');
+        }
+
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        $icalExportData = [
+            'settings' => ['ical_export_manual_blocks' => true, 'ical_export_imported_events' => false],
+            'exports' => [],
+        ];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $exportSection = strpos($html, 'data-sync-panel="export"');
+        $formPos = strpos($html, 'data-ical-export-form');
+        $this->assertNotFalse($exportSection);
+        $this->assertNotFalse($formPos);
+        $export = substr($html, (int) $exportSection, (int) $formPos - (int) $exportSection);
+        $this->assertSame(1, substr_count($export, '<h2>' . e(t('ical.export_title')) . '</h2>'));
+        $this->assertStringContainsString('>' . e(t('ical.generate')) . '</button>', $html);
+        $this->assertStringNotContainsString(e(t('ical.export_subtitle')) . '</h2>', $html);
+
+        // Export controls mirror the import control field layout: stacked labels and inputs with the same fonts.
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression('/\.ical-export-panel\s*\{[^}]*display:\s*grid;[^}]*gap:\s*var\(--space-10\);/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-panel h2\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-panel p\s*\{[^}]*margin:\s*0;/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-form\s*\{[^}]*display:\s*grid;[^}]*gap:\s*var\(--space-10\);/s', $css);
+        $this->assertMatchesRegularExpression('/\.ical-export-form\s*\{[^}]*grid-template-columns:\s*1fr;/s', $css);
+        $this->assertStringNotContainsString('.ical-export-form label {', $css);
+    }
+
+    public function testCalendarExportButtonMatchesImportButtonOnMobile(): void
+    {
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression(
+            '/form\[data-feed-form\] button,\s*\.ical-export-form button\s*\{[^}]*min-height:\s*34px;[^}]*padding:\s*var\(--space-6\) var\(--space-10\);[^}]*font-size:\s*\.85rem;/s',
+            $css
+        );
+    }
 }
