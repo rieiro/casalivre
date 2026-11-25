@@ -28,6 +28,15 @@ return [
     // Revisão administrativa OTA: 60 leituras/ações por minuto por IP.
     ['GET', '#^/api/admin/verifications/pending$#', 60, 60, '/api/admin/verifications/pending'],
     ['POST', '#^/api/admin/verifications/\d+/(approve|reject)$#', 60, 60, '/api/admin/verifications/action'],
+    // Importação de conteúdo por URL do anúncio: 10 por 10 min por IP (web e API no mesmo balde).
+    ['POST', '#^/api/imoveis/[a-f0-9]{16}/importar$#', 10, 600, '/api/imoveis/*/importar'],
+    ['POST', '#^/imoveis/[a-f0-9]{16}/importar$#', 10, 600, '/api/imoveis/*/importar'],
+    ['POST', '#^/imoveis/novo/importar$#', 10, 600, '/api/imoveis/*/importar'],
+    ['DELETE', '#^/api/imoveis/[a-f0-9]{16}/importar$#', 20, 600, '/api/imoveis/*/importar'],
+    ['POST', '#^/imoveis/[a-f0-9]{16}/importar/descartar$#', 20, 600, '/api/imoveis/*/importar'],
+    // Publicar rascunho: 20 por 10 min por IP.
+    ['POST', '#^/api/imoveis/[a-f0-9]{16}/publicar$#', 20, 600, '/api/imoveis/*/publicar'],
+    ['POST', '#^/imoveis/[a-f0-9]{16}/publicar$#', 20, 600, '/api/imoveis/*/publicar'],
     // Exportação iCal por plataforma: 20 novos links por 10 min por IP.
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/ical-exports$#', 20, 600, '/api/imoveis/*/ical-exports'],
     // Upload pelo formulário web: mesmo balde da API (30 por 10 min por IP, somando os dois).

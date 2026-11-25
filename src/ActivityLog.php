@@ -106,6 +106,14 @@ final class ActivityLog
     public const CALENDAR_FEED_PAUSE = 65;
     /** Sincronização de um feed foi reativada pelo anfitrião (Host/Gestor). Admin. */
     public const CALENDAR_FEED_RESUME = 66;
+    /** Importação de conteúdo do anúncio (título/descrição/fotos) a partir da URL pública (Host/Gestor). Admin. */
+    public const OTA_IMPORT_START = 67;
+    /** Importação de URL descartada: fotos não verificadas apagadas e URL liberada (Host/Gestor). Admin. */
+    public const OTA_IMPORT_DISCARD = 68;
+    /** Foto do anúncio não pôde ser importada (MIME, SSRF, duplicata, limite). Admin. */
+    public const OTA_IMPORT_PHOTO_FAIL = 69;
+    /** Rascunho importado publicado (draft -> active) (Host/Gestor). Admin. */
+    public const PROPERTY_PUBLISH = 70;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -174,6 +182,10 @@ final class ActivityLog
         self::OTA_FEED_EDIT => 'Links de calendário verificado alterados',
         self::CALENDAR_FEED_PAUSE => 'Sincronização de calendário externo pausada',
         self::CALENDAR_FEED_RESUME => 'Sincronização de calendário externo reativada',
+        self::OTA_IMPORT_START => 'Importação de dados por URL de anúncio iniciada',
+        self::OTA_IMPORT_DISCARD => 'Importação de dados por URL descartada',
+        self::OTA_IMPORT_PHOTO_FAIL => 'Falha ao importar foto do anúncio',
+        self::PROPERTY_PUBLISH => 'Imóvel publicado a partir de rascunho',
     ];
 
     public const ADMIN = 'admin';
@@ -222,6 +234,10 @@ final class ActivityLog
         self::OTA_FEED_EDIT => self::ADMIN,
         self::CALENDAR_FEED_PAUSE => self::ADMIN,
         self::CALENDAR_FEED_RESUME => self::ADMIN,
+        self::OTA_IMPORT_START => self::ADMIN,
+        self::OTA_IMPORT_DISCARD => self::ADMIN,
+        self::OTA_IMPORT_PHOTO_FAIL => self::ADMIN,
+        self::PROPERTY_PUBLISH => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -562,6 +578,10 @@ final class ActivityLog
         self::OTA_FEED_EDIT => ['plataforma', 'feed_id'],
         self::CALENDAR_FEED_PAUSE => ['feed_id', 'imovel_id'],
         self::CALENDAR_FEED_RESUME => ['feed_id', 'imovel_id'],
+        self::OTA_IMPORT_START => ['imovel_id', 'plataforma', 'import_id', 'fotos'],
+        self::OTA_IMPORT_DISCARD => ['imovel_id', 'plataforma', 'import_id', 'fotos'],
+        self::OTA_IMPORT_PHOTO_FAIL => ['imovel_id', 'import_id', 'motivo'],
+        self::PROPERTY_PUBLISH => ['imovel_id', 'titulo', 'estado'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 
@@ -581,7 +601,7 @@ final class ActivityLog
         'quote_hash', 'total_price', 'tax_percent', 'special_offer',
         'plataforma', 'challenge_date', 'creditos', 'falhas',
         'ical_export_manual_blocks', 'ical_export_imported_events', 'target_platform', 'label',
-        'sync_enabled',
+        'sync_enabled', 'import_id', 'watermark_flagged', 'phash',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

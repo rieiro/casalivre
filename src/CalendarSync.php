@@ -17,6 +17,73 @@ final class CalendarSync
     /** Total fetch budget (seconds). Connect stays at CONNECT_TIMEOUT. */
     public const FETCH_TIMEOUT = 8;
     public const CONNECT_TIMEOUT = 5;
+    /** Listing HTML cap for the URL content import (bytes). */
+    public const MAX_LISTING_BYTES = 2 * 1024 * 1024;
+    /** Single CDN image cap for the URL content import (bytes). */
+    public const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+    /**
+     * Test hook for the URL content import: fn(string $url, int $maxBytes): array{body?:string,http?:int,error?:string}.
+     * Null uses the real SSRF-safe curl transport.
+     */
+    public static ?Closure $httpTransport = null;
+
+    /**
+     * SSRF-safe HTTPS GET for a public listing page or CDN asset. Reuses resolveTarget()/isPublicIp(),
+     * pins the resolved IP with CURLOPT_RESOLVE, never follows redirects, restricts to https and caps bytes.
+     *
+     * @return array{body: string, http: int}|array{error: string, http: int}
+     */
+    public static function fetchPublicResource(string $url, int $maxBytes = self::MAX_LISTING_BYTES, string $accept = 'text/html,application/xhtml+xml,*/*;q=0.8'): array
+    {
+        $maxBytes = max(1, min($maxBytes, self::MAX_IMAGE_BYTES));
+        if (!self::isHttpsUrl($url)) {
+            return ['error' => 'bad_url', 'http' => 0];
+        }
+        if (self::$httpTransport !== null) {
+            $result = (array) (self::$httpTransport)($url, $maxBytes);
+            if (isset($result['error'])) {
+                return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0)];
+            }
+            $body = (string) ($result['body'] ?? '');
+            if (strlen($body) > $maxBytes) {
+                return ['error' => 'too_big', 'http' => (int) ($result['http'] ?? 0)];
+            }
+            return ['body' => $body, 'http' => (int) ($result['http'] ?? 200)];
+        }
+        if (!function_exists('curl_init')) {
+            return ['error' => 'http_5xx', 'http' => 0];
+        }
+        $target = self::resolveTarget($url);
+        if (isset($target['error'])) {
+            return ['error' => $target['error'], 'http' => 0];
+        }
+        $result = self::requestBytes($url, $target, $maxBytes, $accept, self::FETCH_TIMEOUT);
+        if (isset($result['error'])) {
+            return $result;
+        }
+        [$code, $body] = $result;
+        if ($code >= 300 && $code < 400) {
+            return ['error' => 'bad_url', 'http' => $code];
+        }
+        if ($code === 429 || $code >= 500) {
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        if ($code < 200 || $code >= 300) {
+            return ['error' => 'http_4xx', 'http' => $code];
+        }
+        return ['body' => $body, 'http' => $code];
+    }
+
+    public static function fetchListingHtml(string $url): array
+    {
+        return self::fetchPublicResource($url, self::MAX_LISTING_BYTES);
+    }
+
+    public static function fetchImageBytes(string $url): array
+    {
+        return self::fetchPublicResource($url, self::MAX_IMAGE_BYTES, 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8');
+    }
 
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
     public static function logRef(?string $url): ?string
@@ -319,6 +386,73 @@ final class CalendarSync
             return ['error' => 'private_ip', 'http' => $code];
         }
         return [$code, $buffer, $location];
+    }
+
+    /**
+     * SSRF-safe GET pinned to the resolved IP, no redirects, https only, capped body.
+     *
+     * @param array{host: string, port: int, ip: string} $target
+     * @return array{0: int, 1: string}|array{error: string, http: int}
+     */
+    private static function requestBytes(string $url, array $target, int $maxBytes, string $accept, int $timeout): array
+    {
+        $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
+        $buffer = '';
+        $tooBig = false;
+        $ch = curl_init($url);
+        $options = [
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_RESOLVE => [$target['host'] . ':' . $target['port'] . ':' . $ip],
+            CURLOPT_TIMEOUT => max(1, $timeout),
+            CURLOPT_CONNECTTIMEOUT => min(self::CONNECT_TIMEOUT, max(1, $timeout)),
+            CURLOPT_USERAGENT => 'CasaLivre/1.0 (+https://casalivre.com.br)',
+            CURLOPT_HTTPHEADER => [
+                'Accept: ' . $accept,
+                'Cache-Control: no-cache',
+                'Pragma: no-cache',
+            ],
+            CURLOPT_NOPROXY => '*',
+            CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig, $maxBytes): int {
+                if (strlen($buffer) + strlen($chunk) > $maxBytes) {
+                    $tooBig = true;
+                    return 0;
+                }
+                $buffer .= $chunk;
+                return strlen($chunk);
+            },
+        ];
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            $options[CURLOPT_PROTOCOLS_STR] = 'https';
+        } elseif (defined('CURLPROTO_HTTPS')) {
+            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS;
+        }
+        if (defined('CURLOPT_MAXFILESIZE')) {
+            $options[CURLOPT_MAXFILESIZE] = $maxBytes;
+        }
+        curl_setopt_array($ch, $options);
+        $ok = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($ch);
+        $primaryIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
+        if ($tooBig) {
+            return ['error' => 'too_big', 'http' => $code];
+        }
+        if ($ok === false) {
+            if ($errno === CURLE_COULDNT_RESOLVE_HOST) {
+                return ['error' => 'dns', 'http' => 0];
+            }
+            if ($errno === CURLE_OPERATION_TIMEDOUT || $errno === CURLE_COULDNT_CONNECT) {
+                return ['error' => 'timeout', 'http' => 0];
+            }
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        $pinned = @inet_pton($target['ip']);
+        $connected = $primaryIp === '' ? $pinned : @inet_pton($primaryIp);
+        if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !self::isPublicIp($primaryIp))) {
+            return ['error' => 'private_ip', 'http' => $code];
+        }
+        return [$code, $buffer];
     }
 
     /** Canonical URL for hashing/dedup: lowercase scheme/host, sorted query, no fragment/default port. */

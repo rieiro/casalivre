@@ -15,6 +15,7 @@ final class OtaPlatformRegistry
             'public_hosts' => ['www.airbnb.com', 'airbnb.com', 'www.airbnb.com.br', 'airbnb.com.br'],
             'share_hosts' => ['abnb.me'],
             'ical_hosts' => ['www.airbnb.com', 'airbnb.com', 'www.airbnb.com.br', 'airbnb.com.br'],
+            'image_hosts' => ['a0.muscache.com', 'a1.muscache.com', 'a2.muscache.com', 'a3.muscache.com'],
             'public_path_regex' => '#\A/rooms/(\d+)\z#',
             'public_placeholder' => 'https://www.airbnb.com/rooms/12345678',
             'ical_placeholder' => 'https://www.airbnb.com/calendar/ical/12345678.ics',
@@ -25,6 +26,7 @@ final class OtaPlatformRegistry
             'public_hosts' => ['www.booking.com', 'booking.com'],
             'share_hosts' => ['www.booking.com', 'booking.com'],
             'ical_hosts' => ['ical.booking.com', 'admin.booking.com', 'www.booking.com'],
+            'image_hosts' => ['cf.bstatic.com', 'q-xx.bstatic.com', 'q-ec.bstatic.com', 'q-uc.bstatic.com', 't-ec.bstatic.com', 't-uc.bstatic.com'],
             'public_path_regex' => '~\A/hotel/([a-z]{2})/([a-z0-9][a-z0-9_-]*)(?:\.[a-z]{2}(?:-[a-z]{2})?)?\.html\z~i',
             'public_placeholder' => 'https://www.booking.com/hotel/br/casa-teste.html',
             'ical_placeholder' => 'https://ical.booking.com/v1/export?t=...',
@@ -35,6 +37,7 @@ final class OtaPlatformRegistry
             'public_hosts' => ['www.vrbo.com', 'vrbo.com', 'www.aluguetemporada.com.br', 'aluguetemporada.com.br'],
             'share_hosts' => [],
             'ical_hosts' => ['www.vrbo.com', 'vrbo.com', 'www.aluguetemporada.com.br', 'aluguetemporada.com.br'],
+            'image_hosts' => ['images.trvl-media.com', 'media.vrbo.com', 'media.expedia.com'],
             'public_path_regex' => '~\A/(?:pt-br/)?(?:imovel/[^/?#]+/)?(\d+|p\d+)(?:ha|vb)?\z~i',
             'public_placeholder' => 'https://www.vrbo.com/1234567',
             'ical_placeholder' => 'https://www.vrbo.com/icalendar/1234567.ics',
@@ -89,6 +92,17 @@ final class OtaPlatformRegistry
     public static function shareHosts(string $platform): array
     {
         return (array) (self::get($platform)['share_hosts'] ?? []);
+    }
+
+    /** Exact CDN hosts allowed for imported listing photos (never str_contains). @return list<string> */
+    public static function imageHosts(string $platform): array
+    {
+        return array_values((array) (self::get($platform)['image_hosts'] ?? []));
+    }
+
+    public static function isImageHost(string $platform, string $host): bool
+    {
+        return in_array(strtolower(trim($host)), self::imageHosts($platform), true);
     }
 
     public static function publicPathRegex(string $platform): string

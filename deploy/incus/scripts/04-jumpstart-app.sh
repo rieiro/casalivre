@@ -102,7 +102,7 @@ if [ "$(scalar "SELECT to_regclass('public.users') IS NULL")" = "t" ]; then
   incus file push "$REPO_DIR/database/schema.pgsql.sql" "$DB/tmp/jumpstart/schema.pgsql.sql"
   psql_db '-f /tmp/jumpstart/schema.pgsql.sql' >/dev/null
 else
-  log "schema already present; applying idempotent migrations (up to migration_043_calendar_feed_sync_enabled.sql)"
+  log "schema already present; applying idempotent migrations (up to migration_044_property_ota_imports.sql; previous migration_043_calendar_feed_sync_enabled.sql)"
   for mig in "$REPO_DIR"/database/migrations/migration_*.sql; do
     [ -f "$mig" ] || continue
     mname="$(basename "$mig")"

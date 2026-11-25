@@ -7,6 +7,7 @@ require_once __DIR__ . '/GooglePlacesService.php';
 require_once __DIR__ . '/Acoes/GooglePlaceVerify.php';
 require_once __DIR__ . '/IcalExportService.php';
 require_once __DIR__ . '/OtaVerificationService.php';
+require_once __DIR__ . '/OtaImportService.php';
 
 function json_out(int $status, array $data): never
 {
@@ -45,7 +46,8 @@ function api_require_admin(?array $user): array
 
 function api_owned_property(array $user, string $hash): array
 {
-    $found = HouseRepository::findByPublicHash($hash);
+    // Host surface: drafts must be manageable here even though public lookups hide them.
+    $found = HouseRepository::findByPublicHashAny($hash);
     if (!$found) {
         api_error(404, 'Imóvel não encontrado.');
     }
@@ -129,6 +131,7 @@ function api_public_house(array $house): array
         'bbq' => (int) $house['bbq'],
         'garage' => (int) $house['garage'],
         'criado_em' => br_date((string) ($house['created_at'] ?? '')),
+        'status' => (string) ($house['status'] ?? 'active'),
         'foto' => PhotoRepository::primaryPath((int) $house['id']),
         'lat' => isset($house['lat']) ? (float) $house['lat'] : null,
         'lng' => isset($house['lng']) ? (float) $house['lng'] : null,
@@ -597,6 +600,7 @@ function handle_api(string $path, string $method): void
             'fotos' => PhotoRepository::list($id),
             'amenities' => Amenities::selected($property),
             'cities' => cities(),
+            'imports' => OtaImportService::importsForProperty($id),
         ]);
     }
 
@@ -627,6 +631,48 @@ function handle_api(string $path, string $method): void
             'importadas' => $res->dados['importadas'],
             'feeds' => HouseRepository::feeds((int) $property['id']),
         ]);
+    }
+
+    // Importação de conteúdo por URL do anúncio (rascunho ou imóvel verificado).
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/importar$#', $path, $m)) {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        if ($method === 'GET') {
+            json_out(200, ['imports' => OtaImportService::importsForProperty((int) $property['id'])]);
+        }
+        if ($method === 'POST') {
+            $res = OtaImportService::startExisting(
+                $property,
+                (int) $user['id'],
+                $body['platform'] ?? null,
+                $body['property_url'] ?? null,
+                $body['consent'] ?? false
+            );
+            $res->registrar();
+            if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
+                api_error($res->tipo === 'limite' ? 429 : 422, (string) $res->mensagem, isset($res->dados['field']) ? [(string) $res->dados['field'] => (string) $res->mensagem] : null);
+            }
+            json_out(200, ['ok' => true, 'warning' => $res->mensagem] + $res->dados);
+        }
+        if ($method === 'DELETE') {
+            $res = OtaImportService::discard((int) $property['id'], (int) $user['id'], (string) ($body['platform'] ?? ''));
+            $res->registrar();
+            if ($res->tipo !== 'ok') {
+                api_error(404, (string) $res->mensagem);
+            }
+            json_out(200, ['ok' => true, 'message' => $res->mensagem] + $res->dados);
+        }
+    }
+
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/publicar$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $res = OtaImportService::publish((int) $property['id'], (int) $user['id']);
+        $res->registrar();
+        if ($res->tipo !== 'ok') {
+            api_error($res->tipo === 'bloqueado' ? 409 : 422, (string) $res->mensagem);
+        }
+        json_out(200, ['ok' => true, 'message' => $res->mensagem]);
     }
 
     // Excluir feed iCal

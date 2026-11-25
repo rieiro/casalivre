@@ -14,6 +14,15 @@ require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
 require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 $icalExportData = $icalExportData ?? IcalExportService::listForProperty((int) $property['id']);
 $icalExportBase = request_base() . '/ical/export/';
+// Schema 44: a URL import locks the public link used by the iCal challenge for that platform.
+$importLocks = [];
+foreach (($ota_imports ?? []) as $otaImport) {
+    $importStatus = (string) ($otaImport['status'] ?? '');
+    if (in_array($importStatus, ['discarded', 'expired'], true)) {
+        continue;
+    }
+    $importLocks[(string) $otaImport['platform']] = (string) $otaImport['canonical_property_url'];
+}
 
 // Model B: propriedade verificada quando algum OTA principal segue ativo e aprovado.
 $bannerState = OtaVerificationService::propertyBannerState((array) ($property ?? []), (array) $feeds);
@@ -348,7 +357,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
             <div class="sync-add-viewport">
                 <div class="sync-add-track">
                     <section class="sync-add-section" id="sync-panel-import" role="tabpanel" aria-labelledby="sync-tab-import" data-sync-panel="import">
-                        <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-field-errors-only="1" data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>">
+                        <form class="sync-add-form" method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/importar" data-feed-form data-field-errors-only="1" data-full="<?= count($feeds) >= 5 ? '1' : '0' ?>" data-platform-meta="<?= e((string) $platformMeta) ?>" data-import-locks="<?= e((string) json_encode($importLocks, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>">
                             <h2><?= e(t('cal.sync_import_tab')) ?></h2>
                             <p class="muted fine"><?= e(t('cal.import_hint')) ?></p>
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">

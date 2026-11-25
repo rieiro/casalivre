@@ -406,4 +406,16 @@ $mig43 = (string) file_get_contents(CL_ROOT . '/database/migrations/migration_04
 t_ok(str_contains($mig43, 'sync_enabled'), 'migration 043 adds calendar_feeds.sync_enabled');
 t_ok(str_contains($mig43, "'43'"), 'migration 043 updates schema_meta to 43');
 
+echo "incus stack: schema 44 OTA URL content import migration\n";
+// Updated: 2026-11 - Schema 44 adds property_ota_imports and the draft/photo provenance columns.
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_044_property_ota_imports.sql'),
+    '04-jumpstart-app.sh documents the schema 44 migration');
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_044_property_ota_imports.sql'),
+    'migration_044_property_ota_imports.sql exists');
+$mig44 = (string) file_get_contents(CL_ROOT . '/database/migrations/migration_044_property_ota_imports.sql');
+t_ok(str_contains($mig44, 'property_ota_imports'), 'migration 044 creates property_ota_imports');
+t_ok(str_contains($mig44, 'watermark_flagged'), 'migration 044 adds photos.watermark_flagged');
+t_ok(str_contains($mig44, 'ota_import_id'), 'migration 044 adds photos.ota_import_id');
+t_ok(str_contains($mig44, "'44'"), 'migration 044 updates schema_meta to 44');
+
 t_done();

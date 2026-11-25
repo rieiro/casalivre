@@ -44,9 +44,15 @@
                     ?>
                     <tr>
                         <td>
-                            <strong><?= e((string) ($row['property_title'] ?? '')) ?></strong><br>
+                            <strong><?= e((string) ($row['property_title'] ?? '')) ?></strong>
+                            <?php if (!empty($row['has_url_import'])): ?>
+                                <span class="ota-url-import-badge" title="<?= e(t('ota.import.admin_warning')) ?>"><?= e(t('ota.import.admin_badge')) ?></span>
+                            <?php endif; ?><br>
                             <span class="admin-muted"><?= e((string) ($row['property_city'] ?? '')) ?></span><br>
                             <span class="admin-muted"><?= e((string) ($row['user_name'] ?? '')) ?> · <?= e((string) ($row['email'] ?? '')) ?></span>
+                            <?php if (!empty($row['has_url_import'])): ?>
+                                <p class="ota-url-import-warning"><?= e(t('ota.import.admin_warning')) ?></p>
+                            <?php endif; ?>
                         </td>
                         <td><span class="admin-card-tag"><?= e((string) ($row['platform_label'] ?? '')) ?></span></td>
                         <td>

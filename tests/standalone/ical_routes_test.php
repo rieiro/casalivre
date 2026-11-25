@@ -64,7 +64,8 @@ t_eq(['id', 'property_id', 'title', 'url', 'last_status', 'last_synced_at', 'las
     'status', 'challenge_date', 'challenge_expires_at', 'verified_at', 'last_checked_at', 'attempts',
     'passive_fail_count', 'credits_awarded', 'source_platform', 'verification_mode', 'property_url',
     'canonical_listing_id', 'ics_metadata', 'review_status', 'reviewed_by', 'reviewed_at', 'review_note',
-    'consent_at', 'stopped'],
+    // Updated: 2026-11 - schema 43 adds calendar_feeds.sync_enabled to the owner feed projection.
+    'consent_at', 'sync_enabled', 'stopped'],
     array_keys($feed), 'import: só campos seguros');
 $g = t_http('GET', $base . '/api/imoveis/' . $owner['hash'] . '/calendario', null, [], $jar);
 t_eq(200, $g['status'], 'GET calendario API 200');

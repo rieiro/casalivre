@@ -4,6 +4,28 @@
     const editing = form.dataset.editing === '1';
     const hash = form.dataset.hash;
 
+    // Non-destructive URL import: "Usar texto importado" fills the field and arms the save button.
+    form.querySelectorAll('[data-import-use-title], [data-import-use-description]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const targetId = button.getAttribute('data-target');
+            const field = targetId ? document.getElementById(targetId) : null;
+            if (!field) return;
+            const suggested = button.hasAttribute('data-import-use-title')
+                ? button.getAttribute('data-import-use-title')
+                : button.getAttribute('data-import-use-description');
+            field.value = String(suggested || '');
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+            const saveBtn = form.querySelector('[data-save-house]');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('is-off');
+            }
+            const badge = field.parentElement ? field.parentElement.querySelector('.prop-import-badge') : null;
+            if (badge) badge.hidden = false;
+        });
+    });
+
     form.addEventListener('submit', async function (ev) {
         // Deixa o submit normal se for o botão de excluir fotos (tem data-delete-photos)
         if (ev.submitter && ev.submitter.hasAttribute('data-delete-photos')) {

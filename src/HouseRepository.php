@@ -49,6 +49,7 @@ WITH c AS MATERIALIZED (
       JOIN properties p ON p.id = f2.property_id
       JOIN users u ON u.id = p.user_id
      WHERE f2.status IN ('pending_verification', 'active') AND f2.next_sync_at <= now()
+       AND p.status = 'active'
        AND f2.sync_enabled = 1
      ORDER BY (f2.last_status = 'PENDENTE') DESC, f2.next_sync_at ASC
      LIMIT 1
@@ -73,8 +74,8 @@ SQL;
             $neighborhoodId = self::optionalPlaceId($house, 'neighborhood_place_id');
             $stmt = db()->prepare('INSERT INTO properties (
                 user_id, title, description, summary, city_place_id, neighborhood_place_id, address, cep, street, address_number, address_complement, lat, lng, bedrooms, beds, rooms, max_guests,
-                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, pix_key, google_place_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                nightly_price, checkin_time, checkout_time, min_nights, calendar_months, cleaning_fee, pool, bbq, garage, amenities, public_hash, pix_key, google_place_id, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id, title, description, summary, city_place_id, address, cep, nightly_price, cleaning_fee, bedrooms, beds, rooms, max_guests, min_nights, calendar_months, checkin_time, checkout_time, pool, bbq, garage, amenities, pix_key, google_place_id, status');
             $stmt->execute([
                 $house['user_id'], $house['title'], $house['description'], $house['summary'], $placeId, $neighborhoodId,
@@ -83,13 +84,61 @@ SQL;
                 $house['nightly_price'], $house['checkin_time'], $house['checkout_time'], $house['min_nights'],
                 self::calendarMonths($house),
                 max(0, (int) ($house['cleaning_fee'] ?? 0)),
-                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, (string) ($house['pix_key'] ?? ''), $house['google_place_id'] ?? null, date('Y-m-d H:i:s'),
+                $house['pool'], $house['bbq'], $house['garage'], $house['amenities'] ?? '{}', $hash, (string) ($house['pix_key'] ?? ''), $house['google_place_id'] ?? null, (string) ($house['status'] ?? 'active'), date('Y-m-d H:i:s'),
             ]);
             $row = $stmt->fetch();
             $row['city'] = self::cityText($placeId);
             ListingSearch::sync((int) $row['id']);
             return $row;
         });
+    }
+
+    public const DRAFT_PLACEHOLDER_TITLE = 'Rascunho importado';
+    public const DRAFT_PLACEHOLDER_DESCRIPTION = 'Rascunho criado pela importação por URL.';
+
+    /**
+     * Private draft for the OTA URL content import. Hidden from search, public pages and the feed worker
+     * until OtaImportService::publish() flips status to active. City is a technical placeholder until the
+     * host fills the postal code; address fields stay empty (never imported from the OTA listing).
+     */
+    public static function insertDraft(int $userId): array
+    {
+        $city = (int) db()->query("SELECT id FROM places WHERE type = 'city' ORDER BY popularity DESC NULLS LAST, id ASC LIMIT 1")->fetchColumn();
+        if ($city < 1) {
+            $city = (int) db()->query('SELECT id FROM places ORDER BY id ASC LIMIT 1')->fetchColumn();
+        }
+        if ($city < 1) {
+            throw new RuntimeException('Cidade não encontrada.');
+        }
+        return self::insertRow([
+            'user_id' => $userId,
+            'title' => self::DRAFT_PLACEHOLDER_TITLE,
+            'description' => self::DRAFT_PLACEHOLDER_DESCRIPTION,
+            'summary' => 'Rascunho importado',
+            'city_place_id' => $city,
+            'address' => '',
+            'cep' => '',
+            'street' => '',
+            'address_number' => '',
+            'address_complement' => '',
+            'lat' => 0,
+            'lng' => 0,
+            'bedrooms' => 1,
+            'beds' => 1,
+            'rooms' => '[]',
+            'max_guests' => 1,
+            'nightly_price' => 1,
+            'checkin_time' => '15:00',
+            'checkout_time' => '11:00',
+            'min_nights' => 1,
+            'calendar_months' => 6,
+            'cleaning_fee' => 0,
+            'pool' => 0,
+            'bbq' => 0,
+            'garage' => 0,
+            'amenities' => '{}',
+            'status' => 'draft',
+        ]);
     }
 
     /** city_place_id already resolved by the caller. */
@@ -219,7 +268,7 @@ SQL;
 
     public static function findByUser(int $userId, int $id): ?array
     {
-        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND p.user_id = ? AND COALESCE(NULLIF(p.status, ''), 'active') = 'active'");
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND p.user_id = ? AND COALESCE(NULLIF(p.status, ''), 'active') IN ('active', 'draft')");
         $stmt->execute([$id, $userId]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -239,7 +288,20 @@ SQL;
         return (string) $stored->fetchColumn();
     }
 
+    /** Public/API lookup: drafts are never resolvable by hash (404 like an unknown listing). */
     public static function findByPublicHash(string $hash): ?array
+    {
+        if (!preg_match('/^[a-f0-9]{16}$/', $hash)) {
+            return null;
+        }
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.public_hash = ? AND p.status = 'active'");
+        $stmt->execute([$hash]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /** Host routes only: includes drafts owned/managed by the host (edit, photos, calendar). */
+    public static function findByPublicHashAny(string $hash): ?array
     {
         if (!preg_match('/^[a-f0-9]{16}$/', $hash)) {
             return null;
@@ -281,7 +343,7 @@ SQL;
      */
     public static function listByUser(int $userId): array
     {
-        $owned = self::SQL_WITH_CITY . " WHERE p.user_id = ? AND p.status = 'active'";
+        $owned = self::SQL_WITH_CITY . " WHERE p.user_id = ? AND p.status IN ('active', 'draft')";
         $managed = self::SQL_WITH_CITY
             . " WHERE p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')"
             . " AND p.status = 'active' AND p.user_id <> ?";
@@ -292,7 +354,7 @@ SQL;
 
     public static function findManageable(int $userId, int $id): ?array
     {
-        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')) AND COALESCE(NULLIF(p.status, ''), 'active') = 'active'");
+        $stmt = db()->prepare(self::SQL_WITH_CITY . " WHERE p.id = ? AND (p.user_id = ? OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ? AND role = 'gestor')) AND COALESCE(NULLIF(p.status, ''), 'active') IN ('active', 'draft')");
         $stmt->execute([$id, $userId, $userId]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -1210,6 +1272,16 @@ SQL;
                         'calendar_feeds'
                     );
                 }
+                // Transactional import sync: a successful ownership challenge verifies the URL import too.
+                $canonical = (string) ($row['canonical_listing_id'] ?? '');
+                if ($canonical !== '') {
+                    db()->prepare(
+                        "UPDATE property_ota_imports
+                            SET status = 'verified', calendar_feed_id = ?, updated_at = to_timestamp(?)
+                          WHERE property_id = ? AND platform = ? AND canonical_listing_id = ?
+                            AND status NOT IN ('discarded', 'expired')"
+                    )->execute([$feedId, $now, $propertyId, $platform, $canonical]);
+                }
                 OtaVerificationService::syncPropertyVerifiedStatus(db(), $propertyId);
             }
             $parsed = import_ics($propertyId, $ics);
@@ -1501,18 +1573,20 @@ SQL;
     }
 
     // Resolução de imóvel para as rotas web: lança ImovelNaoEncontrado; o 404 é renderizado pela camada web.
-    public static function idFromPublicRefOrFail(string $ref): int
+    public static function idFromPublicRefOrFail(string $ref, bool $allowDraft = false): int
     {
         static $cache = [];
-        if (isset($cache[$ref])) {
-            return $cache[$ref];
+        $key = ($allowDraft ? 'd:' : 'p:') . $ref;
+        if (isset($cache[$key])) {
+            return $cache[$key];
         }
-        $row = HouseRepository::findByPublicHash($ref);
-        if (!$row || ($row['status'] ?? 'active') !== 'active') {
+        $row = $allowDraft ? HouseRepository::findByPublicHashAny($ref) : HouseRepository::findByPublicHash($ref);
+        $status = (string) ($row['status'] ?? 'active');
+        if (!$row || (!in_array($status, ['active', 'draft'], true)) || (!$allowDraft && $status !== 'active')) {
             throw ImovelNaoEncontrado::publico();
         }
-        $cache[$ref] = (int) $row['id'];
-        return $cache[$ref];
+        $cache[$key] = (int) $row['id'];
+        return $cache[$key];
     }
 
     public static function findByUserOrFail(int $userId, int $id): array
