@@ -1361,6 +1361,16 @@ final class OtaVerificationService
             $row['challenge_date_br'] = !empty($row['challenge_date'])
                 ? self::dateBr((string) $row['challenge_date'])
                 : '';
+            $publicHash = trim((string) ($row['public_hash'] ?? ''));
+            if (preg_match('/^[a-f0-9]{16}$/', $publicHash) !== 1) {
+                require_once __DIR__ . '/HouseRepository.php';
+                $publicHash = HouseRepository::ensurePublicHash([
+                    'id' => (int) $row['property_id'],
+                    'public_hash' => $publicHash,
+                ]);
+            }
+            $row['public_hash'] = $publicHash;
+            $row['casalivre_url'] = $publicHash !== '' ? '/imoveis/' . $publicHash : '';
             $rows[] = $row;
         }
         return $rows;

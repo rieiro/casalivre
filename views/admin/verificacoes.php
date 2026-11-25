@@ -27,7 +27,7 @@
                     <tr>
                         <th>Imóvel (CasaLivre)</th>
                         <th>Plataforma</th>
-                        <th>Anúncio Público</th>
+                        <th>Anúncios (CasaLivre × Público)</th>
                         <th>Data para conferir</th>
                         <th>Meta iCal</th>
                         <th>Ações</th>
@@ -35,6 +35,13 @@
                 </thead>
                 <tbody>
                 <?php foreach ($pending as $row): ?>
+                    <?php
+                    $casalivreUrl = trim((string) ($row['casalivre_url'] ?? ''));
+                    if ($casalivreUrl === '' && preg_match('/^[a-f0-9]{16}$/', trim((string) ($row['public_hash'] ?? ''))) === 1) {
+                        $casalivreUrl = '/imoveis/' . trim((string) $row['public_hash']);
+                    }
+                    $externalUrl = trim((string) ($row['property_url'] ?? ''));
+                    ?>
                     <tr>
                         <td>
                             <strong><?= e((string) ($row['property_title'] ?? '')) ?></strong><br>
@@ -43,11 +50,30 @@
                         </td>
                         <td><span class="admin-card-tag"><?= e((string) ($row['platform_label'] ?? '')) ?></span></td>
                         <td>
-                            <?php if (!empty($row['property_url'])): ?>
-                                <a href="<?= e((string) $row['property_url']) ?>" target="_blank" rel="noopener noreferrer"><?= e((string) $row['property_url']) ?></a>
-                            <?php endif; ?>
-                            <br><span class="admin-muted"><?= e((string) ($row['ical_url_masked'] ?? '')) ?></span>
-                            <br><span class="admin-muted"><?= e((string) ($row['canonical_listing_id'] ?? '')) ?></span>
+                            <div class="ota-links-pair">
+                                <div class="ota-link-box">
+                                    <span class="ota-link-label">CasaLivre</span>
+                                    <?php if ($casalivreUrl !== ''): ?>
+                                        <a href="<?= e($casalivreUrl) ?>" target="_blank" rel="noopener noreferrer"><?= e($casalivreUrl) ?></a>
+                                    <?php else: ?>
+                                        <span class="admin-muted">—</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="ota-link-box">
+                                    <span class="ota-link-label"><?= e((string) ($row['platform_label'] ?? 'Público')) ?></span>
+                                    <?php if ($externalUrl !== ''): ?>
+                                        <a href="<?= e($externalUrl) ?>" target="_blank" rel="noopener noreferrer"><?= e($externalUrl) ?></a>
+                                    <?php else: ?>
+                                        <span class="admin-muted">—</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="ota-link-meta">
+                                <span class="admin-muted"><?= e((string) ($row['ical_url_masked'] ?? '')) ?></span>
+                                <?php if (!empty($row['canonical_listing_id'])): ?>
+                                    <br><span class="admin-muted"><?= e((string) $row['canonical_listing_id']) ?></span>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td>
                             <span class="ota-challenge-pill"><?= e((string) ($row['challenge_date_br'] ?? '')) ?></span>
