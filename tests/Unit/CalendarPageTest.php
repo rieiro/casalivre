@@ -1237,8 +1237,9 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $this->assertStringNotContainsString('/ical/' . $lockedId . '/excluir', $html);
             $this->assertStringNotContainsString('/ical/' . $lockedId . '/editar', $html);
         }
-        $this->assertSame(2, substr_count($html, e(t('cal.feed_locked_support_hint'))));
-        $this->assertStringContainsString('class="muted fine sync-lock-note"', $html);
+        // Updated: 2026-11 - Locked OTA feeds no longer show the "contact support" note in the status column.
+        $this->assertStringNotContainsString(e(t('cal.feed_locked_support_hint')), $html);
+        $this->assertStringNotContainsString('sync-lock-note', $html);
 
         // Rejected and still-unverified feeds remain editable and removable.
         foreach ([93, 94] as $openId) {

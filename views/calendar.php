@@ -226,9 +226,6 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
                                     <?php endif; ?>
-                                    <?php if ($isOtaLocked): ?>
-                                        <br><span class="muted fine sync-lock-note"><?= e(t('cal.feed_locked_support_hint')) ?></span>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?= $synced === false
