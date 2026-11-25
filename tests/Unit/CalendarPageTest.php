@@ -1887,4 +1887,13 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/\.ical-export-form\s*\{[^}]*grid-template-columns:\s*1fr;/s', $css);
         $this->assertStringNotContainsString('.ical-export-form label {', $css);
     }
+
+    public function testCalendarExportButtonMatchesImportButtonOnMobile(): void
+    {
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
+        $this->assertMatchesRegularExpression(
+            '/form\[data-feed-form\] button,\s*\.ical-export-form button\s*\{[^}]*min-height:\s*34px;[^}]*padding:\s*var\(--space-6\) var\(--space-10\);[^}]*font-size:\s*\.85rem;/s',
+            $css
+        );
+    }
 }

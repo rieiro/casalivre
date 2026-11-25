@@ -391,7 +391,8 @@ footer { padding: var(--space-16); }
     form[data-feed-form] h2 { font-size: 1rem; margin: 0 0 var(--space-4); }
     form[data-feed-form] label { font-size: .82rem; gap: var(--space-2); }
     form[data-feed-form] input { padding: var(--space-6) var(--space-8); font-size: .85rem; }
-    form[data-feed-form] button { min-height: 34px; padding: var(--space-6) var(--space-10); font-size: .85rem; }
+    form[data-feed-form] button,
+    .ical-export-form button { min-height: 34px; padding: var(--space-6) var(--space-10); font-size: .85rem; }
     form[data-feed-form] p.fine { font-size: .72rem; margin: 0; line-height: 1.25; }
     .cal-month { display: none; }
     .cal-month.is-shown { display: block; }
