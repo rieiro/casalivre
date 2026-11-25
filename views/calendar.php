@@ -265,45 +265,6 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($isOta && !$isOtaLocked && ($isRejected || $feedStatus === 'error' || $feedStatus === 'pending_verification')): ?>
-                                <tr class="sync-edit-row">
-                                    <td colspan="4">
-                                        <details class="sync-edit">
-                                            <summary><?= e(t('cal.change_links')) ?></summary>
-                                            <p class="muted fine"><?= e(t('cal.change_warning')) ?></p>
-                                            <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/editar" class="sync-edit-form">
-                                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-                                                <input type="hidden" name="mode" value="ota">
-                                                <label><?= e(t('cal.platform')) ?>
-                                                    <select name="platform" required>
-                                                        <?php foreach (OtaPlatformRegistry::all() as $key => $item): ?>
-                                                            <option value="<?= e($key) ?>"<?= $key === $platform ? ' selected' : '' ?>><?= e((string) $item['label']) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </label>
-                                                <label><?= e(t('cal.property_url')) ?>
-                                                    <input name="property_url" value="<?= e((string) ($feed['property_url'] ?? '')) ?>" required>
-                                                </label>
-                                                <label><?= e(t('cal.link')) ?>
-                                                    <input name="external_ical_url" placeholder="<?= e(t('cal.ical_new_placeholder')) ?>" required>
-                                                </label>
-                                                <label><?= e(t('cal.feed_title')) ?>
-                                                    <input name="feed_title" value="<?= e((string) ($feed['title'] ?? '')) ?>" maxlength="40" required>
-                                                </label>
-                                                <label class="prop-checkbox-label">
-                                                    <input type="checkbox" name="consent" value="1" required>
-                                                    <span><?= e(t('cal.consent')) ?></span>
-                                                </label>
-                                                <label class="prop-checkbox-label">
-                                                    <input type="checkbox" name="confirm" value="1" required>
-                                                    <span><?= e(t('cal.change_confirm')) ?></span>
-                                                </label>
-                                                <button class="primary" type="submit"><?= e(t('cal.save_changes')) ?></button>
-                                            </form>
-                                        </details>
-                                    </td>
-                                </tr>
-                            <?php endif; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>

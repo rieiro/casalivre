@@ -807,7 +807,8 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringContainsString(t('cal.review_rejected_badge'), $html);
         $this->assertStringContainsString(e($note), $html);
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString('/ical/41/editar', $html);
+        // Updated: 2026-11 - The Change links edit menu is hidden for all feed states on the calendar page.
+        $this->assertStringNotContainsString('/ical/41/editar', $html);
         $this->assertStringContainsString('sync-badge is-error', $html);
     }
 
@@ -1241,10 +1242,11 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString(e(t('cal.feed_locked_support_hint')), $html);
         $this->assertStringNotContainsString('sync-lock-note', $html);
 
-        // Rejected and still-unverified feeds remain editable and removable.
+        // Rejected and still-unverified feeds remain removable.
+        // Updated: 2026-11 - The Change links edit menu is hidden for all feed states on the calendar page.
         foreach ([93, 94] as $openId) {
             $this->assertStringContainsString('/ical/' . $openId . '/excluir', $html);
-            $this->assertStringContainsString('/ical/' . $openId . '/editar', $html);
+            $this->assertStringNotContainsString('/ical/' . $openId . '/editar', $html);
         }
     }
 
@@ -1599,5 +1601,157 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertStringNotContainsString('sync-property-link', $table);
         $this->assertStringNotContainsString('sync-canonical', $table);
         $this->assertStringContainsString('<strong class="sync-platform">Airbnb</strong>', $table);
+    }
+
+    public function testCalendarImportedFeedsNeverRenderChangeLinksMenu(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 101,
+                'title' => 'Booking pendente',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'pending_verification',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => '2027-03-01',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 102,
+                'title' => 'Airbnb pendente',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'pending_verification',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => '2027-03-02',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 103,
+                'title' => 'Vrbo pendente',
+                'url' => 'https://www.vrbo.com/••••',
+                'status' => 'pending_verification',
+                'verification_mode' => 'ota',
+                'source_platform' => 'vrbo',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => '2027-03-03',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 104,
+                'title' => 'Vrbo rejeitado',
+                'url' => 'https://www.vrbo.com/••••',
+                'status' => 'error',
+                'verification_mode' => 'ota',
+                'source_platform' => 'vrbo',
+                'review_status' => 'rejected',
+                'review_note' => 'Documento não confere',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 105,
+                'title' => 'Booking com erro',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'error',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => 'timeout',
+            ],
+            [
+                'id' => 106,
+                'title' => 'Vrbo em análise',
+                'url' => 'https://www.vrbo.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'vrbo',
+                'review_status' => 'pending_review',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => '2027-03-04',
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 107,
+                'title' => 'Airbnb aprovado',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 108,
+                'title' => 'Feed manual',
+                'url' => 'https://example.test/feed.ics',
+                'status' => 'active',
+                'verification_mode' => 'sync_only',
+                'source_platform' => 'other',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $importedPos = strpos($html, e(t('cal.imported_calendars')));
+        $exportedPos = strpos($html, e(t('cal.exported_calendars')));
+        $this->assertNotFalse($importedPos);
+        $this->assertNotFalse($exportedPos);
+        $table = substr($html, (int) $importedPos, (int) $exportedPos - (int) $importedPos);
+
+        // The Change links edit menu is hidden for every feed state.
+        $this->assertStringNotContainsString(e(t('cal.change_links')), $table);
+        $this->assertStringNotContainsString('sync-edit-row', $table);
+        $this->assertStringNotContainsString('/editar', $table);
+
+        // Pending verification feeds still surface the challenge and the verify action.
+        $this->assertStringContainsString('sync-challenge-row', $table);
+        foreach ([101, 102, 103] as $pendingId) {
+            $this->assertStringContainsString('/ical/' . $pendingId . '/verificar', $table);
+            $this->assertStringContainsString('/ical/' . $pendingId . '/excluir', $table);
+        }
+
+        // Non-pending feeds keep the sync action and remain removable unless locked.
+        foreach ([104, 105, 108] as $syncId) {
+            $this->assertStringContainsString('/ical/' . $syncId . '/sincronizar', $table);
+            $this->assertStringContainsString('/ical/' . $syncId . '/excluir', $table);
+        }
+        foreach ([106, 107] as $lockedId) {
+            $this->assertStringContainsString('/ical/' . $lockedId . '/sincronizar', $table);
+            $this->assertStringNotContainsString('/ical/' . $lockedId . '/excluir', $table);
+        }
     }
 }
