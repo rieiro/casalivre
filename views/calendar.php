@@ -169,6 +169,7 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                             $isPendingReview = $isVerified && $reviewStatus === 'pending_review';
                             $isRejected = $isOta && $reviewStatus === 'rejected';
                             $isOtaLocked = $isOta && ($isVerified || $isPendingReview);
+                            $syncEnabled = (int) ($feed['sync_enabled'] ?? 1) === 1;
                             $statusLabel = $isRejected
                                 ? t('cal.review_rejected_badge')
                                 : ($isPendingReview ? t('cal.review_pending') : match ($feedStatus) {
@@ -223,6 +224,9 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                     <?php if ($isVerified && !$isPendingReview && !$isRejected && $challengeBr !== ''): ?>
                                         <br><span class="muted fine"><?= e(t('cal.verified_unblock_hint', ['date' => $challengeBr])) ?></span>
                                     <?php endif; ?>
+                                    <?php if ($isOtaLocked && !$syncEnabled): ?>
+                                        <br><span class="muted fine"><?= e(t('cal.sync_paused_hint')) ?></span>
+                                    <?php endif; ?>
                                     <?php if ($feedStatus === 'error' && $reason !== ''): ?>
                                         <br><span class="muted fine"><?= e($reason) ?></span>
                                     <?php endif; ?>
@@ -239,13 +243,25 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                                                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                                                 <button class="primary btn-verify" type="submit"><?= e(t('cal.verify')) ?></button>
                                             </form>
-                                        <?php else: ?>
+                                        <?php elseif (!$isOtaLocked || $syncEnabled): ?>
                                             <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/sincronizar">
                                                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                                                 <button class="primary" type="submit"><?= e($feedStatus === 'error' ? t('cal.try_again') : t('cal.sync_now')) ?></button>
                                             </form>
                                         <?php endif; ?>
-                                        <?php if (!$isOtaLocked): ?>
+                                        <?php if ($isOtaLocked): ?>
+                                            <?php if ($syncEnabled): ?>
+                                                <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/pausar-sync" data-confirm-pause="<?= e(t('cal.pause_sync_confirm')) ?>">
+                                                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                    <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.pause_sync')) ?></button>
+                                                </form>
+                                            <?php else: ?>
+                                                <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/reativar-sync">
+                                                    <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                                    <button class="primary" type="submit"><?= e(t('cal.resume_sync')) ?></button>
+                                                </form>
+                                            <?php endif; ?>
+                                        <?php else: ?>
                                             <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/ical/<?= $feedId ?>/excluir" data-confirm-remove>
                                                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                                                 <button class="danger btn-remove-outline" type="submit"><?= e(t('cal.remove_feed')) ?></button>

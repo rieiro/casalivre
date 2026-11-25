@@ -274,4 +274,46 @@ for ($i = 3; $i <= 5; $i++) {
 t_eq('limit', HouseRepository::addFeed((int) $race['house_id'], (int) $race['user_id'], 'https://race.example/c6.ics', 'R6'), 'o sexto feed é limit');
 t_eq('duplicate', HouseRepository::addFeed((int) $race['house_id'], (int) $race['user_id'], 'https://race.example/a.ics', 'RAdupe'), 'a mesma URL é duplicate');
 
+echo "pause sync\n";
+$pauseOwner = t_seed_owner();
+$pausePid = (int) $pauseOwner['house_id'];
+$pauseUid = (int) $pauseOwner['user_id'];
+$p1Created = HouseRepository::addFeed($pausePid, $pauseUid, 'https://pause.example/a.ics', 'PA');
+$p2Created = HouseRepository::addFeed($pausePid, $pauseUid, 'https://pause.example/b.ics', 'PB');
+t_ok(is_array($p1Created) && is_array($p2Created), 'dois feeds para pausar');
+$p1 = (int) $p1Created['feed']['id'];
+$p2 = (int) $p2Created['feed']['id'];
+$pauseDay = $day(7);
+db()->prepare("INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id, price) VALUES (?, ?, 1, 'sync', ?, 77)
+    ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'sync', feed_id = EXCLUDED.feed_id, price = 77")
+    ->execute([$pausePid, $pauseDay, $p1]);
+$paused = HouseRepository::pauseFeedSync($pausePid, $pauseUid, $p1);
+t_eq('paused', $paused['status'] ?? '', 'pausar devolve paused');
+t_eq(t('cal.sync_paused_flash'), $paused['message'] ?? '', 'mensagem de pausa');
+$pausedRow = db()->query('SELECT sync_enabled, next_sync_at::text AS due FROM calendar_feeds WHERE id = ' . $p1)->fetch();
+t_eq([0, 'infinity'], [(int) $pausedRow['sync_enabled'], $pausedRow['due']], 'feed pausado e sem próxima sincronização');
+t_eq(['blocked' => 0, 'origin' => '', 'feed_id' => null, 'price' => 77], $night($pausePid, $pauseDay), 'pausar libera as datas e guarda o preço');
+t_eq('paused', HouseRepository::pauseFeedSync($pausePid, $pauseUid, $p1)['status'] ?? '', 'pausar de novo é idempotente');
+
+db()->exec("UPDATE calendar_feeds SET next_sync_at = 'infinity'");
+db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 minute' WHERE id = ?")->execute([$p1]);
+t_eq(null, HouseRepository::claimDueFeed(), 'feed pausado não é reivindicado mesmo vencido');
+t_eq(null, HouseRepository::importFeed($pausePid, $p1, [$day(8)], ['sync'], 0), 'importação recusa feed pausado');
+db()->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '31 minutes' WHERE id = ?")->execute([$p1]);
+$pauseAlerts = fopen('php://memory', 'w+');
+CalendarWorker::$stderr = $pauseAlerts;
+CalendarWorker::checkAlerts();
+rewind($pauseAlerts);
+$pauseAlertText = stream_get_contents($pauseAlerts);
+CalendarWorker::$stderr = null;
+fclose($pauseAlerts);
+t_ok(!str_contains($pauseAlertText, 'lag'), 'feed pausado não dispara alerta de atraso');
+
+$resumed = HouseRepository::resumeFeedSync($pausePid, $pauseUid, $p1);
+t_eq('resumed', $resumed['status'] ?? '', 'reativar devolve resumed');
+t_eq(t('cal.sync_resumed_flash'), $resumed['message'] ?? '', 'mensagem de reativação');
+$resumedRow = db()->query('SELECT sync_enabled, fail_count, last_error, last_status FROM calendar_feeds WHERE id = ' . $p1)->fetch();
+t_eq([1, 0, null, 'PENDENTE'], [(int) $resumedRow['sync_enabled'], (int) $resumedRow['fail_count'], $resumedRow['last_error'], $resumedRow['last_status']], 'reativar limpa a falha e marca PENDENTE');
+t_eq($p1, (int) (HouseRepository::claimDueFeed()['id'] ?? 0), 'feed reativado volta a ser reivindicado');
+
 t_done();

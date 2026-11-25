@@ -829,4 +829,119 @@ final class OtaUrlBindingTest extends TestCase
             OtaVerificationService::listVerifiedForProperty($this->propertyId)
         ));
     }
+
+    /** A locked feed can pause syncing without losing its verification or the property badge. */
+    public function testPauseFeedSyncFreesDatesAndKeepsVerificationForLockedFeeds(): void
+    {
+        [$ical, $public] = $this->airbnbUrl(909191);
+        $created = HouseRepository::addFeed($this->propertyId, $this->userId, $ical, 'Airbnb', 'ota', 'airbnb', $public, true);
+        $this->assertIsArray($created);
+        $verifiedId = (int) $created['feed']['id'];
+        $this->assertSame('verified', $this->verifyFeedWithBlock($this->propertyId, $this->feed($this->propertyId, $verifiedId))['status']);
+
+        $night = '2099-05-10';
+        $this->pdo->prepare(
+            "INSERT INTO calendar_days (property_id, day, blocked, origin, feed_id, price)
+             VALUES (?, ?, 1, 'sync', ?, 321)
+             ON CONFLICT (property_id, day) DO UPDATE SET blocked = 1, origin = 'sync', feed_id = EXCLUDED.feed_id, price = 321"
+        )->execute([$this->propertyId, $night, $verifiedId]);
+
+        $before = $this->feed($this->propertyId, $verifiedId);
+        $paused = HouseRepository::pauseFeedSync($this->propertyId, $this->userId, $verifiedId);
+        $this->assertSame('paused', $paused['status']);
+        $this->assertSame(t('cal.sync_paused_flash'), $paused['message']);
+
+        $after = $this->feed($this->propertyId, $verifiedId);
+        $this->assertSame(0, (int) $after['sync_enabled']);
+        $this->assertSame($before['status'], $after['status'], 'pausing never changes calendar_feeds.status');
+        $this->assertSame((string) $before['verified_at'], (string) $after['verified_at'], 'pausing never clears verified_at');
+        $this->assertSame($before['review_status'], $after['review_status'], 'pausing never changes review_status');
+        $nextDue = $this->pdo->query('SELECT next_sync_at::text FROM calendar_feeds WHERE id = ' . $verifiedId)->fetchColumn();
+        $this->assertSame('infinity', (string) $nextDue);
+        $this->assertSame(1, (int) $this->property($this->propertyId)['is_verified'], 'the property badge stays');
+
+        $nightRow = $this->pdo->prepare('SELECT blocked, origin, feed_id, price FROM calendar_days WHERE property_id = ? AND day = ?');
+        $nightRow->execute([$this->propertyId, $night]);
+        $freed = $nightRow->fetch(PDO::FETCH_ASSOC) ?: [];
+        $this->assertSame(0, (int) $freed['blocked']);
+        $this->assertSame('', (string) $freed['origin']);
+        $this->assertNull($freed['feed_id']);
+        $this->assertSame(321, (int) $freed['price'], 'the nightly price survives the pause');
+
+        $again = HouseRepository::pauseFeedSync($this->propertyId, $this->userId, $verifiedId);
+        $this->assertSame('paused', $again['status']);
+
+        // Option 2 immutability stays intact: removal and URL edits remain refused.
+        $removed = ICalFeedRemove::remover($this->propertyId, $this->userId, $verifiedId);
+        $this->assertSame('bloqueado', $removed->tipo);
+        $locked = HouseRepository::updateFeed(
+            $this->propertyId, $this->userId, $verifiedId, 'ota', 'airbnb',
+            'https://www.airbnb.com/rooms/909192', 'https://www.airbnb.com/calendar/ical/909192.ics',
+            'Airbnb', true, true
+        );
+        $this->assertSame('locked', $locked['status']);
+
+        // A pending_review feed can pause too, keeping the review state.
+        [$bIcal, $bPublic] = $this->bookingUrl('pause-review', 'casa-pause-review');
+        $bCreated = HouseRepository::addFeed($this->propertyId, $this->userId, $bIcal, 'Booking', 'ota', 'booking', $bPublic, true);
+        $this->assertIsArray($bCreated);
+        $bId = (int) $bCreated['feed']['id'];
+        $this->assertSame('pending_review', $this->verifyFeedWithBlock($this->propertyId, $this->feed($this->propertyId, $bId))['status']);
+        $bPaused = HouseRepository::pauseFeedSync($this->propertyId, $this->userId, $bId);
+        $this->assertSame('paused', $bPaused['status']);
+        $bAfter = $this->feed($this->propertyId, $bId);
+        $this->assertSame(0, (int) $bAfter['sync_enabled']);
+        $this->assertSame('pending_review', $bAfter['review_status']);
+        $this->assertNotNull($bAfter['verified_at']);
+    }
+
+    /** Paused feeds are never claimed, imported or resumed by accident; resume makes them due again. */
+    public function testPausedFeedIsSkippedByClaimAndImportAndResumeMakesItDue(): void
+    {
+        $created = HouseRepository::addFeed($this->propertyId, $this->userId, 'https://pause.example/a.ics', 'Pausa');
+        $this->assertIsArray($created);
+        $feedId = (int) $created['feed']['id'];
+        $this->assertSame('paused', HouseRepository::pauseFeedSync($this->propertyId, $this->userId, $feedId)['status']);
+
+        // Force the paused feed to look due: the claim filter must still skip it.
+        $this->pdo->exec("UPDATE calendar_feeds SET next_sync_at = 'infinity'");
+        $this->pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now() - interval '1 minute' WHERE id = ?")->execute([$feedId]);
+        $this->assertNull(HouseRepository::claimDueFeed(), 'sync_enabled = 0 is never claimed');
+        $this->assertNull(HouseRepository::importFeed($this->propertyId, $feedId, ['2099-06-01'], ['sync'], 0), 'import refuses a paused feed');
+
+        // Manual sync requests cannot bypass the pause.
+        $dueBefore = $this->pdo->query('SELECT next_sync_at::text FROM calendar_feeds WHERE id = ' . $feedId)->fetchColumn();
+        HouseRepository::markFeedPending($this->propertyId, $feedId);
+        $dueAfter = $this->pdo->query('SELECT next_sync_at::text FROM calendar_feeds WHERE id = ' . $feedId)->fetchColumn();
+        $this->assertSame((string) $dueBefore, (string) $dueAfter, 'markFeedPending leaves a paused feed stopped');
+
+        $resumed = HouseRepository::resumeFeedSync($this->propertyId, $this->userId, $feedId);
+        $this->assertSame('resumed', $resumed['status']);
+        $this->assertSame(t('cal.sync_resumed_flash'), $resumed['message']);
+        $after = $this->feed($this->propertyId, $feedId);
+        $this->assertSame(1, (int) $after['sync_enabled']);
+        $this->assertSame('PENDENTE', (string) $after['last_status']);
+        $claimed = HouseRepository::claimDueFeed();
+        $this->assertSame($feedId, (int) ($claimed['id'] ?? 0), 'resume makes the feed due for the worker');
+    }
+
+    /** The daily passive check still revokes a paused verified feed after three 401/403/404/410 failures. */
+    public function testPausedVerifiedFeedStillDowngradesAfterPassiveTokenFailures(): void
+    {
+        [$ical, $public] = $this->airbnbUrl(909292);
+        $created = HouseRepository::addFeed($this->propertyId, $this->userId, $ical, 'Airbnb', 'ota', 'airbnb', $public, true);
+        $this->assertIsArray($created);
+        $feedId = (int) $created['feed']['id'];
+        $this->assertSame('verified', $this->verifyFeedWithBlock($this->propertyId, $this->feed($this->propertyId, $feedId))['status']);
+        $this->assertSame(1, (int) $this->property($this->propertyId)['is_verified']);
+        $this->assertSame('paused', HouseRepository::pauseFeedSync($this->propertyId, $this->userId, $feedId)['status']);
+
+        $downgraded = $this->passiveDowngrade($feedId);
+        $this->assertSame('downgraded', $downgraded['status']);
+        $after = $this->feed($this->propertyId, $feedId);
+        $this->assertSame('pending_verification', (string) $after['status']);
+        $this->assertNull($after['verified_at']);
+        $this->assertSame(0, (int) $after['sync_enabled'], 'the passive check does not re-enable sync');
+        $this->assertSame(0, (int) $this->property($this->propertyId)['is_verified']);
+    }
 }

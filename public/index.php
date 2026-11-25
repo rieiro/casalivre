@@ -1728,6 +1728,36 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar$#', $path, $m))
     redirect('/imoveis/' . $m[1] . '/calendario');
 }
 
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/pausar-sync$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findManageableOrFail(
+        (int) $user['id'],
+        HouseRepository::idFromPublicRefOrFail($m[1])
+    );
+    $res = HouseRepository::pauseFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
+    CalendarFlash::set(
+        (string) ($res['message'] ?? t('cal.feed_missing')),
+        ($res['status'] ?? '') === 'paused' ? 'ok' : 'error'
+    );
+    redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/reativar-sync$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findManageableOrFail(
+        (int) $user['id'],
+        HouseRepository::idFromPublicRefOrFail($m[1])
+    );
+    $res = HouseRepository::resumeFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
+    CalendarFlash::set(
+        (string) ($res['message'] ?? t('cal.feed_missing')),
+        ($res['status'] ?? '') === 'resumed' ? 'ok' : 'error'
+    );
+    redirect('/imoveis/' . property_ref($property) . '/calendario#sincronizar-calendario');
+}
+
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();

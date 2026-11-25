@@ -194,6 +194,55 @@
         });
     });
 
+    // Pausar sincronização de um feed verificado (sem excluir o vínculo nem o selo).
+    document.querySelectorAll('form[action*="/ical/"][action*="/pausar-sync"]').forEach(form => {
+        form.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            const match = form.action.match(/\/ical\/(\d+)\/pausar-sync/);
+            if (!match) return;
+            const message = form.getAttribute('data-confirm-pause')
+                || 'Remover esta sincronização de calendário e apagar as datas importadas?';
+            if (!confirm(message)) return;
+            const button = form.querySelector('button[type="submit"]');
+            if (button) button.disabled = true;
+            try {
+                const res = await CL.api('/api/imoveis/' + ref + '/ical/' + match[1] + '/pausar-sync', { method: 'POST', error: 'Erro ao remover sincronização' });
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('success', 'Sincronização', (res && res.message) || '');
+                }
+                window.location.reload();
+            } catch (e) {
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('error', 'Erro ao remover sincronização', e.message || 'Não foi possível remover a sincronização.');
+                }
+                if (button) button.disabled = false;
+            }
+        });
+    });
+
+    // Reativar uma sincronização pausada com um clique.
+    document.querySelectorAll('form[action*="/ical/"][action*="/reativar-sync"]').forEach(form => {
+        form.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            const match = form.action.match(/\/ical\/(\d+)\/reativar-sync/);
+            if (!match) return;
+            const button = form.querySelector('button[type="submit"]');
+            if (button) button.disabled = true;
+            try {
+                const res = await CL.api('/api/imoveis/' + ref + '/ical/' + match[1] + '/reativar-sync', { method: 'POST', error: 'Erro ao reativar sincronização' });
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('success', 'Sincronização', (res && res.message) || '');
+                }
+                window.location.reload();
+            } catch (e) {
+                if (window.CL && typeof window.CL.toast === 'function') {
+                    CL.toast('error', 'Erro ao reativar sincronização', e.message || 'Não foi possível reativar a sincronização.');
+                }
+                if (button) button.disabled = false;
+            }
+        });
+    });
+
     // Exportação iCal por plataforma: toggles, geração, cópia e revogação.
     const icalExport = document.querySelector('[data-ical-export]');
     const exportToast = function (type, text) {

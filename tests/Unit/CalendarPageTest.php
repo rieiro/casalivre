@@ -1754,4 +1754,85 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $this->assertStringNotContainsString('/ical/' . $lockedId . '/excluir', $table);
         }
     }
+
+    public function testCalendarViewPausesAndResumesLockedOtaFeedSync(): void
+    {
+        $property = [
+            'id' => 9,
+            'public_hash' => 'pauseproperty123',
+            'title' => 'Casa Pausa',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 201,
+                'title' => 'Airbnb ativo',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+                'sync_enabled' => 1,
+            ],
+            [
+                'id' => 202,
+                'title' => 'Booking pausado',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'pending_review',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+                'sync_enabled' => 0,
+            ],
+            [
+                'id' => 203,
+                'title' => 'Feed manual',
+                'url' => 'https://example.test/feed.ics',
+                'status' => 'active',
+                'verification_mode' => 'sync_only',
+                'source_platform' => 'other',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        // Locked + sync enabled: sync now and the pause action, never the delete action.
+        $this->assertStringContainsString('/ical/201/sincronizar', $html);
+        $this->assertStringContainsString('/ical/201/pausar-sync', $html);
+        $this->assertStringContainsString('data-confirm-pause="' . e(t('cal.pause_sync_confirm')) . '"', $html);
+        $this->assertStringContainsString(t('cal.pause_sync'), $html);
+        $this->assertStringNotContainsString('/ical/201/excluir', $html);
+
+        // Locked + paused: resume action and hint, no sync or delete action.
+        $this->assertStringContainsString('/ical/202/reativar-sync', $html);
+        $this->assertStringContainsString(t('cal.resume_sync'), $html);
+        $this->assertStringContainsString(e(t('cal.sync_paused_hint')), $html);
+        $this->assertStringNotContainsString('/ical/202/sincronizar', $html);
+        $this->assertStringNotContainsString('/ical/202/pausar-sync', $html);
+        $this->assertStringNotContainsString('/ical/202/excluir', $html);
+
+        // Unlocked feeds keep the existing sync + remove behavior.
+        $this->assertStringContainsString('/ical/203/sincronizar', $html);
+        $this->assertStringContainsString('/ical/203/excluir', $html);
+        $this->assertStringNotContainsString('/ical/203/pausar-sync', $html);
+        $this->assertStringNotContainsString('/ical/203/reativar-sync', $html);
+    }
 }

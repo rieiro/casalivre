@@ -336,6 +336,8 @@ CREATE TABLE IF NOT EXISTS calendar_feeds (
     review_note TEXT NULL,
     consent_at TIMESTAMPTZ NULL,
     verification_ip TEXT NULL,
+    -- Schema 43: host pause/detach import sync without dropping the verification lock.
+    sync_enabled SMALLINT NOT NULL DEFAULT 1 CHECK (sync_enabled IN (0, 1)),
     UNIQUE (property_id, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_feeds_due ON calendar_feeds (next_sync_at);

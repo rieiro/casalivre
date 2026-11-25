@@ -49,6 +49,7 @@ WITH c AS MATERIALIZED (
       JOIN properties p ON p.id = f2.property_id
       JOIN users u ON u.id = p.user_id
      WHERE f2.status IN ('pending_verification', 'active') AND f2.next_sync_at <= now()
+       AND f2.sync_enabled = 1
      ORDER BY (f2.last_status = 'PENDENTE') DESC, f2.next_sync_at ASC
      LIMIT 1
      FOR UPDATE OF f2 SKIP LOCKED
@@ -524,7 +525,7 @@ SQL;
             status, challenge_date, challenge_expires_at, verified_at, last_checked_at, attempts,
             passive_fail_count, credits_awarded, source_platform,
             verification_mode, property_url, canonical_listing_id, ics_metadata,
-            review_status, reviewed_by, reviewed_at, review_note, consent_at,
+            review_status, reviewed_by, reviewed_at, review_note, consent_at, sync_enabled,
             next_sync_at = 'infinity' AS stopped
             FROM calendar_feeds WHERE property_id = ? ORDER BY id");
         $stmt->execute([$propertyId]);
@@ -537,6 +538,7 @@ SQL;
             $row['credits_awarded'] = self::pgBool($row['credits_awarded'] ?? false);
             $row['verification_mode'] = (string) ($row['verification_mode'] ?? 'sync_only');
             $row['review_status'] = (string) ($row['review_status'] ?? 'approved');
+            $row['sync_enabled'] = (int) ($row['sync_enabled'] ?? 1);
             $row['stopped'] = self::pgBool($row['stopped']);
             $rows[] = $row;
         }
@@ -920,7 +922,80 @@ SQL;
                     WHEN verified_at IS NULL THEN 'pending_verification'
                     ELSE 'active'
                 END
-            WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
+            WHERE id = ? AND property_id = ? AND sync_enabled = 1")->execute([$feedId, $propertyId]);
+    }
+
+    /**
+     * Host detaches the feed from event syncing without deleting it or touching the verification lock.
+     * Frees only the nights this feed holds (prices remain) and re-schedules the other active feeds.
+     *
+     * @return array{status: string, message: string, nights: array}
+     */
+    public static function pauseFeedSync(int $propertyId, int $userId, int $feedId): array
+    {
+        return Db::transactional(db(), static function () use ($propertyId, $userId, $feedId): array {
+            $pdo = db();
+            $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
+            $lock = $pdo->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
+            $lock->execute([$feedId, $propertyId]);
+            $current = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($current)) {
+                return ['status' => 'not_found', 'message' => t('cal.feed_missing'), 'nights' => []];
+            }
+            if ((int) ($current['sync_enabled'] ?? 1) === 0) {
+                return ['status' => 'paused', 'message' => t('cal.sync_paused_flash'), 'nights' => []];
+            }
+            $pdo->prepare("UPDATE calendar_feeds SET sync_enabled = 0, next_sync_at = 'infinity'
+                WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
+            $nights = ReturningWrite::update(
+                'calendar_days',
+                ['blocked' => 0, 'origin' => '', 'feed_id' => null],
+                'property_id = ? AND feed_id = ?',
+                [$propertyId, $feedId],
+                ['property_id', 'day'],
+                ['day', 'blocked', 'price', 'min_nights', 'origin']
+            );
+            $pdo->prepare("UPDATE calendar_feeds SET next_sync_at = now()
+                WHERE property_id = ? AND id <> ? AND sync_enabled = 1 AND next_sync_at > now() AND next_sync_at < 'infinity'")
+                ->execute([$propertyId, $feedId]);
+            ActivityLog::record(
+                ActivityLog::CALENDAR_FEED_PAUSE,
+                ['imovel_id' => $propertyId, 'feed_id' => $feedId],
+                ['sync_enabled' => 1],
+                ['sync_enabled' => 0]
+            );
+            return ['status' => 'paused', 'message' => t('cal.sync_paused_flash'), 'nights' => $nights];
+        });
+    }
+
+    /**
+     * Re-enables a paused feed and makes it due immediately; the worker picks it up on the next tick.
+     *
+     * @return array{status: string, message: string}
+     */
+    public static function resumeFeedSync(int $propertyId, int $userId, int $feedId): array
+    {
+        return Db::transactional(db(), static function () use ($propertyId, $userId, $feedId): array {
+            $pdo = db();
+            $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
+            $lock = $pdo->prepare('SELECT * FROM calendar_feeds WHERE id = ? AND property_id = ? FOR UPDATE');
+            $lock->execute([$feedId, $propertyId]);
+            $current = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($current)) {
+                return ['status' => 'not_found', 'message' => t('cal.feed_missing')];
+            }
+            $pdo->prepare("UPDATE calendar_feeds
+                SET sync_enabled = 1, next_sync_at = now() - interval '1 second', fail_count = 0,
+                    last_error = NULL, last_status = 'PENDENTE'
+                WHERE id = ? AND property_id = ?")->execute([$feedId, $propertyId]);
+            ActivityLog::record(
+                ActivityLog::CALENDAR_FEED_RESUME,
+                ['imovel_id' => $propertyId, 'feed_id' => $feedId],
+                ['sync_enabled' => 0],
+                ['sync_enabled' => 1]
+            );
+            return ['status' => 'resumed', 'message' => t('cal.sync_resumed_flash')];
+        });
     }
 
     /**
@@ -957,7 +1032,7 @@ SQL;
         return Db::transactional(db(), static function () use ($propertyId, $feedId, $nights, $origins, $jitterSeconds): ?array {
             $pdo = db();
             $pdo->prepare('SELECT pg_advisory_xact_lock(?, ?)')->execute([self::SYNC_ADVISORY_NS, $propertyId]);
-            $check = $pdo->prepare('SELECT 1 FROM calendar_feeds WHERE id = ? AND property_id = ? FOR KEY SHARE');
+            $check = $pdo->prepare('SELECT 1 FROM calendar_feeds WHERE id = ? AND property_id = ? AND sync_enabled = 1 FOR KEY SHARE');
             $check->execute([$feedId, $propertyId]);
             if ($check->fetchColumn() === false) {
                 return null;

@@ -696,6 +696,38 @@ function handle_api(string $path, string $method): void
         json_out(200, ['ok' => true, 'message' => t('cal.sync_requested'), 'feeds' => HouseRepository::feeds((int) $property['id'])]);
     }
 
+    // Pausar a sincronização de um feed sem excluir o vínculo nem o selo de verificação.
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/pausar-sync$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $res = HouseRepository::pauseFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
+        if (($res['status'] ?? '') === 'not_found') {
+            api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
+        }
+        CalendarFlash::set((string) $res['message'], 'ok');
+        json_out(200, [
+            'ok' => true,
+            'message' => (string) $res['message'],
+            'feeds' => HouseRepository::feeds((int) $property['id']),
+        ]);
+    }
+
+    // Reativar a sincronização pausada de um feed.
+    if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical/(\d+)/reativar-sync$#', $path, $m) && $method === 'POST') {
+        $user = api_require_user($user);
+        $property = api_owned_property($user, $m[1]);
+        $res = HouseRepository::resumeFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
+        if (($res['status'] ?? '') === 'not_found') {
+            api_error(404, (string) ($res['message'] ?? t('cal.feed_missing')));
+        }
+        CalendarFlash::set((string) $res['message'], 'ok');
+        json_out(200, [
+            'ok' => true,
+            'message' => (string) $res['message'],
+            'feeds' => HouseRepository::feeds((int) $property['id']),
+        ]);
+    }
+
     // Exportação iCal por plataforma (links 64-hex individuais + toggles do imóvel).
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/ical-exports$#', $path, $m) && $method === 'GET') {
         $user = api_require_user($user);

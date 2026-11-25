@@ -102,6 +102,10 @@ final class ActivityLog
     public const OTA_REVIEW_REJECT = 63;
     /** Links de um feed verificado foram alterados e a verificação reiniciada (Host/Gestor). Admin. */
     public const OTA_FEED_EDIT = 64;
+    /** Sincronização de um feed foi pausada pelo anfitrião (Host/Gestor). Admin. */
+    public const CALENDAR_FEED_PAUSE = 65;
+    /** Sincronização de um feed foi reativada pelo anfitrião (Host/Gestor). Admin. */
+    public const CALENDAR_FEED_RESUME = 66;
 
     public const CATALOG = [
         self::LOGIN_OK => 'Login com sucesso',
@@ -168,6 +172,8 @@ final class ActivityLog
         self::OTA_REVIEW_APPROVE => 'Verificação OTA aprovada pelo administrador',
         self::OTA_REVIEW_REJECT => 'Verificação OTA rejeitada pelo administrador',
         self::OTA_FEED_EDIT => 'Links de calendário verificado alterados',
+        self::CALENDAR_FEED_PAUSE => 'Sincronização de calendário externo pausada',
+        self::CALENDAR_FEED_RESUME => 'Sincronização de calendário externo reativada',
     ];
 
     public const ADMIN = 'admin';
@@ -214,6 +220,8 @@ final class ActivityLog
         self::OTA_REVIEW_APPROVE => self::ADMIN,
         self::OTA_REVIEW_REJECT => self::ADMIN,
         self::OTA_FEED_EDIT => self::ADMIN,
+        self::CALENDAR_FEED_PAUSE => self::ADMIN,
+        self::CALENDAR_FEED_RESUME => self::ADMIN,
     ];
 
     /** payload + before_value + after_value, as PG prints jsonb (CHECK on both tables). */
@@ -552,6 +560,8 @@ final class ActivityLog
         self::OTA_REVIEW_APPROVE => ['plataforma', 'feed_id'],
         self::OTA_REVIEW_REJECT => ['plataforma', 'feed_id'],
         self::OTA_FEED_EDIT => ['plataforma', 'feed_id'],
+        self::CALENDAR_FEED_PAUSE => ['feed_id', 'imovel_id'],
+        self::CALENDAR_FEED_RESUME => ['feed_id', 'imovel_id'],
         self::INTERNAL_ERROR => ['arquivo', 'linha', 'mensagem', 'metodo', 'quando', 'rastreio', 'referencia', 'rota', 'tipo'],
     ];
 
@@ -571,6 +581,7 @@ final class ActivityLog
         'quote_hash', 'total_price', 'tax_percent', 'special_offer',
         'plataforma', 'challenge_date', 'creditos', 'falhas',
         'ical_export_manual_blocks', 'ical_export_imported_events', 'target_platform', 'label',
+        'sync_enabled',
     ];
 
     /** Ações de conta: só os NOMES dos campos alterados são gravados (nunca os valores). */

@@ -19,8 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-// Updated: 2026-11 - schema 42 (Model B: properties.is_verified/verified_at).
-t_eq(42, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 42');
+// Updated: 2026-11 - schema 43 (calendar_feeds.sync_enabled: pausar/reativar importação).
+t_eq(43, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 43');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');

@@ -115,7 +115,7 @@ final class CalendarWorker
     public static function checkAlerts(): void
     {
         $lag = db()->query("SELECT EXTRACT(EPOCH FROM (now() - min(next_sync_at)))
-            FROM calendar_feeds WHERE next_sync_at <= now()")->fetchColumn();
+            FROM calendar_feeds WHERE next_sync_at <= now() AND sync_enabled = 1")->fetchColumn();
         if (is_numeric($lag) && (float) $lag > self::LAG_ALERT_SECONDS) {
             self::alert('lag', 'lag ' . (int) $lag . ' s (due feeds older than 30 min)');
         }
