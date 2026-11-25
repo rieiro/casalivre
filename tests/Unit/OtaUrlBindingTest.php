@@ -944,4 +944,24 @@ final class OtaUrlBindingTest extends TestCase
         $this->assertSame(0, (int) $after['sync_enabled'], 'the passive check does not re-enable sync');
         $this->assertSame(0, (int) $this->property($this->propertyId)['is_verified']);
     }
+
+    public function testPendingReviewRowIncludesCasalivreInternalUrl(): void
+    {
+        $ical = 'https://ical.booking.com/v1/export?t=pending-link-1';
+        $public = 'https://www.booking.com/hotel/br/casa-link-interno.html';
+        $created = HouseRepository::addFeed($this->propertyId, $this->userId, $ical, 'Booking', 'ota', 'booking', $public, true);
+        $this->assertIsArray($created);
+        $feed = $this->feed($this->propertyId, (int) $created['feed']['id']);
+
+        $this->now += OtaVerificationService::CHECK_COOLDOWN_SECONDS + 1;
+        OtaVerificationService::$httpTransport = fn (): string => $this->icsWithBlocked((string) $feed['challenge_date']);
+        $verified = HouseRepository::verifyFeed($this->propertyId, (int) $feed['id']);
+        $this->assertSame('pending_review', $verified['status']);
+
+        $pending = OtaVerificationService::listPendingReviews();
+        $row = array_values(array_filter($pending, fn (array $r): bool => (int) $r['id'] === (int) $feed['id']))[0] ?? [];
+
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', (string) ($row['public_hash'] ?? ''));
+        $this->assertSame('/imoveis/' . $row['public_hash'], $row['casalivre_url'] ?? null);
+    }
 }

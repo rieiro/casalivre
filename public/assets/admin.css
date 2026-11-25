@@ -974,3 +974,39 @@ body.admin-body {
     color: var(--muted, #6b7280);
     font-size: 0.8rem;
 }
+.ota-links-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+    align-items: start;
+}
+.ota-link-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--admin-border, #e2e8f0);
+    border-radius: 0.45rem;
+    background: #f8fafc;
+    min-width: 0;
+}
+.ota-link-box a {
+    overflow-wrap: anywhere;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+.ota-link-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #475569;
+}
+.ota-link-meta {
+    margin-top: 0.4rem;
+}
+@media (max-width: 1024px) {
+    .ota-links-pair {
+        grid-template-columns: 1fr;
+    }
+}

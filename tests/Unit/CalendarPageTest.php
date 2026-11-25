@@ -1896,4 +1896,68 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
             $css
         );
     }
+
+    public function testAdminVerificationQueueShowsCasalivreLinkSideBySideWithPublicUrl(): void
+    {
+        $pending = [
+            [
+                'id' => 62,
+                'property_id' => 7,
+                'public_hash' => 'a1b2c3d4e5f60718',
+                'casalivre_url' => '/imoveis/a1b2c3d4e5f60718',
+                'property_title' => 'Casa Praia',
+                'property_city' => 'Ubatuba, SP',
+                'user_name' => 'Maria Silva',
+                'email' => 'maria@test.local',
+                'platform_label' => 'Booking.com',
+                'source_platform' => 'booking',
+                'property_url' => 'https://www.booking.com/hotel/br/casa-praia.html',
+                'ical_url_masked' => 'https://ical.booking.com/••••',
+                'canonical_listing_id' => 'booking:br/casa-praia',
+                'challenge_date_br' => '14/02/2027',
+                'ics_metadata' => 'PRODID:-//Booking.com//',
+            ],
+            [
+                'id' => 63,
+                'property_id' => 8,
+                'public_hash' => 'b2c3d4e5f60718a9',
+                'property_title' => 'Chalé Serra',
+                'property_city' => 'Campos do Jordão, SP',
+                'user_name' => 'João Costa',
+                'email' => 'joao@test.local',
+                'platform_label' => 'Vrbo',
+                'source_platform' => 'vrbo',
+                'property_url' => 'https://www.vrbo.com/1234567',
+                'ical_url_masked' => 'https://www.vrbo.com/••••',
+                'canonical_listing_id' => 'vrbo:1234567',
+                'challenge_date_br' => '15/02/2027',
+                'ics_metadata' => 'PRODID:-//Vrbo//',
+            ],
+        ];
+        $user = ['is_admin' => 1];
+        $csrf = 'csrf_token_test';
+        $ok = false;
+        $error = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/admin/verificacoes.php';
+        $html = (string) ob_get_clean();
+
+        $this->assertMatchesRegularExpression(
+            '/<div class="ota-links-pair">.*?href="\/imoveis\/a1b2c3d4e5f60718"[^>]*target="_blank" rel="noopener noreferrer"[^>]*>\/imoveis\/a1b2c3d4e5f60718<\/a>.*?href="https:\/\/www\.booking\.com\/hotel\/br\/casa-praia\.html"[^>]*target="_blank" rel="noopener noreferrer"/s',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/<div class="ota-links-pair">.*?href="\/imoveis\/b2c3d4e5f60718a9"[^>]*target="_blank" rel="noopener noreferrer"[^>]*>\/imoveis\/b2c3d4e5f60718a9<\/a>.*?href="https:\/\/www\.vrbo\.com\/1234567"/s',
+            $html
+        );
+        $this->assertStringNotContainsString('onclick=', $html);
+        $this->assertStringNotContainsString('onsubmit=', $html);
+        $this->assertDoesNotMatchRegularExpression('/\sstyle\s*=/i', $html);
+
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/admin.css');
+        $this->assertMatchesRegularExpression(
+            '/\.ota-links-pair\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s',
+            $css
+        );
+    }
 }
