@@ -5067,7 +5067,7 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
 /* OTA verification: platform-bound feed form, review and edit states. */
 .sync-platform {
     display: inline-block;
-    margin-top: 0.2rem;
+    margin-top: 0;
     padding: 0.15rem 0.5rem;
     border: 1px solid var(--line);
     border-radius: 999px;

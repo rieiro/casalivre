@@ -204,9 +204,10 @@ $remainingOtaLabels = $bannerState['remaining_labels'];
                             ?>
                             <tr>
                                 <td>
-                                    <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
                                     <?php if ($isOta && $platformLabel !== ''): ?>
-                                        <br><span class="sync-platform"><?= e($platformLabel) ?></span>
+                                        <strong class="sync-platform"><?= e($platformLabel) ?></strong>
+                                    <?php else: ?>
+                                        <strong><?= e((string) ($feed['title'] ?? '')) ?></strong>
                                     <?php endif; ?>
                                     <?php if ($isOta && !empty($feed['property_url'])): ?>
                                         <br><a class="fine sync-property-link" href="<?= e((string) $feed['property_url']) ?>" target="_blank" rel="noopener noreferrer"><?= e((string) $feed['property_url']) ?></a>

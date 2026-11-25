@@ -1480,4 +1480,77 @@ public function testCalendarViewRendersSelectionPricingBreakdownTable(): void
         $this->assertMatchesRegularExpression('/\.sync-left-pane\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s', $css);
         $this->assertStringNotContainsString('.sync-board .prop-verify-banner', $css);
     }
+
+    public function testCalendarImportedFeedTitleShowsPlatformLabelOnly(): void
+    {
+        $property = [
+            'id' => 7,
+            'public_hash' => 'testproperty1234',
+            'title' => 'Casa Teste',
+            'calendar_horizon_months' => 3,
+            'nightly_price' => 250,
+            'min_nights' => 2,
+        ];
+        $days = [];
+        $feeds = [
+            [
+                'id' => 95,
+                'title' => 'Airbnb Verificado',
+                'url' => 'https://www.airbnb.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'airbnb',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 96,
+                'title' => 'Booking Casa Teste',
+                'url' => 'https://ical.booking.com/••••',
+                'status' => 'active',
+                'verification_mode' => 'ota',
+                'source_platform' => 'booking',
+                'review_status' => 'approved',
+                'verified_at' => '2026-11-01 12:00:00+00',
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+            [
+                'id' => 97,
+                'title' => 'Calendário manual',
+                'url' => 'https://example.com/calendar.ics',
+                'status' => 'active',
+                'verification_mode' => 'sync_only',
+                'source_platform' => 'other',
+                'review_status' => 'approved',
+                'verified_at' => null,
+                'challenge_date' => null,
+                'last_synced_at' => null,
+                'last_error' => null,
+            ],
+        ];
+        $csrf = 'csrf_token_test';
+        $message = null;
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $html = (string) ob_get_clean();
+
+        $importedPos = strpos($html, e(t('cal.imported_calendars')));
+        $exportedPos = strpos($html, e(t('cal.exported_calendars')));
+        $this->assertNotFalse($importedPos);
+        $this->assertNotFalse($exportedPos);
+        $table = substr($html, (int) $importedPos, (int) $exportedPos - (int) $importedPos);
+
+        // OTA feeds show only the platform label as the imported calendar title.
+        $this->assertSame(1, preg_match_all('/<strong class="sync-platform">Airbnb<\/strong>/', $table));
+        $this->assertSame(1, preg_match_all('/<strong class="sync-platform">Booking\.com<\/strong>/', $table));
+        $this->assertStringNotContainsString('Airbnb Verificado', $table);
+        $this->assertStringNotContainsString('Booking Casa Teste', $table);
+        // Non-OTA feeds keep their free-text title.
+        $this->assertStringContainsString('<strong>Calendário manual</strong>', $table);
+    }
 }
