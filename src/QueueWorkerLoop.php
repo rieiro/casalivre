@@ -153,6 +153,10 @@ final class QueueWorkerLoop
                 'foto_id' => $row['id'],
             ]);
         }
+        $pruned = PhotoStorage::pruneOrphanOriginals(PhotoRepository::STUCK_AFTER_SECONDS);
+        if ($pruned > 0) {
+            self::alert('pruned ' . $pruned . ' orphan original file(s)');
+        }
     }
 
     /** One ALERT line on STDERR (runit) and, when error_log is set, in the PHP error log. Class names only; no message. */

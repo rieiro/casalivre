@@ -360,8 +360,9 @@ final class ImageWorker
         if ($out !== $img) {
             imagedestroy($out);
         }
-        if (!$ok || !@rename($tmp, $target)) {
+        if (!$ok || !@rename($tmp, $target) || !is_file($target) || (int) @filesize($target) <= 12) {
             @unlink($tmp);
+            @unlink($target);
             throw new RuntimeException('Falha ao gravar WebP.');
         }
         @chmod($target, 0644);

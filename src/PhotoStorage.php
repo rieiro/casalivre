@@ -214,6 +214,50 @@ final class PhotoStorage
         }
     }
 
+    /**
+     * Removes stale files in storage/fotos/originais older than $maxAgeSeconds that no longer
+     * belong to any processing row (e.g. crashed downloads or orphaned temp files).
+     */
+    public static function pruneOrphanOriginals(int $maxAgeSeconds = 1800, ?int $now = null): int
+    {
+        $dir = self::originalsDir();
+        if (!is_dir($dir)) {
+            return 0;
+        }
+        $cutoff = ($now ?? time()) - max(60, $maxAgeSeconds);
+        $active = [];
+        $stmt = db()->query("SELECT original FROM photos WHERE status = 'processing' AND original IS NOT NULL");
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $name) {
+            if (is_string($name) && $name !== '') {
+                $active[$name] = true;
+            }
+        }
+        $removed = 0;
+        $entries = @scandir($dir);
+        if (!is_array($entries)) {
+            return 0;
+        }
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $isUuidOriginal = preg_match('/^[0-9a-f-]{36}\.(jpg|png|webp)$/', $entry) === 1;
+            $isRemoteTemp = str_starts_with($entry, 'cl-remote-');
+            if (!$isUuidOriginal && !$isRemoteTemp) {
+                continue;
+            }
+            if ($isUuidOriginal && isset($active[$entry])) {
+                continue;
+            }
+            $path = $dir . '/' . $entry;
+            $mtime = @filemtime($path);
+            if (is_file($path) && is_int($mtime) && $mtime <= $cutoff && @unlink($path)) {
+                $removed++;
+            }
+        }
+        return $removed;
+    }
+
     public static function variantPath(string $uuid, int $width): string
     {
         return '/uploads/fotos/' . $uuid . '-' . $width . '.webp';

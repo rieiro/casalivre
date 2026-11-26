@@ -1187,4 +1187,33 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame(['path', 'is_primary', 'sort_order'], array_keys($publicPhotos[0]));
         $this->assertSame((string) $ready['path'], $publicPhotos[0]['path']);
     }
+
+    public function testPruneOrphanOriginalsRemovesStaleUnreferencedAndRemoteTempFilesOnly(): void
+    {
+        $now = self::T0;
+        $staleOrphan = PhotoStorage::randomId() . '.jpg';
+        $freshOrphan = PhotoStorage::randomId() . '.jpg';
+        $activeProcessing = PhotoStorage::randomId() . '.jpg';
+        $staleTemp = 'cl-remote-deadbeef';
+
+        file_put_contents(PhotoStorage::$originals . '/' . $staleOrphan, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $freshOrphan, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $activeProcessing, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $staleTemp, 'x');
+
+        touch(PhotoStorage::$originals . '/' . $staleOrphan, $now - 3600);
+        touch(PhotoStorage::$originals . '/' . $freshOrphan, $now - 60);
+        touch(PhotoStorage::$originals . '/' . $activeProcessing, $now - 3600);
+        touch(PhotoStorage::$originals . '/' . $staleTemp, $now - 3600);
+
+        PhotoRepository::insertProcessing($this->propertyId, substr($activeProcessing, 0, 36), $activeProcessing, 0, 0);
+
+        $removed = PhotoStorage::pruneOrphanOriginals(PhotoRepository::STUCK_AFTER_SECONDS, $now);
+
+        $this->assertSame(2, $removed);
+        $this->assertFileDoesNotExist(PhotoStorage::$originals . '/' . $staleOrphan);
+        $this->assertFileDoesNotExist(PhotoStorage::$originals . '/' . $staleTemp);
+        $this->assertFileExists(PhotoStorage::$originals . '/' . $freshOrphan);
+        $this->assertFileExists(PhotoStorage::$originals . '/' . $activeProcessing);
+    }
 }
