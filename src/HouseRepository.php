@@ -372,14 +372,23 @@ SQL;
     public static function inactivate(int $id, int $userId, string $at): array
     {
         return self::synced($id, static function () use ($id, $userId, $at): array {
-            return self::exposeCity(ReturningWrite::update(
+            $changed = self::exposeCity(ReturningWrite::update(
                 'properties',
                 ['status' => 'inactive', 'inactivated_at' => $at],
-                "id = ? AND user_id = ? AND status = 'active'",
+                "id = ? AND user_id = ? AND status IN ('active', 'draft')",
                 [$id, $userId],
                 ['id'],
                 ['title', 'description', 'summary', 'city_place_id', 'address', 'cep', 'nightly_price', 'cleaning_fee', 'bedrooms', 'beds', 'max_guests', 'min_nights', 'calendar_months', 'checkin_time', 'checkout_time', 'status', 'inactivated_at']
             ));
+            if ($changed !== []) {
+                // Deleting a draft (or an active property) must release the URL-import cap.
+                db()->prepare(
+                    "UPDATE property_ota_imports
+                        SET status = 'discarded', calendar_feed_id = NULL, updated_at = statement_timestamp()
+                      WHERE property_id = ? AND status IN ('fetching', 'draft_ready', 'failed', 'rejected')"
+                )->execute([$id]);
+            }
+            return $changed;
         });
     }
 

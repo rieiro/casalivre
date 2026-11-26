@@ -10,6 +10,7 @@ require_once __DIR__ . '/PermanentJobFailure.php';
 require_once __DIR__ . '/PhotoFail.php';
 require_once __DIR__ . '/CalendarSync.php';
 require_once __DIR__ . '/OtaPlatformRegistry.php';
+require_once __DIR__ . '/ActivityLog.php';
 
 /**
  * Worker de imagens (runit, vários processos): para cada foto em processamento, decodifica o original e grava de novo a
@@ -49,6 +50,7 @@ final class ImageWorker
                     PhotoStorage::deleteOriginal($photo['original']);
                     $reason = $e instanceof PermanentJobFailure ? $e->reason : PhotoFail::RETRIES;
                     PhotoRepository::markFailed((int) $photo['id'], $reason);
+                    self::notifyImportPhotoFail($photo, $reason);
                 }
             },
             'image_queue: foto'
@@ -101,6 +103,7 @@ final class ImageWorker
                 PhotoStorage::deleteOriginal($original);
                 PhotoRepository::setImportMeta($photoId, $phash, false);
                 PhotoRepository::markFailed($photoId, PhotoFail::DUPLICATE);
+                self::notifyImportPhotoFail($photo, PhotoFail::DUPLICATE);
                 return false;
             }
             PhotoRepository::setImportMeta($photoId, $phash, self::watermarkFlagged($img));
@@ -164,6 +167,20 @@ final class ImageWorker
      */
     /** Test knob for the corner overlay heuristic (0..1 edge-density ratio). */
     public static float $watermarkEdgeThreshold = 0.34;
+
+    /** Audit only imported-photo permanent failures (remote CDN, MIME, duplicate phash). */
+    private static function notifyImportPhotoFail(array $photo, string $reason): void
+    {
+        $importId = (int) ($photo['ota_import_id'] ?? 0);
+        if ($importId < 1 || !in_array($reason, [PhotoFail::REMOTE, PhotoFail::INVALID_TYPE, PhotoFail::DUPLICATE], true)) {
+            return;
+        }
+        activity(ActivityLog::OTA_IMPORT_PHOTO_FAIL, [
+            'imovel_id' => (int) ($photo['property_id'] ?? 0),
+            'import_id' => $importId,
+            'motivo' => $reason,
+        ]);
+    }
 
     /**
      * Downloads a photo source URL into storage/fotos/originais and returns its basename.

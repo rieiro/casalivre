@@ -58,20 +58,25 @@ final class OtaImportService
         if (!$consentOk) {
             return new Resultado('invalido', t('ota.err_consent'), ['field' => 'consent']);
         }
-        if (self::unverifiedDrafts($userId) >= self::MAX_UNVERIFIED_DRAFTS) {
-            return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
-        }
         try {
             $public = OtaFeedGate::preparePublicUrl(0, $userId, (string) $platform, (string) $url, true);
         } catch (OtaFeedGateException $e) {
             return new Resultado('invalido', $e->getMessage(), ['field' => $e->field]);
         }
 
-        $created = Db::transactional(db(), static function () use ($userId, $public): array {
+        // The cap is checked under a user row lock, atomically with draft creation (no TOCTOU).
+        $created = Db::transactional(db(), static function () use ($userId, $public): ?array {
+            db()->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$userId]);
+            if (self::unverifiedDrafts($userId) >= self::MAX_UNVERIFIED_DRAFTS) {
+                return null;
+            }
             $property = HouseRepository::insertDraft($userId);
             $import = self::insertImport((int) $property['id'], $userId, $public, 'fetching');
             return ['property' => $property, 'import' => $import];
         });
+        if ($created === null) {
+            return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
+        }
 
         return self::runImport((int) $created['property']['id'], $userId, (string) $public['platform'], (array) $created['import']);
     }
@@ -209,21 +214,25 @@ final class OtaImportService
         } elseif ($photos['failed'] > 0) {
             $warning = t('ota.import.photo_fail');
         }
-        return new Resultado('ok', $warning, [
-            'property_id' => $propertyId,
-            'public_hash' => HouseRepository::ensurePublicHash(HouseRepository::find($propertyId) ?? $property),
-            'import_id' => $importId,
-            'platform' => $platform,
-            'filled' => $filled,
-            'photos' => $photos,
-            'warning' => $warning,
-            'event' => [ActivityLog::OTA_IMPORT_START, [
+        return new Resultado(
+            'ok',
+            $warning,
+            [
+                'property_id' => $propertyId,
+                'public_hash' => HouseRepository::ensurePublicHash(HouseRepository::find($propertyId) ?? $property),
+                'import_id' => $importId,
+                'platform' => $platform,
+                'filled' => $filled,
+                'photos' => $photos,
+                'warning' => $warning,
+            ],
+            [[ActivityLog::OTA_IMPORT_START, [
                 'imovel_id' => $propertyId,
                 'plataforma' => $platform,
                 'import_id' => $importId,
                 'fotos' => $photos['enqueued'],
-            ]],
-        ]);
+            ]]]
+        );
     }
 
     /**
@@ -371,6 +380,11 @@ final class OtaImportService
             } catch (Throwable $e) {
                 error_log('ota_import: image queue push failed for photo #' . $photoId . ' (' . $e::class . ')');
                 PhotoRepository::markFailed($photoId, PhotoFail::QUEUE);
+                activity(ActivityLog::OTA_IMPORT_PHOTO_FAIL, [
+                    'imovel_id' => $propertyId,
+                    'import_id' => $importId,
+                    'motivo' => PhotoFail::QUEUE,
+                ]);
                 $failed++;
             }
         }
@@ -526,7 +540,9 @@ final class OtaImportService
                     SET status = 'discarded', calendar_feed_id = NULL, updated_at = to_timestamp(?)
                   WHERE id = ?"
             )->execute([self::now(), $importId]);
-            $status = (string) (db()->query('SELECT status FROM properties WHERE id = ' . $propertyId)->fetchColumn() ?: '');
+            $statusStmt = db()->prepare('SELECT status FROM properties WHERE id = ?');
+            $statusStmt->execute([$propertyId]);
+            $status = (string) ($statusStmt->fetchColumn() ?: '');
             if ($status === 'draft') {
                 db()->prepare(
                     "UPDATE properties
@@ -543,16 +559,20 @@ final class OtaImportService
         foreach ($photos as $photo) {
             PhotoStorage::deletePhotoFiles($photo);
         }
-        return new Resultado('ok', t('ota.import.discard_done'), [
-            'import_id' => $importId,
-            'photos' => count($photos),
-            'event' => [ActivityLog::OTA_IMPORT_DISCARD, [
+        return new Resultado(
+            'ok',
+            t('ota.import.discard_done'),
+            [
+                'import_id' => $importId,
+                'photos' => count($photos),
+            ],
+            [[ActivityLog::OTA_IMPORT_DISCARD, [
                 'imovel_id' => $propertyId,
                 'plataforma' => (string) $existing['platform'],
                 'import_id' => $importId,
                 'fotos' => count($photos),
-            ]],
-        ]);
+            ]]]
+        );
     }
 
     /** Publishes a private draft (draft -> active), after the unverified import gate. */
@@ -572,14 +592,16 @@ final class OtaImportService
             db()->prepare("UPDATE properties SET status = 'active', inactivated_at = NULL WHERE id = ? AND status = 'draft'")->execute([$propertyId]);
             ListingSearch::sync($propertyId);
         });
-        return new Resultado('ok', t('ota.import.publish_done'), [
-            'imovel_id' => $propertyId,
-            'event' => [ActivityLog::PROPERTY_PUBLISH, [
+        return new Resultado(
+            'ok',
+            t('ota.import.publish_done'),
+            ['imovel_id' => $propertyId],
+            [[ActivityLog::PROPERTY_PUBLISH, [
                 'imovel_id' => $propertyId,
                 'titulo' => (string) ($property['title'] ?? ''),
                 'estado' => 'active',
-            ]],
-        ]);
+            ]]]
+        );
     }
 
     /**
@@ -631,7 +653,6 @@ final class OtaImportService
         $row['id'] = (int) $row['id'];
         $row['property_id'] = (int) $row['property_id'];
         $row['user_id'] = (int) $row['user_id'];
-        $row['watermark_photos'] = 0;
         return $row;
     }
 }

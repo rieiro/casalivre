@@ -18,6 +18,7 @@ require_once dirname(__DIR__, 2) . '/src/PhotoRepository.php';
 require_once dirname(__DIR__, 2) . '/src/PhotoStorage.php';
 require_once dirname(__DIR__, 2) . '/src/ImageWorker.php';
 require_once dirname(__DIR__, 2) . '/src/ListingSearch.php';
+require_once dirname(__DIR__, 2) . '/src/HouseService.php';
 require_once dirname(__DIR__, 2) . '/src/PhotoFail.php';
 require_once dirname(__DIR__, 2) . '/src/helpers.php';
 
@@ -548,5 +549,60 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM photos WHERE ota_import_id = ' . $importId)->fetchColumn());
         $this->assertFileDoesNotExist(PhotoStorage::$originals . "/" . $original);
         $this->assertFileDoesNotExist($variant);
+    }
+
+    public function testImportDiscardAndPublishExposeAuditEventsInResultado(): void
+    {
+        CalendarSync::$httpTransport = fn (): array => ['body' => $this->listingHtml(), 'http' => 200];
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+
+        $import = OtaImportService::startExisting(
+            HouseRepository::find($draftId),
+            $this->userId,
+            'airbnb',
+            'https://www.airbnb.com/rooms/1212',
+            true
+        );
+        $this->assertSame('ok', $import->tipo);
+        $this->assertNotEmpty($import->eventos);
+        $this->assertSame(ActivityLog::OTA_IMPORT_START, $import->eventos[0][0]);
+        $this->assertArrayNotHasKey('event', $import->dados);
+
+        $discard = OtaImportService::discard($draftId, $this->userId, 'airbnb');
+        $this->assertSame('ok', $discard->tipo);
+        $this->assertNotEmpty($discard->eventos);
+        $this->assertSame(ActivityLog::OTA_IMPORT_DISCARD, $discard->eventos[0][0]);
+        $this->assertArrayNotHasKey('event', $discard->dados);
+
+        $publish = OtaImportService::publish($draftId, $this->userId);
+        $this->assertSame('ok', $publish->tipo);
+        $this->assertNotEmpty($publish->eventos);
+        $this->assertSame(ActivityLog::PROPERTY_PUBLISH, $publish->eventos[0][0]);
+        $this->assertArrayNotHasKey('event', $publish->dados);
+
+        $new = OtaImportService::startNewDraft($this->userId, 'airbnb', 'https://www.airbnb.com/rooms/1313', true);
+        $this->assertSame('ok', $new->tipo, (string) $new->mensagem);
+        $this->assertNotEmpty($new->eventos);
+        $this->assertSame(ActivityLog::OTA_IMPORT_START, $new->eventos[0][0]);
+        $this->assertArrayNotHasKey('event', $new->dados);
+    }
+
+    public function testDraftRemovalDiscardsImportsAndReleasesTheCap(): void
+    {
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+        $this->importRow($draftId, 'airbnb', 'airbnb:1414', 'draft_ready');
+        $this->assertSame(1, OtaImportService::unverifiedDrafts($this->userId));
+
+        $this->assertTrue(HouseService::remove($this->userId, $draftId));
+
+        $row = HouseRepository::find($draftId);
+        $this->assertSame('inactive', (string) ($row['status'] ?? ''));
+        $this->assertSame(
+            'discarded',
+            (string) $this->pdo->query('SELECT status FROM property_ota_imports WHERE property_id = ' . $draftId . ' ORDER BY id DESC LIMIT 1')->fetchColumn()
+        );
+        $this->assertSame(0, OtaImportService::unverifiedDrafts($this->userId));
     }
 }

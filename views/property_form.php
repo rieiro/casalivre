@@ -475,7 +475,7 @@ if ($latValue === '' && $lngValue === '') {
         </div>
 
         <!-- CARD 5: Comodidades e Regras -->
-        <div class="prop-form-card">
+        <div class="prop-form-card" id="field-amenities">
             <div class="prop-form-card-head">
                 <span class="prop-form-card-icon" aria-hidden="true">✨</span>
                 <div>
@@ -527,7 +527,7 @@ if ($latValue === '' && $lngValue === '') {
                     </div>
                 <?php endforeach; ?>
                 <?php if ($unmappedAmenities !== []): ?>
-                    <details class="prop-import-unmapped" id="field-amenities">
+                    <details class="prop-import-unmapped">
                         <summary><?= e(t('form.import.unmapped')) ?> (<?= count($unmappedAmenities) ?>)</summary>
                         <p class="muted fine"><?= e(t('form.import.unmapped_hint')) ?></p>
                         <ul>
