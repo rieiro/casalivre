@@ -7,6 +7,8 @@ require_once dirname(__DIR__) . '/src/OtaImportService.php';
 $isPropertyVerified = $editing && OtaVerificationService::isPropertyVerified((array) ($property ?? []));
 $posted = $posted ?? [];
 $current = is_array($property ?? null) ? $property : [];
+$viewerId = is_array($user ?? null) ? (int) ($user['id'] ?? 0) : 0;
+$canRemove = $editing && $viewerId > 0 && $viewerId === (int) ($current['user_id'] ?? 0);
 $imports = is_array($imports ?? null) ? $imports : [];
 $activeImport = null;
 foreach ($imports as $candidate) {
@@ -678,10 +680,12 @@ if ($latValue === '' && $lngValue === '') {
                     </a>
                 <?php endif; ?>
             </div>
+            <?php if ($canRemove): ?>
             <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" data-confirm-submit="<?= e(t('dash.remove_confirm')) ?>">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                 <button class="btn-dash-action is-delete" type="submit"><?= e(t('dash.remove')) ?></button>
             </form>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 </section>

@@ -403,6 +403,23 @@ t_eq(404, c_form($base, '/grupos/imob-sul/convites', ['_csrf' => $cG, 'imovel' =
 db()->prepare("UPDATE users SET status = 'inactive' WHERE id = ?")->execute([$membro['id']]);
 t_eq(null, GroupRepository::activeRole((int) $g1['id'], (int) $membro['id']), 'conta inativa não tem papel');
 
+echo "exclusão de imóvel: só o dono (gestor/admin não vê botão nem remove)\n";
+db()->prepare('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)')->execute([$g1['id'], $gestor['id'], 'gestor']);
+db()->prepare('UPDATE properties SET group_id = ? WHERE id = ?')->execute([$g1['id'], $houseA['id']]);
+$gestorEdit = t_http('GET', $base . '/imoveis/' . $houseA['hash'] . '/editar', null, [], $jG);
+t_eq(200, $gestorEdit['status'], 'gestor abre edição do imóvel do grupo: 200');
+t_ok(!str_contains($gestorEdit['body'], '/imoveis/' . $houseA['hash'] . '/excluir'), 'gestor não vê formulário de remoção na edição');
+$ownerEdit = t_http('GET', $base . '/imoveis/' . $houseA['hash'] . '/editar', null, [], $jO);
+t_eq(200, $ownerEdit['status'], 'dono abre edição: 200');
+t_ok(str_contains($ownerEdit['body'], '/imoveis/' . $houseA['hash'] . '/excluir'), 'dono vê formulário de remoção na edição');
+foreach ([[$jG, $cG, 'gestor'], [$jA, $cA, 'admin']] as [$jar, $csrf, $who]) {
+    t_eq(404, c_form($base, '/imoveis/' . $houseA['hash'] . '/excluir', ['_csrf' => $csrf], $jar)['status'], "$who POST /excluir: 404");
+    t_eq(404, t_http('DELETE', $base . '/api/casas/' . $houseA['hash'], null, ['X-CSRF-Token: ' . $csrf], $jar)['status'], "$who DELETE /api/casas: 404");
+    t_eq('active', $q('SELECT status FROM properties WHERE id = ?', [$houseA['id']]), "$who não inativa o imóvel");
+}
+db()->prepare('UPDATE properties SET group_id = NULL WHERE id = ?')->execute([$houseA['id']]);
+db()->prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')->execute([$g1['id'], $gestor['id']]);
+
 foreach ($jars as $j) {
     @unlink($j);
 }

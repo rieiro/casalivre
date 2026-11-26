@@ -289,7 +289,9 @@ function handle_api(string $path, string $method): void
             json_out(200, ['casa' => api_public_house(HouseRepository::find($id))]);
         }
         if ($method === 'DELETE') {
-            HouseService::remove((int) $user['id'], $id);
+            if ((int) ($house['user_id'] ?? 0) !== (int) $user['id'] || !HouseService::remove((int) $user['id'], $id)) {
+                api_error(404, 'Imóvel não encontrado.');
+            }
             json_out(200, ['ok' => true, 'estado' => 'inativo']);
         }
     }
