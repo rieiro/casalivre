@@ -1216,4 +1216,25 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertFileExists(PhotoStorage::$originals . '/' . $freshOrphan);
         $this->assertFileExists(PhotoStorage::$originals . '/' . $activeProcessing);
     }
+
+    public function testBookingHtmlPasteUsesPageDescriptionOverEnglishJsonLd(): void
+    {
+        $canonical = 'https://www.booking.com/hotel/br/ap-aconchegante-morumbi.html';
+        $html = '<html><head>'
+            . '<link rel="canonical" href="' . $canonical . '">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'Apartment',
+                'name' => 'Ap 910 Morumbi',
+                'description' => 'This apartment offers accommodations with a terrace and free Wifi.',
+                'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=',
+            ], JSON_UNESCAPED_UNICODE) . '</script></head><body>'
+            . '<div id="property_description_content"><p>Apartamento aconchegante no Morumbi, perto do estádio.</p></div>'
+            . '</body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', $canonical, true, $html);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $row = HouseRepository::find((int) ($res->dados['property_id'] ?? 0));
+        $this->assertSame('Apartamento aconchegante no Morumbi, perto do estádio.', (string) $row['description']);
+    }
 }

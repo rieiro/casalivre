@@ -516,4 +516,26 @@ final class OtaListingExtractorTest extends TestCase
         $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115983.jpg?k=jkl&o=', $out['photos']);
         $this->assertNotContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/999999999.jpg?k=sim&o=', $out['photos']);
     }
+
+    public function testBookingPrefersLocalizedDomDescriptionOverEnglishJsonLdSummary(): void
+    {
+        $jsonLd = json_encode([
+            '@type' => 'Apartment',
+            'name' => 'Ap 910 Morumbi',
+            'description' => 'This apartment offers accommodations with a terrace and free Wifi.',
+            'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=',
+        ], JSON_UNESCAPED_UNICODE);
+
+        $htmlLegacy = '<html><head><script type="application/ld+json">' . $jsonLd . '</script></head><body>'
+            . '<div id="property_description_content"><p>Apartamento amplo no Morumbi com varanda e piscina.</p></div>'
+            . '</body></html>';
+        $outLegacy = OtaListingExtractor::extract($htmlLegacy, 'booking');
+        $this->assertSame('Apartamento amplo no Morumbi com varanda e piscina.', $outLegacy['description']);
+
+        $htmlModern = '<html><head><script type="application/ld+json">' . $jsonLd . '</script></head><body>'
+            . '<p data-testid="property-description">Apartamento moderno com dois quartos e cozinha equipada.</p>'
+            . '</body></html>';
+        $outModern = OtaListingExtractor::extract($htmlModern, 'booking');
+        $this->assertSame('Apartamento moderno com dois quartos e cozinha equipada.', $outModern['description']);
+    }
 }

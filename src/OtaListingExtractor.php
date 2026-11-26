@@ -242,6 +242,10 @@ final class OtaListingExtractor
                 $flags['partial'] = false;
             } else {
                 $payload = self::mergePayload($payload, $bookingExtra, true);
+                // Booking JSON-LD description is an auto-generated English SEO summary; prefer the localized page description.
+                if ($bookingExtra['description'] !== '') {
+                    $payload['description'] = $bookingExtra['description'];
+                }
             }
         }
 
@@ -748,6 +752,7 @@ final class OtaListingExtractor
         $payload = self::emptyPayload();
         $jsPhotos = self::extractBookingJsPhotos($html);
         $dom = self::extractBookingDom($html);
+        $payload['description'] = $dom['description'];
         $payload['photos'] = array_merge($jsPhotos, $dom['photos']);
         $payload['raw_amenities'] = $dom['amenities'];
         return $payload;
@@ -831,13 +836,14 @@ final class OtaListingExtractor
         return preg_match('#\Ahttps://#i', $url) === 1 ? $url : '';
     }
 
-    /** @return array{photos: list<string>, amenities: list<string>} */
+    /** @return array{description: string, photos: list<string>, amenities: list<string>} */
     private static function extractBookingDom(string $html): array
     {
+        $description = '';
         $photos = [];
         $amenities = [];
         if ($html === '' || !class_exists('DOMDocument')) {
-            return ['photos' => $photos, 'amenities' => $amenities];
+            return ['description' => $description, 'photos' => $photos, 'amenities' => $amenities];
         }
         $prev = libxml_use_internal_errors(true);
         $dom = new DOMDocument();
@@ -845,9 +851,41 @@ final class OtaListingExtractor
         libxml_clear_errors();
         libxml_use_internal_errors($prev);
         if (!$loaded) {
-            return ['photos' => $photos, 'amenities' => $amenities];
+            return ['description' => $description, 'photos' => $photos, 'amenities' => $amenities];
         }
         $xpath = new DOMXPath($dom);
+
+        foreach ([
+            '//*[@data-testid="property-description"]',
+            '//*[@id="property_description_content"]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " hp_desc_main_content ")]',
+        ] as $descQuery) {
+            $descNodes = $xpath->query($descQuery);
+            if (!$descNodes instanceof DOMNodeList || $descNodes->length === 0) {
+                continue;
+            }
+            $container = $descNodes->item(0);
+            if (!$container instanceof DOMNode) {
+                continue;
+            }
+            $paragraphs = $xpath->query('.//p', $container);
+            $parts = [];
+            if ($paragraphs instanceof DOMNodeList && $paragraphs->length > 0) {
+                foreach ($paragraphs as $p) {
+                    $line = trim((string) preg_replace('/\s+/u', ' ', (string) $p->textContent));
+                    if ($line !== '') {
+                        $parts[] = $line;
+                    }
+                }
+            }
+            $text = $parts !== []
+                ? implode(' ', $parts)
+                : trim((string) preg_replace('/\s+/u', ' ', (string) $container->textContent));
+            if ($text !== '') {
+                $description = $text;
+                break;
+            }
+        }
 
         $seenAmenity = [];
         $amenityQueries = [
@@ -902,7 +940,7 @@ final class OtaListingExtractor
                 }
             }
         }
-        return ['photos' => $photos, 'amenities' => $amenities];
+        return ['description' => $description, 'photos' => $photos, 'amenities' => $amenities];
     }
 
     private static function bookingSizeScore(string $sizeSegment): int
