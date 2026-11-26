@@ -20,6 +20,7 @@ require_once dirname(__DIR__, 2) . '/src/ImageWorker.php';
 require_once dirname(__DIR__, 2) . '/src/ListingSearch.php';
 require_once dirname(__DIR__, 2) . '/src/HouseService.php';
 require_once dirname(__DIR__, 2) . '/src/PhotoFail.php';
+require_once dirname(__DIR__, 2) . '/src/CepRepository.php';
 require_once dirname(__DIR__, 2) . '/src/helpers.php';
 
 final class OtaUrlContentImportTest extends TestCase
@@ -1236,5 +1237,42 @@ final class OtaUrlContentImportTest extends TestCase
 
         $row = HouseRepository::find((int) ($res->dados['property_id'] ?? 0));
         $this->assertSame('Apartamento aconchegante no Morumbi, perto do estádio.', (string) $row['description']);
+    }
+
+    public function testBookingHotelPhotosWithNestedGridEnqueuesFortyAndRespectsPropertyLimit(): void
+    {
+        $this->assertSame(40, OtaImportService::MAX_IMPORT_PHOTOS);
+
+        $objects = '';
+        for ($i = 1; $i <= 45; $i++) {
+            $url = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/59020' . str_pad((string) $i, 4, '0', STR_PAD_LEFT) . '.jpg?k=photo' . $i . '&o=';
+            $objects .= '{id: \'' . $i . '\', grid: { photo_width: 4080, photo_height: 3072 }, associated_rooms: [{room_id: 1}], large_url: \'' . $url . '\'},';
+        }
+        $canonical = 'https://www.booking.com/hotel/br/ap-aconchegante-morumbi.html';
+        $html = '<html><head>'
+            . '<link rel="canonical" href="' . $canonical . '">'
+            . '<script>booking.env.b_hotel_data = { hotelPhotos: [' . $objects . '] };</script>'
+            . '</head><body></body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', $canonical, true, $html);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+        $this->assertSame(40, (int) ($res->dados['photos']['enqueued'] ?? 0));
+        $photos = PhotoRepository::listByImport((int) ($res->dados['import_id'] ?? 0));
+        $this->assertCount(40, $photos);
+
+        // Existing photos consume the quota: 35 already present leaves only 5 of the 40 slots.
+        $importId = $this->importRow($this->propertyId, 'booking', 'booking:br/other-listing');
+        for ($i = 0; $i < 35; $i++) {
+            PhotoRepository::insertProcessing($this->propertyId, PhotoStorage::randomId(), null, $i === 0 ? 1 : 0, $i);
+        }
+        $this->assertSame(35, PhotoRepository::count($this->propertyId));
+
+        $urls = [];
+        for ($i = 1; $i <= 45; $i++) {
+            $urls[] = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/' . (700000000 + $i) . '.jpg?k=quota' . $i . '&o=';
+        }
+        $queued = OtaImportService::enqueuePhotos($this->propertyId, $importId, 'booking', $urls);
+        $this->assertSame(5, $queued['enqueued']);
+        $this->assertSame(40, PhotoRepository::count($this->propertyId));
     }
 }

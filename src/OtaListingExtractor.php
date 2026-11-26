@@ -767,27 +767,27 @@ final class OtaListingExtractor
             while (($pos = stripos($html, $marker, $offset)) !== false) {
                 $offset = $pos + strlen($marker);
                 $slice = substr($html, $offset, 250_000);
-                if (preg_match('/\A\s*[:=]\s*\[/', $slice, $m, PREG_OFFSET_CAPTURE) !== 1) {
+                if (preg_match('/\A\s*["\']?\s*[:=]\s*\[/', $slice, $m, PREG_OFFSET_CAPTURE) !== 1) {
                     continue;
                 }
                 $start = $m[0][1] + strlen($m[0][0]) - 1;
-                $block = self::extractBracketBlock($slice, $start);
+                $objects = [];
+                $block = self::extractBracketBlock($slice, $start, $objects);
                 if ($block === '') {
                     continue;
                 }
-                // Split per object literal `{...}` when present so we pick only the largest URL per photo.
-                if (preg_match_all('/\{[^{}]*\}/s', $block, $objects) > 0) {
-                    foreach ($objects[0] as $obj) {
-                        $picked = null;
-                        foreach (['highres_url', 'highResUrl', 'large_url', 'largeUrl', 'url'] as $field) {
-                            if (preg_match('/\b' . preg_quote($field, '/') . '\b\s*:\s*["\']([^"\']+)["\']/i', $obj, $um) === 1) {
-                                $picked = self::unescapeJsUrl($um[1]);
-                                break;
-                            }
+                // Each top-level object literal is one photo; pick only the largest URL per photo.
+                foreach ($objects as $obj) {
+                    $picked = null;
+                    foreach (['highres_url', 'highResUrl', 'large_url', 'largeUrl', 'url'] as $field) {
+                        $pattern = '/(?:^|[\s,{])["\']?' . preg_quote($field, '/') . '["\']?\s*:\s*["\']([^"\']+)["\']/i';
+                        if (preg_match($pattern, $obj, $um) === 1) {
+                            $picked = self::unescapeJsUrl($um[1]);
+                            break;
                         }
-                        if ($picked !== null && $picked !== '') {
-                            $photos[] = $picked;
-                        }
+                    }
+                    if ($picked !== null && $picked !== '') {
+                        $photos[] = $picked;
                     }
                 }
             }
@@ -795,13 +795,21 @@ final class OtaListingExtractor
         return $photos;
     }
 
-    private static function extractBracketBlock(string $text, int $openPos): string
+    /**
+     * Quote-and-escape-aware scanner for a `[...]` block; also collects its direct `{...}` children.
+     *
+     * @param list<string>|null $objects receives the top-level object literals when requested
+     */
+    private static function extractBracketBlock(string $text, int $openPos, ?array &$objects = null): string
     {
+        $objects = [];
         $len = strlen($text);
         if ($openPos < 0 || $openPos >= $len || $text[$openPos] !== '[') {
             return '';
         }
+        // Depth 1 is the array itself; direct object literals open at depth 1 and close back to 1.
         $depth = 0;
+        $objectStart = -1;
         $quote = '';
         $escaped = false;
         for ($i = $openPos; $i < $len; $i++) {
@@ -818,6 +826,21 @@ final class OtaListingExtractor
             }
             if ($ch === '"' || $ch === "'") {
                 $quote = $ch;
+                continue;
+            }
+            if ($ch === '{') {
+                if ($depth === 1 && $objectStart < 0) {
+                    $objectStart = $i;
+                }
+                $depth++;
+            } elseif ($ch === '}') {
+                if ($depth > 0) {
+                    $depth--;
+                    if ($depth === 1 && $objectStart >= 0) {
+                        $objects[] = substr($text, $objectStart, $i - $objectStart + 1);
+                        $objectStart = -1;
+                    }
+                }
             } elseif ($ch === '[') {
                 $depth++;
             } elseif ($ch === ']') {
@@ -827,6 +850,8 @@ final class OtaListingExtractor
                 }
             }
         }
+        // Truncated/unbalanced input: never keep partial objects, so callers cannot warn or loop.
+        $objects = [];
         return '';
     }
 

@@ -538,4 +538,36 @@ final class OtaListingExtractorTest extends TestCase
         $outModern = OtaListingExtractor::extract($htmlModern, 'booking');
         $this->assertSame('Apartamento moderno com dois quartos e cozinha equipada.', $outModern['description']);
     }
+
+    public function testBookingHotelPhotosHandlesNestedObjectsQuotedKeysAndBracesInAlt(): void
+    {
+        $html = '<html><head><script>booking.env.b_hotel_data = { "hotelPhotos": ['
+            . '{ "id": "111", "grid": { "photo_width": 4080, "photo_height": 3072 }, "associated_rooms": [{"room_id": 7}], "alt": "Vista {piscina} [linda]", "highres_url": "https://cf.bstatic.com/xdata/images/hotel/max1280x900/111.jpg?k=a&o=", "large_url": "https://cf.bstatic.com/xdata/images/hotel/max1024x768/111.jpg?k=a&o=", "thumb_url": "https://cf.bstatic.com/xdata/images/hotel/square60/111.jpg?k=a&o=" },'
+            . "{ id: '222', grid: { photo_width: 4000, photo_height: 3000 }, alt: 'Quarto \\'duplo\\' com {chaves} e [colchetes]', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/222.jpg?k=b&o=' },"
+            . '{ "id": "333", "highResUrl": "https://cf.bstatic.com/xdata/images/hotel/max1280x900/333.jpg?k=c&o=", "url": "https://cf.bstatic.com/xdata/images/hotel/max1024x768/333.jpg?k=c&o=", },'
+            . '] };</script></head><body></body></html>';
+
+        $out = OtaListingExtractor::extract($html, 'booking');
+
+        $this->assertCount(3, $out['photos']);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1280x900/111.jpg?k=a&o=', $out['photos']);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/222.jpg?k=b&o=', $out['photos']);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1280x900/333.jpg?k=c&o=', $out['photos']);
+        $this->assertNotContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/111.jpg?k=a&o=', $out['photos']);
+        $this->assertNotContains('https://cf.bstatic.com/xdata/images/hotel/square60/111.jpg?k=a&o=', $out['photos']);
+        $this->assertNotContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/333.jpg?k=c&o=', $out['photos']);
+    }
+
+    public function testBookingHotelPhotosHandlesEmptyAndTruncatedArrays(): void
+    {
+        $empty = '<html><head><script>booking.env.b_hotel_data = { hotelPhotos: [] };</script></head><body></body></html>';
+        $outEmpty = OtaListingExtractor::extract($empty, 'booking');
+        $this->assertSame([], $outEmpty['photos']);
+
+        $truncated = '<html><head><script>booking.env.b_hotel_data = { hotelPhotos: ['
+            . "{ id: '444', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/444.jpg?k=d&o=' },"
+            . "{ id: '445', grid: { photo_width: 4000";
+        $outTruncated = OtaListingExtractor::extract($truncated, 'booking');
+        $this->assertIsArray($outTruncated['photos']);
+    }
 }
