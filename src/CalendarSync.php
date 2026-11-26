@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/OtaPlatformRegistry.php';
+
 final class CalendarSync
 {
     /** Tamanho máximo aceito para um feed .ics (bytes). */
@@ -36,6 +38,96 @@ final class CalendarSync
      */
     public static function fetchPublicResource(string $url, int $maxBytes = self::MAX_LISTING_BYTES, string $accept = 'text/html,application/xhtml+xml,*/*;q=0.8'): array
     {
+        $result = self::fetchRedirectAware($url, $maxBytes, $accept, []);
+        if (isset($result['redirect'])) {
+            return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+        }
+        return $result;
+    }
+
+    /**
+     * Public listing HTML: follows up to 2 same-platform 3xx Location hops (locale/canonical slug),
+     * re-validating https, the OTA public host allowlist and SSRF/IP pinning on every hop.
+     * Anti-bot/transient blocks are returned as errors for the caller to degrade gracefully.
+     */
+    public static function fetchListingHtml(string $url, string $platform = ''): array
+    {
+        $current = $url;
+        for ($hop = 0; $hop <= 2; $hop++) {
+            $result = self::fetchRedirectAware(
+                $current,
+                self::MAX_LISTING_BYTES,
+                'text/html,application/xhtml+xml,*/*;q=0.8',
+                ['Accept-Language: pt-BR,pt;q=0.9,en;q=0.8']
+            );
+            if (!isset($result['redirect'])) {
+                return $result;
+            }
+            if ($hop === 2) {
+                return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+            }
+            $next = self::resolveRedirectUrl($current, (string) $result['redirect']);
+            if ($next === '' || !self::isHttpsUrl($next)) {
+                return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+            }
+            if ($platform !== '') {
+                $host = strtolower((string) (parse_url($next, PHP_URL_HOST) ?? ''));
+                if (!OtaPlatformRegistry::isPublicHost($platform, $host)) {
+                    return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+                }
+            }
+            $current = $next;
+        }
+        return ['error' => 'bad_url', 'http' => 0];
+    }
+
+    /** Resolves a Location header (absolute, scheme-relative, root-relative or path-relative) against $base. */
+    public static function resolveRedirectUrl(string $base, string $location): string
+    {
+        $location = trim($location);
+        if ($location === '') {
+            return '';
+        }
+        $baseParts = parse_url($base);
+        if (!is_array($baseParts) || empty($baseParts['host'])) {
+            return '';
+        }
+        $scheme = strtolower((string) ($baseParts['scheme'] ?? 'https'));
+        $host = strtolower((string) $baseParts['host']);
+        $port = isset($baseParts['port']) ? ':' . (int) $baseParts['port'] : '';
+        if (preg_match('#\Ahttps?://#i', $location) === 1) {
+            return self::isHttpsUrl($location) ? $location : '';
+        }
+        if (str_starts_with($location, '//')) {
+            $candidate = $scheme . ':' . $location;
+            return self::isHttpsUrl($candidate) ? $candidate : '';
+        }
+        if (str_starts_with($location, '/')) {
+            return $scheme . '://' . $host . $port . $location;
+        }
+        $basePath = (string) ($baseParts['path'] ?? '/');
+        $dir = rtrim(str_replace('\\', '/', dirname($basePath)), '/');
+        $joined = ($dir === '' || $dir === '.' ? '' : $dir) . '/' . $location;
+        $segments = [];
+        foreach (explode('/', $joined) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+        return $scheme . '://' . $host . $port . '/' . implode('/', $segments);
+    }
+
+    /**
+     * @param list<string> $extraHeaders
+     * @return array{body: string, http: int}|array{redirect: string, http: int}|array{error: string, http: int}
+     */
+    private static function fetchRedirectAware(string $url, int $maxBytes, string $accept, array $extraHeaders): array
+    {
         $maxBytes = max(1, min($maxBytes, self::MAX_IMAGE_BYTES));
         if (!self::isHttpsUrl($url)) {
             return ['error' => 'bad_url', 'http' => 0];
@@ -45,11 +137,18 @@ final class CalendarSync
             if (isset($result['error'])) {
                 return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0)];
             }
+            $http = (int) ($result['http'] ?? 200);
+            $location = (string) ($result['redirect'] ?? $result['location'] ?? '');
+            if ($http >= 300 && $http < 400) {
+                return $location !== ''
+                    ? ['redirect' => $location, 'http' => $http]
+                    : ['error' => 'bad_url', 'http' => $http];
+            }
             $body = (string) ($result['body'] ?? '');
             if (strlen($body) > $maxBytes) {
-                return ['error' => 'too_big', 'http' => (int) ($result['http'] ?? 0)];
+                return ['error' => 'too_big', 'http' => $http];
             }
-            return ['body' => $body, 'http' => (int) ($result['http'] ?? 200)];
+            return ['body' => $body, 'http' => $http];
         }
         if (!function_exists('curl_init')) {
             return ['error' => 'http_5xx', 'http' => 0];
@@ -58,13 +157,15 @@ final class CalendarSync
         if (isset($target['error'])) {
             return ['error' => $target['error'], 'http' => 0];
         }
-        $result = self::requestBytes($url, $target, $maxBytes, $accept, self::FETCH_TIMEOUT);
+        $result = self::requestBytes($url, $target, $maxBytes, $accept, self::FETCH_TIMEOUT, $extraHeaders);
         if (isset($result['error'])) {
             return $result;
         }
-        [$code, $body] = $result;
+        [$code, $body, $location] = $result;
         if ($code >= 300 && $code < 400) {
-            return ['error' => 'bad_url', 'http' => $code];
+            return $location !== ''
+                ? ['redirect' => $location, 'http' => $code]
+                : ['error' => 'bad_url', 'http' => $code];
         }
         if ($code === 429 || $code >= 500) {
             return ['error' => 'http_5xx', 'http' => $code];
@@ -73,11 +174,6 @@ final class CalendarSync
             return ['error' => 'http_4xx', 'http' => $code];
         }
         return ['body' => $body, 'http' => $code];
-    }
-
-    public static function fetchListingHtml(string $url): array
-    {
-        return self::fetchPublicResource($url, self::MAX_LISTING_BYTES);
     }
 
     public static function fetchImageBytes(string $url): array
@@ -392,9 +488,10 @@ final class CalendarSync
      * SSRF-safe GET pinned to the resolved IP, no redirects, https only, capped body.
      *
      * @param array{host: string, port: int, ip: string} $target
-     * @return array{0: int, 1: string}|array{error: string, http: int}
+     * @param list<string> $extraHeaders
+     * @return array{0: int, 1: string, 2: string}|array{error: string, http: int}
      */
-    private static function requestBytes(string $url, array $target, int $maxBytes, string $accept, int $timeout): array
+    private static function requestBytes(string $url, array $target, int $maxBytes, string $accept, int $timeout, array $extraHeaders = []): array
     {
         $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
         $buffer = '';
@@ -407,11 +504,11 @@ final class CalendarSync
             CURLOPT_TIMEOUT => max(1, $timeout),
             CURLOPT_CONNECTTIMEOUT => min(self::CONNECT_TIMEOUT, max(1, $timeout)),
             CURLOPT_USERAGENT => 'CasaLivre/1.0 (+https://casalivre.com.br)',
-            CURLOPT_HTTPHEADER => [
+            CURLOPT_HTTPHEADER => array_merge([
                 'Accept: ' . $accept,
                 'Cache-Control: no-cache',
                 'Pragma: no-cache',
-            ],
+            ], $extraHeaders),
             CURLOPT_NOPROXY => '*',
             CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig, $maxBytes): int {
                 if (strlen($buffer) + strlen($chunk) > $maxBytes) {
@@ -452,7 +549,8 @@ final class CalendarSync
         if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !self::isPublicIp($primaryIp))) {
             return ['error' => 'private_ip', 'http' => $code];
         }
-        return [$code, $buffer];
+        $location = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: '');
+        return [$code, $buffer, $location];
     }
 
     /** Canonical URL for hashing/dedup: lowercase scheme/host, sorted query, no fragment/default port. */

@@ -18,7 +18,7 @@ $icalExportBase = request_base() . '/ical/export/';
 $importLocks = [];
 foreach (($ota_imports ?? []) as $otaImport) {
     $importStatus = (string) ($otaImport['status'] ?? '');
-    if (in_array($importStatus, ['discarded', 'expired'], true)) {
+    if (!in_array($importStatus, ['fetching', 'draft_ready', 'verified', 'rejected'], true)) {
         continue;
     }
     $importLocks[(string) $otaImport['platform']] = (string) $otaImport['canonical_property_url'];

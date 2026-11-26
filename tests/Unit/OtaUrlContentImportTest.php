@@ -605,4 +605,99 @@ final class OtaUrlContentImportTest extends TestCase
         );
         $this->assertSame(0, OtaImportService::unverifiedDrafts($this->userId));
     }
+
+    public function testStartNewDraftRejectsNotFoundListingWithoutCreatingRows(): void
+    {
+        $propertiesBefore = (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn();
+        $importsBefore = (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn();
+        CalendarSync::$httpTransport = fn (): array => ['error' => 'http_4xx', 'http' => 404];
+
+        $res = OtaImportService::startNewDraft(
+            $this->userId,
+            'airbnb',
+            'https://www.airbnb.com/rooms/1616',
+            true
+        );
+
+        $this->assertSame('invalido', $res->tipo);
+        $this->assertSame(t('ota.import.url_not_found'), $res->mensagem);
+        $this->assertSame('property_url', $res->dados['field'] ?? null);
+        $this->assertSame($propertiesBefore, (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn());
+        $this->assertSame($importsBefore, (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn());
+    }
+
+    public function testListingHtmlFollowsSamePlatformRedirectsAndRejectsForeignHosts(): void
+    {
+        $calls = [];
+        CalendarSync::$httpTransport = function (string $url) use (&$calls): array {
+            $calls[] = $url;
+            if ($url === 'https://www.airbnb.com/rooms/999?locale=en') {
+                return ['http' => 301, 'location' => '/rooms/999'];
+            }
+            if ($url === 'https://www.airbnb.com/rooms/999') {
+                return ['body' => '<html>ok</html>', 'http' => 200];
+            }
+            return ['error' => 'http_4xx', 'http' => 404];
+        };
+        $result = CalendarSync::fetchListingHtml('https://www.airbnb.com/rooms/999?locale=en', 'airbnb');
+        $this->assertSame('<html>ok</html>', $result['body'] ?? null);
+        $this->assertSame(['https://www.airbnb.com/rooms/999?locale=en', 'https://www.airbnb.com/rooms/999'], $calls);
+
+        $calls = [];
+        CalendarSync::$httpTransport = function (string $url) use (&$calls): array {
+            $calls[] = $url;
+            return ['http' => 302, 'location' => 'https://evil.example/rooms/1000'];
+        };
+        $blocked = CalendarSync::fetchListingHtml('https://www.airbnb.com/rooms/1000', 'airbnb');
+        $this->assertSame('bad_url', $blocked['error'] ?? null);
+        $this->assertCount(1, $calls);
+    }
+
+    public function testFailedImportDoesNotLockOrShowReviewAndDraftHidesPublicLink(): void
+    {
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+        $this->importRow($draftId, 'airbnb', 'airbnb:1717', 'failed');
+
+        $property = HouseRepository::find($draftId);
+        $imports = OtaImportService::importsForProperty($draftId);
+        $photos = [];
+        $csrf = 'csrf';
+        $error = null;
+        $import_error = null;
+        $import_notice = null;
+        $posted = [];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/property_form.php';
+        $formHtml = (string) ob_get_clean();
+
+        $this->assertStringNotContainsString(t('form.import.locked'), $formHtml);
+        $this->assertStringNotContainsString(t('form.import.review_title'), $formHtml);
+        $this->assertStringNotContainsString('is-view', $formHtml);
+        $this->assertStringNotContainsString('Ver Anúncio', $formHtml);
+        $this->assertSame(1, substr_count($formHtml, 'id="field-amenities"'));
+
+        // Validation errors keep the pasted URL/platform in the import form.
+        $property = null;
+        $imports = [];
+        $posted = ['platform' => 'airbnb', 'property_url' => 'https://www.airbnb.com/rooms/1818'];
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/property_form.php';
+        $newFormHtml = (string) ob_get_clean();
+        $this->assertStringContainsString('value="https://www.airbnb.com/rooms/1818"', $newFormHtml);
+        $this->assertMatchesRegularExpression('/<option value="airbnb" selected>/', $newFormHtml);
+
+        // Calendar must not lock the URL for a failed import.
+        $property = HouseRepository::find($draftId);
+        $days = [];
+        $feeds = [];
+        $message = null;
+        $message_tone = null;
+        $ota_imports = OtaImportService::importsForProperty($draftId);
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/calendar.php';
+        $calendarHtml = (string) ob_get_clean();
+        $this->assertStringContainsString('data-import-locks="[]"', $calendarHtml);
+        $this->assertStringNotContainsString('airbnb:1717', $calendarHtml);
+    }
 }

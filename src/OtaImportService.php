@@ -63,22 +63,65 @@ final class OtaImportService
         } catch (OtaFeedGateException $e) {
             return new Resultado('invalido', $e->getMessage(), ['field' => $e->field]);
         }
+        // Cheap cap check before any network call; re-checked under a lock inside the transaction.
+        if (self::unverifiedDrafts($userId) >= self::MAX_UNVERIFIED_DRAFTS) {
+            return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
+        }
 
-        // The cap is checked under a user row lock, atomically with draft creation (no TOCTOU).
-        $created = Db::transactional(db(), static function () use ($userId, $public): ?array {
+        // Fail fast: a missing/invalid/unreachable listing must not create a draft or an import row.
+        $html = CalendarSync::fetchListingHtml((string) $public['property_url'], (string) $public['platform']);
+        if (self::listingUrlNotFound($html)) {
+            return new Resultado('invalido', t('ota.import.url_not_found'), ['field' => 'property_url']);
+        }
+        $transientBlock = isset($html['error']);
+
+        // The cap is re-checked under a user row lock, atomically with draft creation (no TOCTOU).
+        $status = $transientBlock ? 'failed' : 'fetching';
+        $created = Db::transactional(db(), static function () use ($userId, $public, $status): ?array {
             db()->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$userId]);
             if (self::unverifiedDrafts($userId) >= self::MAX_UNVERIFIED_DRAFTS) {
                 return null;
             }
             $property = HouseRepository::insertDraft($userId);
-            $import = self::insertImport((int) $property['id'], $userId, $public, 'fetching');
+            $import = self::insertImport((int) $property['id'], $userId, $public, $status);
             return ['property' => $property, 'import' => $import];
         });
         if ($created === null) {
             return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
         }
+        $propertyId = (int) $created['property']['id'];
+        $importId = (int) ($created['import']['id'] ?? 0);
+        if ($transientBlock) {
+            // Anti-bot/transient block: keep the draft, mark the import failed and let the host fill manually.
+            self::finishImport($importId, 'failed', ['error' => (string) ($html['error'] ?? '')], ['fetch' => 'failed']);
+            $property = HouseRepository::find($propertyId);
+            return new Resultado('parcial', t('ota.import.fetch_failed'), [
+                'property_id' => $propertyId,
+                'public_hash' => $property !== null ? HouseRepository::ensurePublicHash($property) : '',
+                'import_id' => $importId,
+                'warning' => t('ota.import.fetch_failed'),
+            ]);
+        }
 
-        return self::runImport((int) $created['property']['id'], $userId, (string) $public['platform'], (array) $created['import']);
+        return self::runImport($propertyId, $userId, (string) $public['platform'], (array) $created['import'], $html);
+    }
+
+    /**
+     * URL-level failures that must not create a draft: 400/404/410 or an invalid/unresolvable URL.
+     * Other errors (403/429/5xx/timeout) are transient and degrade to a failed draft.
+     *
+     * @param array<string, mixed> $html
+     */
+    private static function listingUrlNotFound(array $html): bool
+    {
+        if (!isset($html['error'])) {
+            return false;
+        }
+        $http = (int) ($html['http'] ?? 0);
+        if (in_array($http, [400, 404, 410], true)) {
+            return true;
+        }
+        return in_array((string) $html['error'], ['bad_url', 'dns'], true);
     }
 
     /**
@@ -174,15 +217,18 @@ final class OtaImportService
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
     }
 
-    /** @param array<string, mixed> $import */
-    private static function runImport(int $propertyId, int $userId, string $platform, array $import): Resultado
+    /**
+     * @param array<string, mixed> $import
+     * @param array<string, mixed>|null $prefetchedHtml listing response already fetched by startNewDraft()
+     */
+    private static function runImport(int $propertyId, int $userId, string $platform, array $import, ?array $prefetchedHtml = null): Resultado
     {
         $importId = (int) ($import['id'] ?? 0);
         $property = HouseRepository::find($propertyId);
         if ($property === null || $importId < 1) {
             return new Resultado('invalido', t('err.house_missing'));
         }
-        $html = CalendarSync::fetchListingHtml((string) $import['canonical_property_url']);
+        $html = $prefetchedHtml ?? CalendarSync::fetchListingHtml((string) $import['canonical_property_url'], $platform);
         if (isset($html['error'])) {
             self::finishImport($importId, 'failed', ['error' => (string) $html['error']], ['fetch' => 'failed']);
             return new Resultado('parcial', t('ota.import.fetch_failed'), [

@@ -30,7 +30,13 @@ foreach (($photos ?? []) as $photoRow) {
 $import_error = $import_error ?? null;
 $import_notice = $import_notice ?? null;
 $importAction = $editing ? '/imoveis/' . e(property_ref($property)) . '/importar' : '/imoveis/novo/importar';
-$importPlatform = (string) ($activeImport['platform'] ?? '');
+$importLocked = $activeImport !== null && in_array((string) ($activeImport['status'] ?? ''), ['fetching', 'draft_ready', 'verified', 'rejected'], true);
+$importPlatform = is_scalar($posted['platform'] ?? null)
+    ? (string) $posted['platform']
+    : (string) ($activeImport['platform'] ?? '');
+$importUrlValue = is_scalar($posted['property_url'] ?? null)
+    ? (string) $posted['property_url']
+    : (string) ($activeImport['canonical_property_url'] ?? '');
 $titleValue = (string) ($posted['title'] ?? ($current['title'] ?? ''));
 $descriptionValue = (string) ($posted['description'] ?? ($current['description'] ?? ''));
 $cepValue = (string) ($posted['cep'] ?? ($current['cep'] ?? ''));
@@ -111,7 +117,7 @@ if ($latValue === '' && $lngValue === '') {
         <div class="prop-import-draft-banner" role="status">
             <div>
                 <strong><?= e(t('form.import.draft_banner')) ?></strong>
-                <?php if ($activeImport !== null): ?>
+                <?php if ($importLocked): ?>
                     <p class="muted fine"><?= e(t('form.import.locked')) ?></p>
                 <?php endif; ?>
             </div>
@@ -131,7 +137,7 @@ if ($latValue === '' && $lngValue === '') {
         </div>
     <?php endif; ?>
 
-    <?php if ($activeImport !== null): ?>
+    <?php if ($importLocked): ?>
         <div class="prop-import-review" role="status">
             <strong><?= e(t('form.import.review_title')) ?></strong>
             <ul>
@@ -185,7 +191,7 @@ if ($latValue === '' && $lngValue === '') {
                     </div>
                     <div class="prop-form-field">
                         <label class="prop-form-label" for="import-url"><?= e(t('form.import.url')) ?></label>
-                        <input id="import-url" class="prop-form-input" name="property_url" maxlength="<?= CalendarSync::MAX_URL_LENGTH ?>" placeholder="<?= e(OtaPlatformRegistry::publicPlaceholder('airbnb')) ?>" value="<?= e((string) ($activeImport['canonical_property_url'] ?? '')) ?>" required>
+                        <input id="import-url" class="prop-form-input" name="property_url" maxlength="<?= CalendarSync::MAX_URL_LENGTH ?>" placeholder="<?= e(OtaPlatformRegistry::publicPlaceholder('airbnb')) ?>" value="<?= e($importUrlValue) ?>" required>
                     </div>
                 </div>
                 <label class="prop-checkbox-label">
@@ -193,7 +199,7 @@ if ($latValue === '' && $lngValue === '') {
                     <span><?= e(t('form.import.consent')) ?></span>
                 </label>
                 <button class="btn-dash-action primary" type="submit"><?= e(t('form.import.submit')) ?></button>
-                <?php if ($activeImport !== null): ?>
+                <?php if ($importLocked): ?>
                     <p class="muted fine"><?= e(t('form.import.locked')) ?></p>
                 <?php endif; ?>
             </form>
@@ -635,10 +641,12 @@ if ($latValue === '' && $lngValue === '') {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     <span><?= e(t('dash.calendar')) ?></span>
                 </a>
-                <a class="btn-dash-action is-view" href="/imoveis/<?= e(property_ref($property)) ?>" target="_blank">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <span>Ver Anúncio</span>
-                </a>
+                <?php if (!$isDraft): ?>
+                    <a class="btn-dash-action is-view" href="/imoveis/<?= e(property_ref($property)) ?>" target="_blank">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span>Ver Anúncio</span>
+                    </a>
+                <?php endif; ?>
             </div>
             <form method="post" action="/imoveis/<?= e(property_ref($property)) ?>/excluir" data-confirm-submit="<?= e(t('dash.remove_confirm')) ?>">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
