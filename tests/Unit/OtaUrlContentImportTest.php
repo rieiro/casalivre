@@ -1087,4 +1087,43 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame('https://a0.muscache.com/im/pictures/cover.jpeg', (string) $photos[0]['source_url']);
         $this->assertSame(1, (int) $photos[0]['is_primary']);
     }
+
+    public function testBookingHtmlPasteUpgradesSmallPhotoPathAndImportsFacilitiesAndGallery(): void
+    {
+        $canonical = 'https://www.booking.com/hotel/br/ap-aconchegante-morumbi.html';
+        $html = '<html><head>'
+            . '<link rel="canonical" href="' . $canonical . '">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'Apartment',
+                'name' => 'Ap 910 Morumbi',
+                'description' => 'Apartamento com piscina.',
+                'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=&hp=1',
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '<script>var x = { hotelPhotos: ['
+            . "{id: '590115981', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max500/590115981.jpg?k=def&o='}"
+            . '] };</script>'
+            . '</head><body>'
+            . '<div data-testid="property-most-popular-facilities-wrapper"><ul>'
+            . '<li><span>Wi-Fi gratuito</span></li>'
+            . '<li><span>Piscina ao ar livre</span></li>'
+            . '<li><span>Ar-condicionado</span></li>'
+            . '</ul></div>'
+            . '</body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', $canonical, true, $html);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $row = HouseRepository::find($propertyId);
+        $this->assertSame(1, (int) $row['pool']);
+        $amenities = json_decode((string) $row['amenities'], true);
+        $this->assertSame(1, $amenities['wifi'] ?? null);
+        $this->assertSame(1, $amenities['pool'] ?? null);
+        $this->assertSame(1, $amenities['ac'] ?? null);
+
+        $photos = PhotoRepository::listByImport((int) ($res->dados['import_id'] ?? 0));
+        $this->assertCount(2, $photos);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=abc&o=&hp=1', (string) $photos[0]['source_url']);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115981.jpg?k=def&o=', (string) $photos[1]['source_url']);
+    }
 }

@@ -59,7 +59,7 @@ final class OtaListingExtractor
         'ping pong table' => ['ping_pong'], 'mesa de pingue pongue' => ['ping_pong'],
         'garage' => ['garage'], 'garagem' => ['garage'], 'estacionamento' => ['garage'],
         'free parking on premises' => ['parking_free_onsite'], 'free parking' => ['parking_free_onsite'],
-        'estacionamento gratuito no local' => ['parking_free_onsite'],
+        'estacionamento gratuito no local' => ['parking_free_onsite'], 'estacionamento gratuito' => ['parking_free_onsite'],
         'paid parking on premises' => ['parking_paid_onsite'], 'estacionamento pago no local' => ['parking_paid_onsite'],
         'free parking off premises' => ['parking_free_offsite'], 'estacionamento gratuito fora da propriedade' => ['parking_free_offsite'],
         'paid parking off premises' => ['parking_paid_offsite'], 'estacionamento pago fora da propriedade' => ['parking_paid_offsite'],
@@ -75,13 +75,13 @@ final class OtaListingExtractor
         'hammock' => ['hammock'], 'rede' => ['hammock'],
         'outdoor fireplace' => ['outdoor_fireplace'], 'lareira externa' => ['outdoor_fireplace'],
         'beach essentials' => ['beach_items'], 'itens basicos de praia' => ['beach_items'],
-        'balcony' => ['balcony'], 'varanda' => ['balcony'],
+        'balcony' => ['balcony'], 'varanda' => ['balcony'], 'terraco' => ['balcony'],
         'backyard' => ['yard'], 'quintal' => ['yard'],
         'garden' => ['garden'], 'jardim' => ['garden'],
         'sea view' => ['sea_view'], 'vista para o mar' => ['sea_view'],
         'outdoor shower' => ['outdoor_shower'], 'chuveiro externo' => ['outdoor_shower'],
         'lake access' => ['lake_access'], 'acesso ao lago' => ['lake_access'],
-        'beach access' => ['beach_access'], 'acesso a praia' => ['beach_access'],
+        'beach access' => ['beach_access'], 'acesso a praia' => ['beach_access'], 'beira mar' => ['beach_access'],
         'private entrance' => ['private_entrance'], 'entrada privativa' => ['private_entrance'],
         'laundromat nearby' => ['nearby_laundry'], 'lavanderia proxima' => ['nearby_laundry'],
         'gated community' => ['gated_community'], 'condominio fechado' => ['gated_community'],
@@ -109,7 +109,7 @@ final class OtaListingExtractor
         'fire extinguisher' => ['extinguisher'], 'extintor de incendio' => ['extinguisher'],
         'first aid kit' => ['first_aid'], 'kit de primeiros socorros' => ['first_aid'],
         'safe' => ['safe'], 'cofre' => ['safe'],
-        'pets allowed' => ['pets'], 'permitido animais' => ['pets'], 'aceita animais' => ['pets'],
+        'pets allowed' => ['pets'], 'permitido animais' => ['pets'], 'aceita animais' => ['pets'], 'permite animais de estimacao' => ['pets'],
         'smoking allowed' => ['smoking'], 'fumo permitido' => ['smoking'], 'permitido fumar' => ['smoking'],
     ];
 
@@ -166,6 +166,23 @@ final class OtaListingExtractor
         'AmenitiesSection',
         'PoliciesSection',
         'LocationSection',
+        'BaseFacility',
+        'Facility',
+        'FacilityGroup',
+        'PropertyFacility',
+        'FacilityInstance',
+        'Photo',
+        'PropertyPhoto',
+        'HotelPhoto',
+    ];
+
+    /** Hydration subtree keys describing other listings, never the imported listing itself. */
+    private const HYDRATION_SKIP_KEYS = [
+        'similarproperties',
+        'recommendations',
+        'relatedhotels',
+        'nearbyproperties',
+        'recentlyviewed',
     ];
 
     /** Platform names/badges never copied into the host's content. */
@@ -217,6 +234,16 @@ final class OtaListingExtractor
                 $payload = self::mergePayload($payload, $ogPayload, false);
             }
         }
+        if ($platform === 'booking') {
+            $bookingExtra = self::extractBookingExtras($html);
+            if ($flags['source'] === 'none' && self::hasUsableContent($bookingExtra)) {
+                $payload = $bookingExtra;
+                $flags['source'] = 'hydration';
+                $flags['partial'] = false;
+            } else {
+                $payload = self::mergePayload($payload, $bookingExtra, true);
+            }
+        }
 
         $title = self::sanitizeText((string) $payload['title'], $flags);
         $description = self::sanitizeText((string) $payload['description'], $flags);
@@ -225,13 +252,30 @@ final class OtaListingExtractor
         $payload['summary'] = self::clip($description, 160);
 
         $photos = [];
+        $bookingById = [];
         foreach ((array) $payload['photos'] as $url) {
             $url = is_string($url) ? trim($url) : '';
-            if ($url !== '' && preg_match('#\Ahttps://#i', $url) === 1) {
-                $photos[$url] = true;
+            if ($url === '' || preg_match('#\Ahttps://#i', $url) !== 1) {
+                continue;
             }
+            if ($platform === 'booking' && preg_match('#/xdata/images/hotel/([^/]+)/(\d+)\.#i', $url, $bm) === 1) {
+                $photoId = $bm[2];
+                $score = self::bookingSizeScore($bm[1]);
+                if (!isset($bookingById[$photoId]) || $score > $bookingById[$photoId]['score']) {
+                    $bookingById[$photoId] = ['url' => $url, 'score' => $score];
+                }
+                $photos['booking:' . $photoId] = true;
+                continue;
+            }
+            $photos[$url] = true;
         }
-        $payload['photos'] = array_keys($photos);
+        $resolvedPhotos = [];
+        foreach (array_keys($photos) as $key) {
+            $resolvedPhotos[] = str_starts_with($key, 'booking:')
+                ? $bookingById[substr($key, 8)]['url']
+                : $key;
+        }
+        $payload['photos'] = $resolvedPhotos;
 
         $mapped = [];
         $unmapped = [];
@@ -521,7 +565,7 @@ final class OtaListingExtractor
         $heroPhotos = [];
         $seenAmenity = [];
         foreach ($nodes as $node) {
-            foreach (self::flattenNodes($node) as $candidate) {
+            foreach (self::flattenNodes($node, self::HYDRATION_SKIP_KEYS) as $candidate) {
                 $typename = (string) ($candidate['__typename'] ?? '');
                 $isUiNode = $typename !== '' && in_array($typename, self::HYDRATION_UI_TYPES, true);
                 if (!$isUiNode) {
@@ -543,14 +587,17 @@ final class OtaListingExtractor
                         $payload['description'] = $candidate['description'];
                     }
                 }
-                if ($payload['photos'] === []) {
-                    foreach (['images', 'photoUrls', 'photos', 'imageUrls'] as $key) {
-                        if (isset($candidate[$key])) {
-                            $payload['photos'] = self::imageList($candidate[$key]);
-                            if ($payload['photos'] !== []) {
-                                break;
-                            }
+                foreach (['images', 'photoUrls', 'photos', 'imageUrls', 'hotelPhotos', 'galleryPhotos', 'propertyPhotos'] as $key) {
+                    if (isset($candidate[$key])) {
+                        foreach (self::imageList($candidate[$key]) as $imgUrl) {
+                            $payload['photos'][] = $imgUrl;
                         }
+                    }
+                }
+                if (isset($candidate['highres_url']) || isset($candidate['highResUrl']) || isset($candidate['large_url']) || isset($candidate['largeUrl'])) {
+                    $photoUrl = $candidate['highres_url'] ?? $candidate['highResUrl'] ?? $candidate['large_url'] ?? $candidate['largeUrl'] ?? null;
+                    if (is_string($photoUrl) && trim($photoUrl) !== '') {
+                        $payload['photos'][] = trim($photoUrl);
                     }
                 }
                 if (isset($candidate['contextualizedMedia']['edges']) && is_array($candidate['contextualizedMedia']['edges'])) {
@@ -571,11 +618,20 @@ final class OtaListingExtractor
                         }
                     }
                 }
-                foreach (['amenities', 'amenityNames', 'listingAmenities'] as $key) {
+                foreach (['amenities', 'amenityNames', 'listingAmenities', 'facilities', 'popularFacilities', 'propertyFacilities', 'highlightedFacilities', 'baseFacilities'] as $key) {
                     if (!isset($candidate[$key])) {
                         continue;
                     }
                     foreach (self::amenityEntries($candidate[$key]) as $entry) {
+                        $dedup = is_array($entry) ? ($entry['label'] . '|' . $entry['icon']) : $entry;
+                        if (!isset($seenAmenity[$dedup])) {
+                            $seenAmenity[$dedup] = true;
+                            $payload['raw_amenities'][] = $entry;
+                        }
+                    }
+                }
+                if (in_array($typename, ['BaseFacility', 'Facility', 'PropertyFacility', 'FacilityInstance'], true)) {
+                    foreach (self::amenityEntries([$candidate]) as $entry) {
                         $dedup = is_array($entry) ? ($entry['label'] . '|' . $entry['icon']) : $entry;
                         if (!isset($seenAmenity[$dedup])) {
                             $seenAmenity[$dedup] = true;
@@ -682,6 +738,185 @@ final class OtaListingExtractor
         }
     }
 
+    /**
+     * Booking.com server-rendered fallback: extracts `hotelPhotos` JS arrays and DOM facility/gallery blocks.
+     *
+     * @return array<string, mixed>
+     */
+    private static function extractBookingExtras(string $html): array
+    {
+        $payload = self::emptyPayload();
+        $jsPhotos = self::extractBookingJsPhotos($html);
+        $dom = self::extractBookingDom($html);
+        $payload['photos'] = array_merge($jsPhotos, $dom['photos']);
+        $payload['raw_amenities'] = $dom['amenities'];
+        return $payload;
+    }
+
+    /** @return list<string> */
+    private static function extractBookingJsPhotos(string $html): array
+    {
+        $photos = [];
+        foreach (['hotelPhotos', 'b_hotel_photos'] as $marker) {
+            $offset = 0;
+            while (($pos = stripos($html, $marker, $offset)) !== false) {
+                $offset = $pos + strlen($marker);
+                $slice = substr($html, $offset, 250_000);
+                if (preg_match('/\A\s*[:=]\s*\[/', $slice, $m, PREG_OFFSET_CAPTURE) !== 1) {
+                    continue;
+                }
+                $start = $m[0][1] + strlen($m[0][0]) - 1;
+                $block = self::extractBracketBlock($slice, $start);
+                if ($block === '') {
+                    continue;
+                }
+                // Split per object literal `{...}` when present so we pick only the largest URL per photo.
+                if (preg_match_all('/\{[^{}]*\}/s', $block, $objects) > 0) {
+                    foreach ($objects[0] as $obj) {
+                        $picked = null;
+                        foreach (['highres_url', 'highResUrl', 'large_url', 'largeUrl', 'url'] as $field) {
+                            if (preg_match('/\b' . preg_quote($field, '/') . '\b\s*:\s*["\']([^"\']+)["\']/i', $obj, $um) === 1) {
+                                $picked = self::unescapeJsUrl($um[1]);
+                                break;
+                            }
+                        }
+                        if ($picked !== null && $picked !== '') {
+                            $photos[] = $picked;
+                        }
+                    }
+                }
+            }
+        }
+        return $photos;
+    }
+
+    private static function extractBracketBlock(string $text, int $openPos): string
+    {
+        $len = strlen($text);
+        if ($openPos < 0 || $openPos >= $len || $text[$openPos] !== '[') {
+            return '';
+        }
+        $depth = 0;
+        $quote = '';
+        $escaped = false;
+        for ($i = $openPos; $i < $len; $i++) {
+            $ch = $text[$i];
+            if ($quote !== '') {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($ch === '\\') {
+                    $escaped = true;
+                } elseif ($ch === $quote) {
+                    $quote = '';
+                }
+                continue;
+            }
+            if ($ch === '"' || $ch === "'") {
+                $quote = $ch;
+            } elseif ($ch === '[') {
+                $depth++;
+            } elseif ($ch === ']') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($text, $openPos, $i - $openPos + 1);
+                }
+            }
+        }
+        return '';
+    }
+
+    private static function unescapeJsUrl(string $raw): string
+    {
+        $url = str_replace(['\\/', '\\u0026', '\\u002F', '&amp;'], ['/', '&', '/', '&'], trim($raw));
+        return preg_match('#\Ahttps://#i', $url) === 1 ? $url : '';
+    }
+
+    /** @return array{photos: list<string>, amenities: list<string>} */
+    private static function extractBookingDom(string $html): array
+    {
+        $photos = [];
+        $amenities = [];
+        if ($html === '' || !class_exists('DOMDocument')) {
+            return ['photos' => $photos, 'amenities' => $amenities];
+        }
+        $prev = libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_NONET | LIBXML_NOWARNING | LIBXML_NOERROR);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+        if (!$loaded) {
+            return ['photos' => $photos, 'amenities' => $amenities];
+        }
+        $xpath = new DOMXPath($dom);
+
+        $seenAmenity = [];
+        $amenityQueries = [
+            '//*[@data-testid="property-most-popular-facilities-wrapper"]//li',
+            '//*[@data-testid="facility-list-item"]',
+            '//*[@data-testid="facility-group-container"]//li',
+            '//*[@id="hp_facilities_box"]//li',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " important_facility ")]',
+        ];
+        foreach ($amenityQueries as $query) {
+            $nodes = $xpath->query($query);
+            if (!$nodes instanceof DOMNodeList) {
+                continue;
+            }
+            foreach ($nodes as $node) {
+                $text = trim((string) preg_replace('/\s+/u', ' ', (string) $node->textContent));
+                if ($text !== '' && mb_strlen($text, 'UTF-8') <= 100 && !isset($seenAmenity[$text])) {
+                    $seenAmenity[$text] = true;
+                    $amenities[] = $text;
+                }
+            }
+        }
+        if ($amenities === []) {
+            $popularSpans = $xpath->query('//*[@data-testid="property-most-popular-facilities-wrapper"]//span[not(*)]');
+            if ($popularSpans instanceof DOMNodeList) {
+                foreach ($popularSpans as $node) {
+                    $text = trim((string) preg_replace('/\s+/u', ' ', (string) $node->textContent));
+                    if ($text !== '' && mb_strlen($text, 'UTF-8') <= 100 && !isset($seenAmenity[$text])) {
+                        $seenAmenity[$text] = true;
+                        $amenities[] = $text;
+                    }
+                }
+            }
+        }
+
+        $galleryQueries = [
+            '//*[@id="photo_wrapper" or @data-testid="PropertyHeaderGallery" or @data-testid="GalleryGrid" or @data-testid="property-gallery" or contains(concat(" ", normalize-space(@class), " "), " bh-photo-grid ")]//a/@href',
+            '//*[@id="photo_wrapper" or @data-testid="PropertyHeaderGallery" or @data-testid="GalleryGrid" or @data-testid="property-gallery" or contains(concat(" ", normalize-space(@class), " "), " bh-photo-grid ")]//img/@src',
+            '//*[@id="photo_wrapper" or @data-testid="PropertyHeaderGallery" or @data-testid="GalleryGrid" or @data-testid="property-gallery" or contains(concat(" ", normalize-space(@class), " "), " bh-photo-grid ")]//img/@data-src',
+            '//*[@data-photo-id]/@href',
+            '//*[@data-photo-id]//img/@src',
+        ];
+        foreach ($galleryQueries as $query) {
+            $attrs = $xpath->query($query);
+            if (!$attrs instanceof DOMNodeList) {
+                continue;
+            }
+            foreach ($attrs as $attr) {
+                $val = trim((string) $attr->nodeValue);
+                if (preg_match('#\Ahttps://[^/]+/xdata/images/hotel/#i', $val) === 1) {
+                    $photos[] = $val;
+                }
+            }
+        }
+        return ['photos' => $photos, 'amenities' => $amenities];
+    }
+
+    private static function bookingSizeScore(string $sizeSegment): int
+    {
+        $size = strtolower($sizeSegment);
+        if (preg_match('/^max(\d+)(?:x(\d+))?$/', $size, $m) === 1) {
+            return (int) $m[1];
+        }
+        if (preg_match('/^square(\d+)$/', $size, $m) === 1) {
+            return (int) $m[1];
+        }
+        return 0;
+    }
+
     /** @return array<string, string> */
     private static function openGraph(string $html): array
     {
@@ -715,8 +950,8 @@ final class OtaListingExtractor
         return $payload;
     }
 
-    /** Depth-first list of every associative node (arrays of scalars stay as values). @return iterable<array<string, mixed>> */
-    private static function flattenNodes(mixed $node): iterable
+    /** Depth-first list of every associative node (arrays of scalars stay as values). @param list<string> $skipKeys @return iterable<array<string, mixed>> */
+    private static function flattenNodes(mixed $node, array $skipKeys = []): iterable
     {
         if (!is_array($node)) {
             return;
@@ -724,9 +959,12 @@ final class OtaListingExtractor
         if (self::isAssoc($node)) {
             yield $node;
         }
-        foreach ($node as $child) {
+        foreach ($node as $key => $child) {
+            if (is_string($key) && $skipKeys !== [] && in_array(strtolower($key), $skipKeys, true)) {
+                continue;
+            }
             if (is_array($child)) {
-                yield from self::flattenNodes($child);
+                yield from self::flattenNodes($child, $skipKeys);
             }
         }
     }
@@ -758,7 +996,7 @@ final class OtaListingExtractor
             if (is_string($item)) {
                 $out[] = trim($item);
             } elseif (is_array($item)) {
-                $url = $item['url'] ?? $item['contentUrl'] ?? $item['src'] ?? null;
+                $url = $item['highres_url'] ?? $item['highResUrl'] ?? $item['large_url'] ?? $item['largeUrl'] ?? $item['url'] ?? $item['contentUrl'] ?? $item['src'] ?? null;
                 if (is_string($url)) {
                     $out[] = trim($url);
                 }

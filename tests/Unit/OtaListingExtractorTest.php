@@ -448,4 +448,72 @@ final class OtaListingExtractorTest extends TestCase
         $this->assertSame(2, $out['suggested_bedrooms']);
         $this->assertSame(3, $out['suggested_beds']);
     }
+
+    public function testBookingJsonLdCombinesWithApolloFacilitiesHotelPhotosAndHtmlDom(): void
+    {
+        $jsonLd = json_encode([
+            '@context' => 'https://schema.org',
+            '@type' => 'Apartment',
+            'name' => 'Ap 910 Morumbi',
+            'description' => 'Apartamento aconchegante.',
+            'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=&hp=1',
+        ], JSON_UNESCAPED_UNICODE);
+
+        $apollo = json_encode([
+            'ROOT_QUERY' => [
+                'property' => [
+                    'facilityGroups' => [[
+                        '__typename' => 'FacilityGroup',
+                        'facilities' => [
+                            ['__typename' => 'BaseFacility', 'name' => 'Wi-Fi gratuito'],
+                            ['__typename' => 'BaseFacility', 'name' => 'Estacionamento gratuito'],
+                            ['__typename' => 'BaseFacility', 'name' => 'Quartos para não fumantes'],
+                            ['__typename' => 'BaseFacility', 'name' => 'Piscina ao ar livre'],
+                        ],
+                    ]],
+                ],
+                'similarProperties' => [
+                    [
+                        '__typename' => 'SimilarProperty',
+                        'facilities' => [['__typename' => 'BaseFacility', 'name' => 'Sauna']],
+                        'photos' => ['https://cf.bstatic.com/xdata/images/hotel/max1024x768/999999999.jpg?k=sim&o='],
+                    ],
+                ],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $html = '<html><head>'
+            . '<script type="application/ld+json">' . $jsonLd . '</script>'
+            . '<script type="application/json" data-capla-store-data="apollo">' . $apollo . '</script>'
+            . '<script>booking.env.b_hotel_data = { hotelPhotos: ['
+            . "{id: '590115980', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=abc&o=', thumb_url: 'https://cf.bstatic.com/xdata/images/hotel/square60/590115980.jpg?k=abc&o='},"
+            . "{id: '590115981', highres_url: 'https://cf.bstatic.com/xdata/images/hotel/max1280x900/590115981.jpg?k=def&o=', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115981.jpg?k=def&o='},"
+            . "{id: '590115982', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115982.jpg?k=ghi&o='}"
+            . '] };</script>'
+            . '</head><body>'
+            . '<div data-testid="property-most-popular-facilities-wrapper"><ul>'
+            . '<li><span>Ar-condicionado</span></li>'
+            . '<li><span>Máquina de lavar roupa</span></li>'
+            . '</ul></div>'
+            . '<div class="bh-photo-grid">'
+            . '<a href="https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115983.jpg?k=jkl&o=">foto</a>'
+            . '</div>'
+            . '</body></html>';
+
+        $out = OtaListingExtractor::extract($html, 'booking');
+
+        $this->assertSame('json_ld', $out['sanitization_flags']['source']);
+        foreach (['wifi', 'parking_free_onsite', 'pool', 'ac', 'washer'] as $expected) {
+            $this->assertContains($expected, $out['amenities'], "Missing Booking amenity: $expected");
+        }
+        $this->assertNotContains('smoking', $out['amenities']);
+        $this->assertNotContains('sauna', $out['amenities']);
+
+        $this->assertCount(4, $out['photos']);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=abc&o=', $out['photos'][0]);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1280x900/590115981.jpg?k=def&o=', $out['photos']);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115982.jpg?k=ghi&o=', $out['photos']);
+        $this->assertContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115983.jpg?k=jkl&o=', $out['photos']);
+        $this->assertNotContains('https://cf.bstatic.com/xdata/images/hotel/max1024x768/999999999.jpg?k=sim&o=', $out['photos']);
+    }
 }
