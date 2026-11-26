@@ -418,4 +418,16 @@ t_ok(str_contains($mig44, 'watermark_flagged'), 'migration 044 adds photos.water
 t_ok(str_contains($mig44, 'ota_import_id'), 'migration 044 adds photos.ota_import_id');
 t_ok(str_contains($mig44, "'44'"), 'migration 044 updates schema_meta to 44');
 
+echo "incus stack: schema 45 ceps lat/lng migration\n";
+// Updated: 2026-11 - Schema 45 adds ceps.lat and ceps.lng for map positioning near CEP.
+t_ok(str_contains(incus_read('scripts/04-jumpstart-app.sh'), 'migration_045_ceps_lat_lng.sql'),
+    '04-jumpstart-app.sh documents the schema 45 migration');
+t_ok(is_file(CL_ROOT . '/database/migrations/migration_045_ceps_lat_lng.sql'),
+    'migration_045_ceps_lat_lng.sql exists');
+$mig45 = (string) file_get_contents(CL_ROOT . '/database/migrations/migration_045_ceps_lat_lng.sql');
+t_ok(str_contains($mig45, 'ceps'), 'migration 045 modifies ceps');
+t_ok(str_contains($mig45, 'lat DOUBLE PRECISION'), 'migration 045 adds ceps.lat');
+t_ok(str_contains($mig45, 'lng DOUBLE PRECISION'), 'migration 045 adds ceps.lng');
+t_ok(str_contains($mig45, "'45'"), 'migration 045 updates schema_meta to 45');
+
 t_done();

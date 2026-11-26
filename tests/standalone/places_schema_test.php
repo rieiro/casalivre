@@ -19,8 +19,8 @@ require_once CL_ROOT . '/src/Amenities.php';
 require_once CL_ROOT . '/src/PhotoRepository.php';
 require_once CL_ROOT . '/src/helpers.php';
 
-// Updated: 2026-11 - schema 44 (property_ota_imports: importação de conteúdo por URL).
-t_eq(44, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 44');
+// Updated: 2026-11 - schema 45 (ceps.lat e ceps.lng: posicionamento do mapa no CEP).
+t_eq(45, Db::SCHEMA_VERSION, 'SCHEMA_VERSION = 45');
 t_eq(['praia do forte', 'forte'], CityRepository::searchKeys('Praia do Forte'), 'sufixos: stopword "do" não começa chave');
 t_eq(['arraial do cabo', 'cabo'], CityRepository::searchKeys('Arraial do Cabo'), 'sufixos de Arraial do Cabo');
 t_eq(['praia de geriba', 'geriba'], CityRepository::searchKeys('Praia de Geribá'), 'fold + sufixo geriba');

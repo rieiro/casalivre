@@ -12,8 +12,11 @@ final class CepRepository
             street TEXT NOT NULL DEFAULT '',
             neighborhood TEXT NOT NULL DEFAULT '',
             city TEXT NOT NULL DEFAULT '',
-            uf TEXT NOT NULL DEFAULT ''
+            uf TEXT NOT NULL DEFAULT '',
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION
         )");
+        db()->exec("ALTER TABLE ceps ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION; ALTER TABLE ceps ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;");
     }
 
     public static function count(): int
@@ -29,10 +32,30 @@ final class CepRepository
         if (strlen($cep) !== 8) {
             return null;
         }
-        $stmt = db()->prepare('SELECT cep, street, neighborhood, city, uf FROM ceps WHERE cep = ?');
+        $stmt = db()->prepare('SELECT cep, street, neighborhood, city, uf, lat, lng FROM ceps WHERE cep = ?');
         $stmt->execute([$cep]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+        if (array_key_exists('lat', $row) && $row['lat'] !== null) {
+            $row['lat'] = (float) $row['lat'];
+        }
+        if (array_key_exists('lng', $row) && $row['lng'] !== null) {
+            $row['lng'] = (float) $row['lng'];
+        }
+        return $row;
+    }
+
+    public static function updateCoordinates(string $cep, float $lat, float $lng): void
+    {
+        self::ensureTable();
+        $cep = str_pad(preg_replace('/\D/', '', $cep) ?? '', 8, '0', STR_PAD_LEFT);
+        if (strlen($cep) !== 8) {
+            return;
+        }
+        $stmt = db()->prepare('UPDATE ceps SET lat = ?, lng = ? WHERE cep = ?');
+        $stmt->execute([$lat, $lng, $cep]);
     }
 
     public static function randomWithStreet(): ?array

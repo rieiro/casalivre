@@ -8,6 +8,7 @@ require_once __DIR__ . '/Acoes/GooglePlaceVerify.php';
 require_once __DIR__ . '/IcalExportService.php';
 require_once __DIR__ . '/OtaVerificationService.php';
 require_once __DIR__ . '/OtaImportService.php';
+require_once __DIR__ . '/CepCoordinateService.php';
 
 function json_out(int $status, array $data): never
 {
@@ -219,6 +220,15 @@ function handle_api(string $path, string $method): void
             api_error(404, 'CEP não encontrado ou sem rua cadastrada.');
         }
         $known = CityRepository::exactCity((string) $row['city'], (string) $row['uf']);
+        $cachedLat = isset($row['lat']) && $row['lat'] !== null ? (float) $row['lat'] : null;
+        $cachedLng = isset($row['lng']) && $row['lng'] !== null ? (float) $row['lng'] : null;
+        $geo = CepCoordinateService::resolve(
+            $digits,
+            (string) $row['city'],
+            (string) $row['uf'],
+            $cachedLat,
+            $cachedLng
+        );
         json_out(200, [
             'cep' => $row['cep'],
             'street' => $row['street'],
@@ -226,8 +236,11 @@ function handle_api(string $path, string $method): void
             'city' => $row['city'],
             'uf' => $row['uf'],
             'city_label' => $known['label'] ?? ($row['city'] . ', ' . $row['uf']),
-            'lat' => isset($known['lat']) ? (float) $known['lat'] : null,
-            'lng' => isset($known['lng']) ? (float) $known['lng'] : null,
+            'lat' => $geo['lat'],
+            'lng' => $geo['lng'],
+            'city_lat' => isset($known['lat']) ? (float) $known['lat'] : null,
+            'city_lng' => isset($known['lng']) ? (float) $known['lng'] : null,
+            'coord_source' => $geo['source'],
         ]);
     }
     if (!$user && preg_match('#^/api/(users/eu|casas)#', $path)) {

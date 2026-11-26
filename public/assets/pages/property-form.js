@@ -444,7 +444,7 @@
             const cepInput = form.querySelector('[data-cep]');
             if (cepInput) {
                 let lastCep = cepInput.value.replace(/\D/g, '');
-                cepInput.addEventListener('change', async function () {
+                const updateLocationFromCep = async function () {
                     const digits = cepInput.value.replace(/\D/g, '').slice(0, 8);
                     if (digits.length === 8 && digits !== lastCep) {
                         lastCep = digits;
@@ -454,11 +454,20 @@
                             if (json && json.lat && json.lng) {
                                 const newLat = parseFloat(json.lat);
                                 const newLng = parseFloat(json.lng);
+                                const zoomLevel = json.coord_source === 'cep' ? 16 : 14;
                                 marker.setLngLat([newLng, newLat]);
-                                map.flyTo({ center: [newLng, newLat], zoom: 14 });
+                                map.flyTo({ center: [newLng, newLat], zoom: zoomLevel });
                                 updateCoords(newLat, newLng);
                             }
                         } catch (_) {}
+                    }
+                };
+                cepInput.addEventListener('change', updateLocationFromCep);
+                let cepTimer;
+                cepInput.addEventListener('input', function () {
+                    window.clearTimeout(cepTimer);
+                    if (cepInput.value.replace(/\D/g, '').length === 8) {
+                        cepTimer = window.setTimeout(updateLocationFromCep, 300);
                     }
                 });
             }

@@ -4,6 +4,7 @@ require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
 require_once dirname(__DIR__) . '/src/CalendarSync.php';
 require_once dirname(__DIR__) . '/src/OtaImportService.php';
+require_once dirname(__DIR__) . '/src/CepCoordinateService.php';
 $isPropertyVerified = $editing && OtaVerificationService::isPropertyVerified((array) ($property ?? []));
 $posted = $posted ?? [];
 $current = is_array($property ?? null) ? $property : [];
@@ -88,8 +89,27 @@ $cityKnown = $cityValue !== '' && count($cityParts) >= 2 ? CityRepository::exact
 $initialCityLat = isset($cityKnown['lat']) ? (string) (float) $cityKnown['lat'] : '-27.5954';
 $initialCityLng = isset($cityKnown['lng']) ? (string) (float) $cityKnown['lng'] : '-48.5480';
 if ($latValue === '' && $lngValue === '') {
-    $latValue = $initialCityLat;
-    $lngValue = $initialCityLng;
+    $cepDigits = preg_replace('/\D+/', '', $cepValue) ?? '';
+    if (strlen($cepDigits) === 8) {
+        $cepRow = CepRepository::find($cepDigits);
+        $cachedLat = isset($cepRow['lat']) && $cepRow['lat'] !== null ? (float) $cepRow['lat'] : null;
+        $cachedLng = isset($cepRow['lng']) && $cepRow['lng'] !== null ? (float) $cepRow['lng'] : null;
+        $geo = CepCoordinateService::resolve(
+            $cepDigits,
+            trim($cityParts[0] ?? ''),
+            trim($cityParts[1] ?? ''),
+            $cachedLat,
+            $cachedLng
+        );
+        if ($geo['lat'] !== null && $geo['lng'] !== null) {
+            $latValue = (string) $geo['lat'];
+            $lngValue = (string) $geo['lng'];
+        }
+    }
+    if ($latValue === '' && $lngValue === '') {
+        $latValue = $initialCityLat;
+        $lngValue = $initialCityLng;
+    }
 }
 ?>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/vendor/maplibre-gl/maplibre-gl.css')) ?>">

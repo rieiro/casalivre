@@ -436,4 +436,40 @@ final class PropertyFormPageTest extends TestCase
         $this->assertSame(1, preg_match('/const\s+maxAttempts\s*=\s*(\d+)\s*;/', $js, $m));
         $this->assertGreaterThanOrEqual(80, (int) $m[1]);
     }
+
+    public function testPropertyFormMapInitializesWithCepCoordinates(): void
+    {
+        CepCoordinateService::$httpTransport = function (): array {
+            return [
+                'status' => 200,
+                'body' => json_encode([
+                    'cep' => '89010025',
+                    'lat' => '-26.924900',
+                    'lng' => '-49.061136',
+                ], JSON_THROW_ON_ERROR),
+            ];
+        };
+
+        ob_start();
+        try {
+            $property = null;
+            $error = null;
+            $posted = [
+                'cep' => '89010-025',
+                'city' => 'Blumenau, SC',
+            ];
+            $csrf = 'csrf_token_test';
+            $photos = [];
+            require dirname(__DIR__, 2) . '/views/property_form.php';
+            $html = (string) ob_get_clean();
+        } catch (Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        } finally {
+            CepCoordinateService::$httpTransport = null;
+        }
+
+        $this->assertStringContainsString('data-lat="-26.9249"', $html);
+        $this->assertStringContainsString('data-lng="-49.061136"', $html);
+    }
 }
