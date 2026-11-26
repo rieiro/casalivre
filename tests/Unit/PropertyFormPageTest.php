@@ -429,4 +429,11 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('prop-form-danger-zone', $gestorHtml);
         $this->assertStringContainsString('/imoveis/' . $ref . '/calendario', $gestorHtml);
     }
+
+    public function testPhotoPollerAllowsEnoughTimeForFortyRemotePhotos(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertSame(1, preg_match('/const\s+maxAttempts\s*=\s*(\d+)\s*;/', $js, $m));
+        $this->assertGreaterThanOrEqual(80, (int) $m[1]);
+    }
 }

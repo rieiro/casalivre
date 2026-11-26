@@ -291,7 +291,7 @@
         if (!document.querySelector('[data-photo-wait]')) return;
 
         let attempts = 0;
-        const maxAttempts = 30;
+        const maxAttempts = 80;
 
         const timer = setInterval(async () => {
             attempts++;
