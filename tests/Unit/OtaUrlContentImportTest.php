@@ -700,4 +700,269 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertStringContainsString('data-import-locks="[]"', $calendarHtml);
         $this->assertStringNotContainsString('airbnb:1717', $calendarHtml);
     }
+
+    /** Pasted page source with canonical/OG/JSON-LD binding and an optional body payload. */
+    private function pastedListingHtml(string $canonical, string $title = 'Casa Colada', string $description = 'Conteúdo colado.', array $images = [], string $extraBody = ''): string
+    {
+        $json = json_encode([
+            '@context' => 'https://schema.org',
+            '@type' => 'VacationRental',
+            'name' => $title,
+            'description' => $description,
+            'image' => $images,
+            'amenityFeature' => [['name' => 'Wifi'], ['name' => 'Piscina']],
+            'occupancy' => ['maxValue' => 6],
+        ], JSON_UNESCAPED_UNICODE);
+        return '<html><head><link rel="canonical" href="' . $canonical . '">'
+            . '<meta property="og:url" content="' . $canonical . '">'
+            . '<script type="application/ld+json">' . $json . '</script></head><body>' . $extraBody . '</body></html>';
+    }
+
+    public function testBooking202ChallengeReturnsBlockedWithoutDraftOrCap(): void
+    {
+        $propertiesBefore = (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn();
+        $importsBefore = (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn();
+        CalendarSync::$httpTransport = fn (): array => [
+            'http' => 202,
+            'headers' => ['x-page-id' => 'wildcard-challenge-handler'],
+            'body' => '<html><head><title></title></head><body><script>reportChallengeError()</script></body></html>',
+        ];
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', 'https://www.booking.com/hotel/br/casa-block.html', true);
+
+        $this->assertSame('bloqueado_ota', $res->tipo);
+        $this->assertSame('blocked_by_ota', $res->dados['error_code'] ?? null);
+        $this->assertSame('property_url', $res->dados['field'] ?? null);
+        $this->assertSame($propertiesBefore, (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn());
+        $this->assertSame($importsBefore, (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn());
+        $this->assertSame(0, OtaImportService::unverifiedDrafts($this->userId));
+    }
+
+    public function testVrbo429ChallengeHeaderReturnsBlocked(): void
+    {
+        CalendarSync::$httpTransport = fn (): array => [
+            'error' => 'http_5xx',
+            'http' => 429,
+            'headers' => ['x-hcom-origin-id' => 'wildcard-challenge-handler'],
+        ];
+
+        $res = OtaImportService::startNewDraft($this->userId, 'vrbo', 'https://www.vrbo.com/1234567', true);
+        $this->assertSame('bloqueado_ota', $res->tipo);
+        $this->assertSame('blocked_by_ota', $res->dados['error_code'] ?? null);
+        $this->assertSame(0, OtaImportService::unverifiedDrafts($this->userId));
+    }
+
+    public function testHttp200WafShellIsBlockedBeforeCreatingADraft(): void
+    {
+        CalendarSync::$httpTransport = fn (): array => [
+            'http' => 200,
+            'body' => '<html><head><title></title></head><body><script>reportChallengeError()</script></body></html>',
+        ];
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', 'https://www.booking.com/hotel/br/casa-waf.html', true);
+        $this->assertSame('bloqueado_ota', $res->tipo);
+        $this->assertSame(0, OtaImportService::unverifiedDrafts($this->userId));
+    }
+
+    public function testAirbnb200JsonLdStillImportsDirectlyIntoDraftReady(): void
+    {
+        CalendarSync::$httpTransport = fn (): array => ['body' => $this->listingHtml('Casa Airbnb Direta'), 'http' => 200];
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+
+        $res = OtaImportService::startExisting(HouseRepository::find($draftId), $this->userId, 'airbnb', 'https://www.airbnb.com/rooms/2020', true);
+
+        $this->assertSame('ok', $res->tipo);
+        $import = OtaImportService::activeForProperty($draftId, 'airbnb');
+        $this->assertSame('draft_ready', (string) $import['status']);
+        $this->assertArrayNotHasKey('fetch_mode', (array) $import['sanitization_flags']);
+        $this->assertSame('Casa Direta', (string) HouseRepository::find($draftId)['title']);
+    }
+
+    public function testBookingHtmlPasteCreatesDraftReadyLocksUrlAndQueuesOnlyAllowlistedPhotos(): void
+    {
+        $html = $this->pastedListingHtml(
+            'https://www.booking.com/hotel/br/casa-colada.pt-br.html',
+            'Casa Colada Booking',
+            'Descrição colada do Booking.',
+            [
+                'https://cf.bstatic.com/xdata/images/hotel/max1024x768/1.jpg',
+                'https://evil.example/x.jpg',
+                'http://127.0.0.1/x.jpg',
+            ]
+        );
+
+        $res = OtaImportService::startNewDraft(
+            $this->userId,
+            'booking',
+            'https://www.booking.com/hotel/br/casa-colada.html',
+            true,
+            $html
+        );
+
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $this->assertGreaterThan(0, $propertyId);
+        $import = OtaImportService::activeForProperty($propertyId, 'booking');
+        $this->assertSame('draft_ready', (string) $import['status']);
+        $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
+        $this->assertSame('Casa Colada', (string) HouseRepository::find($propertyId)['title']);
+
+        $photos = PhotoRepository::listByImport((int) $import['id']);
+        $this->assertCount(1, $photos);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/1.jpg', (string) $photos[0]['source_url']);
+
+        // URL is locked to the pasted canonical listing id.
+        try {
+            OtaFeedGate::preparePublicUrl($propertyId, $this->userId, 'booking', 'https://www.booking.com/hotel/br/outra-casa.html', true);
+            $this->fail('different canonical must be locked');
+        } catch (OtaFeedGateException $e) {
+            $this->assertSame('property_url', $e->field);
+        }
+        OtaFeedGate::preparePublicUrl($propertyId, $this->userId, 'booking', 'https://www.booking.com/hotel/br/casa-colada.html', true);
+    }
+
+    public function testVrboRegionalDomainHtmlPasteIsAccepted(): void
+    {
+        $html = $this->pastedListingHtml(
+            'https://www.aluguetemporada.com.br/pt-br/imovel/casa-colada/7654321',
+            'Casa Colada Vrbo',
+            'Descrição colada do Vrbo.',
+            ['https://images.trvl-media.com/lodging/1.jpg']
+        );
+
+        $res = OtaImportService::startNewDraft($this->userId, 'vrbo', 'https://www.vrbo.com/7654321', true, $html);
+
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $import = OtaImportService::activeForProperty($propertyId, 'vrbo');
+        $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
+        $photos = PhotoRepository::listByImport((int) $import['id']);
+        $this->assertCount(1, $photos);
+        $this->assertStringContainsString('images.trvl-media.com', (string) $photos[0]['source_url']);
+    }
+
+    public function testSpoofedPasteWithAnotherListingCanonicalIsRejectedWithoutRows(): void
+    {
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+        $before = (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports WHERE property_id = ' . $draftId)->fetchColumn();
+        $html = $this->pastedListingHtml('https://www.booking.com/hotel/br/outra-casa.html');
+
+        $res = OtaImportService::startExisting(
+            HouseRepository::find($draftId),
+            $this->userId,
+            'booking',
+            'https://www.booking.com/hotel/br/casa-colada.html',
+            true,
+            $html
+        );
+
+        $this->assertSame('invalido', $res->tipo);
+        $this->assertSame('html_url_mismatch', $res->dados['error_code'] ?? null);
+        $this->assertSame('raw_html', $res->dados['field'] ?? null);
+        $this->assertSame($before, (int) $this->pdo->query('SELECT COUNT(*) FROM property_ota_imports WHERE property_id = ' . $draftId)->fetchColumn());
+    }
+
+    public function testPasteFromAnotherPlatformIsRejectedAsMismatch(): void
+    {
+        $html = $this->pastedListingHtml('https://www.airbnb.com/rooms/3333333');
+
+        $res = OtaImportService::startNewDraft(
+            $this->userId,
+            'booking',
+            'https://www.booking.com/hotel/br/casa-colada.html',
+            true,
+            $html
+        );
+
+        $this->assertSame('invalido', $res->tipo);
+        $this->assertSame('html_url_mismatch', $res->dados['error_code'] ?? null);
+    }
+
+    public function testPastedHtmlStripsScriptsAndIgnoresNonAllowlistedImages(): void
+    {
+        $html = $this->pastedListingHtml(
+            'https://www.airbnb.com/rooms/4444444',
+            '<script>alert(1)</script>Casa Boa',
+            '<b>Bom</b> anúncio https://evil.example/x',
+            ['https://evil.example/a.jpg', 'https://a0.muscache.com/im/pictures/ok.jpg']
+        );
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+
+        $res = OtaImportService::startExisting(HouseRepository::find($draftId), $this->userId, 'airbnb', 'https://www.airbnb.com/rooms/4444444', true, $html);
+
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+        $row = HouseRepository::find($draftId);
+        $this->assertStringNotContainsString('<script', (string) $row['title']);
+        $this->assertStringContainsString('Casa Boa', (string) $row['title']);
+        $this->assertStringNotContainsString('evil.example', (string) $row['description']);
+
+        $import = OtaImportService::activeForProperty($draftId, 'airbnb');
+        $photos = PhotoRepository::listByImport((int) $import['id']);
+        $this->assertCount(1, $photos);
+        $this->assertSame('https://a0.muscache.com/im/pictures/ok.jpg', (string) $photos[0]['source_url']);
+    }
+
+    public function testOversizedAndWafShellPastesAreRejectedCleanly(): void
+    {
+        $propertiesBefore = (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn();
+        $oversized = $this->pastedListingHtml(
+            'https://www.booking.com/hotel/br/casa-grande.html',
+            'Casa Grande',
+            'Descrição.',
+            [],
+            str_repeat('x', OtaImportService::MAX_RAW_HTML_BYTES + 1)
+        );
+        $tooBig = OtaImportService::startNewDraft($this->userId, 'booking', 'https://www.booking.com/hotel/br/casa-grande.html', true, $oversized);
+        $this->assertSame('invalido', $tooBig->tipo);
+        $this->assertSame('payload_too_large', $tooBig->dados['error_code'] ?? null);
+
+        $shell = '<html><head><title></title></head><body><script>reportChallengeError()</script></body></html>';
+        $waf = OtaImportService::startNewDraft($this->userId, 'booking', 'https://www.booking.com/hotel/br/casa-waf.html', true, $shell);
+        $this->assertSame('invalido', $waf->tipo);
+        $this->assertSame('extraction_empty', $waf->dados['error_code'] ?? null);
+        $this->assertSame($propertiesBefore, (int) $this->pdo->query('SELECT COUNT(*) FROM properties')->fetchColumn());
+    }
+
+    public function testPublishedGateAndUrlLockStillApplyToHtmlPaste(): void
+    {
+        $html222 = $this->pastedListingHtml('https://www.airbnb.com/rooms/222');
+        $blocked = OtaImportService::startExisting(
+            HouseRepository::find($this->propertyId),
+            $this->userId,
+            'airbnb',
+            'https://www.airbnb.com/rooms/222',
+            true,
+            $html222
+        );
+        $this->assertSame('invalido', $blocked->tipo);
+        $this->assertSame(t('ota.import.published_locked'), $blocked->mensagem);
+
+        $this->feedRow($this->propertyId, 'airbnb', 'airbnb:222', 'approved', $this->now);
+        $locked = OtaImportService::startExisting(
+            HouseRepository::find($this->propertyId),
+            $this->userId,
+            'airbnb',
+            'https://www.airbnb.com/rooms/111',
+            true,
+            $this->pastedListingHtml('https://www.airbnb.com/rooms/111')
+        );
+        $this->assertSame('invalido', $locked->tipo);
+        $this->assertSame(t('ota.err_import_url_locked'), $locked->mensagem);
+
+        $ok = OtaImportService::startExisting(
+            HouseRepository::find($this->propertyId),
+            $this->userId,
+            'airbnb',
+            'https://www.airbnb.com/rooms/222',
+            true,
+            $this->pastedListingHtml('https://www.airbnb.com/rooms/222')
+        );
+        $this->assertSame('ok', $ok->tipo, (string) $ok->mensagem);
+        $import = OtaImportService::activeForProperty($this->propertyId, 'airbnb');
+        $this->assertSame('draft_ready', (string) $import['status']);
+        $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
+    }
 }

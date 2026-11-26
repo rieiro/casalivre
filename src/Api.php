@@ -633,6 +633,29 @@ function handle_api(string $path, string $method): void
         ]);
     }
 
+    // Importação de conteúdo por URL do anúncio em um novo imóvel (AJAX do formulário web).
+    if ($path === '/api/imoveis/novo/importar' && $method === 'POST') {
+        $user = api_require_user($user);
+        $res = OtaImportService::startNewDraft(
+            (int) $user['id'],
+            $body['platform'] ?? null,
+            $body['property_url'] ?? null,
+            $body['consent'] ?? false,
+            $body['raw_html'] ?? null
+        );
+        $res->registrar();
+        if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
+            $errorCode = (string) ($res->dados['error_code'] ?? '');
+            $status = $res->tipo === 'limite' ? 429 : ($errorCode === 'payload_too_large' ? 413 : 422);
+            $payload = ['error' => (string) $res->mensagem, 'error_code' => $errorCode];
+            if (isset($res->dados['field'])) {
+                $payload['erros'] = [(string) $res->dados['field'] => (string) $res->mensagem];
+            }
+            json_out($status, $payload);
+        }
+        json_out(200, ['ok' => true, 'redirect' => '/imoveis/' . (string) ($res->dados['public_hash'] ?? '') . '/editar'] + $res->dados);
+    }
+
     // Importação de conteúdo por URL do anúncio (rascunho ou imóvel verificado).
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/importar$#', $path, $m)) {
         $user = api_require_user($user);
@@ -646,11 +669,18 @@ function handle_api(string $path, string $method): void
                 (int) $user['id'],
                 $body['platform'] ?? null,
                 $body['property_url'] ?? null,
-                $body['consent'] ?? false
+                $body['consent'] ?? false,
+                $body['raw_html'] ?? null
             );
             $res->registrar();
             if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
-                api_error($res->tipo === 'limite' ? 429 : 422, (string) $res->mensagem, isset($res->dados['field']) ? [(string) $res->dados['field'] => (string) $res->mensagem] : null);
+                $errorCode = (string) ($res->dados['error_code'] ?? '');
+                $status = $res->tipo === 'limite' ? 429 : ($errorCode === 'payload_too_large' ? 413 : 422);
+                $payload = ['error' => (string) $res->mensagem, 'error_code' => $errorCode];
+                if (isset($res->dados['field'])) {
+                    $payload['erros'] = [(string) $res->dados['field'] => (string) $res->mensagem];
+                }
+                json_out($status, $payload);
             }
             json_out(200, ['ok' => true, 'warning' => $res->mensagem] + $res->dados);
         }

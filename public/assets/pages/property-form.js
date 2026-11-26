@@ -1,4 +1,129 @@
 (function () {
+    // Host-side "paste page source" fallback (Schema 44): progressive-enhancement AJAX on the import form.
+    function setupImportForm() {
+        const importForm = document.querySelector('.prop-import-form');
+        if (!importForm) return;
+        const apiUrl = importForm.dataset.importApi || importForm.getAttribute('action') || '';
+        const platformSelect = importForm.querySelector('select[name="platform"]');
+        const urlInput = importForm.querySelector('input[name="property_url"]');
+        const consentInput = importForm.querySelector('input[name="consent"]');
+        const pasteBox = importForm.querySelector('[data-import-paste]');
+        const pasteToggleWrap = importForm.querySelector('[data-import-paste-toggle-wrap]');
+        const pasteToggle = importForm.querySelector('[data-import-paste-toggle]');
+        const rawInput = importForm.querySelector('textarea[name="raw_html"]');
+        const pasteError = importForm.querySelector('[data-import-paste-error]');
+        const pasteSubmit = importForm.querySelector('[data-import-paste-submit]');
+        const mainSubmit = importForm.querySelector('[data-import-submit]');
+        const maxBytes = parseInt(importForm.dataset.rawMax || '5242880', 10);
+        const pasteCodes = ['blocked_by_ota', 'extraction_empty', 'html_url_mismatch', 'payload_too_large'];
+        let busy = false;
+
+        const byteLength = function (value) {
+            const text = String(value || '');
+            if (window.TextEncoder) return new TextEncoder().encode(text).length;
+            try { return unescape(encodeURIComponent(text)).length; } catch (_) { return text.length; }
+        };
+        const clearError = function () {
+            if (pasteError) {
+                pasteError.textContent = '';
+                pasteError.hidden = true;
+            }
+        };
+        const showError = function (message) {
+            if (!pasteError) return;
+            pasteError.textContent = String(message || '');
+            pasteError.hidden = false;
+        };
+        const showPaste = function () {
+            if (pasteBox) pasteBox.hidden = false;
+            if (pasteToggleWrap) pasteToggleWrap.hidden = false;
+            if (rawInput) rawInput.focus();
+        };
+        const updateToggle = function () {
+            if (!pasteToggleWrap) return;
+            const needsPaste = platformSelect && (platformSelect.value === 'booking' || platformSelect.value === 'vrbo');
+            pasteToggleWrap.hidden = !(needsPaste || (pasteBox && !pasteBox.hidden));
+        };
+
+        if (platformSelect) platformSelect.addEventListener('change', updateToggle);
+        if (pasteToggle) {
+            pasteToggle.addEventListener('click', function () {
+                if (!pasteBox) return;
+                pasteBox.hidden = !pasteBox.hidden;
+                if (!pasteBox.hidden && rawInput) rawInput.focus();
+                updateToggle();
+            });
+        }
+        updateToggle();
+
+        const submit = async function (fromPaste) {
+            if (busy) return;
+            if (typeof importForm.reportValidity === 'function' && !importForm.reportValidity()) return;
+            const raw = rawInput ? String(rawInput.value || '') : '';
+            if (fromPaste && raw.trim() === '') {
+                showPaste();
+                showError(importForm.dataset.pasteRequired || '');
+                return;
+            }
+            if (raw !== '' && byteLength(raw) > maxBytes) {
+                showPaste();
+                showError(importForm.dataset.pasteSizeError || '');
+                return;
+            }
+            clearError();
+            busy = true;
+            const button = fromPaste ? pasteSubmit : mainSubmit;
+            const original = button ? button.textContent : '';
+            if (button) {
+                button.disabled = true;
+                if (fromPaste) button.textContent = importForm.dataset.pasteProcessing || '';
+            }
+            const payload = {
+                platform: platformSelect ? String(platformSelect.value || '') : '',
+                property_url: urlInput ? String(urlInput.value || '').trim() : '',
+                consent: consentInput ? consentInput.checked : false
+            };
+            if (raw.trim() !== '') payload.raw_html = raw;
+            try {
+                const json = await CL.api(apiUrl, { method: 'POST', body: payload });
+                if (json && json.redirect) {
+                    window.location.href = json.redirect;
+                    return;
+                }
+                window.location.reload();
+            } catch (e) {
+                const code = e && e.data ? String(e.data.error_code || '') : '';
+                if (pasteCodes.indexOf(code) !== -1) {
+                    showPaste();
+                    showError((e && e.message) || '');
+                } else if (window.CL && typeof window.CL.toast === 'function') {
+                    window.CL.toast('error', 'Erro ao importar', (e && e.message) || 'Tente novamente.');
+                } else {
+                    showPaste();
+                    showError((e && e.message) || 'Tente novamente.');
+                }
+                if (button) {
+                    button.disabled = false;
+                    if (fromPaste) button.textContent = original;
+                }
+                busy = false;
+            }
+        };
+
+        importForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            submit(false);
+        });
+        if (pasteSubmit) {
+            pasteSubmit.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                submit(true);
+            });
+        }
+    }
+
+    setupImportForm();
+
     const form = document.getElementById('property-form');
     if (!form) return;
     const editing = form.dataset.editing === '1';

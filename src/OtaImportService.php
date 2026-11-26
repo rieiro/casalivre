@@ -31,6 +31,8 @@ final class OtaImportService
     public const MAX_UNVERIFIED_DRAFTS = 3;
     public const EXPIRES_DAYS = 14;
     public const MAX_IMPORT_PHOTOS = 20;
+    /** Host-side raw HTML paste cap (bytes); BodyLimit allows this plus a small JSON/form margin. */
+    public const MAX_RAW_HTML_BYTES = 5 * 1048576;
 
     /** Active import statuses counted against the per-user draft cap. */
     private const UNVERIFIED = ['fetching', 'draft_ready', 'rejected'];
@@ -49,7 +51,7 @@ final class OtaImportService
      *
      * @return Resultado dados: property, import, counts, warning
      */
-    public static function startNewDraft(int $userId, mixed $platform, mixed $url, mixed $consent): Resultado
+    public static function startNewDraft(int $userId, mixed $platform, mixed $url, mixed $consent, mixed $rawHtml = null): Resultado
     {
         if (!TextoBruto::ok($platform) || !TextoBruto::ok($url)) {
             return new Resultado('invalido', t('ota.import.invalid'), ['field' => 'property_url']);
@@ -68,8 +70,40 @@ final class OtaImportService
             return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
         }
 
+        // Host-side paste: validate the canonical binding before creating any row, so spoofed or empty
+        // payloads never lock the URL nor count against the unverified draft cap.
+        $paste = self::rawHtmlValue($rawHtml);
+        if ($paste !== null) {
+            $checked = self::validatePastedHtml((string) $public['platform'], (string) $public['canonical_listing_id'], $paste);
+            if (isset($checked['error'])) {
+                return self::pasteError((string) $checked['error']);
+            }
+            $created = self::createDraftWithImport($userId, $public);
+            if ($created === null) {
+                return new Resultado('limite', t('ota.import.cap_reached'), ['field' => 'property_url']);
+            }
+            return self::runImport(
+                (int) $created['property']['id'],
+                $userId,
+                (string) $public['platform'],
+                (array) $created['import'],
+                ['body' => $paste, 'http' => 200],
+                (array) $checked['payload'],
+                true
+            );
+        }
+
         // Fail fast: a missing/invalid/unreachable listing must not create a draft or an import row.
         $html = CalendarSync::fetchListingHtml((string) $public['property_url'], (string) $public['platform']);
+        if ((string) ($html['error'] ?? '') === 'blocked_by_ota') {
+            // Do not create an empty draft: the import modal stays open and reveals the HTML paste fallback.
+            return new Resultado('bloqueado_ota', t('ota.import.blocked_ota'), [
+                'error_code' => 'blocked_by_ota',
+                'field' => 'property_url',
+                'platform' => (string) $public['platform'],
+                'property_url' => (string) $public['property_url'],
+            ]);
+        }
         if (self::listingUrlNotFound($html)) {
             return new Resultado('invalido', t('ota.import.url_not_found'), ['field' => 'property_url']);
         }
@@ -93,17 +127,123 @@ final class OtaImportService
         $importId = (int) ($created['import']['id'] ?? 0);
         if ($transientBlock) {
             // Anti-bot/transient block: keep the draft, mark the import failed and let the host fill manually.
-            self::finishImport($importId, 'failed', ['error' => (string) ($html['error'] ?? '')], ['fetch' => 'failed']);
+            $error = (string) ($html['error'] ?? '');
+            self::finishImport($importId, 'failed', ['error' => $error], ['fetch' => 'failed', 'error_code' => 'fetch_failed']);
             $property = HouseRepository::find($propertyId);
             return new Resultado('parcial', t('ota.import.fetch_failed'), [
                 'property_id' => $propertyId,
                 'public_hash' => $property !== null ? HouseRepository::ensurePublicHash($property) : '',
                 'import_id' => $importId,
                 'warning' => t('ota.import.fetch_failed'),
+                'error_code' => 'fetch_failed',
             ]);
         }
 
         return self::runImport($propertyId, $userId, (string) $public['platform'], (array) $created['import'], $html);
+    }
+
+    /** @param array<string, mixed> $public @return array{property: array<string, mixed>, import: array<string, mixed>}|null */
+    private static function createDraftWithImport(int $userId, array $public): ?array
+    {
+        return Db::transactional(db(), static function () use ($userId, $public): ?array {
+            db()->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$userId]);
+            if (self::unverifiedDrafts($userId) >= self::MAX_UNVERIFIED_DRAFTS) {
+                return null;
+            }
+            $property = HouseRepository::insertDraft($userId);
+            $import = self::insertImport((int) $property['id'], $userId, $public, 'fetching');
+            return ['property' => $property, 'import' => $import];
+        });
+    }
+
+    /** @return string|null trimmed non-empty raw HTML, or null when the field was not sent. */
+    private static function rawHtmlValue(mixed $raw): ?string
+    {
+        if (!is_string($raw)) {
+            return null;
+        }
+        $raw = trim($raw);
+        return $raw === '' ? null : $raw;
+    }
+
+    /** @return array{payload: array<string, mixed>}|array{error: string} */
+    private static function validatePastedHtml(string $platform, string $canonical, string $html): array
+    {
+        if (strlen($html) > self::MAX_RAW_HTML_BYTES) {
+            return ['error' => 'payload_too_large'];
+        }
+        if (OtaListingExtractor::isWafChallengeShell($html)) {
+            return ['error' => 'extraction_empty'];
+        }
+        if (!self::htmlMatchesCanonical($html, $platform, $canonical)) {
+            return ['error' => 'html_url_mismatch'];
+        }
+        $payload = OtaListingExtractor::extract($html, $platform);
+        if ((string) ($payload['sanitization_flags']['source'] ?? 'none') === 'none'
+            || ((string) $payload['title'] === '' && (array) $payload['photos'] === [])) {
+            return ['error' => 'extraction_empty'];
+        }
+        return ['payload' => $payload];
+    }
+
+    /**
+     * Anti-spoofing: every canonical/OG/JSON-LD listing URL must resolve to the same (platform, listing id)
+     * as the submitted URL, and at least one such URL must be present in the pasted HTML.
+     */
+    private static function htmlMatchesCanonical(string $html, string $platform, string $canonical): bool
+    {
+        $matched = false;
+        foreach (OtaListingExtractor::extractCanonicalUrls($html) as $candidate) {
+            $parts = parse_url($candidate);
+            if (!is_array($parts)) {
+                continue;
+            }
+            $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+            $host = strtolower((string) ($parts['host'] ?? ''));
+            if ($scheme !== 'https' || $host === '') {
+                continue;
+            }
+            $candidatePlatform = self::platformForPublicHost($host);
+            if ($candidatePlatform === null) {
+                continue;
+            }
+            if ($candidatePlatform !== $platform) {
+                return false;
+            }
+            $path = '/' . trim((string) ($parts['path'] ?? ''), '/');
+            try {
+                $id = OtaFeedGate::canonicalizePublic($platform, $path);
+            } catch (OtaFeedGateException) {
+                continue;
+            }
+            if ($id === $canonical) {
+                $matched = true;
+            } else {
+                return false;
+            }
+        }
+        return $matched;
+    }
+
+    private static function platformForPublicHost(string $host): ?string
+    {
+        foreach (OtaPlatformRegistry::all() as $key => $meta) {
+            $hosts = array_map('strtolower', (array) ($meta['public_hosts'] ?? []));
+            if (in_array($host, $hosts, true)) {
+                return (string) $key;
+            }
+        }
+        return null;
+    }
+
+    private static function pasteError(string $error): Resultado
+    {
+        [$message, $field] = match ($error) {
+            'payload_too_large' => [t('ota.import.payload_too_large'), 'raw_html'],
+            'html_url_mismatch' => [t('ota.import.html_url_mismatch'), 'raw_html'],
+            default => [t('ota.import.extraction_empty'), 'raw_html'],
+        };
+        return new Resultado('invalido', $message, ['field' => $field, 'error_code' => $error]);
     }
 
     /**
@@ -128,7 +268,7 @@ final class OtaImportService
      * Existing-property entry point (host edit page / API). Non-destructive: empty fields are filled,
      * non-empty fields keep their content and receive "use imported text" suggestions.
      */
-    public static function startExisting(array $property, int $userId, mixed $platform, mixed $url, mixed $consent): Resultado
+    public static function startExisting(array $property, int $userId, mixed $platform, mixed $url, mixed $consent, mixed $rawHtml = null): Resultado
     {
         if (!TextoBruto::ok($platform) || !TextoBruto::ok($url)) {
             return new Resultado('invalido', t('ota.import.invalid'), ['field' => 'property_url']);
@@ -167,11 +307,33 @@ final class OtaImportService
             }
         }
 
+        // Validate the paste before touching any import row: a spoofed/empty payload must not lock the URL.
+        $paste = self::rawHtmlValue($rawHtml);
+        $pastedPayload = null;
+        if ($paste !== null) {
+            $checked = self::validatePastedHtml((string) $public['platform'], (string) $public['canonical_listing_id'], $paste);
+            if (isset($checked['error'])) {
+                return self::pasteError((string) $checked['error']);
+            }
+            $pastedPayload = (array) $checked['payload'];
+        }
+
         $existing = self::activeForProperty($propertyId, (string) $public['platform']);
         if ($existing !== null && (string) $existing['canonical_listing_id'] === (string) $public['canonical_listing_id']) {
             $import = self::touchImport((int) $existing['id'], $public);
         } else {
             $import = self::insertImport($propertyId, $userId, $public, 'fetching');
+        }
+        if ($paste !== null) {
+            return self::runImport(
+                $propertyId,
+                $userId,
+                (string) $public['platform'],
+                $import,
+                ['body' => $paste, 'http' => 200],
+                $pastedPayload,
+                true
+            );
         }
         return self::runImport($propertyId, $userId, (string) $public['platform'], $import);
     }
@@ -220,9 +382,17 @@ final class OtaImportService
     /**
      * @param array<string, mixed> $import
      * @param array<string, mixed>|null $prefetchedHtml listing response already fetched by startNewDraft()
+     * @param array<string, mixed>|null $prefetchedPayload extraction already validated before persisting the paste
      */
-    private static function runImport(int $propertyId, int $userId, string $platform, array $import, ?array $prefetchedHtml = null): Resultado
-    {
+    private static function runImport(
+        int $propertyId,
+        int $userId,
+        string $platform,
+        array $import,
+        ?array $prefetchedHtml = null,
+        ?array $prefetchedPayload = null,
+        bool $htmlPaste = false
+    ): Resultado {
         $importId = (int) ($import['id'] ?? 0);
         $property = HouseRepository::find($propertyId);
         if ($property === null || $importId < 1) {
@@ -230,16 +400,37 @@ final class OtaImportService
         }
         $html = $prefetchedHtml ?? CalendarSync::fetchListingHtml((string) $import['canonical_property_url'], $platform);
         if (isset($html['error'])) {
-            self::finishImport($importId, 'failed', ['error' => (string) $html['error']], ['fetch' => 'failed']);
-            return new Resultado('parcial', t('ota.import.fetch_failed'), [
+            $error = (string) $html['error'];
+            $blocked = $error === 'blocked_by_ota';
+            self::finishImport($importId, 'failed', ['error' => $error], ['fetch' => 'failed', 'error_code' => $blocked ? 'blocked_by_ota' : 'fetch_failed']);
+            return new Resultado($blocked ? 'bloqueado_ota' : 'parcial', $blocked ? t('ota.import.blocked_ota') : t('ota.import.fetch_failed'), [
                 'property_id' => $propertyId,
                 'public_hash' => HouseRepository::ensurePublicHash($property),
                 'import_id' => $importId,
-                'warning' => t('ota.import.fetch_failed'),
+                'warning' => $blocked ? t('ota.import.blocked_ota') : t('ota.import.fetch_failed'),
+                'error_code' => $blocked ? 'blocked_by_ota' : 'fetch_failed',
+                'field' => $htmlPaste ? 'raw_html' : 'property_url',
             ]);
         }
-        $payload = OtaListingExtractor::extract((string) $html['body'], $platform);
-        $partial = (bool) ($payload['sanitization_flags']['partial'] ?? true);
+        $payload = $prefetchedPayload ?? OtaListingExtractor::extract((string) $html['body'], $platform);
+        $flags = (array) ($payload['sanitization_flags'] ?? []);
+        if ($htmlPaste) {
+            $flags['fetch_mode'] = 'html_paste';
+        }
+        $payload['sanitization_flags'] = $flags;
+        if ((string) ($flags['source'] ?? 'none') === 'none'
+            || ((string) $payload['title'] === '' && (array) $payload['photos'] === [])) {
+            // Empty extraction never becomes a draft_ready row: it would lock the URL without any content.
+            self::finishImport($importId, 'failed', ['error' => 'extraction_empty'], $flags + ['error_code' => 'extraction_empty']);
+            return new Resultado('invalido', t('ota.import.extraction_empty'), [
+                'property_id' => $propertyId,
+                'public_hash' => HouseRepository::ensurePublicHash($property),
+                'import_id' => $importId,
+                'error_code' => 'extraction_empty',
+                'field' => $htmlPaste ? 'raw_html' : 'property_url',
+            ]);
+        }
+        $partial = (bool) ($flags['partial'] ?? true);
         $filled = self::mergeIntoProperty($property, $payload);
 
         $photos = self::enqueuePhotos($propertyId, $importId, $platform, (array) $payload['photos']);
@@ -252,7 +443,7 @@ final class OtaImportService
         $payload['photos_failed'] = $photos['failed'];
         $payload['photos_skipped'] = $photos['skipped'];
         // Partial markup still yields a draft: the host fills the rest. `partial` stays in sanitization_flags.
-        self::finishImport($importId, 'draft_ready', $payload, (array) ($payload['sanitization_flags'] ?? []));
+        self::finishImport($importId, 'draft_ready', $payload, $flags);
 
         $warning = null;
         if ($partial) {

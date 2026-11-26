@@ -31,7 +31,7 @@ final class RequestLog
     private const URL_KEYS = '/(url|ical|link|href|callback|redirect)/i';
 
     /** Chaves sensíveis: são OMITIDAS do log (a chave e o valor não são gravados). */
-    private const SENSITIVE_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body|cpf|e-?mail|phone|telefone|celular|whats|name|nome|cep|street|rua|logradouro|address|endereco|endereço|birth|nascimento)/i';
+    private const SENSITIVE_KEYS = '/(pass(word)?|senha|token|csrf|secret|segredo|authorization|cookie|api[_-]?key|cvv|cvc|card|cartao|cartão|ics_body|raw_html|cpf|e-?mail|phone|telefone|celular|whats|name|nome|cep|street|rua|logradouro|address|endereco|endereço|birth|nascimento)/i';
 
     private static ?string $requestId = null;
     private static float $start = 0.0;

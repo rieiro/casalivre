@@ -12,13 +12,25 @@ require_once __DIR__ . '/Middleware.php';
 final class BodyLimit implements Middleware
 {
     public const MAX_BYTES = 1048576;
+    /** Host-side raw HTML paste: 5 MiB plus a JSON/form-encoding margin (import routes only). */
+    public const MAX_HTML_BYTES = 5 * 1048576 + 65536;
 
     /** Únicas rotas que recebem arquivos ($_FILES): upload de fotos pela web e pela API. */
     public const UPLOAD_RE = '#^/(api/casas|imoveis)/[a-f0-9]{16}/fotos$#';
 
+    /** Import routes that may receive `raw_html` (new draft and existing property, web and API). */
+    public const IMPORT_HTML_RE = '#^/(?:api/)?imoveis/(?:novo|[a-f0-9]{16})/importar$#';
+
     /** @param callable(string, string): void $recusar */
     public function __construct(private $recusar)
     {
+    }
+
+    /** Effective body cap for a path: the 5 MiB paste cap only on the OTA import routes. */
+    public static function maxBytes(?string $path = null): int
+    {
+        $path ??= (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/');
+        return preg_match(self::IMPORT_HTML_RE, $path) === 1 ? self::MAX_HTML_BYTES : self::MAX_BYTES;
     }
 
     /** 411, 413 ou null (aceito) para a requisição atual. */
@@ -41,7 +53,7 @@ final class BodyLimit implements Middleware
             // DELETE sem corpo não precisa de Content-Length.
             return $method === 'DELETE' ? null : 411;
         }
-        return (int) $length > self::MAX_BYTES ? 413 : null;
+        return (int) $length > self::maxBytes($path) ? 413 : null;
     }
 
     public function process(array $request, callable $next): mixed

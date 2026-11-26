@@ -130,4 +130,44 @@ final class OtaListingExtractorTest extends TestCase
         $this->assertSame(25, mb_strlen((string) $out['title']));
         $this->assertSame(500, mb_strlen((string) $out['description']));
     }
+
+    public function testCanonicalUrlsComeFromLinkOpenGraphAndJsonLd(): void
+    {
+        $html = '<html><head>'
+            . '<link rel="canonical" href="https://www.booking.com/hotel/br/casa.pt-br.html">'
+            . '<meta property="og:url" content="https://www.booking.com/hotel/br/casa.html?aid=1">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'Hotel',
+                '@id' => 'https://www.booking.com/hotel/br/casa.html#listing',
+                'url' => 'https://www.booking.com/hotel/br/casa.html',
+                'image' => ['https://cf.bstatic.com/x.jpg'],
+            ]) . '</script></head></html>';
+
+        $urls = OtaListingExtractor::extractCanonicalUrls($html);
+
+        $this->assertContains('https://www.booking.com/hotel/br/casa.pt-br.html', $urls);
+        $this->assertContains('https://www.booking.com/hotel/br/casa.html?aid=1', $urls);
+        $this->assertContains('https://www.booking.com/hotel/br/casa.html#listing', $urls);
+        $this->assertNotContains('https://cf.bstatic.com/x.jpg', $urls);
+    }
+
+    public function testWafChallengeShellDetection(): void
+    {
+        $this->assertTrue(OtaListingExtractor::isWafChallengeShell('<html><head><title></title></head><body><script>reportChallengeError()</script></body></html>'));
+        $this->assertTrue(OtaListingExtractor::isWafChallengeShell('<html><script src="/awswaf.js"></script></html>'));
+        $this->assertTrue(OtaListingExtractor::isWafChallengeShell('<html><script>captcha-pwa</script></html>'));
+        $this->assertFalse(OtaListingExtractor::isWafChallengeShell('<html><head><meta property="og:title" content="Casa"><script>reportChallengeError()</script></head></html>'));
+        $this->assertFalse(OtaListingExtractor::isWafChallengeShell('<html><head><script type="application/ld+json">{"@type":"Hotel"}</script></head></html>'));
+        $this->assertFalse(OtaListingExtractor::isWafChallengeShell(''));
+    }
+
+    public function testJsonLdWithoutUsableListingContentStaysNone(): void
+    {
+        $html = $this->jsonLd(['@type' => 'Hotel', 'address' => ['streetAddress' => 'Rua X']]);
+        $out = OtaListingExtractor::extract($html, 'booking');
+
+        $this->assertSame('none', $out['sanitization_flags']['source']);
+        $this->assertTrue($out['sanitization_flags']['partial']);
+        $this->assertSame('', $out['title']);
+    }
 }

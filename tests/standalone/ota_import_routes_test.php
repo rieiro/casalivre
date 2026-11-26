@@ -10,6 +10,10 @@ require_once CL_ROOT . '/src/ListingSearch.php';
 
 t_temp_db();
 $owner = t_seed_owner();
+$otaFixture = tempnam(sys_get_temp_dir(), 'otafix');
+file_put_contents($otaFixture, json_encode([]));
+putenv('T_OTA_HTML_FIXTURE=' . $otaFixture);
+register_shutdown_function(static fn () => @unlink($otaFixture));
 $base = t_server();
 $jar = tempnam(sys_get_temp_dir(), 'jar');
 
@@ -114,6 +118,88 @@ t_eq('active', (string) db()->query('SELECT status FROM properties WHERE id = ' 
 t_eq('active', (string) db()->query('SELECT status FROM listing_search WHERE id = ' . $draftId)->fetchColumn(), 'listing_search sincronizado');
 $publicNow = t_http('GET', $base . '/imoveis/' . $draftHash);
 t_eq(200, $publicNow['status'], 'imóvel publicado aparece no link público');
+
+echo "raw_html em campos_puros\n";
+t_ok(str_contains($puros, "'raw_html'"), 'raw_html está em campos_puros');
+
+echo "colagem de HTML: >1 MiB e <5 MiB passa pelo BodyLimit/CSRF\n";
+$pasteHtml = static function (string $canonical, string $title, string $padding = ''): string {
+    return '<html><head><link rel="canonical" href="' . $canonical . '">'
+        . '<meta property="og:url" content="' . $canonical . '">'
+        . '<script type="application/ld+json">' . json_encode([
+            '@type' => 'VacationRental',
+            'name' => $title,
+            'description' => 'Conteúdo colado pela rota.',
+            'image' => ['https://a0.muscache.com/im/pictures/paste.jpg'],
+        ]) . '</script></head><body>' . $padding . '</body></html>';
+};
+t_ratelimit_reset();
+$bigPaste = $pasteHtml('https://www.airbnb.com/rooms/999111', 'Casa Colada Rota', str_repeat('<p>preenchimento</p>', 60000));
+t_ok(strlen($bigPaste) > 1048576 && strlen($bigPaste) < 5 * 1048576, 'fixture entre 1 MiB e 5 MiB (' . strlen($bigPaste) . ' bytes)');
+$pasteRes = t_http('POST', $base . '/api/imoveis/novo/importar', json_encode([
+    'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/999111',
+    'consent' => '1',
+    'raw_html' => $bigPaste,
+]), $apiHeaders, $jar);
+t_eq(200, $pasteRes['status'], 'POST /api/imoveis/novo/importar com raw_html -> 200');
+$pasteJson = json_decode($pasteRes['body'], true) ?: [];
+t_ok(str_starts_with((string) ($pasteJson['redirect'] ?? ''), '/imoveis/') && str_ends_with((string) ($pasteJson['redirect'] ?? ''), '/editar'), 'resposta traz redirect para a edição');
+$pastedPropertyId = (int) db()->query("SELECT id FROM properties WHERE title = 'Casa Colada Rota' ORDER BY id DESC LIMIT 1")->fetchColumn();
+t_ok($pastedPropertyId > 0, 'rascunho criado pela colagem');
+$pastedImport = db()->prepare('SELECT status, sanitization_flags FROM property_ota_imports WHERE property_id = ? ORDER BY id DESC LIMIT 1');
+$pastedImport->execute([$pastedPropertyId]);
+$pastedRow = $pastedImport->fetch(PDO::FETCH_ASSOC) ?: [];
+t_eq('draft_ready', (string) ($pastedRow['status'] ?? ''), 'importação colada fica draft_ready');
+$pastedFlags = json_decode((string) ($pastedRow['sanitization_flags'] ?? ''), true) ?: [];
+t_eq('html_paste', (string) ($pastedFlags['fetch_mode'] ?? ''), 'sanitization_flags registra fetch_mode html_paste');
+
+echo "colagem acima de 5 MiB é recusada\n";
+t_ratelimit_reset();
+$tooBigPaste = $pasteHtml('https://www.airbnb.com/rooms/999222', 'Casa Grande', str_repeat('x', 5 * 1048576 + 1));
+$tooBigRes = t_http('POST', $base . '/api/imoveis/novo/importar', json_encode([
+    'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/999222',
+    'consent' => '1',
+    'raw_html' => $tooBigPaste,
+]), $apiHeaders, $jar);
+t_eq(413, $tooBigRes['status'], 'raw_html > 5 MiB -> 413');
+$tooBigJson = json_decode($tooBigRes['body'], true) ?: [];
+t_eq('payload_too_large', (string) ($tooBigJson['error_code'] ?? ''), 'error_code payload_too_large');
+
+echo "WAF da OTA -> blocked_by_ota sem criar rascunho\n";
+t_ratelimit_reset();
+file_put_contents($otaFixture, json_encode([
+    'https://www.booking.com/hotel/br/casa-bloqueada.html' => [
+        'http' => 202,
+        'headers' => ['x-page-id' => 'wildcard-challenge-handler'],
+        'body' => '<html><head><title></title></head><body><script>reportChallengeError()</script></body></html>',
+    ],
+], JSON_UNESCAPED_SLASHES));
+$blockedBefore = (int) db()->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn();
+$blockedRes = t_http('POST', $base . '/api/imoveis/novo/importar', json_encode([
+    'platform' => 'booking',
+    'property_url' => 'https://www.booking.com/hotel/br/casa-bloqueada.html',
+    'consent' => '1',
+]), $apiHeaders, $jar);
+t_eq(422, $blockedRes['status'], 'HTTP 202 da OTA -> 422');
+$blockedJson = json_decode($blockedRes['body'], true) ?: [];
+t_eq('blocked_by_ota', (string) ($blockedJson['error_code'] ?? ''), 'error_code blocked_by_ota');
+t_eq($blockedBefore, (int) db()->query('SELECT COUNT(*) FROM property_ota_imports')->fetchColumn(), 'nenhuma importação criada no bloqueio');
+
+echo "colagem com canonical de outro anúncio -> html_url_mismatch\n";
+t_ratelimit_reset();
+file_put_contents($otaFixture, json_encode([]));
+$spoofPaste = $pasteHtml('https://www.airbnb.com/rooms/1111111', 'Casa Spoof');
+$spoofRes = t_http('POST', $base . '/api/imoveis/novo/importar', json_encode([
+    'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/2222222',
+    'consent' => '1',
+    'raw_html' => $spoofPaste,
+]), $apiHeaders, $jar);
+t_eq(422, $spoofRes['status'], 'canonical de outro anúncio -> 422');
+$spoofJson = json_decode($spoofRes['body'], true) ?: [];
+t_eq('html_url_mismatch', (string) ($spoofJson['error_code'] ?? ''), 'error_code html_url_mismatch');
 
 @unlink($jar);
 t_done();

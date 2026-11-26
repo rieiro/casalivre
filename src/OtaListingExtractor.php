@@ -127,6 +127,12 @@ final class OtaListingExtractor
         $payload['unmapped_amenities'] = array_slice(array_keys($unmapped), 0, 60);
         unset($payload['raw_amenities']);
 
+        if (!self::hasUsableContent($payload)) {
+            // No listing markup at all (static shell, WAF page or empty body): never claim a partial extraction.
+            $flags['source'] = 'none';
+            $flags['partial'] = true;
+        }
+
         $payload['unconfirmed'] = [
             'address' => true,
             'nightly_price' => $payload['suggested_nightly_price'] !== null,
@@ -135,6 +141,106 @@ final class OtaListingExtractor
         ];
         $payload['sanitization_flags'] = $flags;
         return $payload;
+    }
+
+    /**
+     * Known anti-bot/WAF challenge shell: no listing markup (JSON-LD / og:title) plus a challenge marker.
+     * Shared by the HTTP fetch (200 shells) and the host-side raw HTML paste validation.
+     */
+    public static function isWafChallengeShell(string $html): bool
+    {
+        if (trim($html) === '') {
+            return false;
+        }
+        if (preg_match('#application/ld\+json#i', $html) === 1) {
+            return false;
+        }
+        if (preg_match('#<meta\b[^>]*property\s*=\s*["\']og:title["\']#i', $html) === 1) {
+            return false;
+        }
+        foreach (['reportChallengeError', 'awswaf', 'captcha-pwa', 'wildcard-challenge-handler', 'x-amzn-waf-action', 'challenge-platform'] as $marker) {
+            if (stripos($html, $marker) !== false) {
+                return true;
+            }
+        }
+        if (preg_match('#\bAWS\s*WAF\b#i', $html) === 1) {
+            return true;
+        }
+        // Booking.com's 202 shell: an empty <title> and challenge/captcha wording only.
+        if (preg_match('#<title>\s*</title>#i', $html) === 1
+            && preg_match('#\b(?:challenge|captcha|verifique|verify)\b#i', strip_tags($html)) === 1) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Candidate canonical listing URLs for anti-spoofing: <link rel="canonical">, og:url and JSON-LD url/@id.
+     *
+     * @return list<string>
+     */
+    public static function extractCanonicalUrls(string $html): array
+    {
+        $urls = [];
+        if (preg_match_all('#<link\b[^>]*>#is', $html, $tags) !== false) {
+            foreach ($tags[0] as $tag) {
+                if (preg_match('#\brel\s*=\s*["\']canonical["\']#i', $tag) !== 1) {
+                    continue;
+                }
+                if (preg_match('#\bhref\s*=\s*["\']([^"\']+)["\']#i', $tag, $m) === 1) {
+                    $urls[] = $m[1];
+                }
+            }
+        }
+        if (preg_match_all('#<meta\b[^>]*>#is', $html, $tags) !== false) {
+            foreach ($tags[0] as $tag) {
+                if (preg_match('#\bproperty\s*=\s*["\']og:url["\']#i', $tag) !== 1) {
+                    continue;
+                }
+                if (preg_match('#\bcontent\s*=\s*["\']([^"\']+)["\']#i', $tag, $m) === 1) {
+                    $urls[] = $m[1];
+                }
+            }
+        }
+        foreach (self::jsonLdNodes($html) as $node) {
+            foreach (self::flattenNodes($node) as $candidate) {
+                foreach (['url', '@id'] as $key) {
+                    if (!isset($candidate[$key])) {
+                        continue;
+                    }
+                    $value = $candidate[$key];
+                    if (is_string($value)) {
+                        $urls[] = $value;
+                    } elseif (is_array($value)) {
+                        $first = reset($value);
+                        if (is_string($first)) {
+                            $urls[] = $first;
+                        }
+                    }
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($urls as $raw) {
+            $raw = trim(html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if (str_starts_with($raw, '//')) {
+                $raw = 'https:' . $raw;
+            }
+            if (preg_match('#\Ahttps?://#i', $raw) !== 1) {
+                continue;
+            }
+            $out[$raw] = true;
+        }
+        return array_keys($out);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private static function hasUsableContent(array $payload): bool
+    {
+        return trim((string) $payload['title']) !== ''
+            || trim((string) $payload['description']) !== ''
+            || (array) $payload['photos'] !== [];
     }
 
     /** @return array<string, mixed> */

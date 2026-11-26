@@ -3,6 +3,7 @@ $editing = (bool) ($property ?? false);
 require_once dirname(__DIR__) . '/src/OtaVerificationService.php';
 require_once dirname(__DIR__) . '/src/OtaPlatformRegistry.php';
 require_once dirname(__DIR__) . '/src/CalendarSync.php';
+require_once dirname(__DIR__) . '/src/OtaImportService.php';
 $isPropertyVerified = $editing && OtaVerificationService::isPropertyVerified((array) ($property ?? []));
 $posted = $posted ?? [];
 $current = is_array($property ?? null) ? $property : [];
@@ -29,11 +30,16 @@ foreach (($photos ?? []) as $photoRow) {
 }
 $import_error = $import_error ?? null;
 $import_notice = $import_notice ?? null;
+$importErrorCode = (string) ($import_error_code ?? '');
 $importAction = $editing ? '/imoveis/' . e(property_ref($property)) . '/importar' : '/imoveis/novo/importar';
+$importApiAction = $editing ? '/api/imoveis/' . property_ref($property) . '/importar' : '/api/imoveis/novo/importar';
 $importLocked = $activeImport !== null && in_array((string) ($activeImport['status'] ?? ''), ['fetching', 'draft_ready', 'verified', 'rejected'], true);
 $importPlatform = is_scalar($posted['platform'] ?? null)
     ? (string) $posted['platform']
     : (string) ($activeImport['platform'] ?? '');
+$pasteOpen = in_array($importErrorCode, ['blocked_by_ota', 'extraction_empty', 'html_url_mismatch', 'payload_too_large'], true);
+$pasteToggleVisible = $pasteOpen || in_array($importPlatform, ['booking', 'vrbo'], true);
+$rawHtmlMax = OtaImportService::MAX_RAW_HTML_BYTES;
 $importUrlValue = is_scalar($posted['property_url'] ?? null)
     ? (string) $posted['property_url']
     : (string) ($activeImport['canonical_property_url'] ?? '');
@@ -177,7 +183,12 @@ if ($latValue === '' && $lngValue === '') {
                     <span class="muted fine"><?= e(t('form.import.subtitle')) ?></span>
                 </span>
             </summary>
-            <form class="prop-import-form" method="post" action="<?= $importAction ?>">
+            <form class="prop-import-form" method="post" action="<?= $importAction ?>"
+                data-import-api="<?= e($importApiAction) ?>"
+                data-raw-max="<?= (int) $rawHtmlMax ?>"
+                data-paste-size-error="<?= e(t('form.import.paste_size_error')) ?>"
+                data-paste-required="<?= e(t('form.import.paste_required')) ?>"
+                data-paste-processing="<?= e(t('form.import.paste_processing')) ?>">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                 <div class="prop-form-grid-2">
                     <div class="prop-form-field">
@@ -198,10 +209,29 @@ if ($latValue === '' && $lngValue === '') {
                     <input type="checkbox" name="consent" value="1" required>
                     <span><?= e(t('form.import.consent')) ?></span>
                 </label>
-                <button class="btn-dash-action primary" type="submit"><?= e(t('form.import.submit')) ?></button>
+                <button class="btn-dash-action primary" type="submit" data-import-submit><?= e(t('form.import.submit')) ?></button>
                 <?php if ($importLocked): ?>
                     <p class="muted fine"><?= e(t('form.import.locked')) ?></p>
                 <?php endif; ?>
+                <p class="prop-import-paste-toggle" data-import-paste-toggle-wrap <?= $pasteToggleVisible ? '' : 'hidden' ?>>
+                    <button type="button" class="prop-import-link" data-import-paste-toggle><?= e(t('form.import.paste_toggle')) ?></button>
+                </p>
+                <div class="prop-import-paste" data-import-paste <?= $pasteOpen ? '' : 'hidden' ?>>
+                    <h3 class="prop-import-paste-title"><?= e(t('form.import.paste_title')) ?></h3>
+                    <ol class="prop-import-paste-steps">
+                        <li><?= e(t('form.import.paste_step_1')) ?></li>
+                        <li><?= e(t('form.import.paste_step_2')) ?></li>
+                        <li><?= e(t('form.import.paste_step_3')) ?></li>
+                    </ol>
+                    <div class="prop-form-field">
+                        <label class="prop-form-label" for="import-raw-html"><?= e(t('form.import.paste_label')) ?></label>
+                        <textarea id="import-raw-html" class="prop-form-textarea prop-import-raw" name="raw_html" rows="8" spellcheck="false" autocomplete="off" data-raw-max="<?= (int) $rawHtmlMax ?>" placeholder="<?= e(t('form.import.paste_hint')) ?>"></textarea>
+                        <span class="muted fine"><?= e(t('form.import.paste_hint')) ?></span>
+                    </div>
+                    <p class="prop-import-paste-error" data-import-paste-error role="alert" hidden></p>
+                    <button class="btn-dash-action primary" type="button" data-import-paste-submit><?= e(t('form.import.paste_submit')) ?></button>
+                    <noscript><p class="muted fine"><?= e(t('form.import.paste_noscript')) ?></p></noscript>
+                </div>
             </form>
         </details>
     </section>
