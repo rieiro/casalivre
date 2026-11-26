@@ -30,7 +30,7 @@ final class OtaImportService
 {
     public const MAX_UNVERIFIED_DRAFTS = 3;
     public const EXPIRES_DAYS = 14;
-    public const MAX_IMPORT_PHOTOS = 20;
+    public const MAX_IMPORT_PHOTOS = 40;
     /** Host-side raw HTML paste cap (bytes); BodyLimit allows this plus a small JSON/form margin. */
     public const MAX_RAW_HTML_BYTES = 5 * 1048576;
 
