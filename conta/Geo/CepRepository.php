@@ -16,7 +16,6 @@ final class CepRepository
             lat DOUBLE PRECISION,
             lng DOUBLE PRECISION
         )");
-        db()->exec("ALTER TABLE ceps ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION; ALTER TABLE ceps ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;");
     }
 
     public static function count(): int
