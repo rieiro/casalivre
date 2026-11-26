@@ -16,39 +16,156 @@ final class OtaListingExtractor
     /** @var array<string, list<string>> normalized amenity phrase => CasaLivre keys */
     private const AMENITY_MAP = [
         'wifi' => ['wifi'], 'wi fi' => ['wifi'], 'internet' => ['wifi'], 'wireless internet' => ['wifi'],
-        'ethernet' => ['ethernet'], 'workspace' => ['workspace'], 'dedicated workspace' => ['workspace'],
+        'ethernet' => ['ethernet'], 'conexao ethernet' => ['ethernet'],
+        'workspace' => ['workspace'], 'dedicated workspace' => ['workspace'],
+        'espaco de trabalho' => ['workspace'], 'espaco de trabalho exclusivo' => ['workspace'],
         'air conditioning' => ['ac'], 'airconditioning' => ['ac'], 'ar condicionado' => ['ac'],
-        'heating' => ['heating'], 'aquecimento' => ['heating'], 'fireplace' => ['fireplace'], 'lareira' => ['fireplace'],
-        'ceiling fan' => ['ceiling_fan'], 'portable fan' => ['portable_fan'],
-        'kitchen' => ['kitchen'], 'cozinha' => ['kitchen'], 'stove' => ['stove'], 'oven' => ['oven'],
-        'freezer' => ['freezer'], 'mini fridge' => ['minifridge'], 'minibar' => ['minifridge'],
-        'dishwasher' => ['dishwasher'], 'coffee maker' => ['coffee'], 'kettle' => ['kettle'],
-        'toaster' => ['toaster'], 'blender' => ['blender'], 'microwave' => ['microwave'], 'air fryer' => ['airfryer'],
-        'dishes and silverware' => ['dishes', 'cutlery'], 'cooking basics' => ['pots', 'utensils'],
-        'wine glasses' => ['wine_glasses'], 'washer' => ['washer'], 'washing machine' => ['washer'],
-        'dryer' => ['dryer'], 'clothesline' => ['clothesline'], 'iron' => ['iron'], 'bed linen' => ['linen'],
-        'linens' => ['linen'], 'towels' => ['towels'], 'cleaning products' => ['cleaning_products'],
-        'hangers' => ['hangers'], 'extra pillows and blankets' => ['extra_bedding'], 'blackout curtains' => ['blackout'],
-        'tv' => ['tv'], 'television' => ['tv'], 'sound system' => ['sound_system'], 'game console' => ['game_console'],
-        'books' => ['books'], 'exercise equipment' => ['exercise'], 'bikes' => ['bikes'], 'bicycle' => ['bikes'],
-        'pool table' => ['pool_table'], 'ping pong table' => ['ping_pong'],
-        'garage' => ['garage'], 'free parking on premises' => ['parking_free_onsite'],
-        'free parking' => ['parking_free_onsite'], 'paid parking on premises' => ['parking_paid_onsite'],
-        'free parking off premises' => ['parking_free_offsite'], 'paid parking off premises' => ['parking_paid_offsite'],
-        'ev charger' => ['ev_charger'], 'elevator' => ['elevator'], 'housekeeping' => ['housekeeping'],
-        'pool' => ['pool'], 'piscina' => ['pool'], 'bbq grill' => ['bbq', 'bbq_tools'], 'barbecue' => ['bbq'],
-        'churrasqueira' => ['bbq'], 'outdoor kitchen' => ['outdoor_kitchen'], 'outdoor dining area' => ['outdoor_dining'],
-        'outdoor furniture' => ['outdoor_furniture'], 'sun loungers' => ['lounger'], 'hammock' => ['hammock'],
-        'outdoor fireplace' => ['outdoor_fireplace'], 'beach essentials' => ['beach_items'], 'balcony' => ['balcony'],
-        'backyard' => ['yard'], 'garden' => ['garden'], 'sea view' => ['sea_view'], 'outdoor shower' => ['outdoor_shower'],
-        'lake access' => ['lake_access'], 'beach access' => ['beach_access'], 'private entrance' => ['private_entrance'],
-        'laundromat nearby' => ['nearby_laundry'], 'gated community' => ['gated_community'], 'doorman' => ['doorman'],
-        'solar panels' => ['solar_panels'], 'hot water' => ['hot_water'], 'bathtub' => ['bathtub'], 'hot tub' => ['hot_tub'],
-        'sauna' => ['sauna'], 'crib' => ['crib'], 'high chair' => ['high_chair'], 'changing table' => ['changing_table'],
-        'baby bath' => ['baby_bath'], 'pack n play' => ['playpen'], 'baby gate' => ['baby_gate'],
-        'smoke alarm' => ['smoke'], 'carbon monoxide alarm' => ['co_detector'], 'fire extinguisher' => ['extinguisher'],
-        'first aid kit' => ['first_aid'], 'safe' => ['safe'],
-        'pets allowed' => ['pets'], 'smoking allowed' => ['smoking'],
+        'heating' => ['heating'], 'aquecimento' => ['heating'], 'aquecedor' => ['heating'],
+        'fireplace' => ['fireplace'], 'lareira' => ['fireplace'], 'lareira interna' => ['fireplace'],
+        'ceiling fan' => ['ceiling_fan'], 'ventilador de teto' => ['ceiling_fan'],
+        'portable fan' => ['portable_fan'], 'ventilador portatil' => ['portable_fan'],
+        'kitchen' => ['kitchen'], 'cozinha' => ['kitchen'], 'stove' => ['stove'], 'fogao' => ['stove'],
+        'oven' => ['oven'], 'forno' => ['oven'], 'freezer' => ['freezer'],
+        'mini fridge' => ['minifridge'], 'minibar' => ['minifridge'], 'frigobar' => ['minifridge'],
+        'dishwasher' => ['dishwasher'], 'maquina de lavar louca' => ['dishwasher'], 'maquina de lavar loucas' => ['dishwasher'],
+        'coffee maker' => ['coffee'], 'cafeteira' => ['coffee'],
+        'kettle' => ['kettle'], 'chaleira' => ['kettle'], 'chaleira eletrica' => ['kettle'],
+        'toaster' => ['toaster'], 'torradeira' => ['toaster'],
+        'blender' => ['blender'], 'liquidificador' => ['blender'],
+        'microwave' => ['microwave'], 'micro ondas' => ['microwave'],
+        'air fryer' => ['airfryer'], 'airfryer' => ['airfryer'],
+        'dishes and silverware' => ['dishes', 'cutlery'], 'pratos' => ['dishes'], 'talheres' => ['cutlery'],
+        'cooking basics' => ['pots', 'utensils'], 'itens basicos de cozinha' => ['pots', 'utensils'],
+        'panelas' => ['pots'], 'utensilios de cozinha' => ['utensils'],
+        'wine glasses' => ['wine_glasses'], 'tacas de vinho' => ['wine_glasses'],
+        'washer' => ['washer'], 'washing machine' => ['washer'], 'maquina de lavar' => ['washer'], 'lavadora' => ['washer'],
+        'dryer' => ['dryer'], 'secadora' => ['dryer'],
+        'clothesline' => ['clothesline'], 'varal' => ['clothesline'],
+        'iron' => ['iron'], 'ferro de passar' => ['iron'],
+        'bed linen' => ['linen'], 'linens' => ['linen'], 'roupas de cama' => ['linen'], 'roupa de cama' => ['linen'],
+        'towels' => ['towels'], 'toalhas' => ['towels'],
+        'cleaning products' => ['cleaning_products'], 'produtos de limpeza' => ['cleaning_products'],
+        'hangers' => ['hangers'], 'cabides' => ['hangers'],
+        'extra pillows and blankets' => ['extra_bedding'], 'cobertores e travesseiros extras' => ['extra_bedding'],
+        'blackout curtains' => ['blackout'], 'cortinas blackout' => ['blackout'],
+        'tv' => ['tv'], 'television' => ['tv'], 'televisao' => ['tv'],
+        'sound system' => ['sound_system'], 'sistema de som' => ['sound_system'],
+        'game console' => ['game_console'], 'console de videogame' => ['game_console'],
+        'books' => ['books'], 'livros' => ['books'],
+        'exercise equipment' => ['exercise'], 'equipamento para exercicios' => ['exercise'],
+        'gym' => ['gym'], 'fitness center' => ['gym'], 'academia' => ['gym'],
+        'bikes' => ['bikes'], 'bicycle' => ['bikes'], 'bicicletas' => ['bikes'],
+        'pool table' => ['pool_table'], 'mesa de bilhar' => ['pool_table'],
+        'ping pong table' => ['ping_pong'], 'mesa de pingue pongue' => ['ping_pong'],
+        'garage' => ['garage'], 'garagem' => ['garage'], 'estacionamento' => ['garage'],
+        'free parking on premises' => ['parking_free_onsite'], 'free parking' => ['parking_free_onsite'],
+        'estacionamento gratuito no local' => ['parking_free_onsite'],
+        'paid parking on premises' => ['parking_paid_onsite'], 'estacionamento pago no local' => ['parking_paid_onsite'],
+        'free parking off premises' => ['parking_free_offsite'], 'estacionamento gratuito fora da propriedade' => ['parking_free_offsite'],
+        'paid parking off premises' => ['parking_paid_offsite'], 'estacionamento pago fora da propriedade' => ['parking_paid_offsite'],
+        'ev charger' => ['ev_charger'], 'carregador de veiculos eletricos' => ['ev_charger'], 'carregador de veiculo eletrico' => ['ev_charger'],
+        'elevator' => ['elevator'], 'elevador' => ['elevator'],
+        'housekeeping' => ['housekeeping'],
+        'pool' => ['pool'], 'piscina' => ['pool'],
+        'bbq grill' => ['bbq', 'bbq_tools'], 'barbecue' => ['bbq'], 'churrasqueira' => ['bbq'],
+        'outdoor kitchen' => ['outdoor_kitchen'], 'cozinha ao ar livre' => ['outdoor_kitchen'],
+        'outdoor dining area' => ['outdoor_dining'], 'area de jantar externa' => ['outdoor_dining'],
+        'outdoor furniture' => ['outdoor_furniture'], 'moveis na area externa' => ['outdoor_furniture'],
+        'sun loungers' => ['lounger'], 'espreguicadeira' => ['lounger'],
+        'hammock' => ['hammock'], 'rede' => ['hammock'],
+        'outdoor fireplace' => ['outdoor_fireplace'], 'lareira externa' => ['outdoor_fireplace'],
+        'beach essentials' => ['beach_items'], 'itens basicos de praia' => ['beach_items'],
+        'balcony' => ['balcony'], 'varanda' => ['balcony'],
+        'backyard' => ['yard'], 'quintal' => ['yard'],
+        'garden' => ['garden'], 'jardim' => ['garden'],
+        'sea view' => ['sea_view'], 'vista para o mar' => ['sea_view'],
+        'outdoor shower' => ['outdoor_shower'], 'chuveiro externo' => ['outdoor_shower'],
+        'lake access' => ['lake_access'], 'acesso ao lago' => ['lake_access'],
+        'beach access' => ['beach_access'], 'acesso a praia' => ['beach_access'],
+        'private entrance' => ['private_entrance'], 'entrada privativa' => ['private_entrance'],
+        'laundromat nearby' => ['nearby_laundry'], 'lavanderia proxima' => ['nearby_laundry'],
+        'gated community' => ['gated_community'], 'condominio fechado' => ['gated_community'],
+        'doorman' => ['doorman'], 'porteiro' => ['doorman'],
+        'solar panels' => ['solar_panels'], 'paineis solares' => ['solar_panels'],
+        'hot water' => ['hot_water'], 'agua quente' => ['hot_water'],
+        'hair dryer' => ['hair_dryer'], 'secador de cabelo' => ['hair_dryer'],
+        'shampoo' => ['shampoo'], 'xampu' => ['shampoo'],
+        'conditioner' => ['conditioner'], 'condicionador' => ['conditioner'],
+        'soap' => ['soap'], 'sabonete' => ['soap'],
+        'toilet paper' => ['toilet_paper'], 'papel higienico' => ['toilet_paper'],
+        'bidet' => ['bidet'], 'bide' => ['bidet'],
+        'bathtub' => ['bathtub'], 'banheira' => ['bathtub'],
+        'hot tub' => ['hot_tub'], 'banheira de hidromassagem' => ['hot_tub'],
+        'sauna' => ['sauna'],
+        'crib' => ['crib'], 'berco' => ['crib'],
+        'high chair' => ['high_chair'], 'cadeira alta' => ['high_chair'],
+        'changing table' => ['changing_table'], 'trocador de bebe' => ['changing_table'],
+        'baby bath' => ['baby_bath'], 'banheira infantil' => ['baby_bath'],
+        'pack n play' => ['playpen'], 'cercadinho' => ['playpen'],
+        'baby gate' => ['baby_gate'], 'portoes de seguranca para bebes' => ['baby_gate'],
+        'breakfast' => ['breakfast'], 'cafe da manha' => ['breakfast'],
+        'smoke alarm' => ['smoke'], 'detector de fumaca' => ['smoke'],
+        'carbon monoxide alarm' => ['co_detector'], 'detector de monoxido de carbono' => ['co_detector'],
+        'fire extinguisher' => ['extinguisher'], 'extintor de incendio' => ['extinguisher'],
+        'first aid kit' => ['first_aid'], 'kit de primeiros socorros' => ['first_aid'],
+        'safe' => ['safe'], 'cofre' => ['safe'],
+        'pets allowed' => ['pets'], 'permitido animais' => ['pets'], 'aceita animais' => ['pets'],
+        'smoking allowed' => ['smoking'], 'fumo permitido' => ['smoking'], 'permitido fumar' => ['smoking'],
+    ];
+
+    /** Unambiguous OTA icon tokens => CasaLivre amenity keys (fallback for non-PT/EN listings). @var array<string, list<string>> */
+    private const ICON_AMENITY_MAP = [
+        'SYSTEM_WI_FI' => ['wifi'],
+        'SYSTEM_WORKSPACE' => ['workspace'],
+        'SYSTEM_SNOWFLAKE' => ['ac'],
+        'SYSTEM_THERMOMETER' => ['heating'],
+        'SYSTEM_FIREPLACE' => ['fireplace'],
+        'SYSTEM_STOVE' => ['stove'],
+        'SYSTEM_OVEN' => ['oven'],
+        'SYSTEM_MICROWAVE' => ['microwave'],
+        'SYSTEM_DISHWASHER' => ['dishwasher'],
+        'SYSTEM_COFFEE_MAKER' => ['coffee'],
+        'SYSTEM_WASHER' => ['washer'],
+        'SYSTEM_DRYER' => ['dryer'],
+        'SYSTEM_IRON' => ['iron'],
+        'SYSTEM_HANGERS' => ['hangers'],
+        'SYSTEM_TV' => ['tv'],
+        'SYSTEM_EV_CHARGER' => ['ev_charger'],
+        'SYSTEM_ELEVATOR' => ['elevator'],
+        'SYSTEM_POOL' => ['pool'],
+        'SYSTEM_BALCONY' => ['balcony'],
+        'SYSTEM_HOT_WATER' => ['hot_water'],
+        'SYSTEM_HAIRDRYER' => ['hair_dryer'],
+        'SYSTEM_SHAMPOO' => ['shampoo'],
+        'SYSTEM_BATHTUB' => ['bathtub'],
+        'SYSTEM_HOT_TUB' => ['hot_tub'],
+        'SYSTEM_CRIB' => ['crib'],
+        'SYSTEM_DETECTOR_SMOKE' => ['smoke'],
+        'SYSTEM_DETECTOR_CO' => ['co_detector'],
+        'SYSTEM_FIRE_EXTINGUISHER' => ['extinguisher'],
+        'SYSTEM_FIRST_AID' => ['first_aid'],
+        'SYSTEM_PETS' => ['pets'],
+    ];
+
+    /** Hydration __typename values whose local title/description are UI labels, not the listing itself. */
+    private const HYDRATION_UI_TYPES = [
+        'BasicListItem',
+        'AmenityItemsGroup',
+        'AmenityItem',
+        'StaysPdpDetailGroup',
+        'StaysPdpDetailItem',
+        'StaysPdpRuleDetails',
+        'StaysPdpSafetyAndPropertyDetails',
+        'StaysPdpOverview',
+        'LoggingEventData',
+        'CalendarLoggingEventData',
+        'ReviewItem',
+        'MediaTour',
+        'MediaTourStop',
+        'BookItSection',
+        'AmenitiesSection',
+        'PoliciesSection',
+        'LocationSection',
     ];
 
     /** Platform names/badges never copied into the host's content. */
@@ -78,20 +195,26 @@ final class OtaListingExtractor
                 $flags['partial'] = false;
             }
         }
-        if ($flags['source'] === 'none') {
-            $hydration = self::hydrationNodes($html);
-            if ($hydration !== []) {
-                $payload = self::extractFromHydration($hydration);
+        $hydration = self::hydrationNodes($html);
+        if ($hydration !== []) {
+            $hydrated = self::extractFromHydration($hydration);
+            if ($flags['source'] === 'none') {
+                $payload = $hydrated;
                 $flags['source'] = 'hydration';
                 $flags['partial'] = false;
+            } else {
+                $payload = self::mergePayload($payload, $hydrated, true);
             }
         }
-        if ($flags['source'] === 'none') {
-            $og = self::openGraph($html);
-            if ($og !== []) {
-                $payload = self::extractFromOpenGraph($og);
+        $og = self::openGraph($html);
+        if ($og !== []) {
+            $ogPayload = self::extractFromOpenGraph($og);
+            if ($flags['source'] === 'none') {
+                $payload = $ogPayload;
                 $flags['source'] = 'opengraph';
                 $flags['partial'] = false;
+            } else {
+                $payload = self::mergePayload($payload, $ogPayload, false);
             }
         }
 
@@ -112,12 +235,21 @@ final class OtaListingExtractor
 
         $mapped = [];
         $unmapped = [];
-        foreach ((array) $payload['raw_amenities'] as $raw) {
-            $raw = self::sanitizeText((string) $raw, $flags);
+        foreach ((array) $payload['raw_amenities'] as $rawEntry) {
+            if (is_array($rawEntry)) {
+                $raw = self::sanitizeText((string) ($rawEntry['label'] ?? ''), $flags);
+                $icon = (string) ($rawEntry['icon'] ?? '');
+            } else {
+                $raw = self::sanitizeText((string) $rawEntry, $flags);
+                $icon = '';
+            }
             if ($raw === '') {
                 continue;
             }
             $keys = self::mapAmenity($raw);
+            if ($keys === [] && $icon !== '' && isset(self::ICON_AMENITY_MAP[$icon])) {
+                $keys = self::ICON_AMENITY_MAP[$icon];
+            }
             if ($keys === []) {
                 $unmapped[$raw] = true;
             } else {
@@ -304,13 +436,27 @@ final class OtaListingExtractor
             return null;
         }
         $payload = self::emptyPayload();
+        $contains = is_array($target['containsPlace'] ?? null) ? $target['containsPlace'] : [];
         $payload['title'] = self::stringValue($target['name'] ?? $target['headline'] ?? '');
         $payload['description'] = self::stringValue($target['description'] ?? '');
         $payload['photos'] = self::imageList($target['image'] ?? $target['photo'] ?? []);
-        $payload['raw_amenities'] = self::amenityList($target['amenityFeature'] ?? $target['amenities'] ?? []);
-        $payload['suggested_guests'] = self::intValue($target['occupancy']['maxValue'] ?? $target['guestCapacity'] ?? null);
-        $payload['suggested_bedrooms'] = self::intValue($target['numberOfRooms'] ?? $target['numberOfBedrooms'] ?? null);
-        $payload['suggested_beds'] = self::intValue($target['numberOfBeds'] ?? null);
+        $payload['raw_amenities'] = self::amenityList($target['amenityFeature'] ?? $target['amenities'] ?? $contains['amenityFeature'] ?? []);
+        $payload['suggested_guests'] = self::intValue(
+            $target['occupancy']['maxValue']
+            ?? $target['occupancy']['value']
+            ?? $contains['occupancy']['maxValue']
+            ?? $contains['occupancy']['value']
+            ?? $target['guestCapacity']
+            ?? null
+        );
+        $payload['suggested_bedrooms'] = self::intValue(
+            $target['numberOfRooms']
+            ?? $target['numberOfBedrooms']
+            ?? $contains['numberOfBedrooms']
+            ?? $contains['numberOfRooms']
+            ?? null
+        );
+        $payload['suggested_beds'] = self::intValue($target['numberOfBeds'] ?? $contains['numberOfBeds'] ?? null);
         $payload['suggested_checkin'] = self::clockValue($target['checkinTime'] ?? null);
         $payload['suggested_checkout'] = self::clockValue($target['checkoutTime'] ?? null);
         $address = $target['address'] ?? null;
@@ -371,16 +517,31 @@ final class OtaListingExtractor
     private static function extractFromHydration(array $nodes): array
     {
         $payload = self::emptyPayload();
+        $mediaTourPhotos = [];
+        $heroPhotos = [];
+        $seenAmenity = [];
         foreach ($nodes as $node) {
             foreach (self::flattenNodes($node) as $candidate) {
-                if ($payload['title'] === '' && isset($candidate['title']) && is_string($candidate['title'])) {
-                    $payload['title'] = $candidate['title'];
-                }
-                if ($payload['title'] === '' && isset($candidate['name']) && is_string($candidate['name'])) {
-                    $payload['title'] = $candidate['name'];
-                }
-                if ($payload['description'] === '' && isset($candidate['description']) && is_string($candidate['description'])) {
-                    $payload['description'] = $candidate['description'];
+                $typename = (string) ($candidate['__typename'] ?? '');
+                $isUiNode = $typename !== '' && in_array($typename, self::HYDRATION_UI_TYPES, true);
+                if (!$isUiNode) {
+                    if ($payload['title'] === '' && isset($candidate['title']) && is_string($candidate['title'])) {
+                        $payload['title'] = $candidate['title'];
+                    }
+                    if ($payload['title'] === '' && isset($candidate['name']) && is_string($candidate['name'])) {
+                        $payload['title'] = $candidate['name'];
+                    }
+                    if ($typename === 'DemandStayListing' && $payload['title'] === '') {
+                        $localized = $candidate['description']['name']['localizedString']
+                            ?? $candidate['description']['name']['localizedStringWithTranslationPreference']
+                            ?? '';
+                        if (is_string($localized) && trim($localized) !== '') {
+                            $payload['title'] = trim($localized);
+                        }
+                    }
+                    if ($payload['description'] === '' && isset($candidate['description']) && is_string($candidate['description'])) {
+                        $payload['description'] = $candidate['description'];
+                    }
                 }
                 if ($payload['photos'] === []) {
                     foreach (['images', 'photoUrls', 'photos', 'imageUrls'] as $key) {
@@ -392,18 +553,45 @@ final class OtaListingExtractor
                         }
                     }
                 }
-                if ($payload['raw_amenities'] === []) {
-                    foreach (['amenities', 'amenityNames', 'listingAmenities'] as $key) {
-                        if (isset($candidate[$key])) {
-                            $payload['raw_amenities'] = self::amenityList($candidate[$key]);
-                            if ($payload['raw_amenities'] !== []) {
-                                break;
+                if (isset($candidate['contextualizedMedia']['edges']) && is_array($candidate['contextualizedMedia']['edges'])) {
+                    foreach ($candidate['contextualizedMedia']['edges'] as $edge) {
+                        $uri = $edge['node']['uri'] ?? null;
+                        if (is_string($uri) && trim($uri) !== '') {
+                            $heroPhotos[] = trim($uri);
+                        }
+                    }
+                }
+                if ($typename === 'MediaTour' && is_array($candidate['stops'] ?? null) && $candidate['stops'] !== []) {
+                    foreach ($candidate['stops'] as $stop) {
+                        foreach ((array) ($stop['items'] ?? []) as $item) {
+                            $uri = $item['image']['uri'] ?? null;
+                            if (is_string($uri) && trim($uri) !== '') {
+                                $mediaTourPhotos[] = trim($uri);
                             }
                         }
                     }
                 }
+                foreach (['amenities', 'amenityNames', 'listingAmenities'] as $key) {
+                    if (!isset($candidate[$key])) {
+                        continue;
+                    }
+                    foreach (self::amenityEntries($candidate[$key]) as $entry) {
+                        $dedup = is_array($entry) ? ($entry['label'] . '|' . $entry['icon']) : $entry;
+                        if (!isset($seenAmenity[$dedup])) {
+                            $seenAmenity[$dedup] = true;
+                            $payload['raw_amenities'][] = $entry;
+                        }
+                    }
+                }
                 if ($payload['suggested_guests'] === null) {
-                    $payload['suggested_guests'] = self::intValue($candidate['personCapacity'] ?? $candidate['maxGuests'] ?? $candidate['guests'] ?? null);
+                    $payload['suggested_guests'] = self::intValue(
+                        $candidate['personCapacity']
+                        ?? $candidate['maxGuestCapacity']
+                        ?? $candidate['guestMaxCount']
+                        ?? $candidate['maxGuests']
+                        ?? $candidate['guests']
+                        ?? null
+                    );
                 }
                 if ($payload['suggested_bedrooms'] === null) {
                     $payload['suggested_bedrooms'] = self::intValue($candidate['bedrooms'] ?? $candidate['numberOfBedrooms'] ?? null);
@@ -411,9 +599,87 @@ final class OtaListingExtractor
                 if ($payload['suggested_beds'] === null) {
                     $payload['suggested_beds'] = self::intValue($candidate['beds'] ?? $candidate['numberOfBeds'] ?? null);
                 }
+                if ($typename === 'StaysPdpOverview' && is_array($candidate['items'] ?? null)) {
+                    self::parseOverviewStrings($candidate['items'], $payload);
+                }
+                if (($typename === 'StayPetPolicy' || isset($candidate['isAllowed'])) && !isset($payload['suggested_rules']['pets']) && is_bool($candidate['isAllowed'] ?? null)) {
+                    $payload['suggested_rules']['pets'] = (bool) $candidate['isAllowed'];
+                }
+                if ($typename === 'StaysPdpDetailItem') {
+                    self::extractHydrationRule($candidate, $payload);
+                }
             }
         }
+        if ($payload['photos'] === [] && ($heroPhotos !== [] || $mediaTourPhotos !== [])) {
+            $payload['photos'] = array_merge($heroPhotos, $mediaTourPhotos);
+        } elseif ($mediaTourPhotos !== []) {
+            $payload['photos'] = array_merge($payload['photos'], $mediaTourPhotos);
+        }
         return $payload;
+    }
+
+    /** @param array<string, mixed> $base @param array<string, mixed> $extra @return array<string, mixed> */
+    private static function mergePayload(array $base, array $extra, bool $appendPhotos): array
+    {
+        foreach (['title', 'description'] as $textKey) {
+            if ($base[$textKey] === '' && $extra[$textKey] !== '') {
+                $base[$textKey] = $extra[$textKey];
+            }
+        }
+        foreach (['suggested_guests', 'suggested_bedrooms', 'suggested_beds', 'suggested_checkin', 'suggested_checkout', 'suggested_address', 'suggested_nightly_price', 'suggested_cleaning_fee'] as $optKey) {
+            if ($base[$optKey] === null && $extra[$optKey] !== null) {
+                $base[$optKey] = $extra[$optKey];
+            }
+        }
+        if ($base['photos'] === []) {
+            $base['photos'] = $extra['photos'];
+        } elseif ($appendPhotos && $extra['photos'] !== []) {
+            $base['photos'] = array_merge($base['photos'], $extra['photos']);
+        }
+        if ($extra['raw_amenities'] !== []) {
+            $base['raw_amenities'] = array_merge($base['raw_amenities'], $extra['raw_amenities']);
+        }
+        if ($extra['suggested_rules'] !== []) {
+            $base['suggested_rules'] += $extra['suggested_rules'];
+        }
+        return $base;
+    }
+
+    /** @param array<int, mixed> $strings @param array<string, mixed> $payload */
+    private static function parseOverviewStrings(array $strings, array &$payload): void
+    {
+        foreach ($strings as $item) {
+            if (!is_string($item) || $item === '') {
+                continue;
+            }
+            if ($payload['suggested_guests'] === null && preg_match('/\b(\d+)\s*(?:h[oó]spedes?|guests?|hu[eé]spedes?)\b/iu', $item, $m) === 1) {
+                $payload['suggested_guests'] = self::intValue((int) $m[1]);
+            }
+            if ($payload['suggested_bedrooms'] === null) {
+                if (preg_match('/\b(\d+)\s*(?:quartos?|bedrooms?|habitaci[oó]n(?:es)?|dormit[oó]rios?)\b/iu', $item, $m) === 1) {
+                    $payload['suggested_bedrooms'] = self::intValue((int) $m[1]);
+                } elseif (preg_match('/\b(?:est[uú]dio|studio)\b/iu', $item) === 1) {
+                    $payload['suggested_bedrooms'] = 1;
+                }
+            }
+            if ($payload['suggested_beds'] === null && preg_match('/\b(\d+)\s*(?:camas?|beds?)\b/iu', $item, $m) === 1) {
+                $payload['suggested_beds'] = self::intValue((int) $m[1]);
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $item @param array<string, mixed> $payload */
+    private static function extractHydrationRule(array $item, array &$payload): void
+    {
+        $type = (string) ($item['type'] ?? '');
+        $icon = (string) ($item['icon'] ?? '');
+        if ($type === 'HOUSE_RULES_PETS' && !isset($payload['suggested_rules']['pets'])) {
+            $payload['suggested_rules']['pets'] = $icon !== 'SYSTEM_NO_PETS';
+        } elseif ($type === 'HOUSE_RULES_SMOKING_ALLOWED' && !isset($payload['suggested_rules']['smoking'])) {
+            $payload['suggested_rules']['smoking'] = $icon !== 'SYSTEM_SMOKING_NOT_ALLOWED';
+        } elseif ($type === 'HOUSE_RULES_EVENTS_ALLOWED' && !isset($payload['suggested_rules']['parties'])) {
+            $payload['suggested_rules']['parties'] = $icon !== 'SYSTEM_NO_EVENTS';
+        }
     }
 
     /** @return array<string, string> */
@@ -445,6 +711,7 @@ final class OtaListingExtractor
         $payload['title'] = self::stringValue($og['title'] ?? '');
         $payload['description'] = self::stringValue($og['description'] ?? '');
         $payload['photos'] = self::imageList($og['image'] ?? []);
+        self::parseOverviewStrings([$payload['title']], $payload);
         return $payload;
     }
 
@@ -503,6 +770,21 @@ final class OtaListingExtractor
     /** @return list<string> */
     private static function amenityList(mixed $value): array
     {
+        $out = [];
+        foreach (self::amenityEntries($value) as $entry) {
+            $out[] = is_array($entry) ? (string) $entry['label'] : (string) $entry;
+        }
+        return $out;
+    }
+
+    /**
+     * Extracts available amenities, preserving optional icon metadata when provided (e.g. Airbnb AmenityItem).
+     * Unavailable items (`available === false`) are excluded.
+     *
+     * @return list<string|array{label: string, icon: string}>
+     */
+    private static function amenityEntries(mixed $value): array
+    {
         if (is_string($value)) {
             return array_values(array_filter(array_map('trim', preg_split('/[,;|]/', $value) ?: [])));
         }
@@ -512,15 +794,23 @@ final class OtaListingExtractor
         $out = [];
         foreach ($value as $item) {
             if (is_string($item)) {
-                $out[] = trim($item);
-            } elseif (is_array($item)) {
-                $name = $item['name'] ?? $item['value'] ?? $item['label'] ?? null;
-                if (is_string($name)) {
-                    $out[] = trim($name);
+                $trimmed = trim($item);
+                if ($trimmed !== '') {
+                    $out[] = $trimmed;
                 }
+            } elseif (is_array($item)) {
+                if (array_key_exists('available', $item) && $item['available'] !== true) {
+                    continue;
+                }
+                $name = $item['name'] ?? $item['value'] ?? $item['label'] ?? $item['title'] ?? null;
+                if (!is_string($name) || trim($name) === '') {
+                    continue;
+                }
+                $icon = isset($item['icon']) && is_string($item['icon']) ? trim($item['icon']) : '';
+                $out[] = $icon !== '' ? ['label' => trim($name), 'icon' => $icon] : trim($name);
             }
         }
-        return array_values(array_filter($out));
+        return $out;
     }
 
     private static function stringValue(mixed $value): string
@@ -594,10 +884,20 @@ final class OtaListingExtractor
     /** @return list<string> */
     private static function mapAmenity(string $raw): array
     {
-        $normalized = strtolower($raw);
+        $normalized = function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw);
+        $normalized = strtr($normalized, [
+            'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
+            'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u',
+            'ç' => 'c', 'ñ' => 'n',
+        ]);
         if (function_exists('iconv')) {
             $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $normalized);
-            $normalized = is_string($converted) ? $converted : $normalized;
+            if (is_string($converted)) {
+                $normalized = str_replace(["'", '"', '^', '~', '`'], '', $converted);
+            }
         }
         $normalized = (string) preg_replace('/[^a-z0-9]+/', ' ', $normalized);
         $normalized = trim((string) preg_replace('/\s+/', ' ', $normalized));
@@ -610,7 +910,7 @@ final class OtaListingExtractor
         $valid = array_flip(Amenities::keys());
         $candidates = [];
         foreach (self::AMENITY_MAP as $phrase => $keys) {
-            if (str_contains($normalized, $phrase) || str_contains($phrase, $normalized)) {
+            if (preg_match('/\b' . preg_quote($phrase, '/') . '\b/', $normalized) === 1) {
                 foreach ($keys as $key) {
                     if (isset($valid[$key])) {
                         $candidates[$key] = true;

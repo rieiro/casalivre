@@ -997,4 +997,94 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame('draft_ready', (string) $import['status']);
         $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
     }
+
+    public function testFetchImageBytesDoesNotAdvertiseUnsupportedAvifAcceptHeader(): void
+    {
+        $seenAccept = null;
+        CalendarSync::$httpTransport = function (string $url, int $maxBytes, string $accept = '') use (&$seenAccept): array {
+            $seenAccept = $accept;
+            return ['body' => $this->jpegBytes(), 'http' => 200];
+        };
+
+        $res = CalendarSync::fetchImageBytes('https://a0.muscache.com/im/pictures/test.jpeg');
+        $this->assertArrayHasKey('body', $res);
+        $this->assertNotNull($seenAccept);
+        $this->assertStringNotContainsString('image/avif', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/webp', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/jpeg', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/png', strtolower((string) $seenAccept));
+    }
+
+    public function testAirbnbLayeredImportPopulatesGuestsBedroomsBedsAmenitiesAndFullPhotos(): void
+    {
+        $html = '<html><head>'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'VacationRental',
+                'name' => 'Vista Livre Pinheiros',
+                'description' => 'Apartamento completo com piscina.',
+                'image' => ['https://a0.muscache.com/im/pictures/cover.jpeg'],
+                'containsPlace' => ['@type' => 'Accommodation', 'occupancy' => ['value' => 3]],
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '<script id="data-deferred-state-0" type="application/json">' . json_encode([
+                'niobeClientData' => [[
+                    'StaysPdpSections:{}',
+                    [
+                        'data' => [
+                            'node' => [
+                                '__typename' => 'DemandStayListing',
+                                'personCapacity' => 3,
+                                'pdpPresentation' => [
+                                    'overview' => ['__typename' => 'StaysPdpOverview', 'items' => ['3 hóspedes', '2 quartos', '3 camas']],
+                                    'amenities' => [
+                                        'seeAllAmenitiesGroups' => [[
+                                            'amenities' => [
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Wi-Fi', 'icon' => 'SYSTEM_WI_FI'],
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Piscina', 'icon' => 'SYSTEM_POOL'],
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Máquina de lavar', 'icon' => 'SYSTEM_WASHER'],
+                                                ['__typename' => 'AmenityItem', 'available' => false, 'title' => 'Detector de fumaça', 'icon' => 'SYSTEM_NO_DETECTOR_SMOKE'],
+                                            ],
+                                        ]],
+                                    ],
+                                    'mediaTour' => [
+                                        '__typename' => 'MediaTour',
+                                        'name' => 'Tour por fotos',
+                                        'stops' => [[
+                                            'items' => [
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/cover.jpeg']],
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/extra1.jpeg']],
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/extra2.png']],
+                                            ],
+                                        ]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ]],
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '</head></html>';
+
+        CalendarSync::$httpTransport = fn (): array => ['body' => $html, 'http' => 200];
+
+        $res = OtaImportService::startNewDraft($this->userId, 'airbnb', 'https://www.airbnb.com.br/rooms/1763202099314111379', true);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $row = HouseRepository::find($propertyId);
+        $this->assertSame(3, (int) $row['max_guests']);
+        $this->assertSame(2, (int) $row['bedrooms']);
+        $this->assertSame(3, (int) $row['beds']);
+        $this->assertSame(1, (int) $row['pool']);
+
+        $amenities = json_decode((string) $row['amenities'], true);
+        $this->assertSame(1, $amenities['wifi'] ?? null);
+        $this->assertSame(1, $amenities['pool'] ?? null);
+        $this->assertSame(1, $amenities['washer'] ?? null);
+        $this->assertArrayNotHasKey('smoke', $amenities);
+
+        $photos = PhotoRepository::listByImport((int) ($res->dados['import_id'] ?? 0));
+        $this->assertCount(3, $photos);
+        $this->assertSame('https://a0.muscache.com/im/pictures/cover.jpeg', (string) $photos[0]['source_url']);
+        $this->assertSame(1, (int) $photos[0]['is_primary']);
+    }
 }

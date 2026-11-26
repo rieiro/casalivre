@@ -26,7 +26,7 @@ final class CalendarSync
     public const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
     /**
-     * Test hook for the URL content import: fn(string $url, int $maxBytes): array{body?:string,http?:int,error?:string}.
+     * Test hook for the URL content import: fn(string $url, int $maxBytes, string $accept): array{body?:string,http?:int,error?:string}.
      * Null uses the real SSRF-safe curl transport.
      */
     public static ?Closure $httpTransport = null;
@@ -168,7 +168,7 @@ final class CalendarSync
             return ['error' => 'bad_url', 'http' => 0];
         }
         if (self::$httpTransport !== null) {
-            $result = (array) (self::$httpTransport)($url, $maxBytes);
+            $result = (array) (self::$httpTransport)($url, $maxBytes, $accept);
             if (isset($result['error'])) {
                 return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0), 'headers' => self::normalizeHeaders($result['headers'] ?? [])];
             }
@@ -240,7 +240,7 @@ final class CalendarSync
 
     public static function fetchImageBytes(string $url): array
     {
-        return self::fetchPublicResource($url, self::MAX_IMAGE_BYTES, 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8');
+        return self::fetchPublicResource($url, self::MAX_IMAGE_BYTES, 'image/webp,image/jpeg,image/png');
     }
 
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
