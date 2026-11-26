@@ -651,6 +651,13 @@ final class OtaImportService
             }
         }
         $path = (string) ($parts['path'] ?? '/');
+        if ($platform === 'booking') {
+            $path = (string) preg_replace(
+                '#^(/xdata/images/hotel/)(?:square\d+|max(?:150|200|300|400|500))(/)#i',
+                '$1max1024x768$2',
+                $path
+            );
+        }
         $built = 'https://' . $host . ($path === '' ? '/' : $path);
         if ($query !== []) {
             $built .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);

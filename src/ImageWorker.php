@@ -122,7 +122,7 @@ final class ImageWorker
         }
         imagedestroy($img);
         $ready = PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
-        PhotoStorage::deleteOriginal($photo['original']);
+        PhotoStorage::deleteOriginal($original);
         if (!$ready) {
             // Removida/inativada durante o processamento: não deixa WebP órfão no public/.
             foreach ($written as $f) {
@@ -360,8 +360,9 @@ final class ImageWorker
         if ($out !== $img) {
             imagedestroy($out);
         }
-        if (!$ok || !@rename($tmp, $target)) {
+        if (!$ok || !@rename($tmp, $target) || !is_file($target) || (int) @filesize($target) <= 12) {
             @unlink($tmp);
+            @unlink($target);
             throw new RuntimeException('Falha ao gravar WebP.');
         }
         @chmod($target, 0644);

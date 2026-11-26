@@ -997,4 +997,244 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame('draft_ready', (string) $import['status']);
         $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
     }
+
+    public function testFetchImageBytesDoesNotAdvertiseUnsupportedAvifAcceptHeader(): void
+    {
+        $seenAccept = null;
+        CalendarSync::$httpTransport = function (string $url, int $maxBytes, string $accept = '') use (&$seenAccept): array {
+            $seenAccept = $accept;
+            return ['body' => $this->jpegBytes(), 'http' => 200];
+        };
+
+        $res = CalendarSync::fetchImageBytes('https://a0.muscache.com/im/pictures/test.jpeg');
+        $this->assertArrayHasKey('body', $res);
+        $this->assertNotNull($seenAccept);
+        $this->assertStringNotContainsString('image/avif', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/webp', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/jpeg', strtolower((string) $seenAccept));
+        $this->assertStringContainsString('image/png', strtolower((string) $seenAccept));
+    }
+
+    public function testAirbnbLayeredImportPopulatesGuestsBedroomsBedsAmenitiesAndFullPhotos(): void
+    {
+        $html = '<html><head>'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'VacationRental',
+                'name' => 'Vista Livre Pinheiros',
+                'description' => 'Apartamento completo com piscina.',
+                'image' => ['https://a0.muscache.com/im/pictures/cover.jpeg'],
+                'containsPlace' => ['@type' => 'Accommodation', 'occupancy' => ['value' => 3]],
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '<script id="data-deferred-state-0" type="application/json">' . json_encode([
+                'niobeClientData' => [[
+                    'StaysPdpSections:{}',
+                    [
+                        'data' => [
+                            'node' => [
+                                '__typename' => 'DemandStayListing',
+                                'personCapacity' => 3,
+                                'pdpPresentation' => [
+                                    'overview' => ['__typename' => 'StaysPdpOverview', 'items' => ['3 hóspedes', '2 quartos', '3 camas']],
+                                    'amenities' => [
+                                        'seeAllAmenitiesGroups' => [[
+                                            'amenities' => [
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Wi-Fi', 'icon' => 'SYSTEM_WI_FI'],
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Piscina', 'icon' => 'SYSTEM_POOL'],
+                                                ['__typename' => 'AmenityItem', 'available' => true, 'title' => 'Máquina de lavar', 'icon' => 'SYSTEM_WASHER'],
+                                                ['__typename' => 'AmenityItem', 'available' => false, 'title' => 'Detector de fumaça', 'icon' => 'SYSTEM_NO_DETECTOR_SMOKE'],
+                                            ],
+                                        ]],
+                                    ],
+                                    'mediaTour' => [
+                                        '__typename' => 'MediaTour',
+                                        'name' => 'Tour por fotos',
+                                        'stops' => [[
+                                            'items' => [
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/cover.jpeg']],
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/extra1.jpeg']],
+                                                ['image' => ['uri' => 'https://a0.muscache.com/im/pictures/extra2.png']],
+                                            ],
+                                        ]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ]],
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '</head></html>';
+
+        CalendarSync::$httpTransport = fn (): array => ['body' => $html, 'http' => 200];
+
+        $res = OtaImportService::startNewDraft($this->userId, 'airbnb', 'https://www.airbnb.com.br/rooms/1763202099314111379', true);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $row = HouseRepository::find($propertyId);
+        $this->assertSame(3, (int) $row['max_guests']);
+        $this->assertSame(2, (int) $row['bedrooms']);
+        $this->assertSame(3, (int) $row['beds']);
+        $this->assertSame(1, (int) $row['pool']);
+
+        $amenities = json_decode((string) $row['amenities'], true);
+        $this->assertSame(1, $amenities['wifi'] ?? null);
+        $this->assertSame(1, $amenities['pool'] ?? null);
+        $this->assertSame(1, $amenities['washer'] ?? null);
+        $this->assertArrayNotHasKey('smoke', $amenities);
+
+        $photos = PhotoRepository::listByImport((int) ($res->dados['import_id'] ?? 0));
+        $this->assertCount(3, $photos);
+        $this->assertSame('https://a0.muscache.com/im/pictures/cover.jpeg', (string) $photos[0]['source_url']);
+        $this->assertSame(1, (int) $photos[0]['is_primary']);
+    }
+
+    public function testBookingHtmlPasteUpgradesSmallPhotoPathAndImportsFacilitiesAndGallery(): void
+    {
+        $canonical = 'https://www.booking.com/hotel/br/ap-aconchegante-morumbi.html';
+        $html = '<html><head>'
+            . '<link rel="canonical" href="' . $canonical . '">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'Apartment',
+                'name' => 'Ap 910 Morumbi',
+                'description' => 'Apartamento com piscina.',
+                'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=&hp=1',
+            ], JSON_UNESCAPED_UNICODE) . '</script>'
+            . '<script>var x = { hotelPhotos: ['
+            . "{id: '590115981', large_url: 'https://cf.bstatic.com/xdata/images/hotel/max500/590115981.jpg?k=def&o='}"
+            . '] };</script>'
+            . '</head><body>'
+            . '<div data-testid="property-most-popular-facilities-wrapper"><ul>'
+            . '<li><span>Wi-Fi gratuito</span></li>'
+            . '<li><span>Piscina ao ar livre</span></li>'
+            . '<li><span>Ar-condicionado</span></li>'
+            . '</ul></div>'
+            . '</body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', $canonical, true, $html);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $row = HouseRepository::find($propertyId);
+        $this->assertSame(1, (int) $row['pool']);
+        $amenities = json_decode((string) $row['amenities'], true);
+        $this->assertSame(1, $amenities['wifi'] ?? null);
+        $this->assertSame(1, $amenities['pool'] ?? null);
+        $this->assertSame(1, $amenities['ac'] ?? null);
+
+        $photos = PhotoRepository::listByImport((int) ($res->dados['import_id'] ?? 0));
+        $this->assertCount(2, $photos);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=abc&o=&hp=1', (string) $photos[0]['source_url']);
+        $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115981.jpg?k=def&o=', (string) $photos[1]['source_url']);
+    }
+
+    public function testBookingImportedPhotosStripExifXmpComDeleteOriginalAndHideSourceUrl(): void
+    {
+        require_once dirname(__DIR__, 2) . '/src/Api.php';
+
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+        $importId = $this->importRow($draftId, 'booking', 'booking:br/ap-morumbi');
+
+        $jpeg = $this->jpegBytes(false, 200, 150);
+        $comPayload = "Booking.com Property 590115980 - Copyright Booking Holdings\x00";
+        $xmpPayload = "http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta><rdf:Description>Booking.com GPS -23.5689,-46.6871</rdf:Description></x:xmpmeta>";
+        $iccPayload = "ICC_PROFILE\x00\x01\x01BookingColorProfile";
+        $segments = "\xFF\xFE" . pack('n', strlen($comPayload) + 2) . $comPayload
+            . "\xFF\xE1" . pack('n', strlen($xmpPayload) + 2) . $xmpPayload
+            . "\xFF\xE2" . pack('n', strlen($iccPayload) + 2) . $iccPayload;
+        $taintedJpeg = substr($jpeg, 0, 2) . $segments . substr($jpeg, 2);
+
+        CalendarSync::$httpTransport = fn (): array => ['body' => $taintedJpeg, 'http' => 200];
+
+        $uuid = PhotoStorage::randomId();
+        $sourceUrl = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=bookingsecret&o=';
+        $row = PhotoRepository::insertProcessing($draftId, $uuid, null, 1, 0, [
+            'source_url' => $sourceUrl,
+            'source_url_hash' => hash('sha256', $sourceUrl),
+            'ota_import_id' => $importId,
+        ]);
+        $photoId = (int) $row['id'];
+
+        $this->assertTrue(ImageWorker::process($photoId));
+
+        $ready = PhotoRepository::findById($photoId);
+        $this->assertSame('ready', (string) $ready['status']);
+        $this->assertNull($ready['original']);
+        $this->assertMatchesRegularExpression('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $ready['path']);
+        $this->assertStringNotContainsString('590115980', (string) $ready['path']);
+        $this->assertStringNotContainsString('booking', strtolower((string) $ready['path']));
+
+        $origLeftovers = glob(PhotoStorage::$originals . '/*') ?: [];
+        $this->assertSame([], $origLeftovers, 'Downloaded original must be deleted after WebP generation');
+
+        foreach (ImageWorker::SIZES as $width) {
+            $variantFile = PhotoStorage::variantFile($uuid, $width);
+            $this->assertFileExists($variantFile);
+            $info = @getimagesize($variantFile);
+            $this->assertIsArray($info);
+            $this->assertSame(IMAGETYPE_WEBP, $info[2]);
+
+            $webp = (string) file_get_contents($variantFile);
+            $this->assertSame('RIFF', substr($webp, 0, 4));
+            $this->assertSame('WEBP', substr($webp, 8, 4));
+            foreach (['Booking', '590115980', 'bookingsecret', 'cf.bstatic', 'xmpmeta', 'ICC_PROFILE', 'Copyright', 'Exif'] as $forbidden) {
+                $this->assertStringNotContainsString($forbidden, $webp);
+            }
+        }
+
+        $publicPhotos = api_public_photos(PhotoRepository::listReady($draftId));
+        $this->assertCount(1, $publicPhotos);
+        $this->assertSame(['path', 'is_primary', 'sort_order'], array_keys($publicPhotos[0]));
+        $this->assertSame((string) $ready['path'], $publicPhotos[0]['path']);
+    }
+
+    public function testPruneOrphanOriginalsRemovesStaleUnreferencedAndRemoteTempFilesOnly(): void
+    {
+        $now = self::T0;
+        $staleOrphan = PhotoStorage::randomId() . '.jpg';
+        $freshOrphan = PhotoStorage::randomId() . '.jpg';
+        $activeProcessing = PhotoStorage::randomId() . '.jpg';
+        $staleTemp = 'cl-remote-deadbeef';
+
+        file_put_contents(PhotoStorage::$originals . '/' . $staleOrphan, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $freshOrphan, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $activeProcessing, 'x');
+        file_put_contents(PhotoStorage::$originals . '/' . $staleTemp, 'x');
+
+        touch(PhotoStorage::$originals . '/' . $staleOrphan, $now - 3600);
+        touch(PhotoStorage::$originals . '/' . $freshOrphan, $now - 60);
+        touch(PhotoStorage::$originals . '/' . $activeProcessing, $now - 3600);
+        touch(PhotoStorage::$originals . '/' . $staleTemp, $now - 3600);
+
+        PhotoRepository::insertProcessing($this->propertyId, substr($activeProcessing, 0, 36), $activeProcessing, 0, 0);
+
+        $removed = PhotoStorage::pruneOrphanOriginals(PhotoRepository::STUCK_AFTER_SECONDS, $now);
+
+        $this->assertSame(2, $removed);
+        $this->assertFileDoesNotExist(PhotoStorage::$originals . '/' . $staleOrphan);
+        $this->assertFileDoesNotExist(PhotoStorage::$originals . '/' . $staleTemp);
+        $this->assertFileExists(PhotoStorage::$originals . '/' . $freshOrphan);
+        $this->assertFileExists(PhotoStorage::$originals . '/' . $activeProcessing);
+    }
+
+    public function testBookingHtmlPasteUsesPageDescriptionOverEnglishJsonLd(): void
+    {
+        $canonical = 'https://www.booking.com/hotel/br/ap-aconchegante-morumbi.html';
+        $html = '<html><head>'
+            . '<link rel="canonical" href="' . $canonical . '">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@type' => 'Apartment',
+                'name' => 'Ap 910 Morumbi',
+                'description' => 'This apartment offers accommodations with a terrace and free Wifi.',
+                'image' => 'https://cf.bstatic.com/xdata/images/hotel/max500/590115980.jpg?k=abc&o=',
+            ], JSON_UNESCAPED_UNICODE) . '</script></head><body>'
+            . '<div id="property_description_content"><p>Apartamento aconchegante no Morumbi, perto do estádio.</p></div>'
+            . '</body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'booking', $canonical, true, $html);
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+
+        $row = HouseRepository::find((int) ($res->dados['property_id'] ?? 0));
+        $this->assertSame('Apartamento aconchegante no Morumbi, perto do estádio.', (string) $row['description']);
+    }
 }
