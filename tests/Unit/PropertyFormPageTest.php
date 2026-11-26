@@ -472,4 +472,17 @@ final class PropertyFormPageTest extends TestCase
         $this->assertStringContainsString('data-lat="-26.9249"', $html);
         $this->assertStringContainsString('data-lng="-49.061136"', $html);
     }
+
+    public function testCepLookupAbortsStaleRequestsAndCapsZoomAtTilesMaxZoom(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
+        $this->assertStringContainsString('new AbortController()', $js);
+        $this->assertStringContainsString('currentAbortController.abort()', $js);
+        $this->assertStringContainsString('signal: controller.signal', $js);
+        $this->assertStringContainsString("'AbortError'", $js);
+        $this->assertStringContainsString('map.stop()', $js);
+        $this->assertStringContainsString('const zoomLevel = 13;', $js);
+        $this->assertStringContainsString('style.sources.protomaps.maxzoom = 13;', $js);
+        $this->assertMatchesRegularExpression('/map\.stop\(\);\s*map\.flyTo\(/', $js);
+    }
 }

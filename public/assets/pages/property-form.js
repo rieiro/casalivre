@@ -415,62 +415,117 @@
             maplibregl.addProtocol('pmtiles', protocol.tile);
 
             const origin = window.location.origin;
-            const styleUrl = mapBox.dataset.style ? new URL(mapBox.dataset.style, origin).href : null;
+            const tilesUrl = origin + (mapBox.dataset.tiles || '/tiles/brasil.pmtiles');
 
-            const map = new maplibregl.Map({
-                container: 'property-pinpoint-map',
-                style: styleUrl,
-                center: [currentLng, currentLat],
-                zoom: 14,
-                attributionControl: false
-            });
+            async function initMap() {
+                let style = null;
+                if (mapBox.dataset.style) {
+                    try {
+                        const styleRes = await fetch(mapBox.dataset.style, { credentials: 'same-origin' });
+                        if (styleRes.ok) {
+                            style = await styleRes.json();
+                            if (style.glyphs && typeof style.glyphs === 'string' && style.glyphs.startsWith('/')) {
+                                style.glyphs = origin + style.glyphs;
+                            }
+                            if (style.sprite && typeof style.sprite === 'string' && style.sprite.startsWith('/')) {
+                                style.sprite = origin + style.sprite;
+                            }
+                            if (style.sources && style.sources.protomaps) {
+                                style.sources.protomaps.url = 'pmtiles://' + tilesUrl;
+                                style.sources.protomaps.maxzoom = 13;
+                            }
+                        }
+                    } catch (_) {
+                        style = null;
+                    }
+                }
+                if (!style) {
+                    style = mapBox.dataset.style ? new URL(mapBox.dataset.style, origin).href : null;
+                }
 
-            map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+                const map = new maplibregl.Map({
+                    container: 'property-pinpoint-map',
+                    style: style,
+                    center: [currentLng, currentLat],
+                    zoom: 13,
+                    maxZoom: 18,
+                    attributionControl: false
+                });
 
-            const marker = new maplibregl.Marker({ draggable: true, color: '#047857' })
-                .setLngLat([currentLng, currentLat])
-                .addTo(map);
+                map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
-            marker.on('dragend', function () {
-                const lngLat = marker.getLngLat();
-                updateCoords(lngLat.lat, lngLat.lng);
-            });
+                const marker = new maplibregl.Marker({ draggable: true, color: '#047857' })
+                    .setLngLat([currentLng, currentLat])
+                    .addTo(map);
 
-            map.on('click', function (e) {
-                marker.setLngLat(e.lngLat);
-                updateCoords(e.lngLat.lat, e.lngLat.lng);
-            });
+                marker.on('dragend', function () {
+                    const lngLat = marker.getLngLat();
+                    updateCoords(lngLat.lat, lngLat.lng);
+                });
 
-            const cepInput = form.querySelector('[data-cep]');
-            if (cepInput) {
-                let lastCep = cepInput.value.replace(/\D/g, '');
-                const updateLocationFromCep = async function () {
-                    const digits = cepInput.value.replace(/\D/g, '').slice(0, 8);
-                    if (digits.length === 8 && digits !== lastCep) {
+                map.on('click', function (e) {
+                    marker.setLngLat(e.lngLat);
+                    updateCoords(e.lngLat.lat, e.lngLat.lng);
+                });
+
+                map.on('error', function (e) {
+                    if (window.console && console.warn) console.warn('pinpoint map warning:', e);
+                });
+
+                const cepInput = form.querySelector('[data-cep]');
+                if (cepInput) {
+                    let lastCep = cepInput.value.replace(/\D/g, '');
+                    let currentAbortController = null;
+                    const updateLocationFromCep = async function () {
+                        const digits = cepInput.value.replace(/\D/g, '').slice(0, 8);
+                        if (digits.length !== 8 || digits === lastCep) {
+                            return;
+                        }
+                        if (currentAbortController) {
+                            currentAbortController.abort();
+                            currentAbortController = null;
+                        }
                         lastCep = digits;
+                        currentAbortController = new AbortController();
+                        const controller = currentAbortController;
                         try {
-                            const res = await fetch('/api/ceps?q=' + digits);
+                            const res = await fetch('/api/ceps?q=' + digits, { signal: controller.signal });
                             const json = await res.json();
+                            const currentDigits = cepInput.value.replace(/\D/g, '').slice(0, 8);
+                            const responseCep = json && json.cep ? String(json.cep).replace(/\D/g, '').slice(0, 8) : digits;
+                            if (currentDigits !== digits || responseCep !== digits) {
+                                return;
+                            }
                             if (json && json.lat && json.lng) {
                                 const newLat = parseFloat(json.lat);
                                 const newLng = parseFloat(json.lng);
-                                const zoomLevel = json.coord_source === 'cep' ? 16 : 14;
+                                const zoomLevel = 13;
                                 marker.setLngLat([newLng, newLat]);
+                                map.stop();
                                 map.flyTo({ center: [newLng, newLat], zoom: zoomLevel });
                                 updateCoords(newLat, newLng);
                             }
-                        } catch (_) {}
-                    }
-                };
-                cepInput.addEventListener('change', updateLocationFromCep);
-                let cepTimer;
-                cepInput.addEventListener('input', function () {
-                    window.clearTimeout(cepTimer);
-                    if (cepInput.value.replace(/\D/g, '').length === 8) {
-                        cepTimer = window.setTimeout(updateLocationFromCep, 300);
-                    }
-                });
+                        } catch (err) {
+                            if (err && err.name === 'AbortError') {
+                                return;
+                            }
+                        } finally {
+                            if (currentAbortController === controller) {
+                                currentAbortController = null;
+                            }
+                        }
+                    };
+                    cepInput.addEventListener('change', updateLocationFromCep);
+                    let cepTimer;
+                    cepInput.addEventListener('input', function () {
+                        window.clearTimeout(cepTimer);
+                        if (cepInput.value.replace(/\D/g, '').length === 8) {
+                            cepTimer = window.setTimeout(updateLocationFromCep, 300);
+                        }
+                    });
+                }
             }
+            initMap();
         } catch (e) {
             console.error('Error initializing pinpoint map:', e);
         }
