@@ -393,4 +393,40 @@ final class PropertyFormPageTest extends TestCase
         $propertyJs = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/pages/property-form.js');
         $this->assertStringNotContainsString('otaPublic', $propertyJs);
     }
+
+    public function testPropertyFormShowsRemoveFormOnlyToOwner(): void
+    {
+        $prop = $this->pdo->query("SELECT * FROM properties WHERE status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $this->assertNotEmpty($prop);
+
+        $ownerId = (int) $prop['user_id'];
+        $ref = property_ref($prop);
+
+        $render = static function (array $viewer) use ($prop): string {
+            ob_start();
+            try {
+                $property = $prop;
+                $user = $viewer;
+                $error = null;
+                $posted = [];
+                $csrf = 'csrf_token_test';
+                $photos = [];
+                require dirname(__DIR__, 2) . '/views/property_form.php';
+                return (string) ob_get_clean();
+            } catch (Throwable $e) {
+                ob_end_clean();
+                throw $e;
+            }
+        };
+
+        $ownerHtml = $render(['id' => $ownerId, 'is_admin' => 0]);
+        $this->assertStringContainsString('/imoveis/' . $ref . '/excluir', $ownerHtml);
+        $this->assertStringContainsString('is-delete', $ownerHtml);
+
+        $gestorHtml = $render(['id' => $ownerId + 99999, 'is_admin' => 1]);
+        $this->assertStringNotContainsString('/excluir', $gestorHtml);
+        $this->assertStringNotContainsString('is-delete', $gestorHtml);
+        $this->assertStringContainsString('prop-form-danger-zone', $gestorHtml);
+        $this->assertStringContainsString('/imoveis/' . $ref . '/calendario', $gestorHtml);
+    }
 }

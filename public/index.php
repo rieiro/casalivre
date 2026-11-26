@@ -1461,7 +1461,9 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseService::remove((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
+    HouseRepository::findByUserOrFail((int) $user['id'], $propertyId);
+    HouseService::remove((int) $user['id'], $propertyId);
     redirect('/painel');
 }
 
