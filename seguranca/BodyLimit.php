@@ -12,8 +12,8 @@ require_once __DIR__ . '/Middleware.php';
 final class BodyLimit implements Middleware
 {
     public const MAX_BYTES = 1048576;
-    /** Host-side raw HTML paste: 5 MiB plus a JSON/form-encoding margin (import routes only). */
-    public const MAX_HTML_BYTES = 5 * 1048576 + 65536;
+    /** Host-side raw HTML paste: 7 MiB transport margin so JSON-escaped 5 MiB HTML still fits. */
+    public const MAX_HTML_BYTES = 7 * 1048576;
 
     /** Únicas rotas que recebem arquivos ($_FILES): upload de fotos pela web e pela API. */
     public const UPLOAD_RE = '#^/(api/casas|imoveis)/[a-f0-9]{16}/fotos$#';

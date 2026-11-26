@@ -93,7 +93,8 @@
                 window.location.reload();
             } catch (e) {
                 const code = e && e.data ? String(e.data.error_code || '') : '';
-                if (pasteCodes.indexOf(code) !== -1) {
+                const oversized = e && Number(e.status) === 413;
+                if (oversized || pasteCodes.indexOf(code) !== -1) {
                     showPaste();
                     showError((e && e.message) || '');
                 } else if (window.CL && typeof window.CL.toast === 'function') {

@@ -206,7 +206,7 @@ if ($latValue === '' && $lngValue === '') {
                     </div>
                 </div>
                 <label class="prop-checkbox-label">
-                    <input type="checkbox" name="consent" value="1" required>
+                    <input type="checkbox" name="consent" value="1" <?= !empty($posted['consent']) ? 'checked' : '' ?> required>
                     <span><?= e(t('form.import.consent')) ?></span>
                 </label>
                 <button class="btn-dash-action primary" type="submit" data-import-submit><?= e(t('form.import.submit')) ?></button>

@@ -154,6 +154,21 @@ t_eq('draft_ready', (string) ($pastedRow['status'] ?? ''), 'importação colada 
 $pastedFlags = json_decode((string) ($pastedRow['sanitization_flags'] ?? ''), true) ?: [];
 t_eq('html_paste', (string) ($pastedFlags['fetch_mode'] ?? ''), 'sanitization_flags registra fetch_mode html_paste');
 
+echo "colagem de 4,5 MiB com JSON pesado passa pela margem de transporte\n";
+t_ratelimit_reset();
+$quoteHeavyRaw = $pasteHtml('https://www.airbnb.com/rooms/999333', 'Casa Aspas', str_repeat("\"x\nx", 1180000));
+$quoteHeavyBody = json_encode([
+    'platform' => 'airbnb',
+    'property_url' => 'https://www.airbnb.com/rooms/999333',
+    'consent' => '1',
+    'raw_html' => $quoteHeavyRaw,
+]);
+t_ok(strlen($quoteHeavyRaw) < 5 * 1048576, 'raw_html decodificado fica abaixo de 5 MiB (' . strlen($quoteHeavyRaw) . ' bytes)');
+t_ok(strlen($quoteHeavyBody) > 5 * 1048576 + 65536, 'JSON escapado passa da margem antiga de 5 MiB (' . strlen($quoteHeavyBody) . ' bytes)');
+t_ok(strlen($quoteHeavyBody) <= 7 * 1048576, 'JSON escapado cabe na margem de 7 MiB (' . strlen($quoteHeavyBody) . ' bytes)');
+$quoteHeavyRes = t_http('POST', $base . '/api/imoveis/novo/importar', $quoteHeavyBody, $apiHeaders, $jar);
+t_eq(200, $quoteHeavyRes['status'], 'colagem de 4,5 MiB com aspas/quebras -> 200');
+
 echo "colagem acima de 5 MiB é recusada\n";
 t_ratelimit_reset();
 $tooBigPaste = $pasteHtml('https://www.airbnb.com/rooms/999222', 'Casa Grande', str_repeat('x', 5 * 1048576 + 1));

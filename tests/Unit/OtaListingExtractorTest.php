@@ -170,4 +170,39 @@ final class OtaListingExtractorTest extends TestCase
         $this->assertTrue($out['sanitization_flags']['partial']);
         $this->assertSame('', $out['title']);
     }
+
+    public function testCanonicalUrlsIgnoreBreadcrumbAndItemListJsonLd(): void
+    {
+        $html = $this->jsonLd([
+            '@graph' => [
+                [
+                    '@type' => 'VacationRental',
+                    '@id' => 'https://www.airbnb.com/rooms/123',
+                    'url' => 'https://www.airbnb.com/rooms/123',
+                ],
+                [
+                    '@type' => 'BreadcrumbList',
+                    'itemListElement' => [
+                        ['@type' => 'ListItem', 'position' => 1, 'item' => ['@id' => 'https://www.airbnb.com/rooms/breadcrumb-a']],
+                        ['@type' => 'ListItem', 'position' => 2, 'url' => 'https://www.airbnb.com/rooms/breadcrumb-b'],
+                    ],
+                ],
+                [
+                    '@type' => 'ItemList',
+                    'url' => 'https://www.airbnb.com/rooms/list-a',
+                    'itemListElement' => [
+                        ['@type' => 'ListItem', 'url' => 'https://www.airbnb.com/rooms/list-b'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $urls = OtaListingExtractor::extractCanonicalUrls($html);
+
+        $this->assertContains('https://www.airbnb.com/rooms/123', $urls);
+        $this->assertNotContains('https://www.airbnb.com/rooms/breadcrumb-a', $urls);
+        $this->assertNotContains('https://www.airbnb.com/rooms/breadcrumb-b', $urls);
+        $this->assertNotContains('https://www.airbnb.com/rooms/list-a', $urls);
+        $this->assertNotContains('https://www.airbnb.com/rooms/list-b', $urls);
+    }
 }

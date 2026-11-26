@@ -57,6 +57,9 @@ final class OtaListingExtractor
         '/\bSuperhost\b/iu', '/\bGenius\b/iu', '/\bPremier Host\b/iu',
     ];
 
+    /** JSON-LD node types that describe the listing itself (not breadcrumbs, carousels or item lists). */
+    private const LISTING_TYPES = ['vacationrental', 'lodgingbusiness', 'accommodation', 'house', 'apartment', 'hotel', 'rental'];
+
     /**
      * @return array<string, mixed>
      */
@@ -204,6 +207,9 @@ final class OtaListingExtractor
         }
         foreach (self::jsonLdNodes($html) as $node) {
             foreach (self::flattenNodes($node) as $candidate) {
+                if (array_intersect(self::types($candidate), self::LISTING_TYPES) === []) {
+                    continue;
+                }
                 foreach (['url', '@id'] as $key) {
                     if (!isset($candidate[$key])) {
                         continue;
@@ -288,7 +294,7 @@ final class OtaListingExtractor
         foreach ($nodes as $node) {
             foreach (self::flattenNodes($node) as $candidate) {
                 $types = self::types($candidate);
-                if (array_intersect($types, ['vacationrental', 'lodgingbusiness', 'accommodation', 'house', 'apartment', 'hotel', 'rental']) !== []) {
+                if (array_intersect($types, self::LISTING_TYPES) !== []) {
                     $target = $candidate;
                     break 2;
                 }

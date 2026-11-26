@@ -965,4 +965,36 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame('draft_ready', (string) $import['status']);
         $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
     }
+
+    public function testPasteWithItemListJsonLdReferencingAnotherListingStillSucceeds(): void
+    {
+        $html = '<html><head><link rel="canonical" href="https://www.airbnb.com/rooms/5050505">'
+            . '<script type="application/ld+json">' . json_encode([
+                '@graph' => [
+                    [
+                        '@type' => 'VacationRental',
+                        '@id' => 'https://www.airbnb.com/rooms/5050505',
+                        'url' => 'https://www.airbnb.com/rooms/5050505',
+                        'name' => 'Casa com ItemList',
+                        'description' => 'Descrição da casa.',
+                        'image' => ['https://a0.muscache.com/im/pictures/itemlist.jpg'],
+                    ],
+                    [
+                        '@type' => 'ItemList',
+                        'url' => 'https://www.airbnb.com/rooms/6060606',
+                        'itemListElement' => [
+                            ['@type' => 'ListItem', 'url' => 'https://www.airbnb.com/rooms/7070707'],
+                        ],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE) . '</script></head><body></body></html>';
+
+        $res = OtaImportService::startNewDraft($this->userId, 'airbnb', 'https://www.airbnb.com/rooms/5050505', true, $html);
+
+        $this->assertSame('ok', $res->tipo, (string) $res->mensagem);
+        $propertyId = (int) ($res->dados['property_id'] ?? 0);
+        $import = OtaImportService::activeForProperty($propertyId, 'airbnb');
+        $this->assertSame('draft_ready', (string) $import['status']);
+        $this->assertSame('html_paste', $import['sanitization_flags']['fetch_mode'] ?? null);
+    }
 }
