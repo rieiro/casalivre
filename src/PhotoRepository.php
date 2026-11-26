@@ -84,7 +84,7 @@ final class PhotoRepository
     /** @return list<array<string, mixed>> rows of one import (used by discard/expiry cleanup) */
     public static function listByImport(int $importId): array
     {
-        $stmt = db()->prepare('SELECT * FROM photos WHERE ota_import_id = ?');
+        $stmt = db()->prepare('SELECT * FROM photos WHERE ota_import_id = ? ORDER BY is_primary DESC, sort_order ASC, id ASC');
         $stmt->execute([$importId]);
         return $stmt->fetchAll();
     }

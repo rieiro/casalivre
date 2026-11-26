@@ -122,7 +122,7 @@ final class ImageWorker
         }
         imagedestroy($img);
         $ready = PhotoRepository::markReady($photoId, PhotoStorage::variantPath($uuid, self::SIZES['full']));
-        PhotoStorage::deleteOriginal($photo['original']);
+        PhotoStorage::deleteOriginal($original);
         if (!$ready) {
             // Removida/inativada durante o processamento: não deixa WebP órfão no public/.
             foreach ($written as $f) {

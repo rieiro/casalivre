@@ -1126,4 +1126,65 @@ final class OtaUrlContentImportTest extends TestCase
         $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=abc&o=&hp=1', (string) $photos[0]['source_url']);
         $this->assertSame('https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115981.jpg?k=def&o=', (string) $photos[1]['source_url']);
     }
+
+    public function testBookingImportedPhotosStripExifXmpComDeleteOriginalAndHideSourceUrl(): void
+    {
+        require_once dirname(__DIR__, 2) . '/src/Api.php';
+
+        $draft = HouseRepository::insertDraft($this->userId);
+        $draftId = (int) $draft['id'];
+        $importId = $this->importRow($draftId, 'booking', 'booking:br/ap-morumbi');
+
+        $jpeg = $this->jpegBytes(false, 200, 150);
+        $comPayload = "Booking.com Property 590115980 - Copyright Booking Holdings\x00";
+        $xmpPayload = "http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta><rdf:Description>Booking.com GPS -23.5689,-46.6871</rdf:Description></x:xmpmeta>";
+        $iccPayload = "ICC_PROFILE\x00\x01\x01BookingColorProfile";
+        $segments = "\xFF\xFE" . pack('n', strlen($comPayload) + 2) . $comPayload
+            . "\xFF\xE1" . pack('n', strlen($xmpPayload) + 2) . $xmpPayload
+            . "\xFF\xE2" . pack('n', strlen($iccPayload) + 2) . $iccPayload;
+        $taintedJpeg = substr($jpeg, 0, 2) . $segments . substr($jpeg, 2);
+
+        CalendarSync::$httpTransport = fn (): array => ['body' => $taintedJpeg, 'http' => 200];
+
+        $uuid = PhotoStorage::randomId();
+        $sourceUrl = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/590115980.jpg?k=bookingsecret&o=';
+        $row = PhotoRepository::insertProcessing($draftId, $uuid, null, 1, 0, [
+            'source_url' => $sourceUrl,
+            'source_url_hash' => hash('sha256', $sourceUrl),
+            'ota_import_id' => $importId,
+        ]);
+        $photoId = (int) $row['id'];
+
+        $this->assertTrue(ImageWorker::process($photoId));
+
+        $ready = PhotoRepository::findById($photoId);
+        $this->assertSame('ready', (string) $ready['status']);
+        $this->assertNull($ready['original']);
+        $this->assertMatchesRegularExpression('#^/uploads/fotos/[0-9a-f-]{36}-1920\.webp$#', (string) $ready['path']);
+        $this->assertStringNotContainsString('590115980', (string) $ready['path']);
+        $this->assertStringNotContainsString('booking', strtolower((string) $ready['path']));
+
+        $origLeftovers = glob(PhotoStorage::$originals . '/*') ?: [];
+        $this->assertSame([], $origLeftovers, 'Downloaded original must be deleted after WebP generation');
+
+        foreach (ImageWorker::SIZES as $width) {
+            $variantFile = PhotoStorage::variantFile($uuid, $width);
+            $this->assertFileExists($variantFile);
+            $info = @getimagesize($variantFile);
+            $this->assertIsArray($info);
+            $this->assertSame(IMAGETYPE_WEBP, $info[2]);
+
+            $webp = (string) file_get_contents($variantFile);
+            $this->assertSame('RIFF', substr($webp, 0, 4));
+            $this->assertSame('WEBP', substr($webp, 8, 4));
+            foreach (['Booking', '590115980', 'bookingsecret', 'cf.bstatic', 'xmpmeta', 'ICC_PROFILE', 'Copyright', 'Exif'] as $forbidden) {
+                $this->assertStringNotContainsString($forbidden, $webp);
+            }
+        }
+
+        $publicPhotos = api_public_photos(PhotoRepository::listReady($draftId));
+        $this->assertCount(1, $publicPhotos);
+        $this->assertSame(['path', 'is_primary', 'sort_order'], array_keys($publicPhotos[0]));
+        $this->assertSame((string) $ready['path'], $publicPhotos[0]['path']);
+    }
 }
