@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/OtaPlatformRegistry.php';
+require_once __DIR__ . '/OtaListingExtractor.php';
 
 final class CalendarSync
 {
@@ -48,7 +49,8 @@ final class CalendarSync
     /**
      * Public listing HTML: follows up to 2 same-platform 3xx Location hops (locale/canonical slug),
      * re-validating https, the OTA public host allowlist and SSRF/IP pinning on every hop.
-     * Anti-bot/transient blocks are returned as errors for the caller to degrade gracefully.
+     * Only an exact HTTP 200 with real listing markup is accepted; WAF/anti-bot responses become
+     * blocked_by_ota so the caller can offer the host-side raw HTML paste fallback.
      */
     public static function fetchListingHtml(string $url, string $platform = ''): array
     {
@@ -61,7 +63,22 @@ final class CalendarSync
                 ['Accept-Language: pt-BR,pt;q=0.9,en;q=0.8']
             );
             if (!isset($result['redirect'])) {
-                return $result;
+                $http = (int) ($result['http'] ?? 0);
+                $headers = (array) ($result['headers'] ?? []);
+                if (self::isOtaBlockedResponse($http, $headers)) {
+                    return ['error' => 'blocked_by_ota', 'http' => $http];
+                }
+                if (isset($result['error'])) {
+                    return $result;
+                }
+                if ($http !== 200) {
+                    return ['error' => $http >= 500 || $http === 0 ? 'http_5xx' : 'http_4xx', 'http' => $http];
+                }
+                $body = (string) ($result['body'] ?? '');
+                if (OtaListingExtractor::isWafChallengeShell($body)) {
+                    return ['error' => 'blocked_by_ota', 'http' => $http];
+                }
+                return ['body' => $body, 'http' => $http];
             }
             if ($hop === 2) {
                 return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
@@ -79,6 +96,24 @@ final class CalendarSync
             $current = $next;
         }
         return ['error' => 'bad_url', 'http' => 0];
+    }
+
+    /**
+     * HTTP statuses / challenge headers that mean the OTA refused to serve the real listing.
+     *
+     * @param array<string, mixed> $headers lowercased response headers
+     */
+    private static function isOtaBlockedResponse(int $http, array $headers): bool
+    {
+        if (in_array($http, [202, 403, 405, 429], true)) {
+            return true;
+        }
+        foreach (['x-amzn-waf-action', 'x-hcom-origin-id'] as $name) {
+            if (isset($headers[$name]) && trim((string) $headers[$name]) !== '') {
+                return true;
+            }
+        }
+        return str_contains(strtolower((string) ($headers['x-page-id'] ?? '')), 'wildcard-challenge-handler');
     }
 
     /** Resolves a Location header (absolute, scheme-relative, root-relative or path-relative) against $base. */
@@ -135,20 +170,21 @@ final class CalendarSync
         if (self::$httpTransport !== null) {
             $result = (array) (self::$httpTransport)($url, $maxBytes);
             if (isset($result['error'])) {
-                return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0)];
+                return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0), 'headers' => self::normalizeHeaders($result['headers'] ?? [])];
             }
             $http = (int) ($result['http'] ?? 200);
+            $headers = self::normalizeHeaders($result['headers'] ?? $result['response_headers'] ?? []);
             $location = (string) ($result['redirect'] ?? $result['location'] ?? '');
             if ($http >= 300 && $http < 400) {
                 return $location !== ''
-                    ? ['redirect' => $location, 'http' => $http]
-                    : ['error' => 'bad_url', 'http' => $http];
+                    ? ['redirect' => $location, 'http' => $http, 'headers' => $headers]
+                    : ['error' => 'bad_url', 'http' => $http, 'headers' => $headers];
             }
             $body = (string) ($result['body'] ?? '');
             if (strlen($body) > $maxBytes) {
-                return ['error' => 'too_big', 'http' => $http];
+                return ['error' => 'too_big', 'http' => $http, 'headers' => $headers];
             }
-            return ['body' => $body, 'http' => $http];
+            return ['body' => $body, 'http' => $http, 'headers' => $headers];
         }
         if (!function_exists('curl_init')) {
             return ['error' => 'http_5xx', 'http' => 0];
@@ -161,19 +197,45 @@ final class CalendarSync
         if (isset($result['error'])) {
             return $result;
         }
-        [$code, $body, $location] = $result;
+        [$code, $body, $location, $headers] = $result;
         if ($code >= 300 && $code < 400) {
             return $location !== ''
-                ? ['redirect' => $location, 'http' => $code]
-                : ['error' => 'bad_url', 'http' => $code];
+                ? ['redirect' => $location, 'http' => $code, 'headers' => $headers]
+                : ['error' => 'bad_url', 'http' => $code, 'headers' => $headers];
         }
         if ($code === 429 || $code >= 500) {
-            return ['error' => 'http_5xx', 'http' => $code];
+            return ['error' => 'http_5xx', 'http' => $code, 'headers' => $headers];
         }
         if ($code < 200 || $code >= 300) {
-            return ['error' => 'http_4xx', 'http' => $code];
+            return ['error' => 'http_4xx', 'http' => $code, 'headers' => $headers];
         }
-        return ['body' => $body, 'http' => $code];
+        return ['body' => $body, 'http' => $code, 'headers' => $headers];
+    }
+
+    /** @return array<string, string> lowercased response headers */
+    private static function normalizeHeaders(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $key => $value) {
+            if (is_int($key)) {
+                $line = is_string($value) ? trim($value) : '';
+                $pos = strpos($line, ':');
+                if ($pos === false) {
+                    continue;
+                }
+                $key = substr($line, 0, $pos);
+                $value = substr($line, $pos + 1);
+            }
+            $name = strtolower(trim((string) $key));
+            if ($name === '') {
+                continue;
+            }
+            $out[$name] = is_array($value) ? implode(', ', array_map('strval', $value)) : trim((string) $value);
+        }
+        return $out;
     }
 
     public static function fetchImageBytes(string $url): array
@@ -489,13 +551,14 @@ final class CalendarSync
      *
      * @param array{host: string, port: int, ip: string} $target
      * @param list<string> $extraHeaders
-     * @return array{0: int, 1: string, 2: string}|array{error: string, http: int}
+     * @return array{0: int, 1: string, 2: string, 3: array<string, string>}|array{error: string, http: int}
      */
     private static function requestBytes(string $url, array $target, int $maxBytes, string $accept, int $timeout, array $extraHeaders = []): array
     {
         $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
         $buffer = '';
         $tooBig = false;
+        $headers = [];
         $ch = curl_init($url);
         $options = [
             CURLOPT_RETURNTRANSFER => false,
@@ -510,6 +573,21 @@ final class CalendarSync
                 'Pragma: no-cache',
             ], $extraHeaders),
             CURLOPT_NOPROXY => '*',
+            CURLOPT_HEADERFUNCTION => static function ($ch, string $header) use (&$headers): int {
+                $line = trim($header);
+                if ($line === '') {
+                    return strlen($header);
+                }
+                if (preg_match('#\AHTTP/#i', $line) === 1) {
+                    $headers = [];
+                    return strlen($header);
+                }
+                $pos = strpos($line, ':');
+                if ($pos !== false) {
+                    $headers[strtolower(trim(substr($line, 0, $pos)))] = trim(substr($line, $pos + 1));
+                }
+                return strlen($header);
+            },
             CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig, $maxBytes): int {
                 if (strlen($buffer) + strlen($chunk) > $maxBytes) {
                     $tooBig = true;
@@ -550,7 +628,7 @@ final class CalendarSync
             return ['error' => 'private_ip', 'http' => $code];
         }
         $location = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: '');
-        return [$code, $buffer, $location];
+        return [$code, $buffer, $location, $headers];
     }
 
     /** Canonical URL for hashing/dedup: lowercase scheme/host, sorted query, no fragment/default port. */

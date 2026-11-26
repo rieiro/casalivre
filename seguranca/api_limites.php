@@ -30,6 +30,7 @@ return [
     ['POST', '#^/api/admin/verifications/\d+/(approve|reject)$#', 60, 60, '/api/admin/verifications/action'],
     // Importação de conteúdo por URL do anúncio: 10 por 10 min por IP (web e API no mesmo balde).
     ['POST', '#^/api/imoveis/[a-f0-9]{16}/importar$#', 10, 600, '/api/imoveis/*/importar'],
+    ['POST', '#^/api/imoveis/novo/importar$#', 10, 600, '/api/imoveis/*/importar'],
     ['POST', '#^/imoveis/[a-f0-9]{16}/importar$#', 10, 600, '/api/imoveis/*/importar'],
     ['POST', '#^/imoveis/novo/importar$#', 10, 600, '/api/imoveis/*/importar'],
     ['DELETE', '#^/api/imoveis/[a-f0-9]{16}/importar$#', 20, 600, '/api/imoveis/*/importar'],

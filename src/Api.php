@@ -23,6 +23,18 @@ function api_error(int $status, string $message, ?array $erros = null): never
     json_out($status, $erros ? ['error' => $message, 'erros' => $erros] : ['error' => $message]);
 }
 
+/** Erro da importação OTA por URL: 429 no limite, 413 em payload grande, 422 nos demais; inclui error_code. */
+function api_ota_import_error(Resultado $res): never
+{
+    $errorCode = (string) ($res->dados['error_code'] ?? '');
+    $status = $res->tipo === 'limite' ? 429 : ($errorCode === 'payload_too_large' ? 413 : 422);
+    $payload = ['error' => (string) $res->mensagem, 'error_code' => $errorCode];
+    if (isset($res->dados['field'])) {
+        $payload['erros'] = [(string) $res->dados['field'] => (string) $res->mensagem];
+    }
+    json_out($status, $payload);
+}
+
 /** Exige sessão: devolve o usuário já carregado ou responde 401 'Autenticação necessária.'. */
 function api_require_user(?array $user): array
 {
@@ -633,6 +645,26 @@ function handle_api(string $path, string $method): void
         ]);
     }
 
+    // Importação de conteúdo por URL do anúncio em um novo imóvel (AJAX do formulário web).
+    if ($path === '/api/imoveis/novo/importar' && $method === 'POST') {
+        $user = api_require_user($user);
+        $res = OtaImportService::startNewDraft(
+            (int) $user['id'],
+            $body['platform'] ?? null,
+            $body['property_url'] ?? null,
+            $body['consent'] ?? false,
+            $body['raw_html'] ?? null
+        );
+        $res->registrar();
+        if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
+            api_ota_import_error($res);
+        }
+        if (!empty($res->dados['warning']) && session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['import_notice'] = (string) $res->dados['warning'];
+        }
+        json_out(200, ['ok' => true, 'redirect' => '/imoveis/' . (string) ($res->dados['public_hash'] ?? '') . '/editar'] + $res->dados);
+    }
+
     // Importação de conteúdo por URL do anúncio (rascunho ou imóvel verificado).
     if (preg_match('#^/api/imoveis/([a-f0-9]{16})/importar$#', $path, $m)) {
         $user = api_require_user($user);
@@ -646,11 +678,12 @@ function handle_api(string $path, string $method): void
                 (int) $user['id'],
                 $body['platform'] ?? null,
                 $body['property_url'] ?? null,
-                $body['consent'] ?? false
+                $body['consent'] ?? false,
+                $body['raw_html'] ?? null
             );
             $res->registrar();
             if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
-                api_error($res->tipo === 'limite' ? 429 : 422, (string) $res->mensagem, isset($res->dados['field']) ? [(string) $res->dados['field'] => (string) $res->mensagem] : null);
+                api_ota_import_error($res);
             }
             json_out(200, ['ok' => true, 'warning' => $res->mensagem] + $res->dados);
         }

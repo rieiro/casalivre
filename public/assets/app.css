@@ -5192,6 +5192,59 @@ body.err-shield { margin: 0; font: var(--font-size-base)/var(--line-height-base)
     background: #f8fafc;
 }
 .prop-import-unmapped ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+.prop-import-paste-toggle {
+    margin: 0.15rem 0 0;
+    font-size: 0.82rem;
+}
+.prop-import-paste-toggle[hidden],
+.prop-import-paste[hidden] { display: none !important; }
+.prop-import-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #047857;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.prop-import-paste {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.35rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #fff;
+}
+.prop-import-paste-title {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+.prop-import-paste-steps {
+    margin: 0;
+    padding-left: 1.15rem;
+    color: #334155;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+.prop-import-raw {
+    min-height: 9rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    white-space: pre;
+}
+.prop-import-paste-error {
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+.prop-import-paste-error[hidden] { display: none !important; }
 .prop-watermark-badge {
     position: absolute;
     left: 0.4rem;

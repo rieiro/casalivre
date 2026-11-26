@@ -20,13 +20,14 @@ final class Csrf implements Middleware
         return (string) $_SESSION['csrf'];
     }
 
-    /** Corpo bruto, no máximo BodyLimit::MAX_BYTES; vazio se o BodyLimit recusaria a requisição. */
+    /** Corpo bruto, no máximo o limite efetivo da rota (5 MiB + margem nas rotas de importação); vazio se o BodyLimit recusaria. */
     public static function rawBody(): string
     {
         static $cached = null;
         if ($cached === null) {
-            $read = BodyLimit::status() !== null ? '' : file_get_contents('php://input', false, null, 0, BodyLimit::MAX_BYTES + 1);
-            $cached = is_string($read) && strlen($read) <= BodyLimit::MAX_BYTES ? $read : '';
+            $max = BodyLimit::maxBytes();
+            $read = BodyLimit::status() !== null ? '' : file_get_contents('php://input', false, null, 0, $max + 1);
+            $cached = is_string($read) && strlen($read) <= $max ? $read : '';
         }
         return $cached;
     }

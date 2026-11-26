@@ -120,7 +120,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 
 return Seguranca::pipeline(
     [
-        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'property_url', 'platform', 'mode', 'consent', 'google_place_id', 'public_url', 'ical_url'],
+        'campos_puros' => ['password', 'password_confirm', '_csrf', 'external_ical_url', 'property_url', 'platform', 'mode', 'consent', 'google_place_id', 'public_url', 'ical_url', 'raw_html'],
         'sem_csrf' => [
             '/mcp',
             '#^/api/v1/agent/properties/[a-f0-9]{16}/intent$#',
@@ -183,7 +183,7 @@ function casa_privado(string $path, string $method): bool
     if (str_starts_with($path, '/api/v1/agent') || $path === '/mcp' || str_starts_with($path, '/pagamento/intencao/') || $path === '/llms-full.txt' || $path === '/openapi.json') {
         return false;
     }
-    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/imoveis/novo/importar', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
+    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/imoveis/novo/importar', '/api/imoveis/novo/importar', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -1344,13 +1344,15 @@ if ($path === '/imoveis/novo/importar' && $method === 'POST') {
         (int) $user['id'],
         $_POST['platform'] ?? null,
         $_POST['property_url'] ?? null,
-        $_POST['consent'] ?? false
+        $_POST['consent'] ?? false,
+        $_POST['raw_html'] ?? null
     );
     $res->registrar();
     if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
         view('property_form', [
             'error' => null,
             'import_error' => $res->mensagem,
+            'import_error_code' => (string) ($res->dados['error_code'] ?? ''),
             'property' => null,
             'posted' => $_POST,
             'cities' => cities(),
@@ -1489,13 +1491,15 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/importar$#', $path, $m) && $method ===
         (int) $user['id'],
         $_POST['platform'] ?? null,
         $_POST['property_url'] ?? null,
-        $_POST['consent'] ?? false
+        $_POST['consent'] ?? false,
+        $_POST['raw_html'] ?? null
     );
     $res->registrar();
     if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
         view('property_form', [
             'error' => null,
             'import_error' => $res->mensagem,
+            'import_error_code' => (string) ($res->dados['error_code'] ?? ''),
             'property' => $property,
             'posted' => $_POST,
             'cities' => cities(),
