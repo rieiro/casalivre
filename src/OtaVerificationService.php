@@ -1340,7 +1340,13 @@ final class OtaVerificationService
                     f.canonical_listing_id, f.ics_metadata, f.verified_at, f.challenge_date,
                     COALESCE(f.verified_at, f.last_checked_at, f.last_synced_at) AS queued_at,
                     p.title AS property_title, p.public_hash, u.name AS user_name, u.email,
-                    c.label AS property_city
+                    c.label AS property_city,
+                    EXISTS (
+                        SELECT 1 FROM property_ota_imports oi
+                         WHERE oi.property_id = f.property_id
+                           AND oi.platform = f.source_platform
+                           AND oi.status NOT IN ('discarded', 'expired')
+                    ) AS has_url_import
                FROM calendar_feeds f
                JOIN properties p ON p.id = f.property_id
                JOIN users u ON u.id = p.user_id
@@ -1358,6 +1364,7 @@ final class OtaVerificationService
                 : '••••';
             unset($row['url']);
             $row['platform_label'] = OtaPlatformRegistry::label((string) ($row['source_platform'] ?? ''));
+            $row['has_url_import'] = self::pgBool($row['has_url_import'] ?? false);
             $row['challenge_date_br'] = !empty($row['challenge_date'])
                 ? self::dateBr((string) $row['challenge_date'])
                 : '';
@@ -1404,6 +1411,7 @@ final class OtaVerificationService
             $approvedRow = $approvedStmt->fetch(PDO::FETCH_ASSOC);
             $awarded = is_array($approvedRow)
                 && self::awardVerificationCreditsIfEligible(db(), $approvedRow, 'calendar_feeds');
+            self::syncOtaImportStatus($row, $feedId, 'verified', $now);
             self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_APPROVE, [
                 'imovel_id' => (int) $row['property_id'],
@@ -1437,6 +1445,7 @@ final class OtaVerificationService
                         review_note = ?, status = 'error', verified_at = NULL, credits_awarded = FALSE
                   WHERE id = ?"
             )->execute([$adminId, self::now(), $note, $feedId]);
+            self::syncOtaImportStatus($row, $feedId, 'rejected', self::now());
             self::syncPropertyVerifiedStatus(db(), (int) $row['property_id']);
             ActivityLog::record(ActivityLog::OTA_REVIEW_REJECT, [
                 'imovel_id' => (int) $row['property_id'],
@@ -1445,6 +1454,30 @@ final class OtaVerificationService
             ]);
             return ['status' => 'rejected', 'message' => t('cal.review_rejected')];
         });
+    }
+
+    /**
+     * Transactional sync between the OTA feed review and the URL content import row.
+     * Runs in the same Db::transactional() + FOR UPDATE block as the feed update.
+     *
+     * @param array<string, mixed> $row calendar_feeds row
+     */
+    private static function syncOtaImportStatus(array $row, int $feedId, string $status, int $now): void
+    {
+        if (!in_array($status, ['verified', 'rejected'], true)) {
+            return;
+        }
+        $platform = (string) ($row['source_platform'] ?? '');
+        $canonical = (string) ($row['canonical_listing_id'] ?? '');
+        if ($platform === '' || $canonical === '') {
+            return;
+        }
+        db()->prepare(
+            "UPDATE property_ota_imports
+                SET status = ?, calendar_feed_id = ?, updated_at = to_timestamp(?)
+              WHERE property_id = ? AND platform = ? AND canonical_listing_id = ?
+                AND status NOT IN ('discarded', 'expired')"
+        )->execute([$status, $feedId, $now, (int) $row['property_id'], $platform, $canonical]);
     }
 
     private static function randomOffset(int $min, int $max): int

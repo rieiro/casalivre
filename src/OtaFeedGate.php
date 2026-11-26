@@ -72,29 +72,19 @@ final class OtaFeedGate
         if (!OtaPlatformRegistry::exists($platform)) {
             throw new OtaFeedGateException('platform', t('ota.err_platform'));
         }
-        $publicUrl = trim($publicUrl);
-        self::hygiene($publicUrl, 'property_url');
         self::hygiene($icalUrl, 'external_ical_url');
 
-        $publicUrl = self::resolveMobileShareUrl($platform, $publicUrl);
-        $publicParts = parse_url($publicUrl);
+        // Shared public-URL hygiene (import + feed): same host/path/canonical/anti-bait-and-switch rules.
+        $public = self::preparePublicUrl($propertyId, $userId, $platform, $publicUrl, $consent, $excludeFeedId);
+        $canonical = (string) $public['canonical_listing_id'];
+
         $icalParts = parse_url($icalUrl);
-        $publicHost = strtolower((string) ($publicParts['host'] ?? ''));
         $icalHost = strtolower((string) ($icalParts['host'] ?? ''));
-        if (!OtaPlatformRegistry::isPublicHost($platform, $publicHost)) {
-            throw new OtaFeedGateException('property_url', t('ota.err_domain'));
-        }
         if (!OtaPlatformRegistry::isIcalHost($platform, $icalHost)) {
             throw new OtaFeedGateException('external_ical_url', t('ota.err_ical_domain'));
         }
-
-        $publicPath = self::cleanPath((string) ($publicParts['path'] ?? ''));
-        if (preg_match(OtaPlatformRegistry::publicPathRegex($platform), $publicPath) !== 1) {
-            throw new OtaFeedGateException('property_url', t('ota.err_path'));
-        }
-
-        $canonical = self::canonicalize($platform, $publicPath, $icalUrl);
-        self::assertCanonicalAvailable($propertyId, $userId, $canonical, $platform, $excludeFeedId);
+        // Canonicalize also binds the public listing id to the .ics id (Airbnb) and validates the .ics path.
+        self::canonicalize($platform, self::cleanPath((string) $public['property_url']), $icalUrl);
 
         $ics = OtaVerificationService::fetchIcsFeed($icalUrl);
         $icsMetadata = OtaVerificationService::extractIcsMetadata($ics);
@@ -110,15 +100,103 @@ final class OtaFeedGate
         return [
             'mode' => 'ota',
             'platform' => $platform,
-            'property_url' => self::cleanUrl($publicUrl),
+            'property_url' => (string) $public['property_url'],
             'canonical_listing_id' => $canonical,
             'ics' => $ics,
             'ics_metadata' => $icsMetadata,
             'challenge_date' => $challengeDate,
-            'consent_at' => OtaVerificationService::now(),
-            'verification_ip' => self::pseudonymizedIp(),
+            'consent_at' => (int) $public['consent_at'],
+            'verification_ip' => $public['verification_ip'],
             'review_status' => OtaPlatformRegistry::requiresAdminReview($platform) ? 'pending_review' : 'approved',
         ];
+    }
+
+    /**
+     * Public-URL gate shared by the iCal feed and the URL content import. Never persists anything.
+     *
+     * @return array{platform: string, property_url: string, canonical_listing_id: string, consent_at: int, verification_ip: ?string}
+     */
+    public static function preparePublicUrl(
+        int $propertyId,
+        int $userId,
+        string $platform,
+        string $rawPropertyUrl,
+        bool $consent,
+        int $excludeFeedId = 0
+    ): array {
+        if (!$consent) {
+            throw new OtaFeedGateException('consent', t('ota.err_consent'));
+        }
+        $platform = strtolower(trim($platform));
+        if (!OtaPlatformRegistry::exists($platform)) {
+            throw new OtaFeedGateException('platform', t('ota.err_platform'));
+        }
+        $publicUrl = trim($rawPropertyUrl);
+        self::hygiene($publicUrl, 'property_url');
+        $publicUrl = self::resolveMobileShareUrl($platform, $publicUrl);
+        $publicParts = parse_url($publicUrl);
+        $publicHost = strtolower((string) ($publicParts['host'] ?? ''));
+        if (!OtaPlatformRegistry::isPublicHost($platform, $publicHost)) {
+            throw new OtaFeedGateException('property_url', t('ota.err_domain'));
+        }
+        $publicPath = self::cleanPath((string) ($publicParts['path'] ?? ''));
+        if (preg_match(OtaPlatformRegistry::publicPathRegex($platform), $publicPath) !== 1) {
+            throw new OtaFeedGateException('property_url', t('ota.err_path'));
+        }
+        $canonical = self::canonicalizePublic($platform, $publicPath);
+        self::assertUrlLock($propertyId, $platform, $canonical);
+        self::assertCanonicalAvailable($propertyId, $userId, $canonical, $platform, $excludeFeedId);
+        return [
+            'platform' => $platform,
+            'property_url' => self::cleanUrl($publicUrl),
+            'canonical_listing_id' => $canonical,
+            'consent_at' => OtaVerificationService::now(),
+            'verification_ip' => self::pseudonymizedIp(),
+        ];
+    }
+
+    /**
+     * Anti-bait-and-switch: while a draft/fetching/rejected import exists for the platform, the feed URL
+     * must keep the same canonical listing id (the host must discard the import before changing it).
+     */
+    private static function assertUrlLock(int $propertyId, string $platform, string $canonical): void
+    {
+        $stmt = db()->prepare(
+            "SELECT canonical_listing_id FROM property_ota_imports
+              WHERE property_id = ? AND platform = ?
+                AND status IN ('fetching', 'draft_ready', 'rejected')
+              ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$propertyId, $platform]);
+        $locked = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($locked !== false && (string) $locked !== $canonical) {
+            throw new OtaFeedGateException('property_url', t('ota.err_import_url_locked'));
+        }
+    }
+
+    /** Canonical id from the public listing path alone (no .ics): airbnb:<id>, booking:<cc>/<slug>, vrbo:<id>. */
+    public static function canonicalizePublic(string $platform, string $publicPath): string
+    {
+        if ($platform === 'airbnb') {
+            if (preg_match(OtaPlatformRegistry::publicPathRegex('airbnb'), $publicPath, $m) !== 1) {
+                throw new OtaFeedGateException('property_url', t('ota.err_airbnb_path'));
+            }
+            return 'airbnb:' . $m[1];
+        }
+        if ($platform === 'booking') {
+            if (preg_match(OtaPlatformRegistry::publicPathRegex('booking'), $publicPath, $m) !== 1) {
+                throw new OtaFeedGateException('property_url', t('ota.err_path'));
+            }
+            return 'booking:' . strtolower($m[1] . '/' . $m[2]);
+        }
+        if ($platform === 'vrbo') {
+            if (preg_match(OtaPlatformRegistry::publicPathRegex('vrbo'), $publicPath, $m) !== 1) {
+                throw new OtaFeedGateException('property_url', t('ota.err_path'));
+            }
+            return 'vrbo:' . ltrim((string) $m[1], 'pP');
+        }
+        throw new OtaFeedGateException('platform', t('ota.err_platform'));
     }
 
     /** @return list<string> */

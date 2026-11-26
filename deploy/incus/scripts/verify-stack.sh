@@ -121,6 +121,20 @@ if incus exec "$DB" -- su - postgres -c \
     bad "ota_credit_ledger is missing canonical_listing_id"
   fi
   if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT to_regclass('public.property_ota_imports') IS NOT NULL\"" 2>/dev/null \
+    | grep -qx t; then
+    ok "property_ota_imports table is present (schema 44)"
+  else
+    bad "property_ota_imports table is missing"
+  fi
+  if incus exec "$DB" -- su - postgres -c \
+    "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='photos' AND column_name IN ('phash','watermark_flagged','ota_import_id')\"" 2>/dev/null \
+    | grep -qx 3; then
+    ok "photos has the URL import provenance columns (schema 44)"
+  else
+    bad "photos is missing the URL import provenance columns"
+  fi
+  if incus exec "$DB" -- su - postgres -c \
     "PGHOST=/run/postgresql /usr/bin/psql -d casalivre -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='ota_credit_ledger' AND column_name IN ('platform','reward_type')\"" 2>/dev/null \
     | grep -qx 2; then
     ok "ota_credit_ledger has per-platform reward columns (schema 41)"

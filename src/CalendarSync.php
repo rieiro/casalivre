@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/OtaPlatformRegistry.php';
+
 final class CalendarSync
 {
     /** Tamanho máximo aceito para um feed .ics (bytes). */
@@ -17,6 +19,167 @@ final class CalendarSync
     /** Total fetch budget (seconds). Connect stays at CONNECT_TIMEOUT. */
     public const FETCH_TIMEOUT = 8;
     public const CONNECT_TIMEOUT = 5;
+    /** Listing HTML cap for the URL content import (bytes). */
+    public const MAX_LISTING_BYTES = 2 * 1024 * 1024;
+    /** Single CDN image cap for the URL content import (bytes). */
+    public const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+    /**
+     * Test hook for the URL content import: fn(string $url, int $maxBytes): array{body?:string,http?:int,error?:string}.
+     * Null uses the real SSRF-safe curl transport.
+     */
+    public static ?Closure $httpTransport = null;
+
+    /**
+     * SSRF-safe HTTPS GET for a public listing page or CDN asset. Reuses resolveTarget()/isPublicIp(),
+     * pins the resolved IP with CURLOPT_RESOLVE, never follows redirects, restricts to https and caps bytes.
+     *
+     * @return array{body: string, http: int}|array{error: string, http: int}
+     */
+    public static function fetchPublicResource(string $url, int $maxBytes = self::MAX_LISTING_BYTES, string $accept = 'text/html,application/xhtml+xml,*/*;q=0.8'): array
+    {
+        $result = self::fetchRedirectAware($url, $maxBytes, $accept, []);
+        if (isset($result['redirect'])) {
+            return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+        }
+        return $result;
+    }
+
+    /**
+     * Public listing HTML: follows up to 2 same-platform 3xx Location hops (locale/canonical slug),
+     * re-validating https, the OTA public host allowlist and SSRF/IP pinning on every hop.
+     * Anti-bot/transient blocks are returned as errors for the caller to degrade gracefully.
+     */
+    public static function fetchListingHtml(string $url, string $platform = ''): array
+    {
+        $current = $url;
+        for ($hop = 0; $hop <= 2; $hop++) {
+            $result = self::fetchRedirectAware(
+                $current,
+                self::MAX_LISTING_BYTES,
+                'text/html,application/xhtml+xml,*/*;q=0.8',
+                ['Accept-Language: pt-BR,pt;q=0.9,en;q=0.8']
+            );
+            if (!isset($result['redirect'])) {
+                return $result;
+            }
+            if ($hop === 2) {
+                return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+            }
+            $next = self::resolveRedirectUrl($current, (string) $result['redirect']);
+            if ($next === '' || !self::isHttpsUrl($next)) {
+                return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+            }
+            if ($platform !== '') {
+                $host = strtolower((string) (parse_url($next, PHP_URL_HOST) ?? ''));
+                if (!OtaPlatformRegistry::isPublicHost($platform, $host)) {
+                    return ['error' => 'bad_url', 'http' => (int) ($result['http'] ?? 0)];
+                }
+            }
+            $current = $next;
+        }
+        return ['error' => 'bad_url', 'http' => 0];
+    }
+
+    /** Resolves a Location header (absolute, scheme-relative, root-relative or path-relative) against $base. */
+    public static function resolveRedirectUrl(string $base, string $location): string
+    {
+        $location = trim($location);
+        if ($location === '') {
+            return '';
+        }
+        $baseParts = parse_url($base);
+        if (!is_array($baseParts) || empty($baseParts['host'])) {
+            return '';
+        }
+        $scheme = strtolower((string) ($baseParts['scheme'] ?? 'https'));
+        $host = strtolower((string) $baseParts['host']);
+        $port = isset($baseParts['port']) ? ':' . (int) $baseParts['port'] : '';
+        if (preg_match('#\Ahttps?://#i', $location) === 1) {
+            return self::isHttpsUrl($location) ? $location : '';
+        }
+        if (str_starts_with($location, '//')) {
+            $candidate = $scheme . ':' . $location;
+            return self::isHttpsUrl($candidate) ? $candidate : '';
+        }
+        if (str_starts_with($location, '/')) {
+            return $scheme . '://' . $host . $port . $location;
+        }
+        $basePath = (string) ($baseParts['path'] ?? '/');
+        $dir = rtrim(str_replace('\\', '/', dirname($basePath)), '/');
+        $joined = ($dir === '' || $dir === '.' ? '' : $dir) . '/' . $location;
+        $segments = [];
+        foreach (explode('/', $joined) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+        return $scheme . '://' . $host . $port . '/' . implode('/', $segments);
+    }
+
+    /**
+     * @param list<string> $extraHeaders
+     * @return array{body: string, http: int}|array{redirect: string, http: int}|array{error: string, http: int}
+     */
+    private static function fetchRedirectAware(string $url, int $maxBytes, string $accept, array $extraHeaders): array
+    {
+        $maxBytes = max(1, min($maxBytes, self::MAX_IMAGE_BYTES));
+        if (!self::isHttpsUrl($url)) {
+            return ['error' => 'bad_url', 'http' => 0];
+        }
+        if (self::$httpTransport !== null) {
+            $result = (array) (self::$httpTransport)($url, $maxBytes);
+            if (isset($result['error'])) {
+                return ['error' => (string) $result['error'], 'http' => (int) ($result['http'] ?? 0)];
+            }
+            $http = (int) ($result['http'] ?? 200);
+            $location = (string) ($result['redirect'] ?? $result['location'] ?? '');
+            if ($http >= 300 && $http < 400) {
+                return $location !== ''
+                    ? ['redirect' => $location, 'http' => $http]
+                    : ['error' => 'bad_url', 'http' => $http];
+            }
+            $body = (string) ($result['body'] ?? '');
+            if (strlen($body) > $maxBytes) {
+                return ['error' => 'too_big', 'http' => $http];
+            }
+            return ['body' => $body, 'http' => $http];
+        }
+        if (!function_exists('curl_init')) {
+            return ['error' => 'http_5xx', 'http' => 0];
+        }
+        $target = self::resolveTarget($url);
+        if (isset($target['error'])) {
+            return ['error' => $target['error'], 'http' => 0];
+        }
+        $result = self::requestBytes($url, $target, $maxBytes, $accept, self::FETCH_TIMEOUT, $extraHeaders);
+        if (isset($result['error'])) {
+            return $result;
+        }
+        [$code, $body, $location] = $result;
+        if ($code >= 300 && $code < 400) {
+            return $location !== ''
+                ? ['redirect' => $location, 'http' => $code]
+                : ['error' => 'bad_url', 'http' => $code];
+        }
+        if ($code === 429 || $code >= 500) {
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        if ($code < 200 || $code >= 300) {
+            return ['error' => 'http_4xx', 'http' => $code];
+        }
+        return ['body' => $body, 'http' => $code];
+    }
+
+    public static function fetchImageBytes(string $url): array
+    {
+        return self::fetchPublicResource($url, self::MAX_IMAGE_BYTES, 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8');
+    }
 
     /** Referência de log para uma URL de feed: só host + hash (a URL pode conter token). */
     public static function logRef(?string $url): ?string
@@ -318,6 +481,75 @@ final class CalendarSync
         if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !self::isPublicIp($primaryIp))) {
             return ['error' => 'private_ip', 'http' => $code];
         }
+        return [$code, $buffer, $location];
+    }
+
+    /**
+     * SSRF-safe GET pinned to the resolved IP, no redirects, https only, capped body.
+     *
+     * @param array{host: string, port: int, ip: string} $target
+     * @param list<string> $extraHeaders
+     * @return array{0: int, 1: string, 2: string}|array{error: string, http: int}
+     */
+    private static function requestBytes(string $url, array $target, int $maxBytes, string $accept, int $timeout, array $extraHeaders = []): array
+    {
+        $ip = str_contains($target['ip'], ':') ? '[' . $target['ip'] . ']' : $target['ip'];
+        $buffer = '';
+        $tooBig = false;
+        $ch = curl_init($url);
+        $options = [
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_RESOLVE => [$target['host'] . ':' . $target['port'] . ':' . $ip],
+            CURLOPT_TIMEOUT => max(1, $timeout),
+            CURLOPT_CONNECTTIMEOUT => min(self::CONNECT_TIMEOUT, max(1, $timeout)),
+            CURLOPT_USERAGENT => 'CasaLivre/1.0 (+https://casalivre.com.br)',
+            CURLOPT_HTTPHEADER => array_merge([
+                'Accept: ' . $accept,
+                'Cache-Control: no-cache',
+                'Pragma: no-cache',
+            ], $extraHeaders),
+            CURLOPT_NOPROXY => '*',
+            CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$buffer, &$tooBig, $maxBytes): int {
+                if (strlen($buffer) + strlen($chunk) > $maxBytes) {
+                    $tooBig = true;
+                    return 0;
+                }
+                $buffer .= $chunk;
+                return strlen($chunk);
+            },
+        ];
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            $options[CURLOPT_PROTOCOLS_STR] = 'https';
+        } elseif (defined('CURLPROTO_HTTPS')) {
+            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS;
+        }
+        if (defined('CURLOPT_MAXFILESIZE')) {
+            $options[CURLOPT_MAXFILESIZE] = $maxBytes;
+        }
+        curl_setopt_array($ch, $options);
+        $ok = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($ch);
+        $primaryIp = (string) curl_getinfo($ch, CURLINFO_PRIMARY_IP);
+        if ($tooBig) {
+            return ['error' => 'too_big', 'http' => $code];
+        }
+        if ($ok === false) {
+            if ($errno === CURLE_COULDNT_RESOLVE_HOST) {
+                return ['error' => 'dns', 'http' => 0];
+            }
+            if ($errno === CURLE_OPERATION_TIMEDOUT || $errno === CURLE_COULDNT_CONNECT) {
+                return ['error' => 'timeout', 'http' => 0];
+            }
+            return ['error' => 'http_5xx', 'http' => $code];
+        }
+        $pinned = @inet_pton($target['ip']);
+        $connected = $primaryIp === '' ? $pinned : @inet_pton($primaryIp);
+        if ($primaryIp !== '' && ($pinned === false || $connected !== $pinned || !self::isPublicIp($primaryIp))) {
+            return ['error' => 'private_ip', 'http' => $code];
+        }
+        $location = (string) (curl_getinfo($ch, CURLINFO_REDIRECT_URL) ?: '');
         return [$code, $buffer, $location];
     }
 

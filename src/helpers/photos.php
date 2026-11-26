@@ -14,6 +14,8 @@ function photo_fail_text(string $reason): string
         PhotoFail::STUCK => 'photo.fail_stuck',
         PhotoFail::QUEUE => 'photo.fail_queue',
         PhotoFail::RETRIES => 'photo.fail_retries',
+        PhotoFail::REMOTE => 'photo.fail_remote',
+        PhotoFail::DUPLICATE => 'photo.fail_duplicate',
     };
     return t($key);
 }

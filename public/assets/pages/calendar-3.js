@@ -119,6 +119,35 @@
     // Importar feed
     const feedForm = document.querySelector('[data-feed-form]');
     if (feedForm) {
+        // Schema 44: the URL import locks the public listing link per platform (anti-bait-and-switch).
+        let importLocks = {};
+        try {
+            importLocks = JSON.parse(feedForm.getAttribute('data-import-locks') || '{}') || {};
+        } catch (_) {
+            importLocks = {};
+        }
+        const platformSelect = feedForm.querySelector('[data-feed-platform]');
+        const propertyUrlInput = feedForm.querySelector('[data-feed-property-url]');
+        const applyImportLock = function () {
+            if (!platformSelect || !propertyUrlInput) return;
+            const locked = importLocks[platformSelect.value];
+            if (locked) {
+                propertyUrlInput.value = locked;
+                propertyUrlInput.readOnly = true;
+                propertyUrlInput.classList.add('is-readonly');
+            } else {
+                propertyUrlInput.readOnly = false;
+                propertyUrlInput.classList.remove('is-readonly');
+            }
+        };
+        if (platformSelect && propertyUrlInput) {
+            const lockedPlatforms = Object.keys(importLocks);
+            if (lockedPlatforms.length === 1 && !platformSelect.value) {
+                platformSelect.value = lockedPlatforms[0];
+            }
+            platformSelect.addEventListener('change', applyImportLock);
+            applyImportLock();
+        }
         feedForm.addEventListener('submit', async function (ev) {
             ev.preventDefault();
             const data = Object.fromEntries(new FormData(feedForm).entries());

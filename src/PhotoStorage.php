@@ -256,6 +256,31 @@ final class PhotoStorage
         };
     }
 
+    /**
+     * Writes a remote (OTA CDN) original into storage/fotos/originais with the same 0600 rules as an
+     * upload. Returns the basename or null when the extension/uuid is invalid or the write fails.
+     */
+    public static function storeBytes(string $uuid, string $extension, string $bytes): ?string
+    {
+        if (preg_match('/^[0-9a-f-]{36}$/', $uuid) !== 1
+            || !in_array($extension, ['jpg', 'png', 'webp'], true)
+            || $bytes === ''
+            || strlen($bytes) > self::MAX_UPLOAD_BYTES * 2) {
+            return null;
+        }
+        $dir = self::originalsDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return null;
+        }
+        $name = $uuid . '.' . $extension;
+        $target = $dir . '/' . $name;
+        if (@file_put_contents($target, $bytes) === false) {
+            return null;
+        }
+        @chmod($target, 0600);
+        return $name;
+    }
+
     public static function randomId(): string
     {
         $bytes = random_bytes(16);

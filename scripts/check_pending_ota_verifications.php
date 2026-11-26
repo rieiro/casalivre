@@ -16,6 +16,7 @@ require_once $root . '/src/QueueWorker.php';
 require_once $root . '/src/OtaVerificationService.php';
 require_once $root . '/src/IcalExportService.php';
 require_once $root . '/src/HouseRepository.php';
+require_once $root . '/src/OtaImportService.php';
 Db::loadEnv();
 
 @mkdir($root . '/storage', 0700, true);
@@ -26,7 +27,7 @@ if (!flock($lock, LOCK_EX | LOCK_NB)) {
 }
 
 $now = time();
-$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'passive_checked' => 0, 'downgraded' => 0, 'attempts_purged' => 0, 'exports_purged' => 0, 'errors' => 0];
+$report = ['checked' => 0, 'verified' => 0, 'pending' => 0, 'expired' => 0, 'passive_checked' => 0, 'downgraded' => 0, 'attempts_purged' => 0, 'exports_purged' => 0, 'imports_expired' => 0, 'import_photos_purged' => 0, 'errors' => 0];
 
 try {
     $expired = db()->prepare(
@@ -88,6 +89,10 @@ try {
     // Retenção: tentativas antigas do limite diário e links de exportação revogados.
     $report['attempts_purged'] = OtaVerificationService::purgeOldChallengeAttempts();
     $report['exports_purged'] = IcalExportService::purgeRevokedExports();
+    // Retenção da importação por URL (schema 44): expira rascunhos antigos e apaga as fotos importadas.
+    $imports = OtaImportService::expireStale($now);
+    $report['imports_expired'] = (int) ($imports['expired'] ?? 0);
+    $report['import_photos_purged'] = (int) ($imports['photos'] ?? 0);
 
 } catch (Throwable $e) {
     fwrite(STDERR, 'check_pending_ota_verifications: ' . $e->getMessage() . "\n");

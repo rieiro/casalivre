@@ -41,9 +41,9 @@ final class PhotoRepository
         return $row ?: null;
     }
 
-    public static function insertProcessing(int $propertyId, string $uuid, string $original, int $primary, int $sort): array
+    public static function insertProcessing(int $propertyId, string $uuid, ?string $original, int $primary, int $sort, array $extra = []): array
     {
-        $rows = ReturningWrite::insert('photos', [
+        $rows = ReturningWrite::insert('photos', array_merge([
             'property_id' => $propertyId,
             'path' => '',
             'is_primary' => $primary,
@@ -51,8 +51,53 @@ final class PhotoRepository
             'status' => 'processing',
             'uuid' => $uuid,
             'original' => $original,
-        ], ['id', 'property_id', 'path', 'is_primary', 'sort_order', 'status']);
+        ], $extra), ['id', 'property_id', 'path', 'is_primary', 'sort_order', 'status']);
         return $rows[0]['new'] ?? [];
+    }
+
+    /** The image worker materialized a remote original (OTA import): reuse the normal pixel pipeline. */
+    public static function setOriginal(int $photoId, ?string $original): void
+    {
+        db()->prepare("UPDATE photos SET original = ? WHERE id = ? AND status = 'processing'")->execute([$original, $photoId]);
+    }
+
+    /** pHash/watermark columns are only written for imported photos, before markReady(). */
+    public static function setImportMeta(int $photoId, string $phash, bool $watermark): void
+    {
+        db()->prepare('UPDATE photos SET phash = ?, watermark_flagged = ? WHERE id = ?')->execute([$phash, $watermark ? 'true' : 'false', $photoId]);
+    }
+
+    public static function phashExists(int $propertyId, string $phash, int $excludePhotoId = 0): bool
+    {
+        $stmt = db()->prepare('SELECT 1 FROM photos WHERE property_id = ? AND phash = ? AND id <> ? LIMIT 1');
+        $stmt->execute([$propertyId, $phash, $excludePhotoId]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    public static function sourceUrlHashExists(int $propertyId, string $hash): bool
+    {
+        $stmt = db()->prepare('SELECT 1 FROM photos WHERE property_id = ? AND source_url_hash = ? LIMIT 1');
+        $stmt->execute([$propertyId, $hash]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /** @return list<array<string, mixed>> rows of one import (used by discard/expiry cleanup) */
+    public static function listByImport(int $importId): array
+    {
+        $stmt = db()->prepare('SELECT * FROM photos WHERE ota_import_id = ?');
+        $stmt->execute([$importId]);
+        return $stmt->fetchAll();
+    }
+
+    public static function deleteByImport(int $importId): array
+    {
+        $rows = ReturningWrite::remove('photos', 'ota_import_id = ?', [$importId], ['id', 'property_id', 'path', 'is_primary', 'sort_order', 'status', 'uuid', 'original', 'watermark_flagged']);
+        $out = array_map(static fn (array $row): array => $row['old'], $rows);
+        $properties = array_values(array_unique(array_map(static fn (array $row): int => (int) $row['property_id'], $out)));
+        foreach ($properties as $propertyId) {
+            self::ensurePrimary($propertyId);
+        }
+        return $out;
     }
 
     /** false se a foto deixou de estar em processing (removida ou imóvel inativado no meio). */

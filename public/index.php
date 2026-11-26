@@ -29,6 +29,7 @@ reject_oversize_upload();
 require_once __DIR__ . '/../src/HouseService.php';
 require_once __DIR__ . '/../src/Amenities.php';
 require_once __DIR__ . '/../src/CalendarSync.php';
+require_once __DIR__ . '/../src/OtaImportService.php';
 require_once __DIR__ . '/../src/Api.php';
 require_once __DIR__ . '/../src/IcalExportService.php';
 require_once __DIR__ . '/../src/ActivityLog.php';
@@ -182,7 +183,7 @@ function casa_privado(string $path, string $method): bool
     if (str_starts_with($path, '/api/v1/agent') || $path === '/mcp' || str_starts_with($path, '/pagamento/intencao/') || $path === '/llms-full.txt' || $path === '/openapi.json') {
         return false;
     }
-    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
+    if ($path === '/admin' || in_array($path, ['/painel', '/conta', '/conta/excluir', '/imoveis/novo', '/imoveis/novo/importar', '/sair', '/admin/tema', '/reservas'], true) || str_starts_with($path, '/admin/') || str_starts_with($path, '/reservas/')) {
         return true;
     }
     // Grupos (PR 6): admin, área do membro e aceite do dono.
@@ -195,7 +196,7 @@ function casa_privado(string $path, string $method): bool
     if (preg_match('#^/imoveis/[a-f0-9]{16}$#', $path) === 1 && $method !== 'GET') {
         return true;
     }
-    if (preg_match('#^/imoveis/[a-f0-9]{16}/(editar|fotos|calendario|cotacao|ical|excluir)(/|$)#', $path) === 1) {
+    if (preg_match('#^/imoveis/[a-f0-9]{16}/(editar|fotos|calendario|cotacao|ical|excluir|importar|publicar)(/|$)#', $path) === 1) {
         return true;
     }
     if (str_starts_with($path, '/api/users/eu')) {
@@ -214,6 +215,9 @@ function casa_privado(string $path, string $method): bool
         return true;
     }
     if (preg_match('#^/api/imoveis/[a-f0-9]{16}/ical(/|$)#', $path) === 1) {
+        return true;
+    }
+    if (preg_match('#^/api/imoveis/[a-f0-9]{16}/(importar|publicar)(/|$)#', $path) === 1) {
         return true;
     }
     return preg_match('#^/api/casas/[a-f0-9]{16}#', $path) === 1 && $method !== 'GET';
@@ -632,7 +636,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/cotacao$#', $path, $m) && ($method ===
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
     require_once dirname(__DIR__) . '/src/QuoteGenerator.php';
 
-    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
 
     $error = null;
     $quote = null;
@@ -1328,8 +1332,36 @@ if ($path === '/painel' && $method === 'GET') {
 
 if ($path === '/imoveis/novo' && $method === 'GET') {
     require_user();
-    view('property_form', ['error' => null, 'property' => null, 'cities' => cities()]);
+    view('property_form', ['error' => null, 'property' => null, 'cities' => cities(), 'imports' => []]);
     return null;
+}
+
+// Importação por URL: cria um rascunho privado (status draft) e redireciona para a edição.
+if ($path === '/imoveis/novo/importar' && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $res = OtaImportService::startNewDraft(
+        (int) $user['id'],
+        $_POST['platform'] ?? null,
+        $_POST['property_url'] ?? null,
+        $_POST['consent'] ?? false
+    );
+    $res->registrar();
+    if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
+        view('property_form', [
+            'error' => null,
+            'import_error' => $res->mensagem,
+            'property' => null,
+            'posted' => $_POST,
+            'cities' => cities(),
+            'imports' => [],
+        ]);
+        return null;
+    }
+    if (!empty($res->dados['warning'])) {
+        $_SESSION['import_notice'] = (string) $res->dados['warning'];
+    }
+    redirect('/imoveis/' . (string) $res->dados['public_hash'] . '/editar');
 }
 
 if ($path === '/imoveis' && $method === 'POST') {
@@ -1407,7 +1439,7 @@ if ($isPropertyView && $method === 'GET') {
 if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     $updated = HouseService::update((int) $user['id'], $propertyId, $_POST);
     if (isset($updated['error'])) {
         $property = HouseRepository::findManageable((int) $user['id'], $propertyId);
@@ -1427,28 +1459,86 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})$#', $path, $m) && $method === 'POST') 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    HouseService::remove((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    HouseService::remove((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
     redirect('/painel');
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/editar$#', $path, $m) && $method === 'GET') {
     $user = require_user();
-    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
     view('property_form', [
         'error' => null,
         'upload_notice' => $_SESSION['upload_notice'] ?? null,
+        'import_notice' => $_SESSION['import_notice'] ?? null,
         'property' => $property,
         'cities' => cities(),
         'photos' => PhotoRepository::list((int) $property['id']),
+        'imports' => OtaImportService::importsForProperty((int) $property['id']),
     ]);
-    unset($_SESSION['upload_notice']);
+    unset($_SESSION['upload_notice'], $_SESSION['import_notice']);
     return null;
+}
+
+// Importação por URL em imóvel existente (rascunho ou publicado com verificação OTA aprovada).
+if (preg_match('#^/imoveis/([a-f0-9]{16})/importar$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
+    $res = OtaImportService::startExisting(
+        $property,
+        (int) $user['id'],
+        $_POST['platform'] ?? null,
+        $_POST['property_url'] ?? null,
+        $_POST['consent'] ?? false
+    );
+    $res->registrar();
+    if ($res->tipo !== 'ok' && $res->tipo !== 'parcial') {
+        view('property_form', [
+            'error' => null,
+            'import_error' => $res->mensagem,
+            'property' => $property,
+            'posted' => $_POST,
+            'cities' => cities(),
+            'photos' => PhotoRepository::list((int) $property['id']),
+            'imports' => OtaImportService::importsForProperty((int) $property['id']),
+        ]);
+        return null;
+    }
+    if (!empty($res->dados['warning'])) {
+        $_SESSION['import_notice'] = (string) $res->dados['warning'];
+    }
+    redirect('/imoveis/' . $m[1] . '/editar');
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/importar/descartar$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
+    HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
+    $res = OtaImportService::discard($propertyId, (int) $user['id'], (string) ($_POST['platform'] ?? ''));
+    $res->registrar();
+    if ($res->mensagem !== null) {
+        $_SESSION['import_notice'] = $res->mensagem;
+    }
+    redirect('/imoveis/' . $m[1] . '/editar');
+}
+
+if (preg_match('#^/imoveis/([a-f0-9]{16})/publicar$#', $path, $m) && $method === 'POST') {
+    $user = require_user();
+    csrf_check();
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
+    $res = OtaImportService::publish($propertyId, (int) $user['id']);
+    $res->registrar();
+    if ($res->mensagem !== null) {
+        $_SESSION['import_notice'] = $res->mensagem;
+    }
+    redirect('/imoveis/' . $m[1] . '/editar');
 }
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = PhotoAdd::run((int) $user['id'], $propertyId, $_FILES['fotos'] ?? []);
     $res->registrar();
@@ -1464,7 +1554,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos$#', $path, $m) && $method === 'P
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::deleteIds($propertyId, array_values(array_unique(array_map('intval', (array) ($_POST['fotos'] ?? [])))));
     foreach ($removed['old'] as $photo) {
@@ -1482,7 +1572,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/excluir$#', $path, $m) && $metho
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $removed = PhotoRepository::delete($propertyId, (int) $m[2]);
     if ($removed['old']) {
@@ -1497,7 +1587,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/excluir$#', $path, $m) && 
 
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'GET') {
     $user = require_user();
-    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
     // Aviso de uma ação anterior (flash na sessão: exclusão de feed na web, ações do calendário pela API/JS).
     $flash = CalendarFlash::take();
     // GET é somente leitura. A limpeza das noites além do horizonte acontece no POST (CalendarSave).
@@ -1505,6 +1595,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
         'property' => $property,
         'days' => HouseRepository::calendarDaysUntil((int) $property['id'], max_calendar_day($property)),
         'feeds' => HouseRepository::feeds((int) $property['id']),
+        'ota_imports' => OtaImportService::importsForProperty((int) $property['id']),
         'message' => $flash['message'] ?? null,
         // Tom só quando há mensagem (sem aviso não há tom de erro).
         'message_tone' => $flash !== null ? $flash['tone'] : null,
@@ -1515,7 +1606,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method =
 if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
 
     if (($_POST['acao'] ?? '') === 'cotacao') {
         require_once dirname(__DIR__) . '/src/QuoteRepository.php';
@@ -1620,7 +1711,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/calendario\.ics$#', $path, $m) && $met
 if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/importar$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::findManageableOrFail((int) $user['id'], HouseRepository::idFromPublicRefOrFail($m[1], true));
     // Regra, validação (valor bruto, só https) e logs em ICalImport (iguais aos da API); aqui só a tela.
     $res = ICalImport::run(
         $property,
@@ -1650,7 +1741,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/verificar$#', $path, $m) &&
     csrf_check();
     $property = HouseRepository::findManageableOrFail(
         (int) $user['id'],
-        HouseRepository::idFromPublicRefOrFail($m[1])
+        HouseRepository::idFromPublicRefOrFail($m[1], true)
     );
     $res = HouseRepository::verifyFeed((int) $property['id'], (int) $m[2]);
     CalendarFlash::set(
@@ -1665,7 +1756,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/editar$#', $path, $m) && $m
     csrf_check();
     $property = HouseRepository::findManageableOrFail(
         (int) $user['id'],
-        HouseRepository::idFromPublicRefOrFail($m[1])
+        HouseRepository::idFromPublicRefOrFail($m[1], true)
     );
     try {
         $res = HouseRepository::updateFeed(
@@ -1698,7 +1789,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/excluir$#', $path, $m)) {
     }
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     $res = ICalFeedRemove::remover($propertyId, (int) $user['id'], (int) $m[2]);
     $res->registrar();
@@ -1721,7 +1812,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/sincronizar$#', $path, $m))
     }
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     HouseRepository::markFeedPending($propertyId, (int) $m[2]);
     CalendarFlash::set(t('cal.sync_requested'), 'ok');
@@ -1733,7 +1824,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/pausar-sync$#', $path, $m) 
     csrf_check();
     $property = HouseRepository::findManageableOrFail(
         (int) $user['id'],
-        HouseRepository::idFromPublicRefOrFail($m[1])
+        HouseRepository::idFromPublicRefOrFail($m[1], true)
     );
     $res = HouseRepository::pauseFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
     CalendarFlash::set(
@@ -1748,7 +1839,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/reativar-sync$#', $path, $m
     csrf_check();
     $property = HouseRepository::findManageableOrFail(
         (int) $user['id'],
-        HouseRepository::idFromPublicRefOrFail($m[1])
+        HouseRepository::idFromPublicRefOrFail($m[1], true)
     );
     $res = HouseRepository::resumeFeedSync((int) $property['id'], (int) $user['id'], (int) $m[2]);
     CalendarFlash::set(
@@ -1761,7 +1852,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/ical/(\d+)/reativar-sync$#', $path, $m
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Validação em CoverSet (exatamente uma foto do imóvel); o erro aparece na tela de edição.
     $res = CoverSet::run($propertyId, (array) ($_POST['fotos'] ?? []));
@@ -1775,7 +1866,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/capa$#', $path, $m) && $method =
 if (preg_match('#^/imoveis/([a-f0-9]{16})/fotos/(\d+)/capa$#', $path, $m) && $method === 'POST') {
     $user = require_user();
     csrf_check();
-    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1]);
+    $propertyId = HouseRepository::idFromPublicRefOrFail($m[1], true);
     HouseRepository::findManageableOrFail((int) $user['id'], $propertyId);
     // Valor bruto da rota (só dígitos pela regex): CoverSet valida (InteiroBruto) e confere o dono.
     $res = CoverSet::run($propertyId, [$m[2]]);
@@ -1796,7 +1887,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/avaliar$#', $path, $m) && $method === 
         view('message', ['title' => t('page.missing'), 'message' => t('page.missing_body')]);
         return null;
     }
-    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1], true));
     if (!$property || ($property['status'] ?? 'active') !== 'active') {
         http_response_code(404);
         exit('Imóvel não encontrado.');
@@ -1829,7 +1920,7 @@ if (preg_match('#^/imoveis/([a-f0-9]{16})/reservar$#', $path, $m) && $method ===
     require_once dirname(__DIR__) . '/src/HouseRepository.php';
     require_once dirname(__DIR__) . '/src/QuoteRepository.php';
 
-    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1]));
+    $property = HouseRepository::find(HouseRepository::idFromPublicRefOrFail($m[1], true));
     if (!$property || ($property['status'] ?? 'active') !== 'active') {
         http_response_code(404);
         view('message', ['title' => 'Imóvel não encontrado', 'message' => 'Este imóvel não está disponível.']);

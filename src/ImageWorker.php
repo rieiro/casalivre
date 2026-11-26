@@ -8,6 +8,9 @@ require_once __DIR__ . '/PhotoRepository.php';
 require_once __DIR__ . '/PhotoStorage.php';
 require_once __DIR__ . '/PermanentJobFailure.php';
 require_once __DIR__ . '/PhotoFail.php';
+require_once __DIR__ . '/CalendarSync.php';
+require_once __DIR__ . '/OtaPlatformRegistry.php';
+require_once __DIR__ . '/ActivityLog.php';
 
 /**
  * Worker de imagens (runit, vários processos): para cada foto em processamento, decodifica o original e grava de novo a
@@ -47,6 +50,7 @@ final class ImageWorker
                     PhotoStorage::deleteOriginal($photo['original']);
                     $reason = $e instanceof PermanentJobFailure ? $e->reason : PhotoFail::RETRIES;
                     PhotoRepository::markFailed((int) $photo['id'], $reason);
+                    self::notifyImportPhotoFail($photo, $reason);
                 }
             },
             'image_queue: foto'
@@ -60,7 +64,12 @@ final class ImageWorker
         if (!$photo || ($photo['status'] ?? '') !== 'processing') {
             return false;
         }
-        $source = PhotoStorage::originalFile((string) ($photo['original'] ?? ''));
+        $original = (string) ($photo['original'] ?? '');
+        if ($original === '' && !empty($photo['source_url'])) {
+            // OTA URL import: the edit page opened immediately; the CDN download happens here.
+            $original = self::materializeRemote($photo);
+        }
+        $source = PhotoStorage::originalFile($original);
         if ($source === null || !is_file($source)) {
             throw new PermanentJobFailure(PhotoFail::MISSING_ORIGINAL);
         }
@@ -86,6 +95,19 @@ final class ImageWorker
             imagepalettetotruecolor($img);
         }
         $img = self::orient($img, $source, $info[2]);
+        $importId = (int) ($photo['ota_import_id'] ?? 0);
+        if ($importId > 0) {
+            $phash = self::dhash($img);
+            if (PhotoRepository::phashExists((int) $photo['property_id'], $phash, $photoId)) {
+                imagedestroy($img);
+                PhotoStorage::deleteOriginal($original);
+                PhotoRepository::setImportMeta($photoId, $phash, false);
+                PhotoRepository::markFailed($photoId, PhotoFail::DUPLICATE);
+                self::notifyImportPhotoFail($photo, PhotoFail::DUPLICATE);
+                return false;
+            }
+            PhotoRepository::setImportMeta($photoId, $phash, self::watermarkFlagged($img));
+        }
         $uuid = (string) $photo['uuid'];
         $written = [];
         try {
@@ -143,6 +165,169 @@ final class ImageWorker
      * funciona); resampled é determinístico e o de melhor SSIM medido (adr/revisao-pr106-r2.md). O destino é
      * sempre WebP: preserva o alpha (sem blending + savealpha). Lança em falha, com log.
      */
+    /** Test knob for the corner overlay heuristic (0..1 edge-density ratio). */
+    public static float $watermarkEdgeThreshold = 0.34;
+
+    /** Audit only imported-photo permanent failures (remote CDN, MIME, duplicate phash). */
+    private static function notifyImportPhotoFail(array $photo, string $reason): void
+    {
+        $importId = (int) ($photo['ota_import_id'] ?? 0);
+        if ($importId < 1 || !in_array($reason, [PhotoFail::REMOTE, PhotoFail::INVALID_TYPE, PhotoFail::DUPLICATE], true)) {
+            return;
+        }
+        activity(ActivityLog::OTA_IMPORT_PHOTO_FAIL, [
+            'imovel_id' => (int) ($photo['property_id'] ?? 0),
+            'import_id' => $importId,
+            'motivo' => $reason,
+        ]);
+    }
+
+    /**
+     * Downloads a photo source URL into storage/fotos/originais and returns its basename.
+     * Host must be an exact OTA image CDN host; the transport is SSRF-safe (CalendarSync).
+     */
+    private static function materializeRemote(array $photo): string
+    {
+        $url = (string) ($photo['source_url'] ?? '');
+        $importId = (int) ($photo['ota_import_id'] ?? 0);
+        $platform = '';
+        if ($importId > 0) {
+            $stmt = db()->prepare('SELECT platform FROM property_ota_imports WHERE id = ?');
+            $stmt->execute([$importId]);
+            $platform = (string) ($stmt->fetchColumn() ?: '');
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($platform === '' || $host === '' || !OtaPlatformRegistry::isImageHost($platform, $host)) {
+            throw new PermanentJobFailure(PhotoFail::REMOTE);
+        }
+        $result = CalendarSync::fetchImageBytes($url);
+        if (isset($result['error'])) {
+            // Transient network errors go back to the queue (backoff); policy/format errors are permanent.
+            if (in_array((string) $result['error'], ['timeout', 'dns', 'http_5xx'], true)) {
+                throw new RuntimeException('Falha temporária ao baixar a foto remota.');
+            }
+            throw new PermanentJobFailure(PhotoFail::REMOTE);
+        }
+        $bytes = (string) $result['body'];
+        $dir = PhotoStorage::originalsDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            throw new RuntimeException('Pasta de originais indisponível.');
+        }
+        $tmp = @tempnam($dir, 'cl-remote-');
+        if ($tmp === false) {
+            throw new RuntimeException('Falha ao preparar a foto remota.');
+        }
+        $ext = null;
+        try {
+            if (@file_put_contents($tmp, $bytes) === false) {
+                throw new RuntimeException('Falha ao gravar a foto remota.');
+            }
+            $ext = PhotoStorage::imageExtension($tmp);
+        } finally {
+            @unlink($tmp);
+        }
+        if ($ext === null) {
+            throw new PermanentJobFailure(PhotoFail::INVALID_TYPE);
+        }
+        $name = PhotoStorage::storeBytes((string) $photo['uuid'], $ext, $bytes);
+        if ($name === null) {
+            throw new RuntimeException('Falha ao gravar o original remoto.');
+        }
+        PhotoRepository::setOriginal((int) $photo['id'], $name);
+        return $name;
+    }
+
+    /**
+     * 64-bit dHash (difference hash) as 16 lowercase hex chars: 9x8 grayscale, left < right per row.
+     * Deterministic and GD-only (no Imagick), used to skip duplicated imported photos.
+     */
+    public static function dhash(GdImage $img): string
+    {
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $small = imagecreatetruecolor(9, 8);
+        if (!$small instanceof GdImage) {
+            return str_repeat('0', 16);
+        }
+        imagealphablending($small, false);
+        imagesavealpha($small, true);
+        imagecopyresampled($small, $img, 0, 0, 0, 0, 9, 8, max(1, $w), max(1, $h));
+        imagefilter($small, IMG_FILTER_GRAYSCALE);
+        $bits = 0;
+        for ($y = 0; $y < 8; $y++) {
+            for ($x = 0; $x < 8; $x++) {
+                $left = imagecolorat($small, $x, $y) & 0xFF;
+                $right = imagecolorat($small, $x + 1, $y) & 0xFF;
+                $bits = ($bits << 1) | ($left < $right ? 1 : 0);
+            }
+        }
+        imagedestroy($small);
+        return sprintf('%016x', $bits);
+    }
+
+    /**
+     * Corner overlay heuristic: a logo/watermark creates sharp edges in a corner that are rare in the
+     * rest of the photo. Samples the four 22% corner regions and flags when the densest corner's
+     * adjacent-luminance edge ratio exceeds self::$watermarkEdgeThreshold.
+     */
+    public static function watermarkFlagged(GdImage $img): bool
+    {
+        $w = imagesx($img);
+        $h = imagesy($img);
+        if ($w < 40 || $h < 40) {
+            return false;
+        }
+        $cw = max(8, (int) round($w * 0.22));
+        $ch = max(8, (int) round($h * 0.22));
+        $corners = [
+            [0, 0], [max(0, $w - $cw), 0],
+            [0, max(0, $h - $ch)], [max(0, $w - $cw), max(0, $h - $ch)],
+        ];
+        $maxRatio = 0.0;
+        foreach ($corners as [$ox, $oy]) {
+            $maxRatio = max($maxRatio, self::regionEdgeRatio($img, $ox, $oy, $cw, $ch));
+        }
+        return $maxRatio >= self::$watermarkEdgeThreshold;
+    }
+
+    private static function regionEdgeRatio(GdImage $img, int $ox, int $oy, int $cw, int $ch): float
+    {
+        $cols = 16;
+        $rows = 16;
+        $values = [];
+        for ($j = 0; $j < $rows; $j++) {
+            for ($i = 0; $i < $cols; $i++) {
+                $x = $ox + (int) round(($i + 0.5) * $cw / $cols);
+                $y = $oy + (int) round(($j + 0.5) * $ch / $rows);
+                $rgb = imagecolorat($img, min($x, imagesx($img) - 1), min($y, imagesy($img) - 1));
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+                $values[$j][$i] = (int) round(0.299 * $r + 0.587 * $g + 0.114 * $b);
+            }
+        }
+        $edges = 0;
+        $pairs = 0;
+        $threshold = 28;
+        for ($j = 0; $j < $rows; $j++) {
+            for ($i = 0; $i < $cols; $i++) {
+                if ($i + 1 < $cols) {
+                    $pairs++;
+                    if (abs($values[$j][$i] - $values[$j][$i + 1]) > $threshold) {
+                        $edges++;
+                    }
+                }
+                if ($j + 1 < $rows) {
+                    $pairs++;
+                    if (abs($values[$j][$i] - $values[$j + 1][$i]) > $threshold) {
+                        $edges++;
+                    }
+                }
+            }
+        }
+        return $pairs === 0 ? 0.0 : $edges / $pairs;
+    }
+
     public static function resize(GdImage $img, int $width): GdImage
     {
         $w = imagesx($img);

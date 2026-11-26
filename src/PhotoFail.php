@@ -12,6 +12,9 @@ final class PhotoFail
     public const STUCK = 'stuck';
     public const QUEUE = 'queue';
     public const RETRIES = 'retries';
+    /** Schema 44: the OTA CDN download failed (SSRF/MIME/HTTP) or the image duplicated an existing phash. */
+    public const REMOTE = 'remote';
+    public const DUPLICATE = 'duplicate';
 
     public const WRONG_TYPE = 'wrong_type';
     public const TOO_LARGE = 'too_large';
